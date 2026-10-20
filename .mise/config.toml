@@ -1,0 +1,20 @@
+# Toolchain and developer tasks, for everyone: `mise run <task>` (`mise
+# tasks` lists them) installs the tools below on first use; cargo by hand
+# goes through mise too (an activated shell, or `mise exec -- cargo ...`).
+# The tasks are scripts in tasks/, next to this file. Personal settings,
+# such as GLUE5_TEAM for iOS signing, go in config.local.toml here (ignored
+# by git) under [env].
+
+[tools]
+rust = { version = "stable", targets = "wasm32-unknown-unknown,aarch64-apple-ios,aarch64-apple-tvos,aarch64-apple-tvos-sim,aarch64-linux-android" }
+cmake = "4.4.4"
+xcodegen = { version = "2.46.0", os = ["macos"] }
+"cargo:cargo-packager" = { version = "0.11.8", os = ["macos", "linux"] }
+# Android: the JDK and Gradle for the app's Gradle project, the SDK's
+# command-line tools (sdkmanager; the android tasks install the SDK packages
+# they need with it, in this tool's directory, which is ANDROID_HOME), and
+# cargo-ndk for the Rust library.
+java = "temurin-21.0.12+101.0.LTS"
+gradle = "9.8.1"
+android-sdk = "20.0"
+"cargo:cargo-ndk" = "4.1.2"
