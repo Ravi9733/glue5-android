@@ -31,6 +31,8 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    packaging { jniLibs { useLegacyPackaging = true } }
+
     buildTypes {
         release {
             // For development devices, as the iOS app: the debug key.
