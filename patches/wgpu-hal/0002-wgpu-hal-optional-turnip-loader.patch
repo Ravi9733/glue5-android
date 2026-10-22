@@ -10,7 +10,7 @@ Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -561,4 +561,69 @@
+@@ -561,2 +561,72 @@
      /// `Instance::init` but with a callback.
 +// Optional Android custom Vulkan driver. The default remains the system
 +// loader; this path is used only when GLUE5_VULKAN_DRIVER=turnip.
@@ -33,7 +33,13 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +    let app_dir = PathBuf::from(env::var_os("GLUE5_APP_FILES_DIR")?);
 +    let native_dir = PathBuf::from(env::var_os("GLUE5_NATIVE_LIB_DIR")?);
 +    let driver_dir = app_dir.join("turnip");
-+    if !driver_dir.join("libvulkan_freedreno.so").is_file() {
++    let selected_name = fs::read_to_string(driver_dir.join("driver_name"))
++        .unwrap_or_else(|_| "libvulkan_freedreno.so".to_owned());
++    let selected_name = selected_name.trim();
++    if selected_name.is_empty() || selected_name.contains('/') || selected_name.contains('\\') {
++        return None;
++    }
++    if !driver_dir.join(selected_name).is_file() {
 +        return None;
 +    }
 +    let temp_dir = app_dir.join("turnip-tmp");
@@ -41,10 +47,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +
 +    // Do not dlclose either handle: Vulkan function pointers remain in use
 +    // for the process lifetime.
-+    let adrenotools_path = native_dir.join("libadrenotools.so");
-    let adrenotools_c = CString::new(adrenotools_path.to_string_lossy().as_bytes()).ok()?;
-    let adrenotools = unsafe { dlopen(adrenotools_c.as_ptr(), RTLD_NOW) };
-+    if adrenotools.is_null() {
+++    if adrenotools.is_null() {
 +        return None;
 +    }
 +    let open_ptr = unsafe { dlsym(adrenotools, c"adrenotools_open_libvulkan".as_ptr()) };
@@ -61,7 +64,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +    let loader = unsafe {
 +        open_libvulkan(
 +            RTLD_NOW, 1, temp_c.as_ptr(), native_c.as_ptr(),
-+            driver_dir_c.as_ptr(), c"libvulkan_freedreno.so".as_ptr(),
++            driver_dir_c.as_ptr(), CString::new(selected_name).ok()?.as_ptr(),
 +            core::ptr::null(), &mut user_mapping,
 +        )
 +    };
