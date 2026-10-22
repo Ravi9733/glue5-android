@@ -4,13 +4,14 @@ Date: Thu, 22 Oct 2026 07:20:00 +0530
 Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
 
 ---
- src/vulkan/instance.rs | 79 +++++++++++++++++++++++++++++++++++++++++-
- 1 file changed, 78 insertions(+), 1 deletion(-)
+ src/vulkan/instance.rs | 78 +++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 77 insertions(+), 1 deletion(-)
 
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@
+@@ -561,6 +561,79 @@
+     /// `Instance::init` but with a callback.
 +// Optional Android custom Vulkan driver. The default remains the system
 +// loader; this path is used only when GLUE5_VULKAN_DRIVER=turnip.
 +#[cfg(target_os = "android")]
@@ -77,9 +78,11 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +    })
 +}
 +
- /// `Instance::init` but with a callback.
- /// If you want to add extensions, add them to the `Vec<\'static CStr>` not the create info, otherwise
-@@
+     /// If you want to add extensions, add the to the `Vec<'static CStr>` not the create info, otherwise
+@@ -579,6 +652,13 @@
+             profiling::scope!("Load vk library");
+             // ohos support is already fixed on ash main, but it's unclear when
+             // a new release can happen.
 -            #[cfg(target_env = "ohos")]
 +            #[cfg(target_os = "android")]
 +            let loaded = if std::env::var("GLUE5_VULKAN_DRIVER").as_deref() == Ok("turnip") {
@@ -92,3 +95,4 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 -            #[cfg(not(target_env = "ohos"))]
 +            #[cfg(not(any(target_env = "ohos", target_os = "android")))]
              let loaded = ash::Entry::load();
+             loaded
