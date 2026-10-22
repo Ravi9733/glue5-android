@@ -50,6 +50,29 @@ android_libs() {
     # language) is C++, built against the NDK's shared libc++.
     ln -f "target/$target/release/libglue5.so" "target/$target/release/libSDL3.so" "$out/jniLibs/$abi/"
     cp "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/sysroot/usr/lib/"$target"/libc++_shared.so "$out/jniLibs/$abi/"
+
+    # Build the Android Vulkan loader hooks needed by optional AdrenoTools
+    # custom-driver support. The runtime selector/loader is a separate step;
+    # packaging these libraries alone does not activate Turnip.
+    local adrenotools_src="$out/adrenotools-src"
+    local adrenotools_build="$out/adrenotools-build"
+    if [ ! -d "$adrenotools_src/.git" ]; then
+        git clone https://github.com/Bylaws/libadrenotools.git "$adrenotools_src"
+    fi
+    git -C "$adrenotools_src" fetch --depth 1 origin 8fae8ce254dfc1344527e05301e43f37dea2df80
+    git -C "$adrenotools_src" checkout --detach 8fae8ce254dfc1344527e05301e43f37dea2df80
+    git -C "$adrenotools_src" submodule update --init --recursive
+    cmake -S "$adrenotools_src" -B "$adrenotools_build" \
+        -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+        -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$(setting minSdk)" \
+        -DANDROID_NDK="$ANDROID_NDK_HOME" -DBUILD_SHARED_LIBS=ON \
+        -DGEN_INSTALL_TARGET=OFF -DCMAKE_BUILD_TYPE=Release
+    cmake --build "$adrenotools_build" --parallel
+    for lib in libadrenotools.so libhook_impl.so libmain_hook.so libfile_redirect_hook.so libgsl_alloc_hook.so; do
+        found=$(find "$adrenotools_build" -type f -name "$lib" -print -quit)
+        [ -n "$found" ] || die "AdrenoTools build did not produce $lib"
+        cp "$found" "$out/jniLibs/$abi/$lib"
+    done
     cp platform/shared/Glue5.icon/Assets/01-background.png "$out/res/drawable-nodpi/glue5_background.png"
     cp platform/shared/Glue5.icon/Assets/02-five.png "$out/res/drawable-nodpi/glue5_five.png"
 }
