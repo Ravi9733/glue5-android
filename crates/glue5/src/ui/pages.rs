@@ -5,7 +5,7 @@ use super::widgets::{
 use super::{Action, Mode, Page, SettingsTab, Status, TextKind, WARN, theme};
 use crate::paths::{self, MOBILE, TOUCH, TV};
 use crate::settings::{
-    self, Corner, OverlayDetail, PerfOverlay, RENDER_SCALES, Settings, Source, TouchAim, TouchMode, Upscaling,
+    self, Corner, OverlayDetail, PerfOverlay, RENDER_SCALES, Settings, Source, TouchAim, TouchMode, Upscaling, VulkanDriver,
 };
 use crate::sharing::State as Sharing;
 use glue5_stream::Phase;
@@ -769,6 +769,14 @@ fn settings_items(
     let started = status.started;
     match tab {
         SettingsTab::Video => {
+            if cfg!(target_os = "android") {
+                setting(ui, "Vulkan driver", Control::Choice, Some("Next launch"), |ui| {
+                    choice(ui, &mut settings.vulkan_driver, &[
+                        (VulkanDriver::System, "System"),
+                        (VulkanDriver::Turnip, "Turnip (import required)"),
+                    ])
+                });
+            }
             let mut scale = scale_edit.unwrap_or(settings.render_scale());
             let (rw, rh) = settings::render_size(status.window, scale, settings.low_memory);
             let subtitle = format!("{rw} × {rh}");
