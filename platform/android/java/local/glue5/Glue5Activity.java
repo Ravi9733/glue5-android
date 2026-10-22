@@ -44,8 +44,8 @@ public class Glue5Activity extends SDLActivity {
             }
         }
         super.onCreate(savedInstanceState);
-        // Offer a one-time import on a clean install. The ZIP is read through
-        // Android's document picker; no broad storage permission is required.
+        // Offer driver import until a Turnip library has been installed. The ZIP
+        // is read through Android's document picker; no broad storage permission is required.
         if (!hasTurnipDriver()) {
             new Handler(Looper.getMainLooper()).postDelayed(() -> showTurnipImportPrompt(), 1800);
         }
