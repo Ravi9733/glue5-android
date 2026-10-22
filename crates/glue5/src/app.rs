@@ -703,11 +703,11 @@ impl App {
                         Some(directory) => {
                             let request = PathBuf::from(directory).join("turnip-import-request");
                             match std::fs::write(request, b"1") {
-                                Ok(()) => self.ui.note("Opening the Android file picker…".into()),
+                                Ok(()) => self.ui.note("Opening the Android file picker…"),
                                 Err(e) => self.ui.note(format!("Cannot request Turnip ZIP picker: {e}")),
                             }
                         }
-                        None => self.ui.note("Android app storage path is unavailable".into()),
+                        None => self.ui.note("Android app storage path is unavailable"),
                     }
                 }
                 Action::ResetGraphics => self.reset_graphics(),
