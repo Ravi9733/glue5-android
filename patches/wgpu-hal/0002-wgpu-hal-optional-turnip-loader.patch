@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Thu, 22 Oct 2026 07:20:00 +0530
+Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
+
+---
+ src/vulkan/instance.rs | 93 +++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 92 insertions(+), 1 deletion(-)
+
+diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
+index 0000000..0000000 100644
+--- a/src/vulkan/instance.rs
++++ b/src/vulkan/instance.rs
+@@ -1,3 +1,4 @@
++#[cfg(target_os = "android")]
++use std::sync::OnceLock;
+ use alloc::{borrow::ToOwned as _, boxed::Box, ffi::CString, string::String, sync::Arc, vec::Vec};
+ use core::{
+     ffi::{c_void, CStr},
+@@ -1,3 +1,82 @@
++// The custom driver is optional. Keep the normal system Vulkan loader as the
++// default, and only route through AdrenoTools when explicitly requested.
++#[cfg(target_os = "android")]
++unsafe fn load_turnip_entry() -> Option<ash::Entry> {
++    use core::ffi::{c_char, c_int};
++    use std::{env, fs, path::PathBuf};
++
++    const RTLD_NOW: c_int = 2;
++    type OpenLibVulkan = unsafe extern "C" fn(
++        c_int, c_int, *const c_char, *const c_char, *const c_char,
++        *const c_char, *const c_char, *mut *mut c_void,
++    ) -> *mut c_void;
++
++    #[link(name = "dl")]
++    unsafe extern "C" {
++        fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void;
++        fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
++    }
++
++    static ENTRY: OnceLock<ash::Entry> = OnceLock::new();
++    if let Some(entry) = ENTRY.get() {
++        // The handles are intentionally kept loaded for the process lifetime.
++        return Some(unsafe { ash::Entry::from_static_fn(entry.static_fn()) });
++    }
++
++    let app_dir = PathBuf::from(env::var_os("GLUE5_APP_FILES_DIR")?);
++    let native_dir = PathBuf::from(env::var_os("GLUE5_NATIVE_LIB_DIR")?);
++    let driver_dir = app_dir.join("turnip");
++    let driver = driver_dir.join("libvulkan_freedreno.so");
++    if !driver.is_file() {
++        return None;
++    }
++    let temp_dir = app_dir.join("turnip-tmp");
++    fs::create_dir_all(&temp_dir).ok()?;
++
++    let adrenotools_name = c"libadrenotools.so";
++    let adrenotools = unsafe { dlopen(adrenotools_name.as_ptr(), RTLD_NOW) };
++    if adrenotools.is_null() {
++        return None;
++    }
++    let open_name = c"adrenotools_open_libvulkan";
++    let open_ptr = unsafe { dlsym(adrenotools, open_name.as_ptr()) };
++    if open_ptr.is_null() {
++        return None;
++    }
++    let open_libvulkan: OpenLibVulkan = unsafe { core::mem::transmute(open_ptr) };
++    let temp_c = CString::new(temp_dir.to_string_lossy().as_bytes()).ok()?;
++    let native_c = CString::new(native_dir.to_string_lossy().as_bytes()).ok()?;
++    let driver_dir_c = CString::new(driver_dir.to_string_lossy().as_bytes()).ok()?;
++    let driver_name = c"libvulkan_freedreno.so";
++    let mut user_mapping: *mut c_void = core::ptr::null_mut();
++    // ADRENOTOOLS_DRIVER_CUSTOM = 1 << 0. Keep the hook libraries in the
++    // app's nativeLibraryDir; the custom ICD stays in private app storage.
++    let loader = unsafe {
++        open_libvulkan(
++            RTLD_NOW, 1, temp_c.as_ptr(), native_c.as_ptr(),
++            driver_dir_c.as_ptr(), driver_name.as_ptr(), core::ptr::null(),
++            &mut user_mapping,
++        )
++    };
++    if loader.is_null() {
++        return None;
++    }
++    let proc_name = c"vkGetInstanceProcAddr";
++    let proc = unsafe { dlsym(loader, proc_name.as_ptr()) };
++    if proc.is_null() {
++        return None;
++    }
++    let get_instance_proc_addr: vk::PFN_vkGetInstanceProcAddr =
++        unsafe { core::mem::transmute(proc) };
++    let entry = unsafe {
++        ash::Entry::from_static_fn(ash::StaticFn { get_instance_proc_addr })
++    };
++    // Retain Entry for its API and ensure it is initialised only once. The
++    // dlopen handles above intentionally aren't closed, so all loaded Vulkan
++    // function pointers remain valid for the lifetime of the process.
++    let _ = ENTRY.set(entry);
++    ENTRY.get().map(|entry| unsafe { ash::Entry::from_static_fn(entry.static_fn()) })
++}
++
+@@
+-            #[cfg(target_env = "ohos")]
++            #[cfg(target_os = "android")]
++            let loaded = if std::env::var("GLUE5_VULKAN_DRIVER").as_deref() == Ok("turnip") {
++                unsafe { load_turnip_entry() }.map(Ok).unwrap_or_else(ash::Entry::load)
++            } else {
++                ash::Entry::load()
++            };
++            #[cfg(target_env = "ohos")]
+             let loaded = ash::Entry::load_from("libvulkan.so");
+-            #[cfg(not(target_env = "ohos"))]
++            #[cfg(not(any(target_env = "ohos", target_os = "android")))]
+             let loaded = ash::Entry::load();
+*** End Patch
