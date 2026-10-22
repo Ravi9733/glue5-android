@@ -114,9 +114,9 @@ public class Glue5Activity extends SDLActivity {
                 if (entry.isDirectory()) continue;
                 String entryName = entry.getName();
                 String basename = new File(entryName).getName();
-                // Only extract flat files. This prevents ZIP path traversal and
-                // keeps the driver in app-private storage where Android can load it.
-                if (!entryName.equals(basename) || basename.isEmpty()) continue;
+                // Flatten ZIP paths to safe basenames so arm64-v8a/ subfolders
+                // work too; no archive path is ever used as an output path.
+                if (basename.isEmpty()) continue;
 
                 if ("meta.json".equals(basename)) {
                     byte[] bytes = readZipEntry(zip, 256 * 1024);
