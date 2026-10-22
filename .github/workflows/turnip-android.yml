@@ -45,6 +45,9 @@ jobs:
           install_args: rust cmake java gradle android-sdk cargo:cargo-ndk
           cache_key_prefix: mise-turnip-android
 
+      - name: Accept Android SDK licenses
+        run: yes | mise exec -- sdkmanager --licenses >/dev/null
+
       - name: Android signing key
         run: |
           mkdir -p ~/.android
