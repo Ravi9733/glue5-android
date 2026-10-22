@@ -95,7 +95,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +}
 +
      /// If you want to add extensions, add the to the `Vec<'static CStr>` not the create info, otherwise
-@@ -579,9 +652,15 @@
+@@ -579,8 +652,14 @@
              profiling::scope!("Load vk library");
              // ohos support is already fixed on ash main, but it's unclear when
              // a new release can happen.
