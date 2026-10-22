@@ -34,6 +34,9 @@ pub struct Settings {
     /// One-time Android performance migration, so existing installs get the
     /// lower-load mobile profile once without overriding later user choices.
     pub android_performance_profile_applied: bool,
+    /// Second Android performance migration: lower GPU workload on devices
+    /// that still cannot sustain the first mobile preset.
+    pub android_performance_profile_v2_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -225,6 +228,7 @@ impl Default for Settings {
             vulkan_driver: VulkanDriver::System,
             low_preset_written: false,
             android_performance_profile_applied: false,
+            android_performance_profile_v2_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -298,6 +302,15 @@ impl Settings {
             settings.max_fps = 30;
             settings.render_scale = Some(settings.render_scale().min(0.6));
             settings.android_performance_profile_applied = true;
+        }
+        // One-time second profile for existing installs: reduce GPU pixel
+        // work further while retaining a 30 FPS target for sustained play.
+        // Users can change the settings after this migration is saved.
+        if !settings.android_performance_profile_v2_applied {
+            settings.low_memory = true;
+            settings.max_fps = 30;
+            settings.render_scale = Some(settings.render_scale().min(0.45));
+            settings.android_performance_profile_v2_applied = true;
         }
         settings
     }
