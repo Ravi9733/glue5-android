@@ -101,7 +101,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
              // a new release can happen.
 -            #[cfg(target_env = "ohos")]
 +            #[cfg(target_os = "android")]
-+            let loaded = if std::env::var("GLUE5_VULKAN_DRIVER").as_deref() == Ok("turnip") {
++            let loaded = if matches!(std::env::var("GLUE5_VULKAN_DRIVER").as_deref(), Ok("turnip")) {
 +                unsafe { Self::load_turnip_entry() }.map(Ok).unwrap_or_else(ash::Entry::load)
 +            } else {
 +                ash::Entry::load()
