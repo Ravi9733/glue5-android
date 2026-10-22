@@ -4,99 +4,94 @@ Date: Thu, 22 Oct 2026 07:20:00 +0530
 Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
 
 ---
- src/vulkan/instance.rs | 78 +++++++++++++++++++++++++++++++++++++++++-
- 1 file changed, 77 insertions(+), 1 deletion(-)
+ src/vulkan/instance.rs | 80 +++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 79 insertions(+), 1 deletion(-)
 
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -561,2 +561,72 @@
-     /// `Instance::init` but with a callback.
-+// Optional Android custom Vulkan driver. The default remains the system
-+// loader; this path is used only when GLUE5_VULKAN_DRIVER=turnip.
-+#[cfg(target_os = "android")]
-+unsafe fn load_turnip_entry() -> Option<ash::Entry> {
-+    use core::ffi::{c_char, c_int};
-+    use std::{env, fs, path::PathBuf};
+@@ -562,1 +562,62 @@
+    /// `Instance::init` but with a callback.
++    // Optional Android custom Vulkan driver; System remains the default.
++    #[cfg(target_os = "android")]
++    unsafe fn load_turnip_entry() -> Option<ash::Entry> {
++        use core::ffi::{c_char, c_int};
++        use std::{env, fs, path::PathBuf};
 +
-+    const RTLD_NOW: c_int = 2;
-+    #[link(name = "dl")]
-+    unsafe extern "C" {
-+        fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void;
-+        fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
-+    }
-+    type OpenLibVulkan = unsafe extern "C" fn(
-+        c_int, c_int, *const c_char, *const c_char, *const c_char,
-+        *const c_char, *const c_char, *mut *mut c_void,
-+    ) -> *mut c_void;
++        const RTLD_NOW: c_int = 2;
++        #[link(name = "dl")]
++        unsafe extern "C" {
++            fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void;
++            fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
++        }
++        type OpenLibVulkan = unsafe extern "C" fn(
++            c_int, c_int, *const c_char, *const c_char, *const c_char,
++            *const c_char, *const c_char, *mut *mut c_void,
++        ) -> *mut c_void;
 +
-+    let app_dir = PathBuf::from(env::var_os("GLUE5_APP_FILES_DIR")?);
-+    let native_dir = PathBuf::from(env::var_os("GLUE5_NATIVE_LIB_DIR")?);
-+    let driver_dir = app_dir.join("turnip");
-+    let selected_name = fs::read_to_string(driver_dir.join("driver_name"))
-+        .unwrap_or_else(|_| "libvulkan_freedreno.so".to_owned());
-+    let selected_name = selected_name.trim();
-+    if selected_name.is_empty() || selected_name.contains('/') || selected_name.contains('\\') {
-+        return None;
-+    }
-+    if !driver_dir.join(selected_name).is_file() {
-+        return None;
-+    }
-+    let temp_dir = app_dir.join("turnip-tmp");
-+    fs::create_dir_all(&temp_dir).ok()?;
++        if env::var("GLUE5_VULKAN_DRIVER").ok().as_deref() != Some("turnip") {
++            return None;
++        }
++        let app_dir = PathBuf::from(env::var_os("GLUE5_APP_FILES_DIR")?);
++        let native_dir = PathBuf::from(env::var_os("GLUE5_NATIVE_LIB_DIR")?);
++        let driver_dir = app_dir.join("turnip");
++        let selected_name = fs::read_to_string(driver_dir.join("driver_name"))
++            .unwrap_or_else(|_| "libvulkan_freedreno.so".to_owned());
++        let selected_name = selected_name.trim();
++        if selected_name.is_empty() || selected_name.contains('/') || selected_name.contains('\\') {
++            return None;
++        }
++        if !driver_dir.join(selected_name).is_file() {
++            return None;
++        }
++        let temp_dir = app_dir.join("turnip-tmp");
++        fs::create_dir_all(&temp_dir).ok()?;
 +
-+    // Do not dlclose either handle: Vulkan function pointers remain in use
-+    // for the process lifetime.
-++    if adrenotools.is_null() {
-+        return None;
++        // Keep both handles loaded for the lifetime of Vulkan function pointers.
++        let adrenotools_path = native_dir.join("libadrenotools.so");
++        let adrenotools_c = CString::new(adrenotools_path.to_string_lossy().as_bytes()).ok()?;
++        let adrenotools = unsafe { dlopen(adrenotools_c.as_ptr(), RTLD_NOW) };
++        if adrenotools.is_null() { return None; }
++        let open_ptr = unsafe { dlsym(adrenotools, c"adrenotools_open_libvulkan".as_ptr()) };
++        if open_ptr.is_null() { return None; }
++        let open_libvulkan: OpenLibVulkan = unsafe { core::mem::transmute(open_ptr) };
++        let temp_c = CString::new(temp_dir.to_string_lossy().as_bytes()).ok()?;
++        let native_c = CString::new(native_dir.to_string_lossy().as_bytes()).ok()?;
++        let driver_dir_c = CString::new(driver_dir.to_string_lossy().as_bytes()).ok()?;
++        let driver_name_c = CString::new(selected_name).ok()?;
++        let mut user_mapping: *mut c_void = core::ptr::null_mut();
++        let loader = unsafe {
++            open_libvulkan(
++                RTLD_NOW, 1, temp_c.as_ptr(), native_c.as_ptr(),
++                driver_dir_c.as_ptr(), driver_name_c.as_ptr(),
++                core::ptr::null(), &mut user_mapping,
++            )
++        };
++        if loader.is_null() { return None; }
++        let proc = unsafe { dlsym(loader, c"vkGetInstanceProcAddr".as_ptr()) };
++        if proc.is_null() { return None; }
++        let get_instance_proc_addr: vk::PFN_vkGetInstanceProcAddr =
++            unsafe { core::mem::transmute(proc) };
++        Some(unsafe { ash::Entry::from_static_fn(ash::StaticFn { get_instance_proc_addr }) })
 +    }
-+    let open_ptr = unsafe { dlsym(adrenotools, c"adrenotools_open_libvulkan".as_ptr()) };
-+    if open_ptr.is_null() {
-+        return None;
-+    }
-+    let open_libvulkan: OpenLibVulkan = unsafe { core::mem::transmute(open_ptr) };
-+    let temp_c = CString::new(temp_dir.to_string_lossy().as_bytes()).ok()?;
-+    let native_c = CString::new(native_dir.to_string_lossy().as_bytes()).ok()?;
-+    let driver_dir_c = CString::new(driver_dir.to_string_lossy().as_bytes()).ok()?;
-+    let mut user_mapping: *mut c_void = core::ptr::null_mut();
-+    // ADRENOTOOLS_DRIVER_CUSTOM = 1 << 0. Hooks live in nativeLibraryDir;
-+    // the Turnip ICD lives in app-private storage.
-+    let loader = unsafe {
-+        open_libvulkan(
-+            RTLD_NOW, 1, temp_c.as_ptr(), native_c.as_ptr(),
-+            driver_dir_c.as_ptr(), CString::new(selected_name).ok()?.as_ptr(),
-+            core::ptr::null(), &mut user_mapping,
-+        )
-+    };
-+    if loader.is_null() {
-+        return None;
-+    }
-+    let proc = unsafe { dlsym(loader, c"vkGetInstanceProcAddr".as_ptr()) };
-+    if proc.is_null() {
-+        return None;
-+    }
-+    let get_instance_proc_addr: vk::PFN_vkGetInstanceProcAddr =
-+        unsafe { core::mem::transmute(proc) };
-+    Some(unsafe {
-+        ash::Entry::from_static_fn(ash::StaticFn { get_instance_proc_addr })
-+    })
-+}
-+
      /// If you want to add extensions, add the to the `Vec<'static CStr>` not the create info, otherwise
-@@ -579,8 +645,14 @@
+@@ -576,10 +636,16 @@
+         let entry = unsafe {
              profiling::scope!("Load vk library");
              // ohos support is already fixed on ash main, but it's unclear when
              // a new release can happen.
 -            #[cfg(target_env = "ohos")]
+-            let loaded = ash::Entry::load_from("libvulkan.so");
+-            #[cfg(not(target_env = "ohos"))]
+-            let loaded = ash::Entry::load();
 +            #[cfg(target_os = "android")]
-+            let loaded = if matches!(std::env::var("GLUE5_VULKAN_DRIVER").as_deref(), Ok("turnip")) {
-+                unsafe { Self::load_turnip_entry() }.map(Ok).unwrap_or_else(|| unsafe { ash::Entry::load() })
-+            } else {
-+                ash::Entry::load()
++            let loaded = match unsafe { Self::load_turnip_entry() } {
++                Some(entry) => Ok(entry),
++                None => ash::Entry::load(),
 +            };
 +            #[cfg(target_env = "ohos")]
-             let loaded = ash::Entry::load_from("libvulkan.so");
--            #[cfg(not(target_env = "ohos"))]
++            let loaded = ash::Entry::load_from("libvulkan.so");
 +            #[cfg(not(any(target_env = "ohos", target_os = "android")))]
-             let loaded = ash::Entry::load();
++            let loaded = ash::Entry::load();
              loaded
+         }
