@@ -10,14 +10,7 @@ Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -1,8 +1,15 @@
- use alloc::{borrow::ToOwned as _, boxed::Box, ffi::CString, string::String, sync::Arc, vec::Vec};
- use core::{
-     ffi::{c_void, CStr},
-     marker::PhantomData,
-     slice,
-     str::FromStr,
- };
+@@ -9,1 +9,8 @@
  use std::thread;
 +#[cfg(target_os = "android")]
 +#[link(name = "dl")]
