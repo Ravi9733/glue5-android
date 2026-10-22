@@ -26,7 +26,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +    fn dlsym(handle: *mut c_void, symbol: *const core::ffi::c_char) -> *mut c_void;
 +}
 +
-+@@ -561,6 +569,65 @@
+@@ -561,1 +568,59 @@
      /// `Instance::init` but with a callback.
 +// Optional Android custom Vulkan driver. The default remains the system
 +// loader; this path is used only when GLUE5_VULKAN_DRIVER=turnip.
