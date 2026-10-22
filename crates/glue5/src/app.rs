@@ -698,6 +698,18 @@ impl App {
                 }
                 Action::ChooseGame => self.folder = Some(FolderPick::start(&self.window)),
                 Action::FindGame => self.find_game(None),
+                Action::ImportTurnip => {
+                    match std::env::var_os("GLUE5_APP_FILES_DIR") {
+                        Some(directory) => {
+                            let request = PathBuf::from(directory).join("turnip-import-request");
+                            match std::fs::write(request, b"1") {
+                                Ok(()) => self.ui.note("Opening the Android file picker…".into()),
+                                Err(e) => self.ui.note(format!("Cannot request Turnip ZIP picker: {e}")),
+                            }
+                        }
+                        None => self.ui.note("Android app storage path is unavailable".into()),
+                    }
+                }
                 Action::ResetGraphics => self.reset_graphics(),
                 Action::JoinFriend { key, lobby } => {
                     if self.game.is_none() {

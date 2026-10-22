@@ -31,6 +31,9 @@ pub struct Settings {
     /// Whether the low-memory preset is in the game's settings (written at
     /// the first start with `low_memory`; the game's menu changes it after).
     pub low_preset_written: bool,
+    /// One-time Android performance migration, so existing installs get the
+    /// lower-load mobile profile once without overriding later user choices.
+    pub android_performance_profile_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -221,6 +224,7 @@ impl Default for Settings {
             low_memory: MOBILE && sdl3::cpuinfo::system_ram() < LOW_MEMORY_RAM_MB,
             vulkan_driver: VulkanDriver::System,
             low_preset_written: false,
+            android_performance_profile_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -283,6 +287,17 @@ impl Settings {
         }
         if TV {
             settings.source = Source::Server;
+        }
+        // Existing Android installs can otherwise retain a full-load preset
+        // indefinitely. Apply a one-time mobile profile to reduce GPU work and
+        // thermal pressure; users can change these settings afterward.
+        #[cfg(target_os = "android")]
+        if !settings.android_performance_profile_applied {
+            settings.low_memory = true;
+            settings.low_preset_written = false;
+            settings.max_fps = 30;
+            settings.render_scale = Some(settings.render_scale().min(0.6));
+            settings.android_performance_profile_applied = true;
         }
         settings
     }

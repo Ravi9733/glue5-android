@@ -21,7 +21,11 @@ import java.util.zip.ZipInputStream;
 /** The app's activity: SDL's, with our library (libglue5.so) as the main one. */
 public class Glue5Activity extends SDLActivity {
     private static final int REQUEST_TURNIP_ZIP = 47112;
-    private static final String PREFS = "glue5_driver_import";
+    private final Handler turnipHandler = new Handler(Looper.getMainLooper());
+    private boolean turnipPickerOpen = false;
+    private final Runnable turnipImportWatcher = new Runnable() {
+        @Override public void run() { checkTurnipImportRequest(); }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,56 +48,53 @@ public class Glue5Activity extends SDLActivity {
             }
         }
         super.onCreate(savedInstanceState);
-        // Offer driver import until a Turnip library has been installed. The ZIP
-        // is read through Android's document picker; no broad storage permission is required.
-        if (!hasTurnipDriver()) {
-            new Handler(Looper.getMainLooper()).postDelayed(() -> showTurnipImportPrompt(), 1800);
-        }
+        // The native Settings page requests the document picker through a
+        // marker in this private files directory. No broad storage permission
+        // is required, and the import action is available whenever needed.
+        turnipHandler.postDelayed(turnipImportWatcher, 500);
     }
 
-    private boolean hasTurnipDriver() {
-        File directory = new File(getFilesDir(), "turnip");
-        File legacy = new File(directory, "libvulkan_freedreno.so");
-        if (legacy.isFile()) return true;
-        File nameFile = new File(directory, "driver_name");
-        if (!nameFile.isFile()) return false;
+    private void checkTurnipImportRequest() {
+        if (isFinishing() || turnipPickerOpen) return;
+        File request = new File(getFilesDir(), "turnip-import-request");
+        if (request.isFile() && request.delete()) {
+            turnipPickerOpen = true;
+            openTurnipPicker();
+            return;
+        }
+        turnipHandler.postDelayed(turnipImportWatcher, 500);
+    }
+
+    private void openTurnipPicker() {
         try {
-            String name = new String(java.nio.file.Files.readAllBytes(nameFile.toPath()),
-                    java.nio.charset.StandardCharsets.UTF_8).trim();
-            return !name.isEmpty() && name.equals(new File(name).getName())
-                    && new File(directory, name).isFile();
-        } catch (Exception ignored) {
-            return false;
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            // Some file providers label ZIPs as application/octet-stream or
+            // application/x-zip-compressed. Let the user select the archive;
+            // importTurnipZip validates its contents before installing it.
+            intent.setType("*/*");
+            startActivityForResult(intent, REQUEST_TURNIP_ZIP);
+        } catch (Exception e) {
+            turnipPickerOpen = false;
+            Toast.makeText(this, "Cannot open file picker: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
         }
-    }
-
-    private void showTurnipImportPrompt() {
-        if (isFinishing()) return;
-        new AlertDialog.Builder(this)
-            .setTitle("Optional Turnip Vulkan driver")
-            .setMessage("Import your Turnip ZIP to enable the Turnip option in Glue 5 settings. System driver remains the default.")
-            .setPositiveButton("Choose ZIP", (dialog, which) -> {
-                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                intent.setType("application/zip");
-                startActivityForResult(intent, REQUEST_TURNIP_ZIP);
-            })
-            .setNegativeButton("Later", (dialog, which) -> { })
-            .setOnCancelListener(dialog -> { })
-            .show();
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_TURNIP_ZIP || resultCode != RESULT_OK || data == null) return;
-        Uri uri = data.getData();
-        if (uri == null) return;
+        if (requestCode != REQUEST_TURNIP_ZIP) return;
+        turnipPickerOpen = false;
         try {
-            importTurnipZip(uri);
-            Toast.makeText(this, "Turnip driver imported. Select Turnip in Settings, then restart Glue 5.", Toast.LENGTH_LONG).show();
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                importTurnipZip(data.getData());
+                Toast.makeText(this, "Turnip driver imported. Select Turnip in Settings, then fully restart Glue 5.", Toast.LENGTH_LONG).show();
+            }
         } catch (Exception e) {
             Toast.makeText(this, "Turnip import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        } finally {
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
         }
     }
 
@@ -112,10 +113,15 @@ public class Glue5Activity extends SDLActivity {
             byte[] buffer = new byte[32768];
             while ((entry = zip.getNextEntry()) != null) {
                 if (entry.isDirectory()) continue;
-                String entryName = entry.getName();
-                String basename = new File(entryName).getName();
-                // Flatten ZIP paths to safe basenames so arm64-v8a/ subfolders
-                // work too; no archive path is ever used as an output path.
+                String entryName = entry.getName().replace('\\', '/');
+                // A multi-ABI archive may contain the same library name for
+                // arm32/x86 and arm64. Never let a later non-arm64 entry
+                // overwrite the library intended for this arm64-only APK.
+                if (entryName.contains("armeabi-v7a/") || entryName.contains("x86/") ||
+                        entryName.contains("x86_64/") || entryName.contains("riscv64/")) continue;
+                String basename = entryName.substring(entryName.lastIndexOf('/') + 1);
+                // Flatten ZIP paths to safe basenames; never use archive paths
+                // as output paths.
                 if (basename.isEmpty()) continue;
 
                 if ("meta.json".equals(basename)) {

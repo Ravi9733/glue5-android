@@ -76,6 +76,8 @@ pub enum Action {
     ChooseGame,
     /// Look for the game's files again (mobile: copied in meanwhile).
     FindGame,
+    /// Open Android's document picker to import a custom Vulkan driver ZIP.
+    ImportTurnip,
     /// The game's graphics settings back to the engine's defaults.
     ResetGraphics,
     /// Join a friend (by its key) playing GTA Online in `lobby`, from the

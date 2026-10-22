@@ -777,6 +777,15 @@ fn settings_items(
                     ])
                 });
             }
+            if cfg!(target_os = "android") {
+                setting(ui, "Turnip driver file", Control::Action, Some("Choose a compatible Turnip ZIP"), |ui| {
+                    let response = action_button(ui, "Import ZIP");
+                    if response.clicked() {
+                        actions.push(Action::ImportTurnip);
+                    }
+                    response
+                });
+            }
             let mut scale = scale_edit.unwrap_or(settings.render_scale());
             let (rw, rh) = settings::render_size(status.window, scale, settings.low_memory);
             let subtitle = format!("{rw} × {rh}");
