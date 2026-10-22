@@ -82,43 +82,116 @@ public class Glue5Activity extends SDLActivity {
     }
 
     private void importTurnipZip(Uri uri) throws Exception {
-        File destination = new File(getFilesDir(), "turnip");
-        if (!destination.exists() && !destination.mkdirs()) throw new Exception("Cannot create private driver folder");
-        File temp = new File(destination, "libvulkan_freedreno.so.tmp");
-        boolean found = false;
-        try (InputStream input = getContentResolver().openInputStream(uri);
-             ZipInputStream zip = new ZipInputStream(input)) {
-            if (input == null) throw new Exception("Cannot read selected ZIP");
+        File staging = new File(getFilesDir(), "turnip-import");
+        deleteTree(staging);
+        if (!staging.mkdirs()) throw new Exception("Cannot create temporary driver folder");
+
+        InputStream input = getContentResolver().openInputStream(uri);
+        if (input == null) throw new Exception("Cannot read selected ZIP");
+        String libraryName = null;
+        boolean foundLibrary = false;
+        long totalExtracted = 0;
+        try (ZipInputStream zip = new ZipInputStream(input)) {
             ZipEntry entry;
+            byte[] buffer = new byte[32768];
             while ((entry = zip.getNextEntry()) != null) {
-                if (!entry.isDirectory() && "libvulkan_freedreno.so".equals(new File(entry.getName()).getName())
-                        && "libvulkan_freedreno.so".equals(entry.getName())) {
-                    long total = 0;
-                    byte[] buffer = new byte[32768];
-                    try (FileOutputStream output = new FileOutputStream(temp)) {
-                        int count;
-                        while ((count = zip.read(buffer)) != -1) {
-                            total += count;
-                            if (total > 64L * 1024L * 1024L) throw new Exception("Driver file exceeds size limit");
-                            output.write(buffer, 0, count);
+                if (entry.isDirectory()) continue;
+                String entryName = entry.getName();
+                String basename = new File(entryName).getName();
+                // Only extract flat files. This prevents ZIP path traversal and
+                // keeps the driver in app-private storage where Android can load it.
+                if (!entryName.equals(basename) || basename.isEmpty()) continue;
+
+                if ("meta.json".equals(basename)) {
+                    byte[] bytes = readZipEntry(zip, 256 * 1024);
+                    try {
+                        org.json.JSONObject meta = new org.json.JSONObject(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+                        String declared = meta.optString("libraryName", "");
+                        if (!declared.isEmpty() && declared.equals(new File(declared).getName())
+                                && declared.endsWith(".so")) {
+                            libraryName = declared;
                         }
+                    } catch (org.json.JSONException ignored) {
+                        // A legacy ZIP without valid metadata can still use the
+                        // standard libvulkan_freedreno.so filename below.
                     }
-                    if (total < 1024L * 1024L) throw new Exception("Driver file is unexpectedly small");
-                    found = true;
-                    break;
+                    continue;
+                }
+
+                if (!basename.endsWith(".so")) continue;
+                File target = new File(staging, basename);
+                long fileSize = 0;
+                try (FileOutputStream output = new FileOutputStream(target)) {
+                    int count;
+                    while ((count = zip.read(buffer)) != -1) {
+                        fileSize += count;
+                        totalExtracted += count;
+                        if (fileSize > 96L * 1024L * 1024L || totalExtracted > 256L * 1024L * 1024L) {
+                            throw new Exception("Driver ZIP is too large");
+                        }
+                        output.write(buffer, 0, count);
+                    }
+                }
+                foundLibrary = true;
+            }
+        }
+
+        if (!foundLibrary) {
+            deleteTree(staging);
+            throw new Exception("ZIP has no root-level Vulkan driver .so");
+        }
+        if (libraryName == null) {
+            if (new File(staging, "libvulkan_freedreno.so").isFile()) {
+                libraryName = "libvulkan_freedreno.so";
+            } else {
+                File[] candidates = staging.listFiles((dir, name) ->
+                        name.startsWith("vulkan.ad") && name.endsWith(".so"));
+                if (candidates != null && candidates.length == 1) {
+                    libraryName = candidates[0].getName();
+                } else {
+                    File[] all = staging.listFiles((dir, name) -> name.endsWith(".so"));
+                    if (all != null && all.length == 1) libraryName = all[0].getName();
                 }
             }
         }
-        if (!found) {
-            temp.delete();
-            throw new Exception("ZIP does not contain libvulkan_freedreno.so at its root");
+        if (libraryName == null || !new File(staging, libraryName).isFile()) {
+            deleteTree(staging);
+            throw new Exception("Could not identify the Vulkan driver in ZIP metadata");
         }
-        File target = new File(destination, "libvulkan_freedreno.so");
-        if (target.exists() && !target.delete()) throw new Exception("Cannot replace previous driver");
-        if (!temp.renameTo(target)) {
-            temp.delete();
+        File nameFile = new File(staging, "driver_name");
+        try (FileOutputStream output = new FileOutputStream(nameFile)) {
+            output.write(libraryName.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+
+        File destination = new File(getFilesDir(), "turnip");
+        deleteTree(destination);
+        if (!staging.renameTo(destination)) {
+            deleteTree(staging);
             throw new Exception("Cannot install driver in private storage");
         }
+    }
+
+    private static byte[] readZipEntry(ZipInputStream zip, int limit) throws Exception {
+        java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int total = 0;
+        int count;
+        while ((count = zip.read(buffer)) != -1) {
+            total += count;
+            if (total > limit) throw new Exception("Driver metadata is too large");
+            output.write(buffer, 0, count);
+        }
+        return output.toByteArray();
+    }
+
+    private static void deleteTree(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) deleteTree(child);
+            }
+        }
+        file.delete();
     }
 
     @Override
