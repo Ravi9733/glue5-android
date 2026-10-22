@@ -1,6 +1,6 @@
 --!strict
 -- Glue 5 Android-compatible trainer.
--- Copy this folder to game/mods/android-trainer/.
+-- Install as game/mods/android-trainer/main.luau with mod.json {"autostart": true}.
 -- This is a Luau/native-bridge mod, not a PC .asi/.dll trainer.
 
 local menu = ui.menu("Android Trainer")
@@ -40,39 +40,93 @@ menu:button("Clear wanted level", function()
     ui.notify("Wanted level cleared")
 end)
 
-menu:label("VEHICLES")
-menu:button("Spawn Adder", "Creates a car beside the player", function()
+menu:label("VEHICLE SPAWNER")
+local vehicleModels = {
+    "adder",
+    "zentorno",
+    "t20",
+    "turismor",
+    "entityxf",
+    "cheetah",
+    "infernus",
+    "comet2",
+    "elegy",
+    "buffalo",
+    "sultan",
+    "dominator",
+    "bati",
+    "sanchez",
+    "police",
+    "police2",
+    "ambulance",
+    "blazer",
+}
+local selectedVehicle = 1
+
+menu:choice("Vehicle model", vehicleModels, selectedVehicle, function(index)
+    selectedVehicle = index
+    ui.notify("Selected: " .. vehicleModels[selectedVehicle])
+end)
+
+menu:button("Spawn selected vehicle", "Loads the selected model near the player", function()
     local playerPed = player.playerPedId()
     if not playerPed then
         ui.notify("Player is not ready")
         return
     end
 
-    local model = "adder"
-    streaming.requestModel(model)
+    local model = vehicleModels[selectedVehicle]
+    local requested = pcall(function()
+        streaming.requestModel(model)
+    end)
+    if not requested then
+        ui.notify("Model request failed: " .. model)
+        return
+    end
+
     local tries = 0
-    while not streaming.hasModelLoaded(model) and tries < 300 do
+    while tries < 300 do
+        local ok, loaded = pcall(function()
+            return streaming.hasModelLoaded(model)
+        end)
+        if ok and loaded then
+            break
+        end
         wait()
         tries += 1
     end
 
-    if not streaming.hasModelLoaded(model) then
-        ui.notify("Car model did not load")
-        streaming.setModelAsNoLongerNeeded(model)
+    local ok, loaded = pcall(function()
+        return streaming.hasModelLoaded(model)
+    end)
+    if not ok or not loaded then
+        ui.notify("Model unavailable: " .. model)
+        pcall(function()
+            streaming.setModelAsNoLongerNeeded(model)
+        end)
         return
     end
 
-    local pos = entity.getEntityCoords(playerPed, true)
-    local heading = entity.getEntityHeading(playerPed)
-    local car = vehicle.createVehicle(model, pos.x + 3, pos.y, pos.z, heading, true, false)
-    if car then
-        -- Use the ped namespace; playerPed is only the player's entity handle.
-        ped.setPedIntoVehicle(playerPed, car, -1)
-        ui.notify("Adder spawned")
+    local okSpawn, result = pcall(function()
+        local pos = entity.getEntityCoords(playerPed, true)
+        local heading = entity.getEntityHeading(playerPed)
+        local car = vehicle.createVehicle(model, pos.x + 3, pos.y, pos.z, heading, true, false)
+        if car then
+            ped.setPedIntoVehicle(playerPed, car, -1)
+            return true
+        end
+        return false
+    end)
+
+    pcall(function()
+        streaming.setModelAsNoLongerNeeded(model)
+    end)
+
+    if okSpawn and result then
+        ui.notify("Spawned: " .. model)
     else
-        ui.notify("Could not spawn car")
+        ui.notify("Could not spawn: " .. model)
     end
-    streaming.setModelAsNoLongerNeeded(model)
 end)
 
 ui.notify("Android Trainer loaded. Open Mods > MENUS (touch menu button or F7).")
