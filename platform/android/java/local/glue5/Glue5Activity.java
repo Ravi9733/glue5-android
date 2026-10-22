@@ -10,6 +10,14 @@ import org.libsdl.app.SDLActivity;
 public class Glue5Activity extends SDLActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Paths used by the optional AdrenoTools Vulkan loader. The custom
+        // driver itself must live under app-private files, not shared storage.
+        try {
+            Os.setenv("GLUE5_NATIVE_LIB_DIR", getApplicationInfo().nativeLibraryDir, true);
+            Os.setenv("GLUE5_APP_FILES_DIR", getFilesDir().getAbsolutePath(), true);
+        } catch (ErrnoException e) {
+            // Leave the optional custom-driver path unset if Android rejects it.
+        }
         // The same switches as a desktop run, RUST_LOG and GLUE5_*: string
         // extras of the launch intent (`mise run android:run` passes them),
         // set in the environment before SDL starts the library's main.
