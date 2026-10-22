@@ -11,7 +11,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
 @@ -562,2 +562,64 @@
-    /// `Instance::init` but with a callback.
+     /// `Instance::init` but with a callback.
 +    // Optional Android custom Vulkan driver; System remains the default.
 +    #[cfg(target_os = "android")]
 +    unsafe fn load_turnip_entry() -> Option<ash::Entry> {
