@@ -1,7 +1,7 @@
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -567,10 +567,87 @@
+@@ -567,10 +567,94 @@
 -        let entry = unsafe {
 +        // On Android, load a user-selected Turnip driver through AdrenoTools
 +        // before falling back to the platform Vulkan loader. The handles are
@@ -45,7 +45,14 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +            let open: OpenLibVulkan = unsafe { std::mem::transmute(open_symbol) };
 +            let hook_dir = CString::new(native).ok()?;
 +            let driver_dir = CString::new(format!("{files}/turnip/")).ok()?;
-+            let driver_name = CString::new("libvulkan_freedreno.so").ok()?;
++            let selected_name = std::fs::read_to_string(format!("{files}/turnip/driver_name"))
++                .unwrap_or_else(|_| "libvulkan_freedreno.so".to_owned());
++            let selected_name = selected_name.trim();
++            if selected_name.is_empty() || selected_name.contains('/') || selected_name.contains('\\\\') {
++                log::warn!("Vulkan: invalid Turnip driver filename; using system driver");
++                return None;
++            }
++            let driver_name = CString::new(selected_name).ok()?;
 +            let loader = unsafe {
 +                open(
 +                    2, // RTLD_NOW
