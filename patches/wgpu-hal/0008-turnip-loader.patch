@@ -24,7 +24,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +                *const std::ffi::c_char, *mut *mut c_void,
 +            ) -> *mut c_void;
 +
-+            if std::env::var("GLUE5_VULKAN_DRIVER").as_deref() != Ok("turnip") {
++            if std::env::var("GLUE5_VULKAN_DRIVER").ok().as_deref() != Some("turnip") {
 +                return None;
 +            }
 +            let files = std::env::var("GLUE5_APP_FILES_DIR").ok()?;
