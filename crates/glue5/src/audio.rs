@@ -27,11 +27,11 @@ pub fn start(subsystem: &sdl3::AudioSubsystem, out: AudioOut) -> Result<Audio> {
         channels: Some(CHANNELS as i32),
         format: Some(AudioFormat::f32_sys()),
     };
-    // A small device period, so the mixer refills a little at a time. The
-    // game's audio update runs at most a few frames ahead of the mixer, and
-    // with SDL's default (about 1024 frames) light scenes such as the pause
-    // menu wait in bursts: frames alternate between 4 and 30 ms.
-    sdl3::hint::set("SDL_AUDIO_DEVICE_SAMPLE_FRAMES", "256");
+    // Use a moderate callback period on Android: 256 frames can be starved
+    // when the game is compiling pipelines or streaming world assets. 512
+    // frames gives the audio thread more scheduling headroom without the
+    // large latency of SDL's usual ~1024-frame period.
+    sdl3::hint::set("SDL_AUDIO_DEVICE_SAMPLE_FRAMES", "512");
     let pull = Pull { out, buf: Vec::new(), frames: 0, mixed: 0, calls: 0, peak: 0.0, last_log: Instant::now() };
     let stream = subsystem.open_playback_stream(&spec, pull).map_err(|e| anyhow!("SDL audio: {e}"))?;
     stream.resume().map_err(|e| anyhow!("SDL audio: {e}"))?;
