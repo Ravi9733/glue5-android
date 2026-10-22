@@ -48,7 +48,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +            let selected_name = std::fs::read_to_string(format!("{files}/turnip/driver_name"))
 +                .unwrap_or_else(|_| "libvulkan_freedreno.so".to_owned());
 +            let selected_name = selected_name.trim();
-+            if selected_name.is_empty() || selected_name.contains('/') || selected_name.contains('\\\\') {
++            if selected_name.is_empty() || selected_name.contains('/') || selected_name.contains('\\') {
 +                log::warn!("Vulkan: invalid Turnip driver filename; using system driver");
 +                return None;
 +            }
