@@ -75,7 +75,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +        Some(unsafe { ash::Entry::from_static_fn(ash::StaticFn { get_instance_proc_addr }) })
 +    }
      /// If you want to add extensions, add the to the `Vec<'static CStr>` not the create info, otherwise
-@@ -576,10 +636,15 @@
+@@ -576,10 +638,15 @@
          let entry = unsafe {
              profiling::scope!("Load vk library");
              // ohos support is already fixed on ash main, but it's unclear when
