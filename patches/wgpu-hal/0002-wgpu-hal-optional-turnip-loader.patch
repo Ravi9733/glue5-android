@@ -30,12 +30,6 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +        *const c_char, *const c_char, *mut *mut c_void,
 +    ) -> *mut c_void;
 +
-+    #[link(name = "dl")]
-+    unsafe extern "C" {
-+        fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void;
-+        fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
-+    }
-+
 +    let app_dir = PathBuf::from(env::var_os("GLUE5_APP_FILES_DIR")?);
 +    let native_dir = PathBuf::from(env::var_os("GLUE5_NATIVE_LIB_DIR")?);
 +    let driver_dir = app_dir.join("turnip");
