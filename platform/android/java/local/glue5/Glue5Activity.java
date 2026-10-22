@@ -46,8 +46,7 @@ public class Glue5Activity extends SDLActivity {
         super.onCreate(savedInstanceState);
         // Offer a one-time import on a clean install. The ZIP is read through
         // Android's document picker; no broad storage permission is required.
-        if (!new File(getFilesDir(), "turnip/libvulkan_freedreno.so").isFile()
-                && !getPreferences(0).getBoolean("turnip_prompt_dismissed", false)) {
+        if (!new File(getFilesDir(), "turnip/libvulkan_freedreno.so").isFile()) {
             new Handler(Looper.getMainLooper()).postDelayed(() -> showTurnipImportPrompt(), 1800);
         }
     }
@@ -63,10 +62,8 @@ public class Glue5Activity extends SDLActivity {
                 intent.setType("application/zip");
                 startActivityForResult(intent, REQUEST_TURNIP_ZIP);
             })
-            .setNegativeButton("Not now", (dialog, which) ->
-                getPreferences(0).edit().putBoolean("turnip_prompt_dismissed", true).apply())
-            .setOnCancelListener(dialog ->
-                getPreferences(0).edit().putBoolean("turnip_prompt_dismissed", true).apply())
+            .setNegativeButton("Later", (dialog, which) -> { })
+            .setOnCancelListener(dialog -> { })
             .show();
     }
 
@@ -78,7 +75,6 @@ public class Glue5Activity extends SDLActivity {
         if (uri == null) return;
         try {
             importTurnipZip(uri);
-            getPreferences(0).edit().putBoolean("turnip_prompt_dismissed", true).apply();
             Toast.makeText(this, "Turnip driver imported. Select Turnip in Settings, then restart Glue 5.", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             Toast.makeText(this, "Turnip import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
