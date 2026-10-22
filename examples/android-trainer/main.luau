@@ -1,41 +1,49 @@
 --!strict
+-- Glue 5 Android-compatible trainer.
 -- Copy this folder to game/mods/android-trainer/.
--- Uses Glue 5's own Luau/native bridge, not PC ScriptHookVDotNet or DLL mods.
+-- This is a Luau/native-bridge mod, not a PC .asi/.dll trainer.
 
 local menu = ui.menu("Android Trainer")
 
+menu:label("PLAYER")
 menu:toggle("Invincibility", false, function(enabled)
-    local ped = player.playerPedId()
-    if ped then
-        entity.setEntityInvincible(ped, enabled)
+    local playerPed = player.playerPedId()
+    if playerPed then
+        entity.setEntityInvincible(playerPed, enabled)
         ui.notify(enabled and "Invincibility enabled" or "Invincibility disabled")
+    else
+        ui.notify("Player is not ready")
     end
-end)
-
-menu:slider("Wanted level", 0, 0, 5, 1, function(level)
-    local id = player.playerId()
-    player.setPlayerWantedLevel(id, level, false)
-    player.setPlayerWantedLevelNow(id, false)
 end)
 
 menu:button("Heal player", function()
-    local ped = player.playerPedId()
-    if ped then
-        entity.setEntityHealth(ped, 200)
+    local playerPed = player.playerPedId()
+    if playerPed then
+        entity.setEntityHealth(playerPed, 200)
         ui.notify("Player healed")
+    else
+        ui.notify("Player is not ready")
     end
 end)
 
+menu:label("WANTED LEVEL")
+menu:slider("Wanted level", 0, 0, 5, 1, function(level)
+    local playerId = player.playerId()
+    player.setPlayerWantedLevel(playerId, level, false)
+    player.setPlayerWantedLevelNow(playerId, false)
+end)
+
 menu:button("Clear wanted level", function()
-    local id = player.playerId()
-    player.setPlayerWantedLevel(id, 0, false)
-    player.setPlayerWantedLevelNow(id, false)
+    local playerId = player.playerId()
+    player.setPlayerWantedLevel(playerId, 0, false)
+    player.setPlayerWantedLevelNow(playerId, false)
     ui.notify("Wanted level cleared")
 end)
 
+menu:label("VEHICLES")
 menu:button("Spawn Adder", "Creates a car beside the player", function()
-    local ped = player.playerPedId()
-    if not ped then
+    local playerPed = player.playerPedId()
+    if not playerPed then
         ui.notify("Player is not ready")
         return
     end
@@ -50,14 +58,16 @@ menu:button("Spawn Adder", "Creates a car beside the player", function()
 
     if not streaming.hasModelLoaded(model) then
         ui.notify("Car model did not load")
+        streaming.setModelAsNoLongerNeeded(model)
         return
     end
 
-    local pos = entity.getEntityCoords(ped, true)
-    local heading = entity.getEntityHeading(ped)
+    local pos = entity.getEntityCoords(playerPed, true)
+    local heading = entity.getEntityHeading(playerPed)
     local car = vehicle.createVehicle(model, pos.x + 3, pos.y, pos.z, heading, true, false)
     if car then
-        ped.setPedIntoVehicle(ped, car, -1)
+        -- Use the ped namespace; playerPed is only the player's entity handle.
+        ped.setPedIntoVehicle(playerPed, car, -1)
         ui.notify("Adder spawned")
     else
         ui.notify("Could not spawn car")
@@ -65,4 +75,4 @@ menu:button("Spawn Adder", "Creates a car beside the player", function()
     streaming.setModelAsNoLongerNeeded(model)
 end)
 
-ui.notify("Android Trainer loaded. Open the Mods menu (touch menu button or F7).")
+ui.notify("Android Trainer loaded. Open Mods > MENUS (touch menu button or F7).")
