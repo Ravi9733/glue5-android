@@ -258,6 +258,8 @@ pub struct Ui {
     online_open: bool,
     /// The settings button as last drawn (centre, radius), in points.
     gear: Option<(Pos2, f32)>,
+    /// Whether the in-game exit confirmation is open.
+    exit_confirm: bool,
     /// The mods' menus button, likewise.
     menus_button: Option<(Pos2, f32)>,
     /// When egui wants to draw again (before the game, frames are drawn
@@ -325,6 +327,7 @@ impl Ui {
             starting: None,
             online_open: false,
             gear: None,
+            exit_confirm: false,
             repaint_at: Some(Instant::now()),
             perf: Default::default(),
             toasts: Default::default(),
@@ -709,12 +712,55 @@ impl Ui {
         // script has registered a menu; tapping it can open the Mods page and
         // reveal load errors or let the user inspect the installed mods.
         self.menus_button = gear.filter(|_| status.mods).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha));
+        let exit_button = if status.started.is_some() && self.page.is_none() {
+            let response = egui::Area::new(Id::new("in-game-exit-button"))
+                .order(Order::Foreground)
+                .fixed_pos(pos2(safe.left() + 12.0 * scale, safe.top() + 12.0 * scale))
+                .show(&ctx, |ui| {
+                    ui.set_min_width(64.0 * scale);
+                    ui.set_min_height(38.0 * scale);
+                    ui.add_sized([64.0 * scale, 38.0 * scale], egui::Button::new(RichText::new("EXIT").strong()).fill(Color32::from_rgb(130, 35, 35)))
+                });
+            if response.inner.clicked() {
+                self.exit_confirm = true;
+            }
+            Some(response.response.rect)
+        } else {
+            None
+        };
+        if self.exit_confirm && status.started.is_some() && self.page.is_none() {
+            let mut confirm = false;
+            let mut cancel = false;
+            egui::Area::new(Id::new("in-game-exit-confirm"))
+                .order(Order::Foreground)
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .show(&ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.set_min_width(220.0 * scale);
+                        ui.label(RichText::new("Exit the game?").strong());
+                        ui.horizontal(|ui| {
+                            cancel = ui.button("Cancel").clicked();
+                            confirm = ui.button("Exit").clicked();
+                        });
+                    });
+                });
+            if cancel {
+                self.exit_confirm = false;
+            }
+            if confirm {
+                self.exit_confirm = false;
+                actions.push(Action::Quit);
+            }
+        } else if status.started.is_none() {
+            self.exit_confirm = false;
+        }
         let overlay = hud.then(|| self.perf.draw(&ctx, safe, settings, status));
         // The notifications and the stream's sign keep off everything else
         // drawn over the game.
         self.controls = touch.map_or_else(Vec::new, Touch::occupied);
         let mut taken = self.controls.clone();
         taken.extend(self.gear.into_iter().chain(self.menus_button).map(|(c, r)| Rect::from_center_size(c, Vec2::splat(2.0 * r))));
+        taken.extend(exit_button);
         taken.extend(overlay);
         // Under the settings button when it shows.
         // Under the top's buttons (the touch controls' camera view and
