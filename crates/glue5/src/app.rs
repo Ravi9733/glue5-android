@@ -65,6 +65,15 @@ pub fn run() -> Result<()> {
     sdl3::hint::set("SDL_VIDEO_METAL_AUTO_RESIZE_DRAWABLE", "0");
     let user_dir = paths::user_dir()?;
     let mut settings = Settings::load(&user_dir);
+    // The Vulkan loader is created below, so apply the persisted driver choice
+    // before wgpu constructs its instance. This setting takes effect on launch.
+    #[cfg(target_os = "android")]
+    unsafe {
+        match settings.vulkan_driver {
+            settings::VulkanDriver::System => std::env::set_var("GLUE5_VULKAN_DRIVER", "system"),
+            settings::VulkanDriver::Turnip => std::env::set_var("GLUE5_VULKAN_DRIVER", "turnip"),
+        }
+    }
     if settings.online_name.trim().is_empty() {
         settings.online_name = settings::default_online_name();
     }
