@@ -309,7 +309,7 @@ impl Settings {
         if !settings.android_performance_profile_v2_applied {
             settings.low_memory = true;
             settings.max_fps = 30;
-            settings.render_scale = Some(settings.render_scale().min(0.45));
+            settings.render_scale = Some(settings.render_scale().min(0.55));
             settings.android_performance_profile_v2_applied = true;
         }
         settings
