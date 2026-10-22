@@ -10,7 +10,7 @@ Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -561,2 +561,68 @@
+@@ -561,2 +561,67 @@
      /// `Instance::init` but with a callback.
 +// Optional Android custom Vulkan driver. The default remains the system
 +// loader; this path is used only when GLUE5_VULKAN_DRIVER=turnip.
