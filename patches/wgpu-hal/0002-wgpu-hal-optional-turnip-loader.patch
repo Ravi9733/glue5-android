@@ -10,16 +10,7 @@ Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -9,1 +9,8 @@
- use std::thread;
-+#[cfg(target_os = "android")]
-+#[link(name = "dl")]
-+unsafe extern "C" {
-+    fn dlopen(filename: *const core::ffi::c_char, flags: core::ffi::c_int) -> *mut c_void;
-+    fn dlsym(handle: *mut c_void, symbol: *const core::ffi::c_char) -> *mut c_void;
-+}
-+
-@@ -561,2 +568,68 @@
+@@ -561,2 +561,68 @@
      /// `Instance::init` but with a callback.
 +// Optional Android custom Vulkan driver. The default remains the system
 +// loader; this path is used only when GLUE5_VULKAN_DRIVER=turnip.
@@ -29,6 +20,11 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +    use std::{env, fs, path::PathBuf};
 +
 +    const RTLD_NOW: c_int = 2;
++    #[link(name = "dl")]
++    unsafe extern "C" {
++        fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void;
++        fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
++    }
 +    type OpenLibVulkan = unsafe extern "C" fn(
 +        c_int, c_int, *const c_char, *const c_char, *const c_char,
 +        *const c_char, *const c_char, *mut *mut c_void,
@@ -88,7 +84,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +}
 +
      /// If you want to add extensions, add the to the `Vec<'static CStr>` not the create info, otherwise
-@@ -579,8 +652,14 @@
+@@ -579,8 +645,14 @@
              profiling::scope!("Load vk library");
              // ohos support is already fixed on ash main, but it's unclear when
              // a new release can happen.
