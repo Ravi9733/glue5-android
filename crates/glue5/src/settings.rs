@@ -26,6 +26,8 @@ pub struct Settings {
     /// Smaller engine pools, and the game's graphics settings lowered once
     /// (the browser build's `?low=1`).
     pub low_memory: bool,
+    /// Vulkan ICD selection on Android. Turnip takes effect on next launch.
+    pub vulkan_driver: VulkanDriver,
     /// Whether the low-memory preset is in the game's settings (written at
     /// the first start with `low_memory`; the game's menu changes it after).
     pub low_preset_written: bool,
@@ -86,6 +88,14 @@ pub struct Settings {
     /// Settings saved before the choice of overlays: Apple's HUD on or off.
     #[serde(skip_serializing)]
     metal_hud: Option<bool>,
+}
+
+/// Vulkan driver used by the Android Vulkan backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VulkanDriver {
+    System,
+    Turnip,
 }
 
 /// Where the game's files come from.
@@ -209,6 +219,7 @@ impl Default for Settings {
             share: false,
             download_all: false,
             low_memory: MOBILE && sdl3::cpuinfo::system_ram() < LOW_MEMORY_RAM_MB,
+            vulkan_driver: VulkanDriver::System,
             low_preset_written: false,
             render_scale: None,
             vsync: true,
