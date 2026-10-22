@@ -705,7 +705,10 @@ impl Ui {
         }
         let scale = crate::touch::control_scale(screen.size(), settings.touch_size);
         self.gear = gear.map(|alpha| draw_gear(&ctx, safe, scale, alpha, self.gear_icon.as_ref()));
-        self.menus_button = gear.filter(|_| status.mod_menus).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha));
+        // Show the touch Mods button whenever mods are installed, even before a
+        // script has registered a menu; tapping it can open the Mods page and
+        // reveal load errors or let the user inspect the installed mods.
+        self.menus_button = gear.filter(|_| status.mods).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha));
         let overlay = hud.then(|| self.perf.draw(&ctx, safe, settings, status));
         // The notifications and the stream's sign keep off everything else
         // drawn over the game.
