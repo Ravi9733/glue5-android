@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: turnip-android-integration
+  group: turnip-android-integration-v2
   cancel-in-progress: true
 
 jobs:
