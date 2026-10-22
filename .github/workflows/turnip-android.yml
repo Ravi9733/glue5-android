@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: turnip-android-integration-v5
+  group: turnip-android-integration-v6
   cancel-in-progress: true
 
 jobs:
@@ -49,7 +49,7 @@ jobs:
 
       - name: Android signing key
         run: |
-          timeout 90s bash -c "yes | mise exec -- sdkmanager --licenses" >/dev/null || true
+          yes | timeout --kill-after=5s 90s mise exec -- sdkmanager --licenses >/dev/null || true
           mkdir -p ~/.android
           cd ~/.android
           "$GITHUB_WORKSPACE/.github/scripts/draft.sh" get "${{ steps.game.outputs.release }}" Glue5-android.keystore
