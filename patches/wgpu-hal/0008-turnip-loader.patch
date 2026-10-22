@@ -1,0 +1,93 @@
+diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
+--- a/src/vulkan/instance.rs
++++ b/src/vulkan/instance.rs
+@@
+-        let entry = unsafe {
++        // On Android, load a user-selected Turnip driver through AdrenoTools
++        // before falling back to the platform Vulkan loader. The handles are
++        // intentionally kept loaded for the process lifetime: ash::Entry
++        // created from a raw proc address does not own the library handle.
++        #[cfg(target_os = "android")]
++        unsafe fn load_turnip_entry() -> Option<ash::Entry> {
++            use std::ffi::{CString, c_void};
++            use std::ptr;
++
++            #[link(name = "dl")]
++            unsafe extern "C" {
++                fn dlopen(filename: *const std::ffi::c_char, flags: i32) -> *mut c_void;
++                fn dlsym(handle: *mut c_void, symbol: *const std::ffi::c_char) -> *mut c_void;
++            }
++
++            type OpenLibVulkan = unsafe extern "C" fn(
++                i32, i32, *const std::ffi::c_char, *const std::ffi::c_char,
++                *const std::ffi::c_char, *const std::ffi::c_char,
++                *const std::ffi::c_char, *mut *mut c_void,
++            ) -> *mut c_void;
++
++            if std::env::var("GLUE5_VULKAN_DRIVER").as_deref() != Ok("turnip") {
++                return None;
++            }
++            let files = std::env::var("GLUE5_APP_FILES_DIR").ok()?;
++            let native = std::env::var("GLUE5_NATIVE_LIB_DIR").ok()?;
++            let tools_path = CString::new(format!("{native}/libadrenotools.so")).ok()?;
++            let tools = unsafe { dlopen(tools_path.as_ptr(), 2 /* RTLD_NOW */) };
++            if tools.is_null() {
++                log::warn!("Vulkan: Turnip requested, but libadrenotools.so could not be loaded");
++                return None;
++            }
++            let open_symbol = unsafe {
++                dlsym(tools, c"adrenotools_open_libvulkan".as_ptr())
++            };
++            if open_symbol.is_null() {
++                log::warn!("Vulkan: adrenotools_open_libvulkan symbol is missing");
++                return None;
++            }
++            let open: OpenLibVulkan = unsafe { std::mem::transmute(open_symbol) };
++            let hook_dir = CString::new(native).ok()?;
++            let driver_dir = CString::new(format!("{files}/turnip/")).ok()?;
++            let driver_name = CString::new("libvulkan_freedreno.so").ok()?;
++            let loader = unsafe {
++                open(
++                    2, // RTLD_NOW
++                    1, // ADRENOTOOLS_DRIVER_CUSTOM
++                    ptr::null(),
++                    hook_dir.as_ptr(),
++                    driver_dir.as_ptr(),
++                    driver_name.as_ptr(),
++                    ptr::null(),
++                    ptr::null_mut(),
++                )
++            };
++            if loader.is_null() {
++                log::warn!("Vulkan: AdrenoTools could not load the imported Turnip driver; using system driver");
++                return None;
++            }
++            let proc_symbol = unsafe { dlsym(loader, c"vkGetInstanceProcAddr".as_ptr()) };
++            if proc_symbol.is_null() {
++                log::warn!("Vulkan: custom Vulkan loader has no vkGetInstanceProcAddr; using system driver");
++                return None;
++            }
++            let get_instance_proc_addr: ash::vk::PFN_vkGetInstanceProcAddr =
++                unsafe { std::mem::transmute(proc_symbol) };
++            log::info!("Vulkan: Turnip selected; using AdrenoTools Vulkan loader");
++            Some(unsafe {
++                ash::Entry::from_static_fn(ash::vk::StaticFn { get_instance_proc_addr })
++            })
++        }
++
++        let entry = unsafe {
+             profiling::scope!("Load vk library");
+             // ohos support is already fixed on ash main, but it's unclear when
+             // a new release can happen.
+             #[cfg(target_env = "ohos")]
+             let loaded = ash::Entry::load_from("libvulkan.so");
+-            #[cfg(not(target_env = "ohos"))]
++            #[cfg(all(target_os = "android", not(target_env = "ohos")))]
++            let loaded = match load_turnip_entry() {
++                Some(entry) => Ok(entry),
++                None => ash::Entry::load(),
++            };
++            #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+             let loaded = ash::Entry::load();
+             loaded
+         }
