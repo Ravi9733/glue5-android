@@ -10,7 +10,7 @@ Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -1,6 +1,14 @@
+@@ -1,8 +1,15 @@
  use alloc::{borrow::ToOwned as _, boxed::Box, ffi::CString, string::String, sync::Arc, vec::Vec};
  use core::{
      ffi::{c_void, CStr},
@@ -26,7 +26,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +    fn dlsym(handle: *mut c_void, symbol: *const core::ffi::c_char) -> *mut c_void;
 +}
 +
-@@ -561,1 +568,59 @@
+@@ -561,2 +568,68 @@
      /// `Instance::init` but with a callback.
 +// Optional Android custom Vulkan driver. The default remains the system
 +// loader; this path is used only when GLUE5_VULKAN_DRIVER=turnip.
@@ -95,7 +95,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +}
 +
      /// If you want to add extensions, add the to the `Vec<'static CStr>` not the create info, otherwise
-@@ -579,6 +652,13 @@
+@@ -579,9 +652,15 @@
              profiling::scope!("Load vk library");
              // ohos support is already fixed on ash main, but it's unclear when
              // a new release can happen.
