@@ -1,7 +1,7 @@
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@
+@@ -567,10 +567,87 @@
 -        let entry = unsafe {
 +        // On Android, load a user-selected Turnip driver through AdrenoTools
 +        // before falling back to the platform Vulkan loader. The handles are
