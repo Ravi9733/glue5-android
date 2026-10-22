@@ -10,7 +10,23 @@ Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -561,6 +561,79 @@
+@@ -1,6 +1,14 @@
+ use alloc::{borrow::ToOwned as _, boxed::Box, ffi::CString, string::String, sync::Arc, vec::Vec};
+ use core::{
+     ffi::{c_void, CStr},
+     marker::PhantomData,
+     slice,
+     str::FromStr,
+ };
+ use std::thread;
++#[cfg(target_os = "android")]
++#[link(name = "dl")]
++unsafe extern "C" {
++    fn dlopen(filename: *const core::ffi::c_char, flags: core::ffi::c_int) -> *mut c_void;
++    fn dlsym(handle: *mut c_void, symbol: *const core::ffi::c_char) -> *mut c_void;
++}
++
++@@ -561,6 +569,65 @@
      /// `Instance::init` but with a callback.
 +// Optional Android custom Vulkan driver. The default remains the system
 +// loader; this path is used only when GLUE5_VULKAN_DRIVER=turnip.
@@ -86,7 +102,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 -            #[cfg(target_env = "ohos")]
 +            #[cfg(target_os = "android")]
 +            let loaded = if std::env::var("GLUE5_VULKAN_DRIVER").as_deref() == Ok("turnip") {
-+                unsafe { load_turnip_entry() }.map(Ok).unwrap_or_else(ash::Entry::load)
++                unsafe { Self::load_turnip_entry() }.map(Ok).unwrap_or_else(ash::Entry::load)
 +            } else {
 +                ash::Entry::load()
 +            };
