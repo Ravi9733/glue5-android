@@ -905,7 +905,7 @@ impl App {
         let s = &self.settings;
         let back_buffer = settings::render_size(self.window.size_in_pixels(), s.render_scale(), s.low_memory);
         if s.mods {
-            glue5_mods::install(&self.user_dir.join("mods"));
+            glue5_mods::install(&self.mods_dir());
         }
         let game = glue5_runtime::start(
             glue5_runtime::Config {
@@ -1130,6 +1130,20 @@ impl App {
         }
     }
 
+    /// Prefer mods beside the supplied game files, so users can install them
+    /// by copying a mod folder into game/mods. Keep existing app-private mods
+    /// working when that folder is already in use.
+    fn mods_dir(&self) -> PathBuf {
+        let user_mods = self.user_dir.join("mods");
+        if let Some(game_dir) = self.game_dir.as_ref() {
+            let game_mods = game_dir.join("mods");
+            if game_mods.is_dir() || !user_mods.is_dir() {
+                return game_mods;
+            }
+        }
+        user_mods
+    }
+
     /// GLUE 5 Studio follows its settings: served while the game runs
     /// with mods and the setting is on, for this device or the network.
     /// The mods folder opens when mods are on (before the game too: the
@@ -1137,7 +1151,7 @@ impl App {
     /// while it is on.
     fn update_studio(&mut self) {
         if self.settings.mods && glue5_mods::dir().is_none() {
-            glue5_mods::open(&self.user_dir.join("mods"));
+            glue5_mods::open(&self.mods_dir());
         }
         let wanted = (self.settings.mods && glue5_mods::dir().is_some() && self.settings.studio).then_some(self.settings.studio_lan);
         if self.studio.as_ref().map(|(s, _)| s.lan()) == wanted {
