@@ -46,8 +46,24 @@ public class Glue5Activity extends SDLActivity {
         super.onCreate(savedInstanceState);
         // Offer a one-time import on a clean install. The ZIP is read through
         // Android's document picker; no broad storage permission is required.
-        if (!new File(getFilesDir(), "turnip/libvulkan_freedreno.so").isFile()) {
+        if (!hasTurnipDriver()) {
             new Handler(Looper.getMainLooper()).postDelayed(() -> showTurnipImportPrompt(), 1800);
+        }
+    }
+
+    private boolean hasTurnipDriver() {
+        File directory = new File(getFilesDir(), "turnip");
+        File legacy = new File(directory, "libvulkan_freedreno.so");
+        if (legacy.isFile()) return true;
+        File nameFile = new File(directory, "driver_name");
+        if (!nameFile.isFile()) return false;
+        try {
+            String name = new String(java.nio.file.Files.readAllBytes(nameFile.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8).trim();
+            return !name.isEmpty() && name.equals(new File(name).getName())
+                    && new File(directory, name).isFile();
+        } catch (Exception ignored) {
+            return false;
         }
     }
 
