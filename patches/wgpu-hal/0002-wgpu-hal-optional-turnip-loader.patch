@@ -10,7 +10,7 @@ Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -561,2 +561,67 @@
+@@ -561,4 +561,69 @@
      /// `Instance::init` but with a callback.
 +// Optional Android custom Vulkan driver. The default remains the system
 +// loader; this path is used only when GLUE5_VULKAN_DRIVER=turnip.
@@ -41,7 +41,9 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +
 +    // Do not dlclose either handle: Vulkan function pointers remain in use
 +    // for the process lifetime.
-+    let adrenotools = unsafe { dlopen(c"libadrenotools.so".as_ptr(), RTLD_NOW) };
++    let adrenotools_path = native_dir.join("libadrenotools.so");
+    let adrenotools_c = CString::new(adrenotools_path.to_string_lossy().as_bytes()).ok()?;
+    let adrenotools = unsafe { dlopen(adrenotools_c.as_ptr(), RTLD_NOW) };
 +    if adrenotools.is_null() {
 +        return None;
 +    }
