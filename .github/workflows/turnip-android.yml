@@ -36,7 +36,9 @@ jobs:
           echo "GLUE5_GAME_DIR=$game" >>"$GITHUB_ENV"
 
       - name: Free disk space
-        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          timeout 180s sudo rm -rf /usr/local/lib/android || true
 
       - uses: jdx/mise-action@v2
         with:
