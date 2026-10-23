@@ -111,7 +111,7 @@ end
 
 -- One Vehicles menu with a separate model selector and spawn button per category.
 -- Keeping all vehicle categories in one menu avoids cluttering the Mods menu.
-local vehiclesMenu = ui.menu("Vehicles")
+local vehiclesMenu = ui.menu("Vehicle Spawner")
 vehiclesMenu:label("Choose a category model, then press its Spawn button")
 
 local selectedModels = {}
