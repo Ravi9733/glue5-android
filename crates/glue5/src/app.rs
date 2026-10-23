@@ -964,6 +964,11 @@ impl App {
                 Err(e) => log::warn!("cannot install Android Trainer: {e}"),
             }
         }
+        // If the mods folder was opened before installation, refresh it so
+        // the new Vehicle Spawner is registered before autostart is collected.
+        if self.settings.mods {
+            glue5_mods::refresh();
+        }
         self.settings.save(&self.user_dir);
         // A new attempt: the last one's failure is history.
         let _ = std::fs::remove_file(self.user_dir.join(FAILURE_FILE));
