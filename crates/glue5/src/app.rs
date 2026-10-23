@@ -648,6 +648,7 @@ impl App {
         self.presentation.set_frame_rate(self.settings.max_fps);
         self.presentation.set_upscaler(upscaler(&self.settings));
         self.presentation.set_sharpness(self.settings.sharpness);
+        self.presentation.set_color_boost(self.settings.light_graphics_mode);
         self.presentation.set_frame_generation(self.settings.frame_generation);
         self.resize_game();
 
