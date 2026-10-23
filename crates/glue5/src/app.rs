@@ -931,9 +931,12 @@ impl App {
         #[cfg(target_os = "android")]
         {
             let marker = self.user_dir.join("android-trainer-installed");
-            let trainer = self.mods_dir().join("android-trainer");
+            let mods_dir = self.mods_dir();
+            let trainer = mods_dir.join("android-trainer");
+            let spawner = mods_dir.join("android-vehicle-spawner");
             let install = (|| -> std::io::Result<()> {
                 std::fs::create_dir_all(&trainer)?;
+                std::fs::create_dir_all(&spawner)?;
                 let script = trainer.join("main.luau");
                 if !script.exists() {
                     std::fs::write(&script, include_str!("../../../examples/android-trainer/main.luau"))?;
@@ -942,13 +945,21 @@ impl App {
                 if !manifest.exists() {
                     std::fs::write(&manifest, "{\n  \"autostart\": true\n}\n")?;
                 }
-                std::fs::write(&marker, b"1")?;
+                let spawner_script = spawner.join("main.luau");
+                if !spawner_script.exists() {
+                    std::fs::write(&spawner_script, include_str!("../../../examples/android-vehicle-spawner/main.luau"))?;
+                }
+                let spawner_manifest = spawner.join("mod.json");
+                if !spawner_manifest.exists() {
+                    std::fs::write(&spawner_manifest, "{\n  \"autostart\": true\n}\n")?;
+                }
+                std::fs::write(&marker, b"2")?;
                 Ok(())
             })();
             match install {
                 Ok(()) => {
                     self.settings.mods = true;
-                    log::info!("Android Trainer is installed in {}", trainer.display());
+                    log::info!("Android Trainer installed in {}; Vehicle Spawner installed in {}", trainer.display(), spawner.display());
                 }
                 Err(e) => log::warn!("cannot install Android Trainer: {e}"),
             }
