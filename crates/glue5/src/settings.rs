@@ -39,6 +39,8 @@ pub struct Settings {
     pub android_performance_profile_v2_applied: bool,
     /// One-time Android profile for devices that still struggle to sustain frame pacing.
     pub android_performance_profile_v3_applied: bool,
+    /// One-time lower-resolution Android profile for the OnePlus 11R performance build.
+    pub android_performance_profile_v4_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -232,6 +234,7 @@ impl Default for Settings {
             android_performance_profile_applied: false,
             android_performance_profile_v2_applied: false,
             android_performance_profile_v3_applied: false,
+            android_performance_profile_v4_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -322,6 +325,17 @@ impl Settings {
             settings.max_fps = 30;
             settings.render_scale = Some(settings.render_scale().min(0.45));
             settings.android_performance_profile_v3_applied = true;
+        }
+        // One-time extra-conservative Android profile for this performance build.
+        // A 0.40 render scale cuts pixel workload while the 30 FPS cap favors stable pacing.
+        // The migration runs once; the player can change the settings afterward.
+        #[cfg(target_os = "android")]
+        if !settings.android_performance_profile_v4_applied {
+            settings.low_memory = true;
+            settings.low_preset_written = false;
+            settings.max_fps = 30;
+            settings.render_scale = Some(settings.render_scale().min(0.40));
+            settings.android_performance_profile_v4_applied = true;
         }
         settings
     }
