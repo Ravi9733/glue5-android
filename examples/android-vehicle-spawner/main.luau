@@ -38,24 +38,29 @@ local categories = {
 }
 
 local function spawnVehicle(modelName)
-    local pedOk, playerPed = pcall(function()
+    -- Keep this flow aligned with the known trainer spawner API.
+    local playerPed = nil
+    local pedOk, pedResult = pcall(function()
         return player.playerPedId()
     end)
-    if not pedOk or not playerPed or playerPed == 0 then
-        ui.notify("Spawn failed: player is not ready")
+    if pedOk then
+        playerPed = pedResult
+    end
+    if not playerPed or playerPed == 0 then
+        ui.notify("Spawn failed: player is not ready yet")
         return
     end
 
-    local requestOk, requestError = pcall(function()
+    local requestOk = pcall(function()
         streaming.requestModel(modelName)
     end)
     if not requestOk then
-        ui.notify("Spawn failed at model request: " .. modelName .. " (" .. tostring(requestError) .. ")")
+        ui.notify("Spawn failed: could not request model " .. modelName)
         return
     end
 
     local loaded = false
-    for _ = 1, 600 do
+    for _ = 1, 300 do
         local checkOk, result = pcall(function()
             return streaming.hasModelLoaded(modelName)
         end)
@@ -63,38 +68,32 @@ local function spawnVehicle(modelName)
             loaded = true
             break
         end
-        wait(0)
+        wait()
     end
 
     if not loaded then
         pcall(function()
             streaming.setModelAsNoLongerNeeded(modelName)
         end)
-        ui.notify("Spawn failed: model not available in this game build: " .. modelName)
+        ui.notify("Spawn failed: model not loaded: " .. modelName)
         return
     end
 
-    local spawnOk, result = pcall(function()
+    local spawnOk, vehicleHandle, detail = pcall(function()
         local pos = entity.getEntityCoords(playerPed, true)
         local heading = entity.getEntityHeading(playerPed)
-        local radians = math.rad(heading)
-        local x = pos.x - math.sin(radians) * 6.0
-        local y = pos.y + math.cos(radians) * 6.0
-        local z = pos.z + 1.0
-
-        -- Pass the model name directly; the native bridge hashes Hash parameters.
-        local vehicleHandle = vehicle.createVehicle(modelName, x, y, z, heading, true, false)
-        if not vehicleHandle or vehicleHandle == 0 then
-            return false, "createVehicle returned no vehicle"
+        -- Match the working Android Trainer's nearby spawn placement.
+        local created = vehicle.createVehicle(modelName, pos.x + 3.0, pos.y, pos.z, heading, true, false)
+        if not created or created == 0 then
+            return nil, "CREATE_VEHICLE returned an empty handle"
         end
 
-        local seatOk, seatError = pcall(function()
-            ped.setPedIntoVehicle(playerPed, vehicleHandle, -1)
+        -- Some boats/aircraft cannot be entered immediately on land. A
+        -- successful create still counts as a successful spawn.
+        local entered = pcall(function()
+            ped.setPedIntoVehicle(playerPed, created, -1)
         end)
-        if not seatOk then
-            return false, "vehicle created, but entering it failed: " .. tostring(seatError)
-        end
-        return true, nil
+        return created, entered and nil or "spawned, but could not enter it"
     end)
 
     pcall(function()
@@ -102,9 +101,11 @@ local function spawnVehicle(modelName)
     end)
 
     if not spawnOk then
-        ui.notify("Spawn failed: " .. modelName .. " (" .. tostring(result) .. ")")
-    elseif result == false then
-        ui.notify("Spawn failed: " .. modelName .. " (vehicle could not be created)")
+        ui.notify("Spawn failed: " .. modelName .. " (" .. tostring(vehicleHandle) .. ")")
+    elseif not vehicleHandle or vehicleHandle == 0 then
+        ui.notify("Spawn failed: " .. modelName .. " (" .. tostring(detail or "vehicle was not created") .. ")")
+    elseif detail then
+        ui.notify("Spawned: " .. modelName .. " - " .. detail)
     else
         ui.notify("Spawned: " .. modelName)
     end
