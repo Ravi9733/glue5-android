@@ -177,7 +177,6 @@ pub fn run() -> Result<()> {
         touch: Touch::new(),
         touch_input: TOUCH,
         touch_shown: false,
-        exit_touching: false,
         touch_mouse: Default::default(),
         lifecycle,
         folder: None,
@@ -205,6 +204,8 @@ pub fn run() -> Result<()> {
         capture_since: None,
         mouse_used: !MOBILE,
         game: None,
+        pending_game_menu: false,
+        game_escape_down: false,
     };
     app.last_failure = std::fs::read_to_string(app.user_dir.join(FAILURE_FILE)).ok();
     app.find_game(args.game_dir.as_deref());
@@ -320,8 +321,6 @@ struct App {
     /// not enough, phones often have a paired controller lying around).
     touch_input: bool,
     touch_shown: bool,
-    /// A touch sequence captured by the in-game Exit overlay.
-    exit_touching: bool,
     /// What the touch controls last did with the mouse and Esc (the pause
     /// menu's).
     touch_mouse: touch::Mouse,
@@ -378,7 +377,11 @@ struct App {
     /// A mouse has been used in the game: phones capture it only then.
     mouse_used: bool,
     game: Option<Running>,
-}
+    /// One-frame request to open GTA V's pause menu from Settings.
+    pending_game_menu: bool,
+    /// Escape is held for one game frame after a Settings action.
+    game_escape_down: bool,
+
 
 /// The game, once started.
 struct Running {
@@ -515,21 +518,6 @@ impl App {
             self.ui.toggle_friends();
             return false;
         }
-        if let Event::FingerDown { x, y, .. } = event
-            && !self.ui.is_open()
-            && (self.ui.exit_hit(x, y, &self.window) || self.ui.exit_confirm_open())
-        {
-            self.exit_touching = true;
-        }
-        if self.exit_touching
-            && matches!(event, Event::FingerDown { .. } | Event::FingerMotion { .. } | Event::FingerUp { .. })
-        {
-            self.ui.event(&event, &self.window);
-            if matches!(event, Event::FingerUp { .. }) {
-                self.exit_touching = false;
-            }
-            return false;
-        }
         if self.ui.is_open() {
             if let Event::KeyDown { scancode: Some(Scancode::Escape), .. } = event {
                 self.ui.back();
@@ -556,6 +544,12 @@ impl App {
     /// Everything after the events: touch controls, pads, the UI and what
     /// it asks for. True to quit.
     fn update(&mut self, page_before: Option<Page>) -> Result<bool> {
+        if self.game_escape_down {
+            if let Some(input) = self.game.as_ref().and_then(|g| g.input.as_ref()) {
+                key(input, Scancode::Escape, false);
+            }
+            self.game_escape_down = false;
+        }
         self.keep_sources();
         self.update_studio();
         let in_game = self.game.is_some();
@@ -706,6 +700,12 @@ impl App {
         for action in actions {
             match action {
                 Action::Quit => return Ok(true),
+                Action::BackToGameMenu => {
+                    if self.game.is_some() {
+                        self.ui.back();
+                        self.pending_game_menu = true;
+                    }
+                }
                 Action::Play(mode) => {
                     self.mode = mode;
                     if mode != Mode::Benchmark {
@@ -772,6 +772,15 @@ impl App {
             if matches!(page_before, Some(Page::Settings | Page::Servers)) {
                 self.settings.save(&self.user_dir);
             }
+        }
+        // Send Escape only after the settings overlay has released all keys.
+        // Keep it held until the next update so the game can sample it.
+        if self.pending_game_menu {
+            if let Some(input) = self.game.as_ref().and_then(|g| g.input.as_ref()) {
+                key(input, Scancode::Escape, true);
+                self.game_escape_down = true;
+            }
+            self.pending_game_menu = false;
         }
         // What friends do, as notifications (unless hidden).
         for notice in glue5_runtime::friends::take_notices() {
@@ -916,33 +925,32 @@ impl App {
         if self.mode == Mode::Online && self.settings.online_name.trim().is_empty() {
             self.settings.online_name = settings::default_online_name();
         }
-        // On Android, install the bundled trainer once into the active mods
-        // directory. Keep any user-edited trainer files intact.
+        // On Android, keep the bundled trainer present in the active mods
+        // directory. Repair old marker/path mismatches and make sure the mod
+        // system is enabled; existing user-edited files are kept.
         #[cfg(target_os = "android")]
         {
             let marker = self.user_dir.join("android-trainer-installed");
-            if !marker.exists() {
-                let trainer = self.mods_dir().join("android-trainer");
-                let install = (|| -> std::io::Result<()> {
-                    std::fs::create_dir_all(&trainer)?;
-                    let script = trainer.join("main.luau");
-                    if !script.exists() {
-                        std::fs::write(&script, include_str!("../../../examples/android-trainer/main.luau"))?;
-                    }
-                    let manifest = trainer.join("mod.json");
-                    if !manifest.exists() {
-                        std::fs::write(&manifest, "{\n  \"autostart\": true\n}\n")?;
-                    }
-                    std::fs::write(&marker, b"1")?;
-                    Ok(())
-                })();
-                match install {
-                    Ok(()) => {
-                        self.settings.mods = true;
-                        log::info!("installed bundled Android Trainer");
-                    }
-                    Err(e) => log::warn!("cannot install bundled Android Trainer: {e}"),
+            let trainer = self.mods_dir().join("android-trainer");
+            let install = (|| -> std::io::Result<()> {
+                std::fs::create_dir_all(&trainer)?;
+                let script = trainer.join("main.luau");
+                if !script.exists() {
+                    std::fs::write(&script, include_str!("../../../examples/android-trainer/main.luau"))?;
                 }
+                let manifest = trainer.join("mod.json");
+                if !manifest.exists() {
+                    std::fs::write(&manifest, "{\n  \"autostart\": true\n}\n")?;
+                }
+                std::fs::write(&marker, b"1")?;
+                Ok(())
+            })();
+            match install {
+                Ok(()) => {
+                    self.settings.mods = true;
+                    log::info!("Android Trainer is installed in {}", trainer.display());
+                }
+                Err(e) => log::warn!("cannot install Android Trainer: {e}"),
             }
         }
         self.settings.save(&self.user_dir);
