@@ -712,7 +712,6 @@ impl Ui {
         // reveal load errors or let the user inspect the installed mods.
         self.menus_button = gear.filter(|_| status.mods).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha));
         let overlay = hud.then(|| self.perf.draw(&ctx, safe, settings, status));
-        let overlay = hud.then(|| self.perf.draw(&ctx, safe, settings, status));
         // The notifications and the stream's sign keep off everything else
         // drawn over the game.
         self.controls = touch.map_or_else(Vec::new, Touch::occupied);
