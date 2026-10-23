@@ -968,12 +968,12 @@ fn settings_items(
             if started.is_some() && MOBILE {
                 setting(
                     ui,
-                    "Exit to game menu",
+                    "Exit game to app menu",
                     Control::Action,
-                    Some("Return to GTA V's pause/menu. Glue 5 stays open; the app is not closed."),
+                    Some("Stop GTA V and return to Glue 5's game-selection screen. The app stays open."),
                     |ui| {
-                        if action_button(ui, "Return to game menu").clicked() {
-                            actions.push(Action::BackToGameMenu);
+                        if action_button(ui, "Exit game").clicked() {
+                            actions.push(Action::ExitGame);
                         }
                     },
                 );
