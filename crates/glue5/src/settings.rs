@@ -26,6 +26,8 @@ pub struct Settings {
     /// Smaller engine pools, and the game's graphics settings lowered once
     /// (the browser build's `?low=1`).
     pub low_memory: bool,
+    /// Optional lightweight rendering profile; uses existing renderer settings only.
+    pub light_graphics_mode: bool,
     /// Vulkan ICD selection on Android. Turnip takes effect on next launch.
     pub vulkan_driver: VulkanDriver,
     /// Whether the low-memory preset is in the game's settings (written at
@@ -227,6 +229,7 @@ impl Default for Settings {
             share: false,
             download_all: false,
             low_memory: MOBILE && sdl3::cpuinfo::system_ram() < LOW_MEMORY_RAM_MB,
+            light_graphics_mode: false,
             vulkan_driver: VulkanDriver::System,
             low_preset_written: false,
             android_performance_profile_applied: false,
