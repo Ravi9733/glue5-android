@@ -74,6 +74,8 @@ pub enum Action {
     Quit,
     /// Open GTA V's pause/menu screen without closing Glue 5.
     BackToGameMenu,
+    /// Stop the running game and return to Glue 5's start page.
+    ExitGame,
     /// The system's folder picker, for the game (desktop).
     ChooseGame,
     /// Look for the game's files again (mobile: copied in meanwhile).
@@ -352,6 +354,13 @@ impl Ui {
         self.home = None;
         self.starting = None;
         self.show(None);
+    }
+
+    /// The game was stopped from Settings: show the app's start/game-selection page.
+    pub fn game_stopped(&mut self) {
+        self.home = Some(Page::Start);
+        self.starting = None;
+        self.show(Some(Page::Start));
     }
 
     /// A friends' notification, over the game or the pages.
