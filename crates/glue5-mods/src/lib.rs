@@ -190,7 +190,7 @@ fn install_bundled_weather_mod(dir: &Path) {
     }
     let manifest = mod_dir.join("mod.json");
     if !manifest.exists()
-        && let Err(e) = std::fs::write(&manifest, "{\\n  \\"autostart\\": true\\n}\\n")
+        && let Err(e) = std::fs::write(&manifest, r#"{ "autostart": true }"#)
     {
         log::warn!("cannot install bundled weather mod manifest: {e}");
     }
