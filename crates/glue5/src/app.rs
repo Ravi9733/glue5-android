@@ -517,14 +517,14 @@ impl App {
         }
         if let Event::FingerDown { x, y, .. } = event
             && !self.ui.is_open()
-            && (self.ui.exit_hit(*x, *y, &self.window) || self.ui.exit_confirm_open())
+            && (self.ui.exit_hit(x, y, &self.window) || self.ui.exit_confirm_open())
         {
             self.exit_touching = true;
         }
         if self.exit_touching
             && matches!(event, Event::FingerDown { .. } | Event::FingerMotion { .. } | Event::FingerUp { .. })
         {
-            self.ui.event(event, &self.window);
+            self.ui.event(&event, &self.window);
             if matches!(event, Event::FingerUp { .. }) {
                 self.exit_touching = false;
             }
