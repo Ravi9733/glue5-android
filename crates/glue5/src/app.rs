@@ -916,6 +916,35 @@ impl App {
         if self.mode == Mode::Online && self.settings.online_name.trim().is_empty() {
             self.settings.online_name = settings::default_online_name();
         }
+        // On Android, install the bundled trainer once into the active mods
+        // directory. Keep any user-edited trainer files intact.
+        #[cfg(target_os = "android")]
+        {
+            let marker = self.user_dir.join("android-trainer-installed");
+            if !marker.exists() {
+                let trainer = self.mods_dir().join("android-trainer");
+                let install = (|| -> std::io::Result<()> {
+                    std::fs::create_dir_all(&trainer)?;
+                    let script = trainer.join("main.luau");
+                    if !script.exists() {
+                        std::fs::write(&script, include_str!("../../../examples/android-trainer/main.luau"))?;
+                    }
+                    let manifest = trainer.join("mod.json");
+                    if !manifest.exists() {
+                        std::fs::write(&manifest, "{\\n  \\"autostart\\": true\\n}\\n")?;
+                    }
+                    std::fs::write(&marker, b"1")?;
+                    Ok(())
+                })();
+                match install {
+                    Ok(()) => {
+                        self.settings.mods = true;
+                        log::info!("installed bundled Android Trainer");
+                    }
+                    Err(e) => log::warn!("cannot install bundled Android Trainer: {e}"),
+                }
+            }
+        }
         self.settings.save(&self.user_dir);
         // A new attempt: the last one's failure is history.
         let _ = std::fs::remove_file(self.user_dir.join(FAILURE_FILE));
