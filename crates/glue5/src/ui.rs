@@ -260,6 +260,8 @@ pub struct Ui {
     gear: Option<(Pos2, f32)>,
     /// Whether the in-game exit confirmation is open.
     exit_confirm: bool,
+    /// The floating Exit button's last drawn hit rectangle.
+    exit_button_rect: Option<Rect>,
     /// The mods' menus button, likewise.
     menus_button: Option<(Pos2, f32)>,
     /// When egui wants to draw again (before the game, frames are drawn
@@ -328,6 +330,7 @@ impl Ui {
             online_open: false,
             gear: None,
             exit_confirm: false,
+            exit_button_rect: None,
             repaint_at: Some(Instant::now()),
             perf: Default::default(),
             toasts: Default::default(),
@@ -508,6 +511,17 @@ impl Ui {
     pub fn gear_hit(&self, x: f32, y: f32, window: &Window) -> bool {
         let size = screen_size(window);
         self.gear.is_some_and(|(c, r)| c.distance(pos2(x * size.x, y * size.y)) <= r * 1.4)
+    }
+
+    /// Whether a finger at `x`, `y` (0..1) is on the in-game Exit button.
+    pub fn exit_hit(&self, x: f32, y: f32, window: &Window) -> bool {
+        let size = screen_size(window);
+        self.exit_button_rect.is_some_and(|r| r.contains(pos2(x * size.x, y * size.y)))
+    }
+
+    /// Whether the Exit confirmation currently needs touch input.
+    pub fn exit_confirm_open(&self) -> bool {
+        self.exit_confirm
     }
 
     /// Whether a finger at `x`, `y` (0..1) is on the mods' menus button.
@@ -754,6 +768,7 @@ impl Ui {
         } else if status.started.is_none() {
             self.exit_confirm = false;
         }
+        self.exit_button_rect = exit_button;
         let overlay = hud.then(|| self.perf.draw(&ctx, safe, settings, status));
         // The notifications and the stream's sign keep off everything else
         // drawn over the game.
