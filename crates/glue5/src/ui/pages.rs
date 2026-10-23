@@ -965,6 +965,13 @@ fn settings_items(
                     },
                 );
             }
+            if started.is_some() && MOBILE {
+                setting(ui, "Game menu", Control::Action, Some("Open GTA V's pause menu; Glue 5 stays open"), |ui| {
+                    if action_button(ui, "Open game menu").clicked() {
+                        actions.push(Action::BackToGameMenu);
+                    }
+                });
+            }
             if started.is_some() && !MOBILE {
                 setting(ui, "Session", Control::Action, None, |ui| {
                     if action_button(ui, "Quit game").clicked() {
