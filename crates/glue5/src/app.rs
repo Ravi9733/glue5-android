@@ -931,7 +931,7 @@ impl App {
                     }
                     let manifest = trainer.join("mod.json");
                     if !manifest.exists() {
-                        std::fs::write(&manifest, "{\\n  \\"autostart\\": true\\n}\\n")?;
+                        std::fs::write(&manifest, "{\n  \"autostart\": true\n}\n")?;
                     }
                     std::fs::write(&marker, b"1")?;
                     Ok(())
