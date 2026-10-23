@@ -169,8 +169,8 @@ pub fn held_back() -> Vec<String> {
     HELD_BACK.lock().unwrap().clone()
 }
 
-/// On Android, seed the user's game mods folder with our lightweight weather
-/// and colour mod without overwriting any mod files they already have.
+/// On Android, seed the user's game mods folder with the lightweight weather,
+/// time and colour mod, updating only our known bundled script.
 #[cfg(target_os = "android")]
 fn install_bundled_weather_mod(dir: &Path) {
     let mod_dir = dir.join("weather-color-enhancer");
@@ -180,14 +180,12 @@ fn install_bundled_weather_mod(dir: &Path) {
     }
     let script = mod_dir.join("main.luau");
     let bundled_script = include_str!("../../../examples/android-weather-graphics/main.luau");
-    // Install a new bundled script, or upgrade the previous bundled version.
-    // Preserve a custom script if it does not look like our known bundled mod.
     let should_write = match std::fs::read_to_string(&script) {
         Err(_) => true,
         Ok(existing) => {
             existing.contains("Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.")
                 || existing.contains("Weather, Time Changer and Colorful Graphics loaded.")
-                || existing.contains("Weather, Time and Colorful Graphics loaded.")
+                || existing.contains("Weather Changer, Time Changer and Colorful Graphics menus loaded.")
         }
     };
     if should_write
@@ -204,12 +202,57 @@ fn install_bundled_weather_mod(dir: &Path) {
     }
 }
 
+/// On Android, install one bundled Vehicle Spawner mod with Cars, Bikes,
+/// Planes and Boats inside its single Vehicles menu.
+#[cfg(target_os = "android")]
+fn install_bundled_vehicle_mod(dir: &Path) {
+    let mod_dir = dir.join("Vehicle Spawner");
+    let legacy_dir = dir.join("android-vehicle-spawner");
+    let mod_dir = if mod_dir.exists() {
+        mod_dir
+    } else if legacy_dir.exists() {
+        if std::fs::rename(&legacy_dir, &mod_dir).is_ok() {
+            mod_dir
+        } else {
+            legacy_dir
+        }
+    } else {
+        mod_dir
+    };
+    if let Err(e) = std::fs::create_dir_all(&mod_dir) {
+        log::warn!("cannot create bundled vehicle spawner: {e}");
+        return;
+    }
+    let script = mod_dir.join("main.luau");
+    let bundled_script = include_str!("../../../examples/android-vehicle-spawner/main.luau");
+    let should_write = match std::fs::read_to_string(&script) {
+        Err(_) => true,
+        Ok(existing) => {
+            existing.contains("Android vehicle spawner for Glue 5.")
+                || existing.contains("One Vehicles menu with a separate model selector")
+        }
+    };
+    if should_write
+        && let Err(e) = std::fs::write(&script, bundled_script)
+    {
+        log::warn!("cannot install/upgrade bundled vehicle spawner script: {e}");
+        return;
+    }
+    let manifest = mod_dir.join("mod.json");
+    if !manifest.exists()
+        && let Err(e) = std::fs::write(&manifest, r#"{ "autostart": true }"#)
+    {
+        log::warn!("cannot install bundled vehicle spawner manifest: {e}");
+    }
+}
+
 /// The mods folder `dir` (made if missing): its mods listed, their files
 /// open to the Studio. Before the game too; they run once [`install`]ed.
 pub fn open(dir: &Path) {
     let _ = std::fs::create_dir_all(dir);
     #[cfg(target_os = "android")]
     install_bundled_weather_mod(dir);
+    install_bundled_vehicle_mod(dir);
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
         return;
     }
