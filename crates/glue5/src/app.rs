@@ -381,7 +381,7 @@ struct App {
     pending_game_menu: bool,
     /// Escape is held for one game frame after a Settings action.
     game_escape_down: bool,
-
+}
 
 /// The game, once started.
 struct Running {
