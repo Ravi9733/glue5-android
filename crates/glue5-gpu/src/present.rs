@@ -41,6 +41,9 @@ const PRESENT_WGSL: &str = "@group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var smp: sampler;
 @fragment fn fs(v: V) -> @location(0) vec4f { return vec4f(bicubic(src, v.uv), 1.0); }";
 
+/// Slightly richer but restrained colour grade, applied only when enabled.
+const PRESENT_GRADED_WGSL: &str = "@group(0) @binding(0) var src: texture_2d<f32>;\n@group(0) @binding(1) var smp: sampler;\n@fragment fn fs(v: V) -> @location(0) vec4f { return vec4f(color_grade(bicubic(src, v.uv)), 1.0); }";
+
 /// Puts the HUD over the scene a temporal upscaler made: what the HUD
 /// changed in the back buffer (the back buffer minus the scene before it,
 /// both scaled the same way) added to the upscaled scene. Where there is no
@@ -55,6 +58,8 @@ const COMPOSITE_WGSL: &str = "@group(0) @binding(0) var scene_up: texture_2d<f32
   let up = bicubic(scene_up, v.uv);
   return vec4f(clamp(up + hud, vec3f(0.0), vec3f(1.0)), 1.0);
 }";
+
+const COMPOSITE_GRADED_WGSL: &str = "@group(0) @binding(0) var scene_up: texture_2d<f32>;\n@group(0) @binding(1) var frame: texture_2d<f32>;\n@group(0) @binding(2) var scene: texture_2d<f32>;\n@group(0) @binding(3) var smp: sampler;\n@fragment fn fs(v: V) -> @location(0) vec4f {\n  let hud = bicubic(frame, v.uv) - bicubic(scene, v.uv);\n  let up = bicubic(scene_up, v.uv);\n  return vec4f(color_grade(clamp(up + hud, vec3f(0.0), vec3f(1.0))), 1.0);\n}";
 
 /// What both share: a full-screen triangle and the bicubic filter.
 const COMMON_WGSL: &str = "struct V { @builtin(position) p: vec4f, @location(0) uv: vec2f }
@@ -86,6 +91,12 @@ fn bicubic(src: texture_2d<f32>, uv: vec2f) -> vec3f {
     + textureSampleLevel(src, smp, vec2f(t12.x, t3.y), 0.0).rgb * (w12.x * w3.y);
   let total = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
   return max(c / total, vec3f(0.0));
+}
+fn color_grade(input_color: vec3f) -> vec3f {
+  let base = clamp((input_color - vec3f(0.5)) * 1.035 + vec3f(0.5), vec3f(0.0), vec3f(1.0));
+  let luma = dot(base, vec3f(0.2126, 0.7152, 0.0722));
+  let vivid = mix(vec3f(luma), base, 1.08);
+  return clamp(vivid + vec3f(0.004, 0.002, -0.003), vec3f(0.0), vec3f(1.0));
 }
 ";
 
@@ -138,6 +149,7 @@ struct Shared {
     frame_rate: AtomicU32,
     /// FSR's sharpening, 0 to 1 (f32 bits).
     sharpness: AtomicU32,
+    color_boost: AtomicBool,
     /// A new surface for the window, to present into from the next frame.
     surface: Mutex<Option<wgpu::Surface<'static>>>,
 }
@@ -154,6 +166,7 @@ impl Presentation {
             has_frame_generation: AtomicBool::new(false),
             frame_rate: AtomicU32::new(0),
             sharpness: AtomicU32::new(0.5f32.to_bits()),
+            color_boost: AtomicBool::new(false),
             surface: Mutex::new(None),
         }));
         p.set_size(width, height);
@@ -207,6 +220,15 @@ impl Presentation {
     /// How much FSR sharpens its image, 0 (not at all) to 1.
     pub fn set_sharpness(&self, sharpness: f32) {
         self.0.sharpness.store(sharpness.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+    }
+
+    /// Enables a lightweight, restrained colour grade on the final image.
+    pub fn set_color_boost(&self, on: bool) {
+        self.0.color_boost.store(on, Ordering::Relaxed);
+    }
+
+    fn color_boost(&self) -> bool {
+        self.0.color_boost.load(Ordering::Relaxed)
     }
 
     fn sharpness(&self) -> f32 {
@@ -523,6 +545,7 @@ struct Passes {
     format: Option<TextureFormat>,
     blit: Option<(wgpu::RenderPipeline, wgpu::Sampler)>,
     composite: Option<(wgpu::RenderPipeline, wgpu::Sampler)>,
+    graded: bool,
 }
 
 impl Passes {
@@ -541,12 +564,18 @@ impl Passes {
         target: &wgpu::TextureView,
         format: TextureFormat,
         rect: (u32, u32, u32, u32),
+        graded: bool,
     ) {
         self.for_format(format);
+        if self.graded != graded {
+            self.blit = None;
+            self.composite = None;
+            self.graded = graded;
+        }
         let (pipeline, sampler) = match &self.blit {
             Some(b) => b.clone(),
             None => {
-                let Some(pipeline) = present_pipeline(device, "present", PRESENT_WGSL, format) else { return };
+                let Some(pipeline) = present_pipeline(device, "present", if graded { PRESENT_GRADED_WGSL } else { PRESENT_WGSL }, format) else { return };
                 self.blit.insert((pipeline, linear_sampler(device))).clone()
             }
         };
@@ -575,12 +604,18 @@ impl Passes {
         target: &wgpu::TextureView,
         format: TextureFormat,
         rect: (u32, u32, u32, u32),
+        graded: bool,
     ) {
         self.for_format(format);
+        if self.graded != graded {
+            self.blit = None;
+            self.composite = None;
+            self.graded = graded;
+        }
         let (pipeline, sampler) = match &self.composite {
             Some(c) => c.clone(),
             None => {
-                let Some(pipeline) = present_pipeline(device, "composite", COMPOSITE_WGSL, format) else { return };
+                let Some(pipeline) = present_pipeline(device, "composite", if graded { COMPOSITE_GRADED_WGSL } else { COMPOSITE_WGSL }, format) else { return };
                 self.composite.insert((pipeline, linear_sampler(device))).clone()
             }
         };
@@ -908,15 +943,15 @@ impl Output {
             Some(p) => {
                 let rect = fit((p.width, p.height), size);
                 match scaled {
-                    Some(Scaled::Frame(view)) => self.passes.blit(device, &mut encoder, view, &target, format, rect),
+                    Some(Scaled::Frame(view)) => self.passes.blit(device, &mut encoder, view, &target, format, rect, self.presentation.color_boost()),
                     Some(Scaled::Scene(view)) => {
                         let scene = p.scene.as_ref().unwrap().color.create_view(&wgpu::TextureViewDescriptor {
                             format: Some(p.view.texture().format().remove_srgb_suffix()),
                             ..Default::default()
                         });
-                        self.passes.composite(device, &mut encoder, view, p, &scene, &target, format, rect);
+                        self.passes.composite(device, &mut encoder, view, p, &scene, &target, format, rect, self.presentation.color_boost());
                     }
-                    None => self.passes.blit(device, &mut encoder, &p.view, &target, format, rect),
+                    None => self.passes.blit(device, &mut encoder, &p.view, &target, format, rect, self.presentation.color_boost()),
                 }
             }
             None => drop(begin_pass(&mut encoder, &target, BACKGROUND)),
