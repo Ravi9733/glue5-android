@@ -179,13 +179,21 @@ fn install_bundled_weather_mod(dir: &Path) {
         return;
     }
     let script = mod_dir.join("main.luau");
-    if !script.exists()
-        && let Err(e) = std::fs::write(
-            &script,
-            include_str!("../../../examples/android-weather-graphics/main.luau"),
-        )
+    let bundled_script = include_str!("../../../examples/android-weather-graphics/main.luau");
+    // Install a new bundled script, or upgrade the previous bundled version.
+    // Preserve a custom script if it does not look like our known bundled mod.
+    let should_write = match std::fs::read_to_string(&script) {
+        Err(_) => true,
+        Ok(existing) => {
+            existing.contains("Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.")
+                || existing.contains("Weather, Time Changer and Colorful Graphics loaded.")
+                || existing.contains("Weather, Time and Colorful Graphics loaded.")
+        }
+    };
+    if should_write
+        && let Err(e) = std::fs::write(&script, bundled_script)
     {
-        log::warn!("cannot install bundled weather mod script: {e}");
+        log::warn!("cannot install/upgrade bundled weather mod script: {e}");
         return;
     }
     let manifest = mod_dir.join("mod.json");
