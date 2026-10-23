@@ -177,6 +177,7 @@ pub fn run() -> Result<()> {
         touch: Touch::new(),
         touch_input: TOUCH,
         touch_shown: false,
+        exit_touching: false,
         touch_mouse: Default::default(),
         lifecycle,
         folder: None,
@@ -319,6 +320,8 @@ struct App {
     /// not enough, phones often have a paired controller lying around).
     touch_input: bool,
     touch_shown: bool,
+    /// A touch sequence captured by the in-game Exit overlay.
+    exit_touching: bool,
     /// What the touch controls last did with the mouse and Esc (the pause
     /// menu's).
     touch_mouse: touch::Mouse,
@@ -510,6 +513,21 @@ impl App {
             && !self.ui.wants_text()
         {
             self.ui.toggle_friends();
+            return false;
+        }
+        if let Event::FingerDown { x, y, .. } = event
+            && !self.ui.is_open()
+            && (self.ui.exit_hit(*x, *y, &self.window) || self.ui.exit_confirm_open())
+        {
+            self.exit_touching = true;
+        }
+        if self.exit_touching
+            && matches!(event, Event::FingerDown { .. } | Event::FingerMotion { .. } | Event::FingerUp { .. })
+        {
+            self.ui.event(event, &self.window);
+            if matches!(event, Event::FingerUp { .. }) {
+                self.exit_touching = false;
+            }
             return false;
         }
         if self.ui.is_open() {
