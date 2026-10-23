@@ -110,7 +110,7 @@ local function spawnVehicle(modelName)
     end
 end
 
-for _, category in ipairs(categories) do
+local function createCategoryMenu(category)
     local menu = ui.menu("Spawn " .. category.title)
     local selected = 1
     menu:label(category.title .. " - choose a model")
@@ -121,6 +121,10 @@ for _, category in ipairs(categories) do
     menu:button("Spawn " .. category.title, "Load the selected model near the player", function()
         spawnVehicle(category.models[selected])
     end)
+end
+
+for _, category in ipairs(categories) do
+    createCategoryMenu(category)
 end
 
 ui.notify("Vehicle Spawner ready. Open Mods > MENUS, then choose Cars, Bikes, Boats or Planes.")
