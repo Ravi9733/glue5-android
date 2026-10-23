@@ -37,6 +37,8 @@ pub struct Settings {
     /// Second Android performance migration: lower GPU workload on devices
     /// that still cannot sustain the first mobile preset.
     pub android_performance_profile_v2_applied: bool,
+    /// One-time Android profile for devices that still struggle to sustain frame pacing.
+    pub android_performance_profile_v3_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -229,6 +231,7 @@ impl Default for Settings {
             low_preset_written: false,
             android_performance_profile_applied: false,
             android_performance_profile_v2_applied: false,
+            android_performance_profile_v3_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -311,6 +314,14 @@ impl Settings {
             settings.max_fps = 30;
             settings.render_scale = Some(settings.render_scale().min(0.55));
             settings.android_performance_profile_v2_applied = true;
+        }
+        // One-time Android profile to reduce GPU pixel load for devices still struggling.
+        #[cfg(target_os = "android")]
+        if !settings.android_performance_profile_v3_applied {
+            settings.low_memory = true;
+            settings.max_fps = 30;
+            settings.render_scale = Some(settings.render_scale().min(0.45));
+            settings.android_performance_profile_v3_applied = true;
         }
         settings
     }
