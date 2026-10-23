@@ -252,6 +252,7 @@ pub fn open(dir: &Path) {
     let _ = std::fs::create_dir_all(dir);
     #[cfg(target_os = "android")]
     install_bundled_weather_mod(dir);
+    #[cfg(target_os = "android")]
     install_bundled_vehicle_mod(dir);
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
         return;
