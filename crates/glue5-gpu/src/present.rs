@@ -1249,7 +1249,7 @@ mod tests {
 
     #[test]
     fn present_shaders_validate() {
-        for fs in [super::PRESENT_WGSL, super::COMPOSITE_WGSL] {
+        for fs in [super::PRESENT_WGSL, super::COMPOSITE_WGSL, super::PRESENT_GRADED_WGSL, super::COMPOSITE_GRADED_WGSL] {
             let module = naga::front::wgsl::parse_str(&format!("{}{fs}", super::COMMON_WGSL)).unwrap();
             naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
                 .validate(&module)
