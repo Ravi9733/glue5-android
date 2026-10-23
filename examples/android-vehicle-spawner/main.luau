@@ -110,7 +110,7 @@ local function spawnVehicle(modelName)
     end
 end
 
-for _, category in categories do
+for _, category in ipairs(categories) do
     local menu = ui.menu("Spawn " .. category.title)
     local selected = 1
     menu:label(category.title .. " - choose a model")
