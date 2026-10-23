@@ -706,6 +706,18 @@ impl App {
                         self.pending_game_menu = true;
                     }
                 }
+                Action::ExitGame => {
+                    if self.game.is_some() {
+                        // Dropping the running session stops the game but keeps Glue 5 open.
+                        drop(self.game.take());
+                        self.pending_game_menu = false;
+                        self.game_escape_down = false;
+                        self.touch.clear();
+                        self.touch_shown = false;
+                        glue5_runtime::input::set_touch_play(false);
+                        self.ui.game_stopped();
+                    }
+                }
                 Action::Play(mode) => {
                     self.mode = mode;
                     if mode != Mode::Benchmark {
