@@ -58,11 +58,11 @@ end)
 -- Lightweight timecycle-only colour controls. No replacement textures or
 -- additional shaders, to keep the performance cost low on Android.
 local graphicsMenu = ui.menu("Colorful Graphics")
-graphicsMenu:label("Apply a preset, then adjust its strength")
+graphicsMenu:label("Natural lighting with stronger, richer colours")
 local colourPresets = {
-    { name = "Natural Vibrant", modifier = "rply_saturation", strength = 0.55 },
-    { name = "Rich Colours", modifier = "MP_corona_heist", strength = 0.35 },
-    { name = "Warm Natural", modifier = "cinema", strength = 0.20 },
+    { name = "Natural Vibrant", modifier = "rply_saturation", strength = 0.82 },
+    { name = "Rich Colours", modifier = "MP_corona_heist", strength = 0.62 },
+    { name = "Warm Natural", modifier = "cinema", strength = 0.38 },
 }
 local activePreset = 1
 local activeStrength = colourPresets[1].strength
@@ -108,4 +108,4 @@ graphicsMenu:button("Reset colours", function()
     ui.notify(ok and "Original colours restored" or "Graphics reset native unavailable")
 end)
 
-ui.notify("Weather, Time Changer and Colorful Graphics loaded.")
+ui.notify("Weather Changer, Time Changer and Colorful Graphics menus loaded.")
