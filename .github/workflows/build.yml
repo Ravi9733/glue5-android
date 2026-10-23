@@ -3,7 +3,7 @@ name: Build
 
 on:
   push:
-    branches: [turnip-driver-integration]
+    branches: [turnip-driver-integration, oneplus-11r-performance]
   workflow_dispatch:
     inputs:
       platform:
