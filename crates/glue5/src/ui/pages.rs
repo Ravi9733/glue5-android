@@ -786,6 +786,38 @@ fn settings_items(
                     response
                 });
             }
+            let mode = setting(
+                ui,
+                "Light graphics mode",
+                Control::Toggle,
+                next_start(started.is_some()),
+                |ui| toggle(ui, &mut settings.light_graphics_mode),
+            )
+            .on_hover_text(
+                "On: 75% render scale, supported FSR (otherwise bicubic), 60 FPS cap and VSync. Off restores automatic resolution and baseline upscaling. Renderer profile only; this is not a new GTA shader pack.",
+            );
+            if mode.changed() {
+                if settings.light_graphics_mode {
+                    settings.render_scale = Some(0.75);
+                    settings.upscaler = if status.upscalers.contains(&Upscaling::Fsr) {
+                        Upscaling::Fsr
+                    } else {
+                        Upscaling::Bicubic
+                    };
+                    settings.sharpness = 0.35;
+                    settings.max_fps = 60;
+                    settings.vsync = true;
+                    settings.frame_generation = false;
+                } else {
+                    settings.render_scale = None;
+                    settings.upscaler = Upscaling::Bicubic;
+                    settings.sharpness = 0.5;
+                    settings.max_fps = if crate::paths::MOBILE { 60 } else { 0 };
+                    settings.vsync = true;
+                    settings.frame_generation = false;
+                }
+                *scale_edit = None;
+            }
             let mut scale = scale_edit.unwrap_or(settings.render_scale());
             let (rw, rh) = settings::render_size(status.window, scale, settings.low_memory);
             let subtitle = format!("{rw} × {rh}");
