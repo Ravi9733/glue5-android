@@ -788,13 +788,13 @@ fn settings_items(
             }
             let mode = setting(
                 ui,
-                "Light graphics mode",
+                "Light graphics + natural colours",
                 Control::Toggle,
                 next_start(started.is_some()),
                 |ui| toggle(ui, &mut settings.light_graphics_mode),
             )
             .on_hover_text(
-                "On: 75% render scale, supported FSR (otherwise bicubic), 60 FPS cap and VSync. Off restores automatic resolution and baseline upscaling. Renderer profile only; this is not a new GTA shader pack.",
+                "On: subtle colour boost, 75% render scale, supported FSR (otherwise bicubic), 60 FPS cap and VSync. Off disables colour grading and restores automatic resolution and baseline upscaling. Lightweight renderer effect, not a GTA asset/shader pack.",
             );
             if mode.changed() {
                 if settings.light_graphics_mode {
