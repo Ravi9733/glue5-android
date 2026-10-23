@@ -1,7 +1,6 @@
 --!strict
--- Android vehicle spawner for Glue 5.
--- Each category has its own menu and model list. Native hash parameters
--- accept model names directly, so no separate joaat/hash conversion is needed.
+-- Android vehicle spawner and weather/colour controls for Glue 5.
+-- This is a Luau/native-bridge mod, not a PC .asi/.dll trainer.
 
 local categories = {
     {
@@ -81,17 +80,11 @@ local function spawnVehicle(modelName)
     local spawnOk, vehicleHandle, detail = pcall(function()
         local pos = entity.getEntityCoords(playerPed, true)
         local heading = entity.getEntityHeading(playerPed)
-
-        -- Glue5 groups the native's x/y/z parameters into one Vector3.
-        -- Passing three separate coordinates shifts every later argument
-        -- and makes CREATE_VEHICLE fail.
         local spawnPos = vector.create(pos.x + 3.0, pos.y, pos.z)
         local created = vehicle.createVehicle(modelName, spawnPos, heading, true, false)
         if not created or created == 0 then
             return nil, "CREATE_VEHICLE returned an empty handle"
         end
-
-        -- A created vehicle is a successful spawn even if entry is refused.
         local entered = pcall(function()
             ped.setPedIntoVehicle(playerPed, created, -1)
         end)
@@ -133,4 +126,73 @@ for _, category in ipairs(categories) do
     createCategoryMenu(category)
 end
 
-ui.notify("Vehicle Spawner ready. Open Mods > MENUS, then choose Cars, Bikes, Boats or Planes.")
+-- GTA V weather natives exposed by the Glue 5 native bridge.
+local weatherTypes = {
+    "EXTRASUNNY", "CLEAR", "CLOUDS", "OVERCAST", "SMOG",
+    "FOGGY", "CLEARING", "RAIN", "THUNDER", "SNOW",
+    "BLIZZARD", "SNOWLIGHT", "XMAS", "HALLOWEEN",
+}
+local weatherMenu = ui.menu("Weather Changer")
+weatherMenu:label("Select a weather type")
+weatherMenu:choice("Weather", weatherTypes, 1, function(index)
+    local weather = weatherTypes[index]
+    local ok = pcall(function()
+        misc.setWeatherTypeNowPersist(weather)
+    end)
+    if not ok then
+        ok = pcall(function()
+            misc.setWeatherTypeNow(weather)
+        end)
+    end
+    if ok then
+        ui.notify("Weather changed: " .. weather)
+    else
+        ui.notify("Weather native unavailable in this game build")
+    end
+end)
+weatherMenu:button("Clear weather override", function()
+    local ok = pcall(function()
+        misc.clearWeatherTypePersist()
+    end)
+    if ok then
+        ui.notify("Weather override cleared")
+    else
+        ui.notify("Weather reset native unavailable")
+    end
+end)
+
+-- Lightweight colour grading using the game's timecycle system; no extra
+-- textures or shaders are loaded, so this avoids a large GPU-memory increase.
+local colourPresets = {
+    "rply_saturation",
+    "MP_corona_heist",
+    "BarryFadeOut",
+    "default",
+}
+local graphicsMenu = ui.menu("Colorful Graphics")
+graphicsMenu:label("Game timecycle colour presets")
+graphicsMenu:choice("Colour preset", colourPresets, 1, function(index)
+    local preset = colourPresets[index]
+    local ok = pcall(function()
+        if preset == "default" then
+            graphics.clearTimecycleModifier()
+        else
+            graphics.setTimecycleModifier(preset)
+        end
+    end)
+    if ok then
+        ui.notify("Graphics preset: " .. preset)
+    else
+        ui.notify("Timecycle native unavailable in this game build")
+    end
+end)
+graphicsMenu:slider("Colour strength", 1.0, 0.0, 1.5, 0.1, function(strength)
+    local ok = pcall(function()
+        graphics.setTimecycleModifierStrength(strength)
+    end)
+    if not ok then
+        ui.notify("Colour strength native unavailable")
+    end
+end)
+
+ui.notify("Vehicle Spawner, Weather Changer and Colorful Graphics menus loaded.")
