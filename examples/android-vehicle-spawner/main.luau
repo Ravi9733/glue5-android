@@ -1,59 +1,65 @@
 --!strict
--- Standalone Android-compatible vehicle spawner for Glue 5.
--- Uses GTA V natives exposed by the active game.wasm build.
+-- Android vehicle spawner for Glue 5.
+-- Each category has its own menu and model list. Native hash parameters
+-- accept model names directly, so no separate joaat/hash conversion is needed.
 
-local menu = ui.menu("Vehicle Spawner")
-local models = {
-    "adder",
-    "zentorno",
-    "t20",
-    "turismor",
-    "entityxf",
-    "cheetah",
-    "infernus",
-    "comet2",
-    "elegy",
-    "buffalo",
-    "sultan",
-    "dominator",
-    "bati",
-    "sanchez",
-    "police",
-    "police2",
-    "ambulance",
-    "blazer",
+local categories = {
+    {
+        title = "Cars",
+        models = {
+            "adder", "zentorno", "t20", "turismor", "entityxf", "cheetah",
+            "infernus", "comet2", "elegy", "buffalo", "sultan", "kuruma",
+            "dominator", "futo", "baller", "schafter2",
+        },
+    },
+    {
+        title = "Bikes",
+        models = {
+            "bati", "bati2", "akuma", "carbonrs", "daemon", "double",
+            "hakuchou", "hexer", "nemesis", "pcj", "ruffian", "sanchez",
+            "vader", "lectro",
+        },
+    },
+    {
+        title = "Boats",
+        models = {
+            "dinghy", "dinghy2", "jetmax", "marquis", "seashark",
+            "seashark2", "speeder", "squalo", "toro", "tropic", "tug",
+        },
+    },
+    {
+        title = "Planes",
+        models = {
+            "dodo", "duster", "luxor", "shamal", "vestra", "mammatus",
+            "cuban800", "velum", "velum2", "besra", "hydra", "lazer",
+            "titan",
+        },
+    },
 }
-local selected = 1
 
-menu:label("Choose a vehicle and tap Spawn")
-menu:choice("Vehicle model", models, selected, function(index)
-    selected = index
-    ui.notify("Selected: " .. models[selected])
-end)
-
-menu:button("Spawn vehicle", "Load and spawn beside the player", function()
-    local pedHandle = player.playerPedId()
-    if not pedHandle then
-        ui.notify("Player is not ready yet")
+local function spawnVehicle(modelName)
+    local pedOk, playerPed = pcall(function()
+        return player.playerPedId()
+    end)
+    if not pedOk or not playerPed or playerPed == 0 then
+        ui.notify("Spawn failed: player is not ready")
         return
     end
 
-    local modelName = models[selected]
-    local modelHash = joaat(modelName)
-    local requested, requestError = pcall(function()
-        streaming.requestModel(modelHash)
+    local requestOk, requestError = pcall(function()
+        streaming.requestModel(modelName)
     end)
-    if not requested then
-        ui.notify("Model request failed: " .. modelName)
+    if not requestOk then
+        ui.notify("Spawn failed at model request: " .. modelName .. " (" .. tostring(requestError) .. ")")
         return
     end
 
     local loaded = false
-    for _ = 1, 300 do
-        local ok, result = pcall(function()
-            return streaming.hasModelLoaded(modelHash)
+    for _ = 1, 600 do
+        local checkOk, result = pcall(function()
+            return streaming.hasModelLoaded(modelName)
         end)
-        if ok and result then
+        if checkOk and result then
             loaded = true
             break
         end
@@ -61,41 +67,60 @@ menu:button("Spawn vehicle", "Load and spawn beside the player", function()
     end
 
     if not loaded then
-        ui.notify("Model did not load: " .. modelName)
         pcall(function()
-            streaming.setModelAsNoLongerNeeded(modelHash)
+            streaming.setModelAsNoLongerNeeded(modelName)
         end)
+        ui.notify("Spawn failed: model not available in this game build: " .. modelName)
         return
     end
 
-    local ok, spawned = pcall(function()
-        local pos = entity.getEntityCoords(pedHandle, true)
-        local heading = entity.getEntityHeading(pedHandle)
-        local car = vehicle.createVehicle(
-            modelHash,
-            pos.x + 3.0,
-            pos.y,
-            pos.z,
-            heading,
-            true,
-            false
-        )
-        if not car then
-            return false
+    local spawnOk, result = pcall(function()
+        local pos = entity.getEntityCoords(playerPed, true)
+        local heading = entity.getEntityHeading(playerPed)
+        local radians = math.rad(heading)
+        local x = pos.x - math.sin(radians) * 6.0
+        local y = pos.y + math.cos(radians) * 6.0
+        local z = pos.z + 1.0
+
+        -- Pass the model name directly; the native bridge hashes Hash parameters.
+        local vehicleHandle = vehicle.createVehicle(modelName, x, y, z, heading, true, false)
+        if not vehicleHandle or vehicleHandle == 0 then
+            return false, "createVehicle returned no vehicle"
         end
-        ped.setPedIntoVehicle(pedHandle, car, -1)
-        return true
+
+        local seatOk, seatError = pcall(function()
+            ped.setPedIntoVehicle(playerPed, vehicleHandle, -1)
+        end)
+        if not seatOk then
+            return false, "vehicle created, but entering it failed: " .. tostring(seatError)
+        end
+        return true, nil
     end)
 
     pcall(function()
-        streaming.setModelAsNoLongerNeeded(modelHash)
+        streaming.setModelAsNoLongerNeeded(modelName)
     end)
 
-    if ok and spawned then
-        ui.notify("Spawned: " .. modelName)
+    if not spawnOk then
+        ui.notify("Spawn failed: " .. modelName .. " (" .. tostring(result) .. ")")
+    elseif result == false then
+        ui.notify("Spawn failed: " .. modelName .. " (vehicle could not be created)")
     else
-        ui.notify("Spawn failed: " .. modelName)
+        ui.notify("Spawned: " .. modelName)
     end
-end)
+end
 
-ui.notify("Vehicle Spawner loaded. Open Mods > MENUS.")
+for _, category in categories do
+    local menu = ui.menu("Spawn " .. category.title)
+    local selected = 1
+    menu:label(category.title .. " - choose a model")
+    menu:choice("Model", category.models, selected, function(index)
+        selected = index
+        ui.notify(category.title .. ": " .. category.models[selected])
+    end)
+    menu:button("Spawn " .. category.title, "Load the selected model near the player", function()
+        spawnVehicle(category.models[selected])
+    end)
+end
+
+ui.notify("Vehicle Spawner ready. Open Mods > MENUS, then choose Cars, Bikes, Boats or Planes.")
