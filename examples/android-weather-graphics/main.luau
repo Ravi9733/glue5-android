@@ -55,39 +55,57 @@ timeMenu:button("Resume natural time", function()
     ui.notify(ok and "Natural game time resumed" or "Clock resume unavailable")
 end)
 
--- Uses game timecycle presets only; no external textures or shader packs.
+-- Lightweight timecycle-only colour controls. No replacement textures or
+-- additional shaders, to keep the performance cost low on Android.
 local graphicsMenu = ui.menu("Colorful Graphics")
-graphicsMenu:label("Natural, richer colours - lightweight")
+graphicsMenu:label("Apply a preset, then adjust its strength")
 local colourPresets = {
-    { name = "Natural Vibrant", modifier = "rply_saturation", strength = 0.65 },
-    { name = "Rich Colours", modifier = "MP_corona_heist", strength = 0.45 },
-    { name = "Warm Natural", modifier = "BarryFadeOut", strength = 0.25 },
+    { name = "Natural Vibrant", modifier = "rply_saturation", strength = 0.55 },
+    { name = "Rich Colours", modifier = "MP_corona_heist", strength = 0.35 },
+    { name = "Warm Natural", modifier = "cinema", strength = 0.20 },
 }
-graphicsMenu:choice("Colour preset", { "Natural Vibrant", "Rich Colours", "Warm Natural", "Original" }, 1, function(index)
-    local ok = pcall(function()
-        if index == 4 then
+local activePreset = 1
+local activeStrength = colourPresets[1].strength
+local function applyColourPreset(index, strength)
+    if index == 4 then
+        local ok = pcall(function()
             graphics.clearTimecycleModifier()
-        else
-            local preset = colourPresets[index]
-            graphics.setTimecycleModifier(preset.modifier)
-            graphics.setTimecycleModifierStrength(preset.strength)
-        end
-    end)
-    ui.notify(ok and (index == 4 and "Original colours restored" or ("Applied: " .. colourPresets[index].name)) or "Colour effect unavailable in this game build")
-end)
-graphicsMenu:slider("Colour strength", 0.65, 0.0, 1.0, 0.05, function(strength)
+        end)
+        return ok
+    end
+    local preset = colourPresets[index]
     local ok = pcall(function()
+        graphics.setTimecycleModifier(preset.modifier)
         graphics.setTimecycleModifierStrength(strength)
     end)
+    return ok
+end
+
+graphicsMenu:choice("Colour preset", { "Natural Vibrant", "Rich Colours", "Warm Natural", "Original" }, 1, function(index)
+    if index == 4 then
+        local ok = applyColourPreset(index, 0.0)
+        ui.notify(ok and "Original colours restored" or "Graphics reset native unavailable")
+        return
+    end
+    activePreset = index
+    activeStrength = colourPresets[index].strength
+    local ok = applyColourPreset(index, activeStrength)
+    ui.notify(ok and ("Applied: " .. colourPresets[index].name) or "Colour effect failed; check mod log")
+end)
+graphicsMenu:slider("Colour strength", activeStrength, 0.0, 1.0, 0.05, function(strength)
+    activeStrength = strength
+    local ok = applyColourPreset(activePreset, activeStrength)
     if not ok then
-        ui.notify("Colour strength native unavailable")
+        ui.notify("Colour strength failed; check mod log")
     end
 end)
 graphicsMenu:button("Reset colours", function()
     local ok = pcall(function()
         graphics.clearTimecycleModifier()
     end)
-    ui.notify(ok and "Original colours restored" or "Colour reset native unavailable")
+    activePreset = 1
+    activeStrength = colourPresets[1].strength
+    ui.notify(ok and "Original colours restored" or "Graphics reset native unavailable")
 end)
 
 ui.notify("Weather, Time Changer and Colorful Graphics loaded.")
