@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use egui::{
-    Align2, Color32, FontId, Id, LayerId, Order, Pos2, Rect, SafeAreaInsets, Vec2, ViewportId, pos2, vec2,
+    Align2, Color32, FontId, Id, RichText, LayerId, Order, Pos2, Rect, SafeAreaInsets, Vec2, ViewportId, pos2, vec2,
 };
 use sdl3::event::Event;
 use sdl3::keyboard::Scancode;
