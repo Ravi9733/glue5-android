@@ -93,7 +93,11 @@ local function spawnVehicle(modelName)
         local entered = pcall(function()
             ped.setPedIntoVehicle(playerPed, created, -1)
         end)
-        return created, entered and nil or "spawned, but could not enter it"
+        local warning = nil
+        if not entered then
+            warning = "spawned, but could not enter it"
+        end
+        return created, warning
     end)
 
     pcall(function()
