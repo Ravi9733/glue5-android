@@ -1,5 +1,5 @@
 --!strict
--- Android vehicle spawner and weather/colour controls for Glue 5.
+-- Android vehicle spawner for Glue 5.
 -- This is a Luau/native-bridge mod, not a PC .asi/.dll trainer.
 
 local categories = {
@@ -20,18 +20,18 @@ local categories = {
         },
     },
     {
-        title = "Boats",
-        models = {
-            "dinghy", "dinghy2", "jetmax", "marquis", "seashark",
-            "seashark2", "speeder", "squalo", "toro", "tropic", "tug",
-        },
-    },
-    {
         title = "Planes",
         models = {
             "dodo", "duster", "luxor", "shamal", "vestra", "mammatus",
             "cuban800", "velum", "velum2", "besra", "hydra", "lazer",
             "titan",
+        },
+    },
+    {
+        title = "Boats",
+        models = {
+            "dinghy", "dinghy2", "jetmax", "marquis", "seashark",
+            "seashark2", "speeder", "squalo", "toro", "tropic", "tug",
         },
     },
 }
