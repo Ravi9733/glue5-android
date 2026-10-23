@@ -38,7 +38,6 @@ local categories = {
 }
 
 local function spawnVehicle(modelName)
-    -- Keep this flow aligned with the known trainer spawner API.
     local playerPed = nil
     local pedOk, pedResult = pcall(function()
         return player.playerPedId()
@@ -68,7 +67,7 @@ local function spawnVehicle(modelName)
             loaded = true
             break
         end
-        wait()
+        wait(0)
     end
 
     if not loaded then
@@ -82,22 +81,24 @@ local function spawnVehicle(modelName)
     local spawnOk, vehicleHandle, detail = pcall(function()
         local pos = entity.getEntityCoords(playerPed, true)
         local heading = entity.getEntityHeading(playerPed)
-        -- Match the working Android Trainer's nearby spawn placement.
-        local created = vehicle.createVehicle(modelName, pos.x + 3.0, pos.y, pos.z, heading, true, false)
+
+        -- Glue5 groups the native's x/y/z parameters into one Vector3.
+        -- Passing three separate coordinates shifts every later argument
+        -- and makes CREATE_VEHICLE fail.
+        local spawnPos = vector.create(pos.x + 3.0, pos.y, pos.z)
+        local created = vehicle.createVehicle(modelName, spawnPos, heading, true, false)
         if not created or created == 0 then
             return nil, "CREATE_VEHICLE returned an empty handle"
         end
 
-        -- Some boats/aircraft cannot be entered immediately on land. A
-        -- successful create still counts as a successful spawn.
+        -- A created vehicle is a successful spawn even if entry is refused.
         local entered = pcall(function()
             ped.setPedIntoVehicle(playerPed, created, -1)
         end)
-        local warning = nil
         if not entered then
-            warning = "spawned, but could not enter it"
+            return created, "spawned, but could not enter it"
         end
-        return created, warning
+        return created, nil
     end)
 
     pcall(function()
