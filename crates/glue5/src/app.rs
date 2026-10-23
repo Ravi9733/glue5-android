@@ -934,6 +934,9 @@ impl App {
             let mods_dir = self.mods_dir();
             let trainer = mods_dir.join("android-trainer");
             let spawner = mods_dir.join("android-vehicle-spawner");
+            // Upgrade the bundled spawner once so existing installs receive fixes.
+            let needs_spawner_update =
+                std::fs::read_to_string(&marker).map(|version| version.trim() != "3").unwrap_or(true);
             let install = (|| -> std::io::Result<()> {
                 std::fs::create_dir_all(&trainer)?;
                 std::fs::create_dir_all(&spawner)?;
@@ -946,14 +949,14 @@ impl App {
                     std::fs::write(&manifest, "{\n  \"autostart\": true\n}\n")?;
                 }
                 let spawner_script = spawner.join("main.luau");
-                if !spawner_script.exists() {
+                if needs_spawner_update || !spawner_script.exists() {
                     std::fs::write(&spawner_script, include_str!("../../../examples/android-vehicle-spawner/main.luau"))?;
                 }
                 let spawner_manifest = spawner.join("mod.json");
                 if !spawner_manifest.exists() {
                     std::fs::write(&spawner_manifest, "{\n  \"autostart\": true\n}\n")?;
                 }
-                std::fs::write(&marker, b"2")?;
+                std::fs::write(&marker, b"3")?;
                 Ok(())
             })();
             match install {
