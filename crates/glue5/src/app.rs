@@ -948,7 +948,7 @@ impl App {
             let spawner = mods_dir.join("android-vehicle-spawner");
             // Upgrade the bundled spawner once so existing installs receive fixes.
             let needs_spawner_update =
-                std::fs::read_to_string(&marker).map(|version| version.trim() != "3").unwrap_or(true);
+                std::fs::read_to_string(&marker).map(|version| version.trim() != "4").unwrap_or(true);
             let install = (|| -> std::io::Result<()> {
                 std::fs::create_dir_all(&trainer)?;
                 std::fs::create_dir_all(&spawner)?;
@@ -968,7 +968,7 @@ impl App {
                 if !spawner_manifest.exists() {
                     std::fs::write(&spawner_manifest, "{\n  \"autostart\": true\n}\n")?;
                 }
-                std::fs::write(&marker, b"3")?;
+                std::fs::write(&marker, b"4")?;
                 Ok(())
             })();
             match install {
