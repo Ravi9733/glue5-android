@@ -75,23 +75,31 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +        Some(unsafe { ash::Entry::from_static_fn(ash::StaticFn { get_instance_proc_addr }) })
 +    }
      /// If you want to add extensions, add the to the `Vec<'static CStr>` not the create info, otherwise
-@@ -576,10 +638,15 @@
+@@ -576,10 +638,21 @@
          let entry = unsafe {
              profiling::scope!("Load vk library");
              // ohos support is already fixed on ash main, but it's unclear when
              // a new release can happen.
--            #[cfg(target_env = "ohos")]
--            let loaded = ash::Entry::load_from("libvulkan.so");
--            #[cfg(not(target_env = "ohos"))]
--            let loaded = ash::Entry::load();
 +            #[cfg(target_os = "android")]
-+            let loaded = match unsafe { Self::load_turnip_entry() } {
-+                Some(entry) => Ok(entry),
-+                None => ash::Entry::load(),
++            let loaded = if std::env::var("GLUE5_VULKAN_DRIVER").ok().as_deref() == Some("turnip") {
++                match unsafe { Self::load_turnip_entry() } {
++                    Some(entry) => {
++                        log::info!("Turnip Vulkan driver loaded through AdrenoTools");
++                        Ok(entry)
++                    }
++                    None => {
++                        log::warn!("Turnip requested but failed to load; falling back to Android system Vulkan");
++                        ash::Entry::load()
++                    }
++                }
++            } else {
++                log::info!("Using Android system Vulkan driver");
++                ash::Entry::load()
 +            };
-+            #[cfg(target_env = "ohos")]
-+            let loaded = ash::Entry::load_from("libvulkan.so");
+             #[cfg(target_env = "ohos")]
+             let loaded = ash::Entry::load_from("libvulkan.so");
+-            #[cfg(not(target_env = "ohos"))]
 +            #[cfg(not(any(target_env = "ohos", target_os = "android")))]
-+            let loaded = ash::Entry::load();
+             let loaded = ash::Entry::load();
              loaded
          }
