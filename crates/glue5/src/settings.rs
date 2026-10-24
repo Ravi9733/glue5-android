@@ -326,6 +326,19 @@ impl Settings {
             settings.render_scale = Some(settings.render_scale().min(0.45));
             settings.android_performance_profile_v3_applied = true;
         }
+        // Apply the persisted Vulkan choice before the GPU backend creates
+        // its first Vulkan entry. The Android activity sets the paths, but
+        // the Rust Settings selection must also be propagated to the loader.
+        #[cfg(target_os = "android")]
+        unsafe {
+            std::env::set_var(
+                "GLUE5_VULKAN_DRIVER",
+                match settings.vulkan_driver {
+                    VulkanDriver::System => "system",
+                    VulkanDriver::Turnip => "turnip",
+                },
+            );
+        }
         settings
     }
 
