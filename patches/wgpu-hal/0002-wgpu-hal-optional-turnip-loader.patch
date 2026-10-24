@@ -57,7 +57,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +        let open_libvulkan: OpenLibVulkan = unsafe { core::mem::transmute(open_ptr) };
 +        let temp_c = CString::new(temp_dir.to_string_lossy().as_bytes()).ok()?;
 +        let native_c = CString::new(native_dir.to_string_lossy().as_bytes()).ok()?;
-+        let driver_dir_c = CString::new(driver_dir.to_string_lossy().as_bytes()).ok()?;
++        let driver_dir_c = CString::new(format!("{}/", driver_dir.display())).ok()?;
 +        let driver_name_c = CString::new(selected_name).ok()?;
 +        let mut user_mapping: *mut c_void = core::ptr::null_mut();
 +        let loader = unsafe {
