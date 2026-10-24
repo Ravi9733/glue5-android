@@ -770,10 +770,33 @@ fn settings_items(
     match tab {
         SettingsTab::Video => {
             if cfg!(target_os = "android") {
-                setting(ui, "Vulkan driver", Control::Choice, Some("Next launch"), |ui| {
+                let app_files = std::env::var_os("GLUE5_APP_FILES_DIR")
+                    .map(std::path::PathBuf::from);
+                let turnip_installed = app_files.as_ref().is_some_and(|dir| {
+                    std::fs::read_to_string(dir.join("turnip/driver_name"))
+                        .ok()
+                        .is_some_and(|name| {
+                            let name = name.trim();
+                            !name.is_empty()
+                                && !name.contains('/')
+                                && !name.contains('\\\\')
+                                && dir.join("turnip").join(name).is_file()
+                        })
+                });
+                let loaded_status = app_files.as_ref()
+                    .and_then(|dir| std::fs::read_to_string(dir.join("turnip-status.txt")).ok())
+                    .map(|status| status.trim().to_owned())
+                    .unwrap_or_else(|| "Driver status unavailable".to_owned());
+                let selected_status = match settings.vulkan_driver {
+                    VulkanDriver::System => "Selected for next launch: System",
+                    VulkanDriver::Turnip if turnip_installed => "Selected for next launch: Turnip",
+                    VulkanDriver::Turnip => "Turnip not imported yet",
+                };
+                let driver_note = format!("{loaded_status} · {selected_status}");
+                setting(ui, "Vulkan driver", Control::Choice, Some(&driver_note), |ui| {
                     choice(ui, &mut settings.vulkan_driver, &[
                         (VulkanDriver::System, "System"),
-                        (VulkanDriver::Turnip, "Turnip (import required)"),
+                        (VulkanDriver::Turnip, "Turnip"),
                     ])
                 });
             }
