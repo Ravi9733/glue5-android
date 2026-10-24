@@ -779,7 +779,6 @@ fn settings_items(
                             let name = name.trim();
                             !name.is_empty()
                                 && !name.contains('\\')
-                                && !name.contains('\\\\')
                                 && dir.join("turnip").join(name).is_file()
                         })
                 });
