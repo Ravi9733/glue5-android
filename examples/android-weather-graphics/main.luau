@@ -1,5 +1,5 @@
 --!strict
--- GLUE5_ANDROID_WEATHER_COLOR_V2
+-- GLUE5_ANDROID_WEATHER_COLOR_V3
 -- Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.
 
 local weatherTypes = {
@@ -56,26 +56,29 @@ timeMenu:button("Resume natural time", function()
     ui.notify(ok and "Natural game time resumed" or "Clock resume unavailable")
 end)
 
--- Lightweight timecycle-only colour controls. No replacement textures or
--- additional shaders, to keep the performance cost low on Android.
+-- Lightweight timecycle presets use GTA V's built-in post-processing;
+-- no texture packs or extra shaders are loaded, to protect frame pacing.
 local graphicsMenu = ui.menu("Colorful Graphics")
-graphicsMenu:label("Natural lighting with stronger, richer colours")
+graphicsMenu:label("Apply a preset, then adjust its strength")
 local colourPresets = {
-    { name = "Natural Vibrant", modifier = "rply_saturation", strength = 0.82 },
-    { name = "Rich Colours", modifier = "MP_corona_heist", strength = 0.62 },
-    { name = "Warm Natural", modifier = "cinema", strength = 0.38 },
+    { name = "Vibrant", modifier = "rply_saturation", strength = 1.0 },
+    { name = "Rich Colours", modifier = "MP_corona_heist", strength = 0.85 },
+    { name = "Warm Natural", modifier = "cinema", strength = 0.7 },
 }
 local activePreset = 1
 local activeStrength = colourPresets[1].strength
 local colourfulEnabled = true
+
+local function clearColours()
+    return pcall(function()
+        graphics.clearTimecycleModifier()
+        graphics.setTimecycleModifierStrength(0.0)
+    end)
+end
+
 local function applyColourPreset(index, strength)
-    if index == 4 then
-        local ok = pcall(function()
-            graphics.clearTimecycleModifier()
-        end)
-        return ok
-    end
     local preset = colourPresets[index]
+    if not preset then return false end
     local ok = pcall(function()
         graphics.setTimecycleModifier(preset.modifier)
         graphics.setTimecycleModifierStrength(strength)
@@ -83,49 +86,66 @@ local function applyColourPreset(index, strength)
     return ok
 end
 
-graphicsMenu:toggle("Colorful graphics ON/OFF", true, function(enabled)
+graphicsMenu:toggle("Colour effects ON/OFF", true, function(enabled)
     colourfulEnabled = enabled
     if enabled then
         local ok = applyColourPreset(activePreset, activeStrength)
-        ui.notify(ok and "Colorful graphics enabled" or "Colour effect failed; check mod log")
+        ui.notify(ok and ("Applied: " .. colourPresets[activePreset].name) or "Colour native failed; see mod log")
     else
-        local ok = pcall(function()
-            graphics.clearTimecycleModifier()
-        end)
-        ui.notify(ok and "Original graphics restored" or "Graphics reset native unavailable")
+        local ok = clearColours()
+        ui.notify(ok and "Colour effects off" or "Could not reset colour effect")
     end
 end)
-graphicsMenu:choice("Colour preset", { "Natural Vibrant", "Rich Colours", "Warm Natural", "Original" }, 1, function(index)
+
+graphicsMenu:choice("Colour preset", { "Vibrant", "Rich Colours", "Warm Natural", "Original" }, 1, function(index)
     if index == 4 then
         colourfulEnabled = false
-        local ok = applyColourPreset(index, 0.0)
-        ui.notify(ok and "Original colours restored" or "Graphics reset native unavailable")
+        local ok = clearColours()
+        ui.notify(ok and "Original colours restored" or "Could not reset colour effect")
         return
     end
     activePreset = index
     activeStrength = colourPresets[index].strength
-    if colourfulEnabled then
-        local ok = applyColourPreset(index, activeStrength)
-        ui.notify(ok and ("Applied: " .. colourPresets[index].name) or "Colour effect failed; check mod log")
-    end
+    colourfulEnabled = true
+    local ok = applyColourPreset(activePreset, activeStrength)
+    ui.notify(ok and ("Applied: " .. colourPresets[index].name) or "Colour preset failed; see mod log")
 end)
+
 graphicsMenu:slider("Colour strength", activeStrength, 0.0, 1.0, 0.05, function(strength)
     activeStrength = strength
     if colourfulEnabled then
         local ok = applyColourPreset(activePreset, activeStrength)
-        if not ok then
-            ui.notify("Colour strength failed; check mod log")
-        end
+        if not ok then ui.notify("Colour strength native failed") end
     end
 end)
+
 graphicsMenu:button("Reset colours", function()
-    local ok = pcall(function()
-        graphics.clearTimecycleModifier()
-    end)
+    local ok = clearColours()
     colourfulEnabled = false
     activePreset = 1
     activeStrength = colourPresets[1].strength
-    ui.notify(ok and "Original colours restored" or "Graphics reset native unavailable")
+    ui.notify(ok and "Original colours restored" or "Could not reset colour effect")
 end)
 
-ui.notify("Weather Changer, Time Changer and Colorful Graphics menus loaded.")
+-- Fixed destinations for quick testing; only moves the player when ready.
+local teleportMenu = ui.menu("Teleport")
+local destinations = {
+    { name = "Airport", x = -1034.6, y = -2733.6, z = 13.8 },
+    { name = "City Centre", x = 215.8, y = -810.1, z = 30.7 },
+    { name = "Mount Chiliad", x = 450.7, y = 5566.3, z = 806.2 },
+    { name = "Sandy Shores", x = 1853.2, y = 3686.4, z = 34.3 },
+    { name = "Beach", x = -1390.0, y = -584.0, z = 30.2 },
+}
+teleportMenu:label("Teleport to a saved location")
+for _, destination in ipairs(destinations) do
+    teleportMenu:button(destination.name, function()
+        local ok, err = pcall(function()
+            local playerPed = player.playerPedId()
+            if not playerPed or playerPed == 0 then error("Player is not ready") end
+            entity.setEntityCoords(playerPed, vector.create(destination.x, destination.y, destination.z), false, false, false, false)
+        end)
+        ui.notify(ok and ("Teleported: " .. destination.name) or ("Teleport failed: " .. tostring(err)))
+    end)
+end
+
+ui.notify("Weather, Time, Colorful Graphics and Teleport menus loaded.")
