@@ -238,7 +238,7 @@ impl Default for Settings {
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
-            max_fps: if MOBILE { 60 } else { 0 },
+            max_fps: if MOBILE { 30 } else { 0 },
             upscaler: Upscaling::MetalFx,
             sharpness: 0.5,
             frame_generation: false,
