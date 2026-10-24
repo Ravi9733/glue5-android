@@ -1,6 +1,6 @@
 --!strict
--- GLUE5_ANDROID_WEATHER_COLOR_V3
--- Android weather, time, teleport and lightweight graphics controls for Glue 5.
+-- GLUE5_ANDROID_WEATHER_COLOR_V4
+-- Android weather, time and lightweight graphics controls for Glue 5.
 -- Teleport uses SET_ENTITY_COORDS' native signature: x, y, z are separate numbers.
 
 local weatherTypes = {
@@ -62,9 +62,9 @@ local presets = {
     { name = "Anime Color", modifier = "rply_saturation", strength = 1.0 },
     { name = "Cartoon Pop", modifier = "MP_corona_tournament", strength = 0.85 },
 }
-local activeIndex = 4
+local activeIndex = 1
 local activeStrength = presets[activeIndex].strength
-local effectsEnabled = true
+local effectsEnabled = false
 
 local function clearStyle()
     return pcall(function()
@@ -130,29 +130,5 @@ graphicsMenu:button("Reset Graphics", function()
     ui.notify(ok and "Original graphics restored" or "Could not reset graphics")
 end)
 
-local teleportMenu = ui.menu("Teleport")
-local destinations = {
-    { name = "Airport", x = -1034.6, y = -2733.6, z = 13.8 },
-    { name = "City Centre", x = 215.8, y = -810.1, z = 30.7 },
-    { name = "Mount Chiliad", x = 450.7, y = 5566.3, z = 806.2 },
-    { name = "Sandy Shores", x = 1853.2, y = 3686.4, z = 34.3 },
-    { name = "Beach", x = -1390.0, y = -584.0, z = 30.2 },
-}
-teleportMenu:label("Choose a saved destination")
-for _, destination in ipairs(destinations) do
-    teleportMenu:button(destination.name, function()
-        local ok, err = pcall(function()
-            local playerPed = player.playerPedId()
-            if not playerPed or playerPed == 0 then error("Player is not ready") end
-            -- SET_ENTITY_COORDS expects entity, x, y, z, axis flags, clearArea.
-            entity.setEntityCoords(
-                playerPed, destination.x, destination.y, destination.z,
-                false, false, false, false
-            )
-        end)
-        ui.notify(ok and ("Teleported: " .. destination.name)
-            or ("Teleport failed: " .. tostring(err)))
-    end)
-end
+ui.notify("Weather, Time and Graphics loaded")
 
-ui.notify("Weather, Time, Graphics Style and Teleport loaded")
