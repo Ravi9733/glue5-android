@@ -1,59 +1,53 @@
 --!strict
--- GLUE5_ANDROID_ARMORED_PLAYER_REPLACEMENT_V1
--- Replaces the current player with an armored model already installed in the game.
--- This is a built-in GTA model, NOT a custom Iron Man mesh.
+-- GLUE5 Android: armored-player test (built-in GTA V model)
+-- IMPORTANT: this is a built-in Juggernaut model, not a custom Iron Man mesh.
+-- Glue5 currently does not expose a verified way for a mod to load arbitrary
+-- GLB/FBX files as GTA V player peds. See assets/README.md for the custom-asset
+-- conversion status.
 
-local currentModel = "u_m_y_juggernaut_01"
+local ARMORED_MODEL = "u_m_y_juggernaut_01"
+local DEFAULT_MODEL = "mp_m_freemode_01"
+local busy = false
 
-local function replacePlayer(modelName: string)
-    local hash = joaat(modelName)
-    streaming.requestModel(hash)
-    local deadline = 10000
-    while not streaming.hasModelLoaded(hash) and deadline > 0 do
-        wait(50)
-        deadline -= 50
+local function setPlayerModel(modelName: string)
+    if busy then
+        ui.notify("Please wait: model change is already running")
+        return
     end
-    if not streaming.hasModelLoaded(hash) then
-        error("Model failed to load: " .. modelName)
-    end
+    busy = true
 
-    -- SET_PLAYER_MODEL(Player, Hash)
-    native.invoke("0x00A1CADD00108836", player.playerId(), hash)
-    streaming.setModelAsNoLongerNeeded(hash)
-    currentModel = modelName
+    local ok, err = pcall(function()
+        local hash = joaat(modelName)
+
+        -- Supported Glue5 API: loads a model already present in the game.
+        if not streaming.load(hash, nil, 10000) then
+            error("Game model did not load: " .. modelName)
+        end
+
+        -- SET_PLAYER_MODEL(Player, Hash). This native changes the player's
+        -- ped to a model that is already installed in the GTA V game data.
+        native.invoke("0x00A1CADD00108836", player.playerId(), hash)
+        streaming.setModelAsNoLongerNeeded(hash)
+    end)
+
+    busy = false
+    if ok then
+        ui.notify("Player model changed: " .. modelName)
+    else
+        ui.notify("Model change failed: " .. tostring(err))
+    end
 end
 
-local menu = ui.menu("Armored Player + Flight")
-menu:label("Uses built-in game models. Custom Iron Man assets are not loaded.")
+local menu = ui.menu("Armored Player Test", "Built-in GTA V model; custom Iron Man not yet loadable")
+menu:label("This test uses the game's Juggernaut model.")
+menu:label("Custom Iron Man requires a GTA-ready ped asset and loader support.")
 
-menu:button("Replace Player: Juggernaut Armor", function()
-    local ok, err = pcall(function()
-        replacePlayer("u_m_y_juggernaut_01")
-    end)
-    ui.notify(ok and "Player model changed to Juggernaut" or ("Replacement failed: " .. tostring(err)))
+menu:button("Use Juggernaut Armor", { action = "Use Armor" }, function()
+    setPlayerModel(ARMORED_MODEL)
 end)
 
-menu:button("Restore Male Freemode", function()
-    local ok, err = pcall(function()
-        replacePlayer("mp_m_freemode_01")
-    end)
-    ui.notify(ok and "Male freemode model restored" or ("Restore failed: " .. tostring(err)))
+menu:button("Restore Male Freemode", { action = "Restore" }, function()
+    setPlayerModel(DEFAULT_MODEL)
 end)
 
-menu:button("Spawn Armored NPC (optional)", function()
-    local ok, err = pcall(function()
-        local hash = joaat("u_m_y_juggernaut_01")
-        streaming.requestModel(hash)
-        while not streaming.hasModelLoaded(hash) do
-            wait(50)
-        end
-        local ped = spawn.ped(hash)
-        streaming.setModelAsNoLongerNeeded(hash)
-        if not ped then
-            error("Could not spawn armored NPC")
-        end
-    end)
-    ui.notify(ok and "Armored NPC spawned" or ("Spawn failed: " .. tostring(err)))
-end)
-
-ui.notify("Armored player replacement menu loaded")
+ui.notify("Armored Player Test menu loaded")
