@@ -1,4 +1,5 @@
 --!strict
+-- GLUE5_ANDROID_WEATHER_COLOR_V3
 -- Android weather, time, teleport and lightweight graphics controls for Glue 5.
 -- Teleport uses SET_ENTITY_COORDS' native signature: x, y, z are separate numbers.
 
