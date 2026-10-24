@@ -1,0 +1,43 @@
+name: Xbox 360 Android Prototype
+
+on:
+  push:
+    branches:
+      - xbox360-android-native-prototype
+    paths:
+      - 'xbox360-android-native/**'
+      - '.github/workflows/xbox360-android-prototype.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build debug APK
+        working-directory: xbox360-android-native
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: xbox360-android-prototype-debug-apk
+          path: xbox360-android-native/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
