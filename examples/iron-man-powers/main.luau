@@ -1,105 +1,59 @@
 --!strict
--- GLUE5_ANDROID_IRON_MAN_FLIGHT_V2
--- Touch-friendly continuous movement controls for Glue 5.
--- This is script-based movement, NOT a custom Iron Man character model.
+-- GLUE5_ANDROID_ARMORED_PLAYER_REPLACEMENT_V1
+-- Replaces the current player with an armored model already installed in the game.
+-- This is a built-in GTA model, NOT a custom Iron Man mesh.
 
-local flightEnabled = false
-local forwardStep = 0.35
+local currentModel = "u_m_y_juggernaut_01"
 
-local function getPed()
-    local ped = player.playerPedId()
-    if not ped or ped == 0 then
-        error("Player is not ready")
+local function replacePlayer(modelName: string)
+    local hash = joaat(modelName)
+    streaming.requestModel(hash)
+    local deadline = 10000
+    while not streaming.hasModelLoaded(hash) and deadline > 0 do
+        wait(50)
+        deadline -= 50
     end
-    return ped
+    if not streaming.hasModelLoaded(hash) then
+        error("Model failed to load: " .. modelName)
+    end
+
+    -- SET_PLAYER_MODEL(Player, Hash)
+    native.invoke("0x00A1CADD00108836", player.playerId(), hash)
+    streaming.setModelAsNoLongerNeeded(hash)
+    currentModel = modelName
 end
 
-local function moveBy(dx: number, dy: number, dz: number, label: string)
-    local ok = pcall(function()
-        local ped = getPed()
-        local pos = entity.getEntityCoords(ped, true)
-        entity.setEntityCoords(
-            ped,
-            pos.x + dx,
-            pos.y + dy,
-            pos.z + dz,
-            false,
-            false,
-            false,
-            false
-        )
-    end)
-    ui.notify(ok and (label .. " activated") or (label .. " unavailable: native call failed"))
-end
+local menu = ui.menu("Armored Player + Flight")
+menu:label("Uses built-in game models. Custom Iron Man assets are not loaded.")
 
-local function moveForward(distance: number)
-    local ped = getPed()
-    local pos = entity.getEntityCoords(ped, true)
-    local heading = entity.getEntityHeading(ped)
-    local radians = heading * math.pi / 180.0
-    entity.setEntityCoords(
-        ped,
-        pos.x - math.sin(radians) * distance,
-        pos.y + math.cos(radians) * distance,
-        pos.z,
-        false,
-        false,
-        false,
-        false
-    )
-end
-
-local menu = ui.menu("Iron Man Suit + Flight")
-menu:label("Uses a built-in armored NPC model; this is not a custom Iron Man suit.")
-menu:button("Spawn Armored Model", function()
-    local ok, detail = pcall(function()
-        local model = "u_m_y_juggernaut_01"
-        if not streaming.load(model, "model", 10000) then
-            error("Armored model is unavailable in this game build")
-        end
-        local armoredPed = spawn.ped(model)
-        if not armoredPed then
-            error("The game could not create the armored ped")
-        end
+menu:button("Replace Player: Juggernaut Armor", function()
+    local ok, err = pcall(function()
+        replacePlayer("u_m_y_juggernaut_01")
     end)
-    ui.notify(ok and "Armored model spawned nearby" or ("Armored model failed: " .. tostring(detail)))
-end)
-menu:button("Start / Stop Flight", function()
-    flightEnabled = not flightEnabled
-    ui.notify(flightEnabled and "Flight mode ON — move forward" or "Flight mode OFF")
-end)
-menu:button("Ascend (+2 m)", function()
-    moveBy(0.0, 0.0, 2.0, "Ascend")
-end)
-menu:button("Descend (-2 m)", function()
-    moveBy(0.0, 0.0, -2.0, "Descend")
-end)
-menu:button("Forward Boost", function()
-    local ok = pcall(function()
-        moveForward(8.0)
-    end)
-    ui.notify(ok and "Forward boost activated" or "Forward boost unavailable")
-end)
-menu:button("Land", function()
-    flightEnabled = false
-    moveBy(0.0, 0.0, -5.0, "Landing")
+    ui.notify(ok and "Player model changed to Juggernaut" or ("Replacement failed: " .. tostring(err)))
 end)
 
-task.spawn(function()
-    while true do
-        if flightEnabled then
-            local ok = pcall(function()
-                moveForward(forwardStep)
-            end)
-            if not ok then
-                flightEnabled = false
-                ui.notify("Flight stopped: movement native unavailable")
-            end
+menu:button("Restore Male Freemode", function()
+    local ok, err = pcall(function()
+        replacePlayer("mp_m_freemode_01")
+    end)
+    ui.notify(ok and "Male freemode model restored" or ("Restore failed: " .. tostring(err)))
+end)
+
+menu:button("Spawn Armored NPC (optional)", function()
+    local ok, err = pcall(function()
+        local hash = joaat("u_m_y_juggernaut_01")
+        streaming.requestModel(hash)
+        while not streaming.hasModelLoaded(hash) do
             wait(50)
-        else
-            wait(100)
         end
-    end
+        local ped = spawn.ped(hash)
+        streaming.setModelAsNoLongerNeeded(hash)
+        if not ped then
+            error("Could not spawn armored NPC")
+        end
+    end)
+    ui.notify(ok and "Armored NPC spawned" or ("Spawn failed: " .. tostring(err)))
 end)
 
-ui.notify("Iron Man flight controls loaded")
+ui.notify("Armored player replacement menu loaded")
