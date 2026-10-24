@@ -1,6 +1,6 @@
 --!strict
--- GLUE5_ANDROID_WEATHER_COLOR_V3
--- Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.
+-- Android weather, time, teleport and lightweight graphics controls for Glue 5.
+-- Teleport uses SET_ENTITY_COORDS' native signature: x, y, z are separate numbers.
 
 local weatherTypes = {
     "EXTRASUNNY", "CLEAR", "CLOUDS", "OVERCAST", "SMOG",
@@ -12,24 +12,17 @@ local weatherMenu = ui.menu("Weather Changer")
 weatherMenu:label("Choose a weather type")
 weatherMenu:choice("Weather", weatherTypes, 1, function(index)
     local weather = weatherTypes[index]
-    local ok = pcall(function()
-        misc.setWeatherTypeNowPersist(weather)
-    end)
+    local ok = pcall(function() misc.setWeatherTypeNowPersist(weather) end)
     if not ok then
-        ok = pcall(function()
-            misc.setWeatherTypeNow(weather)
-        end)
+        ok = pcall(function() misc.setWeatherTypeNow(weather) end)
     end
-    ui.notify(ok and ("Weather: " .. weather) or "Weather native unavailable in this game build")
+    ui.notify(ok and ("Weather: " .. weather) or "Weather native unavailable")
 end)
 weatherMenu:button("Reset weather", function()
-    local ok = pcall(function()
-        misc.clearWeatherTypePersist()
-    end)
-    ui.notify(ok and "Weather override cleared" or "Weather reset native unavailable")
+    local ok = pcall(function() misc.clearWeatherTypePersist() end)
+    ui.notify(ok and "Weather reset" or "Weather reset native unavailable")
 end)
 
--- Clock menu: preset buttons pause the clock so the selected time stays put.
 local timeMenu = ui.menu("Time Changer")
 local timePresets = {
     { name = "Morning", hour = 8, minute = 0 },
@@ -46,88 +39,93 @@ for _, preset in ipairs(timePresets) do
             clock.setClockTime(preset.hour, preset.minute, 0)
             clock.pauseClock(true)
         end)
-        ui.notify(ok and ("Time set: " .. preset.name) or "Clock native unavailable in this game build")
+        ui.notify(ok and ("Time set: " .. preset.name) or "Clock native unavailable")
     end)
 end
 timeMenu:button("Resume natural time", function()
-    local ok = pcall(function()
-        clock.pauseClock(false)
-    end)
-    ui.notify(ok and "Natural game time resumed" or "Clock resume unavailable")
+    local ok = pcall(function() clock.pauseClock(false) end)
+    ui.notify(ok and "Natural time resumed" or "Clock resume unavailable")
 end)
 
--- Lightweight timecycle presets use GTA V's built-in post-processing;
--- no texture packs or extra shaders are loaded, to protect frame pacing.
-local graphicsMenu = ui.menu("Colorful Graphics")
-graphicsMenu:label("Apply a preset, then adjust its strength")
-local colourPresets = {
+-- These are built-in timecycle looks (not a new shader pass). Bloom Style is
+-- a bloom-like cinematic grade; Film Style uses GTA's built-in filmic modifier.
+local graphicsMenu = ui.menu("Graphics Style")
+graphicsMenu:label("Choose a built-in look and set its strength")
+local presets = {
+    { name = "Original", modifier = "", strength = 0.0 },
     { name = "Vibrant", modifier = "rply_saturation", strength = 1.0 },
-    { name = "Rich Colours", modifier = "MP_corona_heist", strength = 0.85 },
     { name = "Warm Natural", modifier = "cinema", strength = 0.7 },
+    { name = "Bloom Style", modifier = "MP_corona_heist", strength = 0.75 },
+    { name = "Film Style", modifier = "NG_filmic01", strength = 0.8 },
+    { name = "Cinematic Film", modifier = "cinema_2", strength = 0.75 },
 }
-local activePreset = 1
-local activeStrength = colourPresets[1].strength
-local colourfulEnabled = true
+local activeIndex = 4
+local activeStrength = presets[activeIndex].strength
+local effectsEnabled = true
 
-local function clearColours()
+local function clearStyle()
     return pcall(function()
         graphics.clearTimecycleModifier()
         graphics.setTimecycleModifierStrength(0.0)
     end)
 end
 
-local function applyColourPreset(index, strength)
-    local preset = colourPresets[index]
+local function applyStyle(index: number, strength: number): boolean
+    local preset = presets[index]
     if not preset then return false end
-    local ok = pcall(function()
+    if preset.modifier == "" then
+        return clearStyle()
+    end
+    return pcall(function()
         graphics.setTimecycleModifier(preset.modifier)
         graphics.setTimecycleModifierStrength(strength)
     end)
-    return ok
 end
 
-graphicsMenu:toggle("Colour effects ON/OFF", true, function(enabled)
-    colourfulEnabled = enabled
+graphicsMenu:toggle("Graphics Effects ON/OFF", true, function(enabled)
+    effectsEnabled = enabled
+    local ok
     if enabled then
-        local ok = applyColourPreset(activePreset, activeStrength)
-        ui.notify(ok and ("Applied: " .. colourPresets[activePreset].name) or "Colour native failed; see mod log")
+        ok = applyStyle(activeIndex, activeStrength)
     else
-        local ok = clearColours()
-        ui.notify(ok and "Colour effects off" or "Could not reset colour effect")
+        ok = clearStyle()
     end
+    ui.notify(ok and (enabled and ("Applied: " .. presets[activeIndex].name) or "Graphics effects off")
+        or "Graphics native failed; check the mod log")
 end)
 
-graphicsMenu:choice("Colour preset", { "Vibrant", "Rich Colours", "Warm Natural", "Original" }, 1, function(index)
-    if index == 4 then
-        colourfulEnabled = false
-        local ok = clearColours()
-        ui.notify(ok and "Original colours restored" or "Could not reset colour effect")
+graphicsMenu:choice("Visual Style", {
+    "Original", "Vibrant", "Warm Natural", "Bloom Style", "Film Style", "Cinematic Film",
+}, activeIndex, function(index)
+    activeIndex = index
+    activeStrength = presets[index].strength
+    if index == 1 then
+        effectsEnabled = false
+        local ok = clearStyle()
+        ui.notify(ok and "Original graphics restored" or "Could not reset graphics")
         return
     end
-    activePreset = index
-    activeStrength = colourPresets[index].strength
-    colourfulEnabled = true
-    local ok = applyColourPreset(activePreset, activeStrength)
-    ui.notify(ok and ("Applied: " .. colourPresets[index].name) or "Colour preset failed; see mod log")
+    effectsEnabled = true
+    local ok = applyStyle(activeIndex, activeStrength)
+    ui.notify(ok and ("Applied: " .. presets[index].name) or "Style native failed")
 end)
 
-graphicsMenu:slider("Colour strength", activeStrength, 0.0, 1.0, 0.05, function(strength)
+graphicsMenu:slider("Effect Strength", activeStrength, 0.0, 1.0, 0.05, function(strength)
     activeStrength = strength
-    if colourfulEnabled then
-        local ok = applyColourPreset(activePreset, activeStrength)
-        if not ok then ui.notify("Colour strength native failed") end
+    if effectsEnabled then
+        local ok = applyStyle(activeIndex, activeStrength)
+        if not ok then ui.notify("Could not change effect strength") end
     end
 end)
 
-graphicsMenu:button("Reset colours", function()
-    local ok = clearColours()
-    colourfulEnabled = false
-    activePreset = 1
-    activeStrength = colourPresets[1].strength
-    ui.notify(ok and "Original colours restored" or "Could not reset colour effect")
+graphicsMenu:button("Reset Graphics", function()
+    local ok = clearStyle()
+    effectsEnabled = false
+    activeIndex = 1
+    activeStrength = 0.0
+    ui.notify(ok and "Original graphics restored" or "Could not reset graphics")
 end)
 
--- Fixed destinations for quick testing; only moves the player when ready.
 local teleportMenu = ui.menu("Teleport")
 local destinations = {
     { name = "Airport", x = -1034.6, y = -2733.6, z = 13.8 },
@@ -136,16 +134,21 @@ local destinations = {
     { name = "Sandy Shores", x = 1853.2, y = 3686.4, z = 34.3 },
     { name = "Beach", x = -1390.0, y = -584.0, z = 30.2 },
 }
-teleportMenu:label("Teleport to a saved location")
+teleportMenu:label("Choose a saved destination")
 for _, destination in ipairs(destinations) do
     teleportMenu:button(destination.name, function()
         local ok, err = pcall(function()
             local playerPed = player.playerPedId()
             if not playerPed or playerPed == 0 then error("Player is not ready") end
-            entity.setEntityCoords(playerPed, vector.create(destination.x, destination.y, destination.z), false, false, false, false)
+            -- SET_ENTITY_COORDS expects entity, x, y, z, axis flags, clearArea.
+            entity.setEntityCoords(
+                playerPed, destination.x, destination.y, destination.z,
+                false, false, false, false
+            )
         end)
-        ui.notify(ok and ("Teleported: " .. destination.name) or ("Teleport failed: " .. tostring(err)))
+        ui.notify(ok and ("Teleported: " .. destination.name)
+            or ("Teleport failed: " .. tostring(err)))
     end)
 end
 
-ui.notify("Weather, Time, Colorful Graphics and Teleport menus loaded.")
+ui.notify("Weather, Time, Graphics Style and Teleport loaded")
