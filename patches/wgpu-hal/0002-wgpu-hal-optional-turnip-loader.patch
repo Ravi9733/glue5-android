@@ -10,8 +10,16 @@ Subject: [PATCH] wgpu-hal: optionally load Turnip through AdrenoTools on Android
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -562,2 +562,64 @@
+@@ -562,2 +562,72 @@
      /// `Instance::init` but with a callback.
++    #[cfg(target_os = "android")]
++    fn write_turnip_status(status: &str) {
++        if let Some(dir) = std::env::var_os("GLUE5_APP_FILES_DIR") {
++            let path = std::path::PathBuf::from(dir).join("turnip-status.txt");
++            let _ = std::fs::write(path, status);
++        }
++    }
++
 +    // Optional Android custom Vulkan driver; System remains the default.
 +    #[cfg(target_os = "android")]
 +    unsafe fn load_turnip_entry() -> Option<ash::Entry> {
@@ -75,7 +83,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +        Some(unsafe { ash::Entry::from_static_fn(ash::StaticFn { get_instance_proc_addr }) })
 +    }
      /// If you want to add extensions, add the to the `Vec<'static CStr>` not the create info, otherwise
-@@ -576,10 +638,21 @@
+@@ -576,10 +638,26 @@
          let entry = unsafe {
              profiling::scope!("Load vk library");
              // ohos support is already fixed on ash main, but it's unclear when
