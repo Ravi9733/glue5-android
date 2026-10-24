@@ -183,8 +183,10 @@ fn install_bundled_weather_mod(dir: &Path) {
     let should_write = match std::fs::read_to_string(&script) {
         Err(_) => true,
         Ok(existing) => {
-            !existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V2")
-                && (existing.contains("Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.")
+            !existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V3")
+                && (existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V2")
+                    || existing.contains("Android weather, time, teleport and lightweight graphics controls for Glue 5.")
+                    || existing.contains("Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.")
                     || existing.contains("Weather, Time Changer and Colorful Graphics loaded.")
                     || existing.contains("Weather Changer, Time Changer and Colorful Graphics menus loaded."))
         }
@@ -203,23 +205,14 @@ fn install_bundled_weather_mod(dir: &Path) {
     }
 }
 
-/// On Android, install the bundled Vehicle Spawner with seven lightweight
-/// categories: Cars, Bikes, Bicycles, SUVs, Trucks, Supercars and Emergency Vehicles.
+/// On Android, install the bundled vehicle spawner under a valid lowercase mod name.
 #[cfg(target_os = "android")]
 fn install_bundled_vehicle_mod(dir: &Path) {
-    let mod_dir = dir.join("Vehicle Spawner");
-    let legacy_dir = dir.join("android-vehicle-spawner");
-    let mod_dir = if mod_dir.exists() {
-        mod_dir
-    } else if legacy_dir.exists() {
-        if std::fs::rename(&legacy_dir, &mod_dir).is_ok() {
-            mod_dir
-        } else {
-            legacy_dir
-        }
-    } else {
-        mod_dir
-    };
+    let mod_dir = dir.join("android-vehicle-spawner");
+    let legacy_dir = dir.join("Vehicle Spawner");
+    if !mod_dir.exists() && legacy_dir.exists() {
+        let _ = std::fs::rename(&legacy_dir, &mod_dir);
+    }
     if let Err(e) = std::fs::create_dir_all(&mod_dir) {
         log::warn!("cannot create bundled vehicle spawner: {e}");
         return;
@@ -229,8 +222,10 @@ fn install_bundled_vehicle_mod(dir: &Path) {
     let should_write = match std::fs::read_to_string(&script) {
         Err(_) => true,
         Ok(existing) => {
-            !existing.contains("GLUE5_ANDROID_VEHICLE_SPAWNER_V2")
-                && (existing.contains("Android vehicle spawner for Glue 5.")
+            !existing.contains("GLUE5_ANDROID_VEHICLE_SPAWNER_V3")
+                && (existing.contains("GLUE5_ANDROID_VEHICLE_SPAWNER_V2")
+                    || existing.contains("Single-menu Android vehicle spawner for Glue 5.")
+                    || existing.contains("Android vehicle spawner for Glue 5.")
                     || existing.contains("One Vehicles menu with a separate model selector"))
         }
     };
