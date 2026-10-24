@@ -83,7 +83,7 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +        Some(unsafe { ash::Entry::from_static_fn(ash::StaticFn { get_instance_proc_addr }) })
 +    }
      /// If you want to add extensions, add the to the `Vec<'static CStr>` not the create info, otherwise
-@@ -576,10 +646,26 @@
+@@ -576,10 +646,29 @@
          let entry = unsafe {
              profiling::scope!("Load vk library");
              // ohos support is already fixed on ash main, but it's unclear when
@@ -93,15 +93,18 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +                match unsafe { Self::load_turnip_entry() } {
 +                    Some(entry) => {
 +                        log::info!("Turnip Vulkan driver loaded through AdrenoTools");
++                        Self::write_turnip_status("Turnip loaded through AdrenoTools");
 +                        Ok(entry)
 +                    }
 +                    None => {
 +                        log::warn!("Turnip requested but failed to load; falling back to Android system Vulkan");
++                        Self::write_turnip_status("Turnip failed to load; using Android system Vulkan");
 +                        ash::Entry::load()
 +                    }
 +                }
 +            } else {
 +                log::info!("Using Android system Vulkan driver");
++                Self::write_turnip_status("Android system Vulkan driver loaded");
 +                ash::Entry::load()
 +            };
              #[cfg(target_env = "ohos")]
