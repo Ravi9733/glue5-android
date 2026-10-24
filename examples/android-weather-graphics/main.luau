@@ -1,7 +1,6 @@
 --!strict
 -- GLUE5_ANDROID_WEATHER_COLOR_V4
 -- Android weather, time and lightweight graphics controls for Glue 5.
--- Teleport uses SET_ENTITY_COORDS' native signature: x, y, z are separate numbers.
 
 local weatherTypes = {
     "EXTRASUNNY", "CLEAR", "CLOUDS", "OVERCAST", "SMOG",
