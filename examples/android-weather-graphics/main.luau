@@ -1,6 +1,7 @@
 --!strict
--- GLUE5_ANDROID_WEATHER_COLOR_V4
--- Android weather, time and lightweight graphics controls for Glue 5.
+-- GLUE5_ANDROID_PHOTOREALISTIC_V1
+-- Lightweight time, weather and built-in filmic graphics presets for Glue 5 Android.
+-- Uses GTA V timecycle modifiers; this is not a custom shader/texture overhaul.
 
 local weatherTypes = {
     "EXTRASUNNY", "CLEAR", "CLOUDS", "OVERCAST", "SMOG",
@@ -8,7 +9,7 @@ local weatherTypes = {
     "BLIZZARD", "SNOWLIGHT", "XMAS", "HALLOWEEN",
 }
 
-local weatherMenu = ui.menu("Weather Changer")
+local weatherMenu = ui.menu("Weather")
 weatherMenu:label("Choose a weather type")
 weatherMenu:choice("Weather", weatherTypes, 1, function(index)
     local weather = weatherTypes[index]
@@ -23,7 +24,7 @@ weatherMenu:button("Reset weather", function()
     ui.notify(ok and "Weather reset" or "Weather reset native unavailable")
 end)
 
-local timeMenu = ui.menu("Time Changer")
+local timeMenu = ui.menu("Time")
 local timePresets = {
     { name = "Morning", hour = 8, minute = 0 },
     { name = "Noon", hour = 12, minute = 0 },
@@ -47,25 +48,20 @@ timeMenu:button("Resume natural time", function()
     ui.notify(ok and "Natural time resumed" or "Clock resume unavailable")
 end)
 
--- These are built-in GTA timecycle colour grades, not custom shaders.
--- Anime/Cartoon presets boost colour and stylisation; true cel outlines require a shader.
-local graphicsMenu = ui.menu("Graphics Style")
-graphicsMenu:label("Choose a built-in look and set its strength")
+-- Built-in GTA V timecycle grades; Photorealistic is a lightweight filmic
+-- colour grade, not a custom lighting, geometry or texture shader.
+local graphicsMenu = ui.menu("Graphics")
+graphicsMenu:label("Choose a lightweight visual preset")
 local presets = {
     { name = "Original", modifier = "", strength = 0.0 },
-    { name = "Vibrant", modifier = "rply_saturation", strength = 1.0 },
-    { name = "Warm Natural", modifier = "cinema", strength = 0.7 },
-    { name = "Bloom Style", modifier = "MP_corona_heist", strength = 0.75 },
-    { name = "Film Style", modifier = "NG_filmic01", strength = 0.8 },
-    { name = "Cinematic Film", modifier = "cinema_2", strength = 0.75 },
-    { name = "Anime Color", modifier = "rply_saturation", strength = 1.0 },
-    { name = "Cartoon Pop", modifier = "MP_corona_tournament", strength = 0.85 },
+    { name = "Photorealistic", modifier = "NG_filmic01", strength = 0.65 },
+    { name = "Warm Natural", modifier = "cinema", strength = 0.60 },
 }
 local activeIndex = 1
 local activeStrength = presets[activeIndex].strength
 local effectsEnabled = false
 
-local function clearStyle()
+local function clearStyle(): boolean
     return pcall(function()
         graphics.clearTimecycleModifier()
         graphics.setTimecycleModifierStrength(0.0)
@@ -84,7 +80,7 @@ local function applyStyle(index: number, strength: number): boolean
     end)
 end
 
-graphicsMenu:toggle("Graphics Effects ON/OFF", true, function(enabled)
+graphicsMenu:toggle("Graphics Effects ON/OFF", false, function(enabled)
     effectsEnabled = enabled
     local ok
     if enabled then
@@ -93,12 +89,11 @@ graphicsMenu:toggle("Graphics Effects ON/OFF", true, function(enabled)
         ok = clearStyle()
     end
     ui.notify(ok and (enabled and ("Applied: " .. presets[activeIndex].name) or "Graphics effects off")
-        or "Graphics native failed; check the mod log")
+        or "Graphics native unavailable")
 end)
 
 graphicsMenu:choice("Visual Style", {
-    "Original", "Vibrant", "Warm Natural", "Bloom Style", "Film Style", "Cinematic Film",
-    "Anime Color", "Cartoon Pop",
+    "Original", "Photorealistic", "Warm Natural",
 }, activeIndex, function(index)
     activeIndex = index
     activeStrength = presets[index].strength
@@ -110,7 +105,7 @@ graphicsMenu:choice("Visual Style", {
     end
     effectsEnabled = true
     local ok = applyStyle(activeIndex, activeStrength)
-    ui.notify(ok and ("Applied: " .. presets[index].name) or "Style native failed")
+    ui.notify(ok and ("Applied: " .. presets[index].name) or "Style native unavailable")
 end)
 
 graphicsMenu:slider("Effect Strength", activeStrength, 0.0, 1.0, 0.05, function(strength)
@@ -129,5 +124,4 @@ graphicsMenu:button("Reset Graphics", function()
     ui.notify(ok and "Original graphics restored" or "Could not reset graphics")
 end)
 
-ui.notify("Weather, Time and Graphics loaded")
-
+ui.notify("Time, Weather and Graphics loaded")
