@@ -67,12 +67,12 @@ diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
 +        let native_c = CString::new(native_dir.to_string_lossy().as_bytes()).ok()?;
 +        let driver_dir_c = CString::new(format!("{}/", driver_dir.display())).ok()?;
 +        let driver_name_c = CString::new(selected_name).ok()?;
-+        let mut user_mapping: *mut c_void = core::ptr::null_mut();
++        // GPU mapping import is disabled; pass a null mapping handle.
 +        let loader = unsafe {
 +            open_libvulkan(
 +                RTLD_NOW, 1, temp_c.as_ptr(), native_c.as_ptr(),
 +                driver_dir_c.as_ptr(), driver_name_c.as_ptr(),
-+                core::ptr::null(), &mut user_mapping,
++                core::ptr::null(), core::ptr::null_mut(),
 +            )
 +        };
 +        if loader.is_null() { return None; }
