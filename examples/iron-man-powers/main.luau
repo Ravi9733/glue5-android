@@ -49,8 +49,23 @@ local function moveForward(distance: number)
     )
 end
 
-local menu = ui.menu("Iron Man Flight")
-menu:label("Flight moves the current character; suit model is not included.")
+local menu = ui.menu("Iron Man Suit + Flight")
+menu:label("Armored fallback uses GTA V's Juggernaut model; custom Iron Man files are not included.")
+menu:button("Wear Armored Suit", function()
+    local ok, detail = pcall(function()
+        local model = "u_m_y_juggernaut_01"
+        if not streaming.load(model, "model", 10000) then
+            error("Juggernaut model is unavailable in this game build")
+        end
+        player.setPlayerModel(player.playerId(), model)
+        wait(100)
+        local ped = player.playerPedId()
+        if ped and ped ~= 0 then
+            ped.setPedDefaultComponentVariation(ped)
+        end
+    end)
+    ui.notify(ok and "Armored model applied" or ("Suit failed: " .. tostring(detail)))
+end)
 menu:button("Start / Stop Flight", function()
     flightEnabled = not flightEnabled
     ui.notify(flightEnabled and "Flight mode ON — move forward" or "Flight mode OFF")
