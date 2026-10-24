@@ -50,8 +50,9 @@ def box(name, center, size, color, textured=False):
     mesh.apply_translation(center)
     if textured:
         v = mesh.vertices
-        uv = np.column_stack((0.04 + (v[:,0]+size[0]/2)/size[0]*0.43,
-                              0.52 + (v[:,2]+size[2]/2)/size[2]*0.44))
+        local = v - np.asarray(center)
+        uv = np.column_stack((0.04 + (local[:,0]+size[0]/2)/size[0]*0.43,
+                              0.52 + (local[:,2]+size[2]/2)/size[2]*0.44))
         material = trimesh.visual.material.PBRMaterial(
             baseColorTexture=image, metallicFactor=0.65, roughnessFactor=0.3)
         mesh.visual = trimesh.visual.texture.TextureVisuals(uv=uv, material=material)
