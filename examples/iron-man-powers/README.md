@@ -1,12 +1,6 @@
-# Iron Man Flight Controls for GLUE 5 Android
+# Armored Player + Flight Controls for GLUE 5 Android
 
-This example adds a touch-friendly **Iron Man Flight** menu:
-- Start/stop continuous forward flight
-- Ascend and descend
-- Forward boost
-- Land
-
-It moves the game's current character using position natives. It is a script-based movement effect, not physics-based flight, and it has not yet been tested on the user's phone.
+This mod adds a touch-friendly menu to change the player into a **built-in GTA V Juggernaut model** and restore the male freemode model. It also includes an optional armored NPC spawn button.
 
 ## Install
 
@@ -15,8 +9,8 @@ Copy this folder into the game's mods folder so the layout is:
 and
 `mods/iron-man-powers/mod.json`.
 
-Restart Glue 5 with mods enabled. If the menu does not appear, check the mod's error/log entry in GLUE 5 Studio.
+Enable mods in Glue 5 and open the mod's menu. If a model is unavailable in your installed game build, the mod reports a failure instead of silently claiming success.
 
-## Iron Man suit/model limitation
+## Important limitation
 
-The script does **not** include an Iron Man 3D suit or textures. A real visual suit requires compatible character model assets and a verified way to load or replace the player model in this particular GLUE 5 game build. The modding API documents access to game natives and the models already present in the installed game; that does not by itself add a new custom model. No custom model has been bundled or tested here.
+This is **not a custom Iron Man suit**. It calls GTA V's `SET_PLAYER_MODEL` native with an existing in-game model; it does not load the GLB prototype or custom textures. A true custom Iron Man character still needs a game-compatible ped asset, GTA V skeleton rigging and texture/material conversion, plus a verified asset-loading path in Glue 5. The player replacement code has been committed but has not yet been built and tested on the user's phone.
