@@ -1,4 +1,5 @@
 --!strict
+-- GLUE5_ANDROID_WEATHER_COLOR_V2
 -- Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.
 
 local weatherTypes = {
@@ -66,6 +67,7 @@ local colourPresets = {
 }
 local activePreset = 1
 local activeStrength = colourPresets[1].strength
+local colourfulEnabled = true
 local function applyColourPreset(index, strength)
     if index == 4 then
         local ok = pcall(function()
@@ -81,28 +83,46 @@ local function applyColourPreset(index, strength)
     return ok
 end
 
+graphicsMenu:toggle("Colorful graphics ON/OFF", true, function(enabled)
+    colourfulEnabled = enabled
+    if enabled then
+        local ok = applyColourPreset(activePreset, activeStrength)
+        ui.notify(ok and "Colorful graphics enabled" or "Colour effect failed; check mod log")
+    else
+        local ok = pcall(function()
+            graphics.clearTimecycleModifier()
+        end)
+        ui.notify(ok and "Original graphics restored" or "Graphics reset native unavailable")
+    end
+end)
 graphicsMenu:choice("Colour preset", { "Natural Vibrant", "Rich Colours", "Warm Natural", "Original" }, 1, function(index)
     if index == 4 then
+        colourfulEnabled = false
         local ok = applyColourPreset(index, 0.0)
         ui.notify(ok and "Original colours restored" or "Graphics reset native unavailable")
         return
     end
     activePreset = index
     activeStrength = colourPresets[index].strength
-    local ok = applyColourPreset(index, activeStrength)
-    ui.notify(ok and ("Applied: " .. colourPresets[index].name) or "Colour effect failed; check mod log")
+    if colourfulEnabled then
+        local ok = applyColourPreset(index, activeStrength)
+        ui.notify(ok and ("Applied: " .. colourPresets[index].name) or "Colour effect failed; check mod log")
+    end
 end)
 graphicsMenu:slider("Colour strength", activeStrength, 0.0, 1.0, 0.05, function(strength)
     activeStrength = strength
-    local ok = applyColourPreset(activePreset, activeStrength)
-    if not ok then
-        ui.notify("Colour strength failed; check mod log")
+    if colourfulEnabled then
+        local ok = applyColourPreset(activePreset, activeStrength)
+        if not ok then
+            ui.notify("Colour strength failed; check mod log")
+        end
     end
 end)
 graphicsMenu:button("Reset colours", function()
     local ok = pcall(function()
         graphics.clearTimecycleModifier()
     end)
+    colourfulEnabled = false
     activePreset = 1
     activeStrength = colourPresets[1].strength
     ui.notify(ok and "Original colours restored" or "Graphics reset native unavailable")
