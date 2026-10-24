@@ -102,6 +102,12 @@ jobs:
               ;;
           esac
 
+      - name: Package the Android time, weather and graphics mod
+        if: inputs.platform == 'android' || github.event_name == 'push'
+        run: |
+          zip -j Glue5-android-weather-graphics.zip examples/android-weather-graphics/main.luau
+          echo "Packaged lightweight Photorealistic, Warm Natural, Original, Time and Weather mod." >>"$GITHUB_STEP_SUMMARY"
+
       - name: Into the draft release
         run: |
           .github/scripts/draft.sh upload "${{ steps.game.outputs.release }}" Glue5-*
