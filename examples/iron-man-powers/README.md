@@ -1,8 +1,15 @@
-# Iron Man Powers for GLUE 5 Android
+# Iron Man Flight Controls for GLUE 5 Android
 
-This example adds a touch-friendly **Iron Man Powers** menu with take-off, landing, forward boost, and small hover movements. It uses the game's existing character and does not add combat abilities.
+This example adds a touch-friendly **Iron Man Flight** menu:
+- Start/stop continuous forward flight
+- Ascend and descend
+- Forward boost
+- Land
+
+It moves the game's current character using position natives. It is a script-based movement effect, not physics-based flight, and it has not yet been tested on the user's phone.
 
 ## Install
+
 Copy this folder into the game's mods folder so the layout is:
 `mods/iron-man-powers/main.luau`
 and
@@ -10,5 +17,6 @@ and
 
 Restart Glue 5 with mods enabled. If the menu does not appear, check the mod's error/log entry in GLUE 5 Studio.
 
-## Suit model limitation
-This mod script does **not** contain an Iron Man suit mesh/texture. A visual suit requires a compatible custom character model asset and a verified model-loading/replacement path in this GLUE 5 build. This repository example does not pretend that a script-only menu is a complete suit replacement.
+## Iron Man suit/model limitation
+
+The script does **not** include an Iron Man 3D suit or textures. A real visual suit requires compatible character model assets and a verified way to load or replace the player model in this particular GLUE 5 game build. The modding API documents access to game natives and the models already present in the installed game; that does not by itself add a new custom model. No custom model has been bundled or tested here.
