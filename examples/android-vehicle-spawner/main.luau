@@ -34,7 +34,7 @@ local categories = {
     },
 }
 
-local function spawnVehicle(modelName)
+local function spawnVehicleImpl(modelName)
     local playerPed = nil
     local pedOk, pedResult = pcall(function()
         return player.playerPedId()
@@ -104,6 +104,24 @@ local function spawnVehicle(modelName)
         ui.notify("Spawned: " .. modelName .. " - " .. detail)
     else
         ui.notify("Spawned: " .. modelName)
+    end
+end
+
+
+-- Serialize model loads/spawns: rapid taps cannot queue several large models.
+local spawning = false
+local function spawnVehicle(modelName)
+    if spawning then
+        ui.notify("Please wait for the current vehicle to finish loading")
+        return
+    end
+    spawning = true
+    local ok, err = pcall(function()
+        spawnVehicleImpl(modelName)
+    end)
+    spawning = false
+    if not ok then
+        ui.notify("Vehicle spawn failed: " .. tostring(err))
     end
 end
 
