@@ -206,37 +206,10 @@ fn install_bundled_weather_mod(dir: &Path) {
     }
 }
 
-/// On Android, keep only the bundled time/weather/graphics mod and Glue 5's
-/// own hidden state directory. This is intentional for the lightweight build.
-#[cfg(target_os = "android")]
-fn cleanup_android_mods(dir: &Path) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(e) => {
-            log::warn!("cannot inspect Android mods folder: {e}");
-            return;
-        }
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name == ".glue5" || name == "weather-color-enhancer" {
-            continue;
-        }
-        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-            if let Err(e) = std::fs::remove_dir_all(entry.path()) {
-                log::warn!("cannot remove extra Android mod {name}: {e}");
-            }
-        }
-    }
-}
-
 /// The mods folder `dir` (made if missing): its mods listed, their files
 /// open to the Studio. Before the game too; they run once [`install`]ed.
 pub fn open(dir: &Path) {
     let _ = std::fs::create_dir_all(dir);
-    #[cfg(target_os = "android")]
-    cleanup_android_mods(dir);
     #[cfg(target_os = "android")]
     install_bundled_weather_mod(dir);
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
