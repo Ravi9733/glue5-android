@@ -1,4 +1,5 @@
 --!strict
+-- GLUE5_ANDROID_VEHICLE_SPAWNER_V3
 -- Single-menu Android vehicle spawner for Glue 5.
 -- GTA natives take CREATE_VEHICLE coordinates as separate numeric arguments,
 -- not as a vector. Model names are hashed by the native bridge.
