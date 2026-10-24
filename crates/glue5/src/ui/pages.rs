@@ -816,16 +816,12 @@ fn settings_items(
                 |ui| toggle(ui, &mut settings.light_graphics_mode),
             )
             .on_hover_text(
-                "On: subtle colour boost, 75% render scale, supported FSR (otherwise bicubic), 60 FPS cap and VSync. Off disables colour grading and restores automatic resolution and baseline upscaling. Lightweight renderer effect, not a GTA asset/shader pack.",
+                "On: subtle colour boost, 75% render scale, Bicubic upscaling, 60 FPS cap and VSync. Off disables colour grading and restores automatic resolution and baseline upscaling. Lightweight renderer effect, not a GTA asset/shader pack.",
             );
             if mode.changed() {
                 if settings.light_graphics_mode {
                     settings.render_scale = Some(0.75);
-                    settings.upscaler = if status.upscalers.contains(&Upscaling::Fsr) {
-                        Upscaling::Fsr
-                    } else {
-                        Upscaling::Bicubic
-                    };
+                    settings.upscaler = Upscaling::Bicubic;
                     settings.sharpness = 0.35;
                     settings.max_fps = 60;
                     settings.vsync = true;
@@ -852,26 +848,26 @@ fn settings_items(
                 settings.render_scale = Some(settings::round_scale(scale));
                 *scale_edit = None;
             }
-            if status.upscalers.len() > 1 {
-                let options: Vec<_> = status
-                    .upscalers
-                    .iter()
-                    .map(|&u| {
-                        let name = match u {
-                            Upscaling::Bicubic => "Bicubic",
-                            Upscaling::MetalFx => "MetalFX",
-                            Upscaling::MetalFxTemporal => "MetalFX Temporal",
-                            Upscaling::Fsr => "FSR 2",
-                        };
-                        (u, name)
-                    })
-                    .collect();
+            let options: Vec<_> = status
+                .upscalers
+                .iter()
+                .copied()
+                .filter(|u| *u != Upscaling::Fsr)
+                .map(|u| {
+                    let name = match u {
+                        Upscaling::Bicubic => "Bicubic",
+                        Upscaling::MetalFx => "MetalFX",
+                        Upscaling::MetalFxTemporal => "MetalFX Temporal",
+                        Upscaling::Fsr => unreachable!(),
+                    };
+                    (u, name)
+                })
+                .collect();
+            if !options.is_empty() {
+                if !options.iter().any(|(u, _)| *u == settings.upscaler) {
+                    settings.upscaler = Upscaling::Bicubic;
+                }
                 setting(ui, "Upscaling", Control::Choice, None, |ui| choice(ui, &mut settings.upscaler, &options));
-            }
-            if settings.upscaler == Upscaling::Fsr {
-                setting(ui, "Sharpening", Control::Slider, None, |ui| {
-                    slider(ui, &mut settings.sharpness, 0.0..=1.0, 0.05, "%", 0)
-                });
             }
             if status.frame_generation && settings.upscaler == Upscaling::MetalFxTemporal {
                 setting(ui, "Frame generation", Control::Toggle, None, |ui| toggle(ui, &mut settings.frame_generation));
@@ -1116,7 +1112,7 @@ mod tests {
             graphics_reset: false,
             window: (1440, 900),
             back_buffer: None,
-            upscalers: &[Upscaling::Bicubic, Upscaling::MetalFx, Upscaling::MetalFxTemporal, Upscaling::Fsr],
+            upscalers: &[Upscaling::Bicubic, Upscaling::MetalFx, Upscaling::MetalFxTemporal],
             frame_generation: true,
             metal_hud: false,
             refresh_rate: 120.0,
