@@ -1,5 +1,5 @@
 --!strict
--- GLUE5_ANDROID_PHOTOREALISTIC_V1
+-- GLUE5_ANDROID_PHOTOREALISTIC_LIGHT_V2
 -- Lightweight time, weather and built-in filmic graphics presets for Glue 5 Android.
 -- Uses GTA V timecycle modifiers; this is not a custom shader/texture overhaul.
 
@@ -54,6 +54,7 @@ local graphicsMenu = ui.menu("Graphics")
 graphicsMenu:label("Choose a lightweight visual preset")
 local presets = {
     { name = "Original", modifier = "", strength = 0.0 },
+    { name = "Light Graphics", modifier = "NG_filmic01", strength = 0.30 },
     { name = "Photorealistic", modifier = "NG_filmic01", strength = 0.65 },
     { name = "Warm Natural", modifier = "cinema", strength = 0.60 },
 }
@@ -93,7 +94,7 @@ graphicsMenu:toggle("Graphics Effects ON/OFF", false, function(enabled)
 end)
 
 graphicsMenu:choice("Visual Style", {
-    "Original", "Photorealistic", "Warm Natural",
+    "Original", "Light Graphics", "Photorealistic", "Warm Natural",
 }, activeIndex, function(index)
     activeIndex = index
     activeStrength = presets[index].strength
