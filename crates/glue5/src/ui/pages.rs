@@ -778,7 +778,7 @@ fn settings_items(
                         .is_some_and(|name| {
                             let name = name.trim();
                             !name.is_empty()
-                                && !name.contains('/')
+                                && !name.contains('\\')
                                 && !name.contains('\\\\')
                                 && dir.join("turnip").join(name).is_file()
                         })
