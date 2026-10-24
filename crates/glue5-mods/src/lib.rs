@@ -183,9 +183,10 @@ fn install_bundled_weather_mod(dir: &Path) {
     let should_write = match std::fs::read_to_string(&script) {
         Err(_) => true,
         Ok(existing) => {
-            existing.contains("Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.")
-                || existing.contains("Weather, Time Changer and Colorful Graphics loaded.")
-                || existing.contains("Weather Changer, Time Changer and Colorful Graphics menus loaded.")
+            !existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V2")
+                && (existing.contains("Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.")
+                    || existing.contains("Weather, Time Changer and Colorful Graphics loaded.")
+                    || existing.contains("Weather Changer, Time Changer and Colorful Graphics menus loaded."))
         }
     };
     if should_write
@@ -202,8 +203,8 @@ fn install_bundled_weather_mod(dir: &Path) {
     }
 }
 
-/// On Android, install one bundled Vehicle Spawner mod with Cars, Bikes,
-/// Planes and Boats inside its single Vehicles menu.
+/// On Android, install the bundled Vehicle Spawner with seven lightweight
+/// categories: Cars, Bikes, Bicycles, SUVs, Trucks, Supercars and Emergency Vehicles.
 #[cfg(target_os = "android")]
 fn install_bundled_vehicle_mod(dir: &Path) {
     let mod_dir = dir.join("Vehicle Spawner");
@@ -228,8 +229,9 @@ fn install_bundled_vehicle_mod(dir: &Path) {
     let should_write = match std::fs::read_to_string(&script) {
         Err(_) => true,
         Ok(existing) => {
-            existing.contains("Android vehicle spawner for Glue 5.")
-                || existing.contains("One Vehicles menu with a separate model selector")
+            !existing.contains("GLUE5_ANDROID_VEHICLE_SPAWNER_V2")
+                && (existing.contains("Android vehicle spawner for Glue 5.")
+                    || existing.contains("One Vehicles menu with a separate model selector"))
         }
     };
     if should_write
