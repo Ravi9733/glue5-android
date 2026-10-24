@@ -938,23 +938,25 @@ impl App {
         if self.mode == Mode::Online && self.settings.online_name.trim().is_empty() {
             self.settings.online_name = settings::default_online_name();
         }
-        // On Android, keep the bundled trainer present in the active mods
-        // directory. Repair old marker/path mismatches and make sure the mod
-        // system is enabled; existing user-edited files are kept.
+        // On Android, install the bundled trainer, the single vehicle spawner,
+        // and the weather/time/colour controls into the active mods directory.
+        // Versioned upgrades repair older installs while keeping settings and saves.
         #[cfg(target_os = "android")]
         {
             let marker = self.user_dir.join("android-trainer-installed");
             let mods_dir = self.mods_dir();
             let trainer = mods_dir.join("android-trainer");
             let spawner = mods_dir.join("android-vehicle-spawner");
-            // Upgrade the bundled spawner once so existing installs receive fixes.
-            let needs_spawner_update =
-                std::fs::read_to_string(&marker).map(|version| version.trim() != "4").unwrap_or(true);
+            let weather = mods_dir.join("android-weather-graphics");
+            let installed_version = std::fs::read_to_string(&marker)
+                .map(|version| version.trim().to_owned()).unwrap_or_default();
+            let needs_update = installed_version != "5";
             let install = (|| -> std::io::Result<()> {
                 std::fs::create_dir_all(&trainer)?;
                 std::fs::create_dir_all(&spawner)?;
+                std::fs::create_dir_all(&weather)?;
                 let script = trainer.join("main.luau");
-                if !script.exists() {
+                if needs_update || !script.exists() {
                     std::fs::write(&script, include_str!("../../../examples/android-trainer/main.luau"))?;
                 }
                 let manifest = trainer.join("mod.json");
@@ -962,22 +964,33 @@ impl App {
                     std::fs::write(&manifest, "{\n  \"autostart\": true\n}\n")?;
                 }
                 let spawner_script = spawner.join("main.luau");
-                if needs_spawner_update || !spawner_script.exists() {
+                if needs_update || !spawner_script.exists() {
                     std::fs::write(&spawner_script, include_str!("../../../examples/android-vehicle-spawner/main.luau"))?;
                 }
                 let spawner_manifest = spawner.join("mod.json");
                 if !spawner_manifest.exists() {
                     std::fs::write(&spawner_manifest, "{\n  \"autostart\": true\n}\n")?;
                 }
-                std::fs::write(&marker, b"4")?;
+                let weather_script = weather.join("main.luau");
+                if needs_update || !weather_script.exists() {
+                    std::fs::write(&weather_script, include_str!("../../../examples/android-weather-graphics/main.luau"))?;
+                }
+                let weather_manifest = weather.join("mod.json");
+                if !weather_manifest.exists() {
+                    std::fs::write(&weather_manifest, "{\n  \"autostart\": true\n}\n")?;
+                }
+                std::fs::write(&marker, b"5")?;
                 Ok(())
             })();
             match install {
                 Ok(()) => {
                     self.settings.mods = true;
-                    log::info!("Android Trainer installed in {}; Vehicle Spawner installed in {}", trainer.display(), spawner.display());
+                    log::info!(
+                        "Android Trainer, Vehicle Spawner, and Weather/Time/Colorful Graphics installed in {}",
+                        mods_dir.display()
+                    );
                 }
-                Err(e) => log::warn!("cannot install Android Trainer: {e}"),
+                Err(e) => log::warn!("cannot install bundled Android mods: {e}"),
             }
         }
         // If the mods folder was opened before installation, refresh it so
