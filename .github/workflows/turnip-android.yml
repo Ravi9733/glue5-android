@@ -74,7 +74,11 @@ jobs:
           cp target/android/gradle/outputs/apk/release/Glue5-release.apk Glue5-android-turnip-test.apk
           cp ~/.android/debug.keystore Glue5-android.keystore
 
-      - name: Upload APK to draft release
+      - name: Package Android time, weather and graphics mod
         run: |
-          .github/scripts/draft.sh upload "${{ steps.game.outputs.release }}" Glue5-android-turnip-test.apk Glue5-android.keystore
-          echo "Turnip integration APK built; select Turnip only after importing a compatible driver ZIP." >>"$GITHUB_STEP_SUMMARY"
+          zip -j Glue5-android-weather-graphics.zip examples/android-weather-graphics/main.luau
+
+      - name: Upload APK and mod to draft release
+        run: |
+          .github/scripts/draft.sh upload "${{ steps.game.outputs.release }}" Glue5-android-turnip-test.apk Glue5-android.keystore Glue5-android-weather-graphics.zip
+          echo "Turnip integration APK and lightweight time/weather/graphics mod packaged. The mod ZIP must be installed into the game's mods folder separately." >>"$GITHUB_STEP_SUMMARY"
