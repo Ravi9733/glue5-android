@@ -183,8 +183,9 @@ fn install_bundled_weather_mod(dir: &Path) {
     let should_write = match std::fs::read_to_string(&script) {
         Err(_) => true,
         Ok(existing) => {
-            !existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V3")
-                && (existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V2")
+            !existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V4")
+                && (existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V3")
+                    || existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V2")
                     || existing.contains("Android weather, time, teleport and lightweight graphics controls for Glue 5.")
                     || existing.contains("Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.")
                     || existing.contains("Weather, Time Changer and Colorful Graphics loaded.")
@@ -205,41 +206,28 @@ fn install_bundled_weather_mod(dir: &Path) {
     }
 }
 
-/// On Android, install the bundled vehicle spawner under a valid lowercase mod name.
+/// On Android, keep only the bundled time/weather/graphics mod and Glue 5's
+/// own hidden state directory. This is intentional for the lightweight build.
 #[cfg(target_os = "android")]
-fn install_bundled_vehicle_mod(dir: &Path) {
-    let mod_dir = dir.join("android-vehicle-spawner");
-    let legacy_dir = dir.join("Vehicle Spawner");
-    if !mod_dir.exists() && legacy_dir.exists() {
-        let _ = std::fs::rename(&legacy_dir, &mod_dir);
-    }
-    if let Err(e) = std::fs::create_dir_all(&mod_dir) {
-        log::warn!("cannot create bundled vehicle spawner: {e}");
-        return;
-    }
-    let script = mod_dir.join("main.luau");
-    let bundled_script = include_str!("../../../examples/android-vehicle-spawner/main.luau");
-    let should_write = match std::fs::read_to_string(&script) {
-        Err(_) => true,
-        Ok(existing) => {
-            !existing.contains("GLUE5_ANDROID_VEHICLE_SPAWNER_V3")
-                && (existing.contains("GLUE5_ANDROID_VEHICLE_SPAWNER_V2")
-                    || existing.contains("Single-menu Android vehicle spawner for Glue 5.")
-                    || existing.contains("Android vehicle spawner for Glue 5.")
-                    || existing.contains("One Vehicles menu with a separate model selector"))
+fn cleanup_android_mods(dir: &Path) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            log::warn!("cannot inspect Android mods folder: {e}");
+            return;
         }
     };
-    if should_write
-        && let Err(e) = std::fs::write(&script, bundled_script)
-    {
-        log::warn!("cannot install/upgrade bundled vehicle spawner script: {e}");
-        return;
-    }
-    let manifest = mod_dir.join("mod.json");
-    if !manifest.exists()
-        && let Err(e) = std::fs::write(&manifest, r#"{ "autostart": true }"#)
-    {
-        log::warn!("cannot install bundled vehicle spawner manifest: {e}");
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == ".glue5" || name == "weather-color-enhancer" {
+            continue;
+        }
+        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            if let Err(e) = std::fs::remove_dir_all(entry.path()) {
+                log::warn!("cannot remove extra Android mod {name}: {e}");
+            }
+        }
     }
 }
 
@@ -248,9 +236,9 @@ fn install_bundled_vehicle_mod(dir: &Path) {
 pub fn open(dir: &Path) {
     let _ = std::fs::create_dir_all(dir);
     #[cfg(target_os = "android")]
-    install_bundled_weather_mod(dir);
+    cleanup_android_mods(dir);
     #[cfg(target_os = "android")]
-    install_bundled_vehicle_mod(dir);
+    install_bundled_weather_mod(dir);
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
         return;
     }
