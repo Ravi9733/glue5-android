@@ -47,8 +47,8 @@ timeMenu:button("Resume natural time", function()
     ui.notify(ok and "Natural time resumed" or "Clock resume unavailable")
 end)
 
--- These are built-in timecycle looks (not a new shader pass). Bloom Style is
--- a bloom-like cinematic grade; Film Style uses GTA's built-in filmic modifier.
+-- These are built-in GTA timecycle colour grades, not custom shaders.
+-- Anime/Cartoon presets boost colour and stylisation; true cel outlines require a shader.
 local graphicsMenu = ui.menu("Graphics Style")
 graphicsMenu:label("Choose a built-in look and set its strength")
 local presets = {
@@ -58,6 +58,8 @@ local presets = {
     { name = "Bloom Style", modifier = "MP_corona_heist", strength = 0.75 },
     { name = "Film Style", modifier = "NG_filmic01", strength = 0.8 },
     { name = "Cinematic Film", modifier = "cinema_2", strength = 0.75 },
+    { name = "Anime Color", modifier = "rply_saturation", strength = 1.0 },
+    { name = "Cartoon Pop", modifier = "MP_corona_tournament", strength = 0.85 },
 }
 local activeIndex = 4
 local activeStrength = presets[activeIndex].strength
@@ -96,6 +98,7 @@ end)
 
 graphicsMenu:choice("Visual Style", {
     "Original", "Vibrant", "Warm Natural", "Bloom Style", "Film Style", "Cinematic Film",
+    "Anime Color", "Cartoon Pop",
 }, activeIndex, function(index)
     activeIndex = index
     activeStrength = presets[index].strength
