@@ -1,0 +1,25 @@
+name: Package Iron Man Mod
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'mods/iron_man/**'
+      - '.github/workflows/package-iron-man-mod.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create installable ZIP
+        run: zip -r Iron_Man_Glue5_Mod.zip mods/iron_man
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Iron_Man_Glue5_Mod
+          path: Iron_Man_Glue5_Mod.zip
+          if-no-files-found: error
