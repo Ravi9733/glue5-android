@@ -1,38 +1,36 @@
 --!strict
+-- GLUE5_ANDROID_VEHICLE_SPAWNER_V2
 -- Android vehicle spawner for Glue 5.
 -- This is a Luau/native-bridge mod, not a PC .asi/.dll trainer.
 
 local categories = {
     {
         title = "Cars",
-        models = {
-            "adder", "zentorno", "t20", "turismor", "entityxf", "cheetah",
-            "infernus", "comet2", "elegy", "buffalo", "sultan", "kuruma",
-            "dominator", "futo", "baller", "schafter2",
-        },
+        models = { "blista", "buffalo", "comet2", "dominator", "elegy", "futo", "oracle", "premier", "sultan", "tailgater", "vigero", "zion" },
     },
     {
         title = "Bikes",
-        models = {
-            "bati", "bati2", "akuma", "carbonrs", "daemon", "double",
-            "hakuchou", "hexer", "nemesis", "pcj", "ruffian", "sanchez",
-            "vader", "lectro",
-        },
+        models = { "akuma", "bati", "bati2", "carbonrs", "daemon", "double", "hakuchou", "nemesis", "pcj", "ruffian", "sanchez", "vader" },
     },
     {
-        title = "Planes",
-        models = {
-            "dodo", "duster", "luxor", "shamal", "vestra", "mammatus",
-            "cuban800", "velum", "velum2", "besra", "hydra", "lazer",
-            "titan",
-        },
+        title = "Bicycles",
+        models = { "bmx", "cruiser", "fixter", "scorcher", "tribike", "tribike2", "tribike3" },
     },
     {
-        title = "Boats",
-        models = {
-            "dinghy", "dinghy2", "jetmax", "marquis", "seashark",
-            "seashark2", "speeder", "squalo", "toro", "tropic", "tug",
-        },
+        title = "SUVs",
+        models = { "baller", "baller2", "cavalcade", "dubsta", "granger", "huntley", "landstalker", "mesa", "patriot", "radi", "seminole", "xls" },
+    },
+    {
+        title = "Trucks",
+        models = { "benson", "biff", "hauler", "mule", "phantom", "pounder", "barracks", "guardian", "sandking", "sandking2", "bobcatxl", "towtruck" },
+    },
+    {
+        title = "Supercars",
+        models = { "adder", "autarch", "banshee2", "bullet", "cheetah", "entityxf", "fmj", "infernus", "osiris", "reaper", "t20", "tempesta", "turismor", "tyrus", "vacca", "zentorno" },
+    },
+    {
+        title = "Emergency Vehicles",
+        models = { "ambulance", "firetruk", "police", "police2", "police3", "police4", "policeb", "policet", "pranger", "sheriff", "sheriff2", "riot", "fbi", "fbi2" },
     },
 }
 
