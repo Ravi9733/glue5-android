@@ -979,7 +979,7 @@ impl App {
                 if !weather_manifest.exists() {
                     std::fs::write(&weather_manifest, "{\n  \"autostart\": true\n}\n")?;
                 }
-                std::fs::write(&marker, b"5")?;
+                std::fs::write(&marker, b"6")?;
                 Ok(())
             })();
             match install {
