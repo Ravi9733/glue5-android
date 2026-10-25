@@ -286,6 +286,12 @@ fn studio_tab(ui: &mut egui::Ui, settings: &mut Settings, status: &Status) {
                     ui.ctx().copy_text(info.code.clone());
                 }
             });
+            let installer_url = format!("{}/install-mod?{}", address, info.url.split_once('?').map(|(_, q)| q).unwrap_or(""));
+            setting(ui, "Install Mods", Control::Action, Some("Copy the ZIP installer link; open it in a browser on this device"), |ui| {
+                if action_button(ui, "Copy link").clicked() {
+                    ui.ctx().copy_text(installer_url.clone());
+                }
+            });
             if info.lan {
                 qr_row(ui, &info.url);
             }
