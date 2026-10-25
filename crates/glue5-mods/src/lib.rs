@@ -9,6 +9,7 @@
 
 mod checker;
 mod engine;
+pub mod installer;
 pub mod files;
 mod json;
 mod menus;
