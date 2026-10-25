@@ -397,6 +397,26 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
     world.set("pedModels", lua.create_function(|_, ()| Ok(crate::world::catalog().map(|c| c.peds).unwrap_or_default()))?)?;
     world.set("weapons", lua.create_function(|_, ()| Ok(crate::world::catalog().map(|c| c.weapons).unwrap_or_default()))?)?;
     g.set("world", world)?;
+    // ScriptHook-style pool enumeration used by many trainers.
+    // The supported pool names are intentionally explicit; this does not expose
+    // arbitrary game memory or Windows process structures.
+    g.set("GetGamePool", lua.create_function(|lua, pool_name: String| {
+        let pool = match pool_name.as_str() {
+            "CVehicle" => Pool::Vehicles,
+            "CPed" => Pool::Peds,
+            "CObject" => Pool::Objects,
+            _ => return Err(mlua::Error::runtime(format!(
+                "GetGamePool: unsupported pool '{pool_name}' (use CVehicle, CPed, or CObject)"
+            ))),
+        };
+        let env = natives::env().ok_or_else(|| mlua::Error::runtime("GetGamePool: only available in a mod's script"))?;
+        let handles = unsafe { crate::world::handles(env, pool, 4096) };
+        let result = lua.create_table()?;
+        for (i, handle) in handles.into_iter().enumerate() {
+            result.raw_set(i + 1, handle)?;
+        }
+        Ok(result)
+    })?)?;
     let get_hash_key = lua.create_function(|_, s: mlua::LuaString| Ok(natives::joaat(&s.to_str()?)))?;
     g.set("joaat", get_hash_key.clone())?;
     g.set("GetHashKey", get_hash_key)?;
