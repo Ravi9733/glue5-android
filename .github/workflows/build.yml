@@ -103,32 +103,24 @@ jobs:
               ;;
           esac
 
-      - name: Package the Android time, weather and graphics mod
+      - name: Package only graphics, time and weather mod
         if: inputs.platform == 'android' || github.event_name == 'push'
         run: |
-          zip -j Glue5-android-weather-graphics.zip examples/android-weather-graphics/main.luau
-          echo "Packaged lightweight Photorealistic, Warm Natural, Original, Time and Weather mod." >>"$GITHUB_STEP_SUMMARY"
+          mkdir -p clean-mods/graphics-time-weather
+          cp examples/android-weather-graphics/main.luau clean-mods/graphics-time-weather/main.luau
+          cp examples/android-weather-graphics/mod.json clean-mods/graphics-time-weather/mod.json
+          (cd clean-mods && zip -qr ../Glue5-graphics-time-weather-only.zip graphics-time-weather)
+          echo "Clean mod pack contains only graphics presets, time and weather. Trainer, vehicle-spawner and custom button-layout mods are not packaged." >>"$GITHUB_STEP_SUMMARY"
 
-      - name: Package PC Trainer V Android adapter
-        if: github.ref_name == 'pc-trainer-compatibility' && (inputs.platform == 'android' || github.event_name == 'push')
-        run: |
-          mkdir -p trainer-package/pc-trainer-v-android
-          cp examples/android-pc-trainer-adapter/main.luau trainer-package/pc-trainer-v-android/main.luau
-          cp examples/android-pc-trainer-adapter/mod.json trainer-package/pc-trainer-v-android/mod.json
-          cp examples/android-pc-trainer-adapter/README.md trainer-package/pc-trainer-v-android/README.md
-          (cd trainer-package && zip -qr ../Glue5-android-pc-trainer.zip pc-trainer-v-android)
-          echo "Packaged the Android Luau trainer adapter separately from the APK. In-game actions still require validation." >>"$GITHUB_STEP_SUMMARY"
-
-      - name: Upload branch build artifacts (trainer development branch)
+      - name: Upload clean Android build (no extra mods)
         if: github.ref_name == 'pc-trainer-compatibility' && (inputs.platform == 'android' || github.event_name == 'push')
         uses: actions/upload-artifact@v4
         with:
-          name: Glue5-android-pc-trainer-build
+          name: Glue5-android-clean-build
           path: |
             Glue5-android.apk
             Glue5-android.keystore
-            Glue5-android-weather-graphics.zip
-            Glue5-android-pc-trainer.zip
+            Glue5-graphics-time-weather-only.zip
           if-no-files-found: error
           retention-days: 14
 
