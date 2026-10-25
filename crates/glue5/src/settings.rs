@@ -64,6 +64,8 @@ pub struct Settings {
     pub overlay_detail: OverlayDetail,
     pub overlay_corner: Corner,
     pub touch: TouchMode,
+    /// Alternate Button Tiki touch-button arrangement; off preserves the original layout.
+    pub button_tiki_layout: bool,
     pub touch_opacity: f32,
     pub touch_size: f32,
     /// How fast a finger's drag turns the camera.
@@ -246,6 +248,7 @@ impl Default for Settings {
             overlay_detail: OverlayDetail::Standard,
             overlay_corner: Corner::TopLeft,
             touch: TouchMode::Auto,
+            button_tiki_layout: false,
             touch_opacity: 0.6,
             touch_size: 1.0,
             touch_camera: 1.0,
