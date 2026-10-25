@@ -358,6 +358,29 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
     citizen.set("CreateThread", spawn.call::<Function>(task.clone())?)?;
     citizen.set("SetTimeout", task.get::<Function>("delay")?)?;
     g.set("SetTimeout", task.get::<Function>("delay")?)?;
+    // ScriptHook-style InvokeNative compatibility for hashes present in
+    // Glue5's generated native database for this exact game build. Unknown
+    // hashes fail clearly instead of being guessed or called unsafely.
+    let invoke_native = lua.create_function(|lua, mut args: MultiValue| {
+        let hash_value = args.pop_front().ok_or_else(|| mlua::Error::runtime("Citizen.InvokeNative: missing native hash"))?;
+        let hash = match hash_value {
+            Value::Integer(i) => i as u64,
+            Value::Number(n) if n.is_finite() && n >= 0.0 && n <= u64::MAX as f64 => n as u64,
+            Value::String(s) => {
+                let raw = s.to_str()?;
+                let trimmed = raw.trim().trim_start_matches("0x").trim_start_matches("0X");
+                u64::from_str_radix(trimmed, 16).or_else(|_| raw.parse::<u64>())
+                    .map_err(|_| mlua::Error::runtime("Citizen.InvokeNative: hash string must be decimal or hexadecimal"))?
+            }
+            _ => return Err(mlua::Error::runtime("Citizen.InvokeNative: hash must be an integer or string")),
+        };
+        let index = natives::find_hash(hash).ok_or_else(|| mlua::Error::runtime(format!(
+            "Citizen.InvokeNative: native hash 0x{hash:016X} is not present in this Glue5 build's native database"
+        )))?;
+        natives::call(lua, index, args)
+    })?;
+    citizen.set("InvokeNative", invoke_native.clone())?;
+    g.set("InvokeNative", invoke_native)?;
     g.set("Citizen", citizen)?;
     g.set("task", task.clone())?;
     menus::install(&lua, name, sched.handlers.clone())?;
