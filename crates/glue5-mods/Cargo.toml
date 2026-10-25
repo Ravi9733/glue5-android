@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 glue5-game.workspace = true
 glue5-runtime.workspace = true
+glue5-pc-mod-runtime = { path = "../glue5-pc-mod-runtime" }
 log.workspace = true
 serde_json.workspace = true
 mlua = { version = "0.12", features = ["luau"] }
