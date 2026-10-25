@@ -46,3 +46,15 @@ and unknown DLLs) and emits explicit blockers. This is deliberately conservative
 PE imports do not reveal every dynamically resolved API or prove which exports a
 plugin calls. The plan always reports that the plugin is not executable in Glue5
 until a real Windows x64 execution environment and game-specific API bridge exist.
+
+
+Source Lua trainer aliases
+--------------------------
+The Lua VM now exposes compatibility aliases commonly used by source-based
+trainer scripts: `CreateThread`, `Citizen.CreateThread`, `Citizen.Wait`,
+`Wait`, `SetTimeout`, `Citizen.SetTimeout`, and `GetHashKey`. They adapt
+thread scheduling and hashing to Glue 5's existing mod VM. This is a small
+source-script porting aid, not a drop-in ScriptHookV implementation; functions
+such as `Citizen.InvokeNative`, PC memory hooks, and Windows DLL loading are
+not provided by these aliases. The source change has not been compiled or
+tested in-game.
