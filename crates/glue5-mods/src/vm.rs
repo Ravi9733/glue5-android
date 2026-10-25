@@ -96,10 +96,15 @@ impl Vm {
             .set_name("=ready")
             .eval()?;
         lua.sandbox(true)?;
-        let path = dir.join("main.luau");
+        // Prefer Glue 5's native entrypoint, but also accept source-based Lua
+        // mods. This is not a Windows .asi/.dll or ScriptHookV compatibility layer.
+        let path = [dir.join("main.luau"), dir.join("main.lua")].into_iter()
+            .find(|candidate| candidate.is_file())
+            .ok_or_else(|| mlua::Error::runtime(format!("{name}: expected main.luau or main.lua")))?;
         let source = std::fs::read_to_string(&path)
             .map_err(|e| mlua::Error::runtime(format!("reading {}: {e}", path.display())))?;
-        let chunk = lua.load(source).set_name(format!("@{name}/main.luau")).into_function()?;
+        let entrypoint = path.file_name().unwrap_or_default().to_string_lossy();
+        let chunk = lua.load(source).set_name(format!("@{name}/{entrypoint}")).into_function()?;
         let main = lua.create_thread(ready.call::<Function>(chunk)?)?;
         Ok(Vm {
             lua,
