@@ -323,6 +323,8 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
         .set_name("=wait")
         .eval()?;
     g.set("wait", wait.clone())?;
+    // Common ScriptHook-style trainers call Wait(ms) rather than wait(ms).
+    g.set("Wait", wait.clone())?;
     // `task.spawn(f, ...)`, `task.delay(ms, f, ...)`, `task.wait(ms)`.
     let task = lua.create_table()?;
     task.set("wait", wait)?;
