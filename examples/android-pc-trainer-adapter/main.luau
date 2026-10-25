@@ -53,7 +53,7 @@ menu:label("VEHICLE")
 menu:button("Repair current vehicle", function()
     local ok, err = pcall(function()
         local ped = player.playerPedId()
-        local veh = ped.getVehiclePedIsIn(ped, false)
+        local veh = vehicle.getVehiclePedIsIn(ped, false)
         if not veh or veh == 0 then error("Enter a vehicle first") end
         vehicle.setVehicleFixed(veh)
         vehicle.setVehicleDirtLevel(veh, 0.0)
