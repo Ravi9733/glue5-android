@@ -519,6 +519,8 @@ pub struct Touch {
     /// The player's aim is locked on to a target: drags push the right
     /// stick instead of turning the camera.
     pub aim_locked: bool,
+    /// Alternate Button Tiki arrangement; false preserves the built-in layout.
+    button_tiki_layout: bool,
     /// What the player is doing: the layout follows.
     context: PlayerContext,
     /// What the game asks to press, and where the phone is (points).
@@ -595,6 +597,7 @@ impl Touch {
             haptics: false,
             camera_speed: 1.0,
             aim_locked: false,
+            button_tiki_layout: false,
             context: PlayerContext {
                 activity: Activity::OnFoot,
                 vehicle_near: false,
@@ -635,6 +638,33 @@ impl Touch {
         self.screen = screen;
         self.area = area;
         self.scale = control_scale(screen, scale);
+    }
+
+    /// Select the alternate button arrangement without changing input bindings.
+    pub fn set_button_tiki_layout(&mut self, enabled: bool) {
+        if self.button_tiki_layout != enabled {
+            self.button_tiki_layout = enabled;
+            self.fingers.clear();
+        }
+    }
+
+    fn button_tiki_at(&self, a: &Action) -> Option<At> {
+        if !self.button_tiki_layout { return None; }
+        Some(match a.label {
+            "Fire" => At::RightBottom(86.0, 172.0),
+            "Aim" => At::RightBottom(168.0, 248.0),
+            "Jump" | "Pedal" | "Up" => At::RightBottom(78.0, 76.0),
+            "Enter" | "Exit" => At::RightBottom(78.0, 158.0),
+            "Melee\\nReload" => At::RightBottom(158.0, 76.0),
+            "Action" => At::RightBottom(158.0, 158.0),
+            "Cover" => At::RightBottom(78.0, 248.0),
+            "Gas" => At::RightBottom(78.0, 164.0),
+            "Brake" | "Down" => At::RightBottom(168.0, 244.0),
+            "H.brake" => At::RightBottom(168.0, 164.0),
+            "Shoot" => At::RightBottom(78.0, 244.0),
+            "Horn" => At::RightBottom(168.0, 76.0),
+            _ => return None,
+        })
     }
 
     /// What the player is doing now. Fingers down keep what they hold.
@@ -813,12 +843,13 @@ impl Touch {
                 // Melee and reload are one button: what B does with what is
                 // in hand.
                 let icon = if a.icon == "melee" && self.context.gun { "reload" } else { a.icon };
-                let at = match a.at {
-                    At::MidTop(..) => self.pos(a.at),
+                let chosen_at = self.button_tiki_at(a).unwrap_or(a.at);
+                let at = match chosen_at {
+                    At::MidTop(..) => self.pos(chosen_at),
                     _ if phone => beside
                         .next()
                         .map_or(self.pos(a.at), |d| pos2(keys[4].x - d.x * s, self.area.max.y - d.y * s)),
-                    _ => self.pos(a.at),
+                    _ => self.pos(chosen_at),
                 };
                 Button { icon, ..round(Key::Action(a), at, a) }
             })
