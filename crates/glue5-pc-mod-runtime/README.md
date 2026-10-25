@@ -36,3 +36,13 @@ as `inspect_pe_dependencies` for future diagnostics. This is static analysis
 only: it neither resolves imports nor executes a plugin, and dependency names
 alone cannot prove which APIs a plugin calls. It is groundwork for selecting
 and implementing a compatibility subset, not Windows plugin support.
+
+
+Compatibility blocker planning
+------------------------------
+The parser now groups imported DLLs into likely dependency areas (ScriptHookV,
+Windows kernel/process APIs, Windows UI, C/C++ runtime, Direct3D, audio/input,
+and unknown DLLs) and emits explicit blockers. This is deliberately conservative:
+PE imports do not reveal every dynamically resolved API or prove which exports a
+plugin calls. The plan always reports that the plugin is not executable in Glue5
+until a real Windows x64 execution environment and game-specific API bridge exist.
