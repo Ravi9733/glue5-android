@@ -309,3 +309,121 @@ mod pe_import_tests {
         assert!(!report.uses_scripthookv);
     }
 }
+
+
+/// Coarse dependency groups inferred from PE import names. These groups help
+/// identify missing compatibility work; they are not an API-call trace.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DependencyGroup {
+    ScriptHookV,
+    DotNetRuntime,
+    WindowsKernel,
+    WindowsUi,
+    CRunTime,
+    Graphics,
+    Audio,
+    Input,
+    UnknownWindowsDll,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompatibilityPlan {
+    pub architecture: Architecture,
+    pub groups: Vec<DependencyGroup>,
+    pub blockers: Vec<String>,
+    /// Always false until an actual PE execution engine and GTA API bridge exist.
+    pub executable_here: bool,
+}
+
+/// Build a conservative checklist from a static import report. It intentionally
+/// reports prerequisites instead of guessing that the DLL is compatible.
+pub fn plan_compatibility(report: &PeImportReport) -> CompatibilityPlan {
+    let mut groups = Vec::new();
+    let mut blockers = Vec::new();
+    let mut add = |group, blocker: &str| {
+        if !groups.contains(&group) { groups.push(group); }
+        if !blockers.iter().any(|b| b == blocker) { blockers.push(blocker.to_owned()); }
+    };
+    for dll in &report.imported_dlls {
+        let name = dll.to_ascii_lowercase();
+        match name.as_str() {
+            "scripthookv.dll" | "scripthookv.lib" => add(
+                DependencyGroup::ScriptHookV,
+                "ScriptHookV exports and lifecycle are not implemented for Glue5 WASM",
+            ),
+            "clr.dll" | "mscoree.dll" | "scriptshvdn.dll" | "scriptshvdn2.dll" => add(
+                DependencyGroup::DotNetRuntime,
+                ".NET/SHVDN runtime and managed plugin bridge are not available",
+            ),
+            "kernel32.dll" | "kernelbase.dll" | "ntdll.dll" => add(
+                DependencyGroup::WindowsKernel,
+                "Windows process, memory, thread, and filesystem APIs need compatible shims",
+            ),
+            "user32.dll" | "comdlg32.dll" | "gdi32.dll" => add(
+                DependencyGroup::WindowsUi,
+                "Windows UI APIs have no Android trainer-window equivalent; controls must be ported",
+            ),
+            "msvcrt.dll" | "ucrtbase.dll" | "vcruntime140.dll" | "msvcp140.dll" => add(
+                DependencyGroup::CRunTime,
+                "Windows C/C++ runtime ABI and exception handling are not provided",
+            ),
+            "d3d11.dll" | "d3d12.dll" | "dxgi.dll" | "d3dcompiler_47.dll" => add(
+                DependencyGroup::Graphics,
+                "Direct3D/DXGI calls cannot target Glue5's Vulkan/WASM renderer directly",
+            ),
+            "dsound.dll" | "xaudio2_7.dll" | "xinput1_3.dll" | "xinput1_4.dll" => add(
+                if name.starts_with("xinput") { DependencyGroup::Input } else { DependencyGroup::Audio },
+                "Windows audio/input API compatibility and device mapping are not implemented",
+            ),
+            "dinput8.dll" | "winmm.dll" | "version.dll" => add(
+                DependencyGroup::Input,
+                "Proxy-DLL presence does not prove the plugin is self-contained; proxy loading is not implemented",
+            ),
+            other if other.ends_with(".dll") => add(
+                DependencyGroup::UnknownWindowsDll,
+                "one or more imported Windows/game DLLs need individual ABI and behavior analysis",
+            ),
+            _ => {}
+        }
+    }
+    if report.architecture != Architecture::X86_64 {
+        blockers.push("most modern GTA V PC plugins target Windows x64; this file is not reported as x64".to_owned());
+    }
+    if blockers.is_empty() {
+        blockers.push("the import table alone is insufficient: exports, delay-loads, runtime behavior, and GTA API use still need analysis".to_owned());
+    }
+    CompatibilityPlan { architecture: report.architecture, groups, blockers, executable_here: false }
+}
+
+#[cfg(test)]
+mod compatibility_plan_tests {
+    use super::*;
+
+    fn report(imported_dlls: &[&str]) -> PeImportReport {
+        PeImportReport {
+            architecture: Architecture::X86_64,
+            is_pe32_plus: true,
+            imported_dlls: imported_dlls.iter().map(|s| (*s).to_owned()).collect(),
+            uses_scripthookv: imported_dlls.iter().any(|s| s.eq_ignore_ascii_case("ScriptHookV.dll")),
+            uses_dotnet_bridge: imported_dlls.iter().any(|s| s.eq_ignore_ascii_case("mscoree.dll")),
+            has_common_proxy_loader: false,
+        }
+    }
+
+    #[test]
+    fn plan_calls_out_scripthook_and_windows_api_blockers() {
+        let plan = plan_compatibility(&report(&["ScriptHookV.dll", "kernel32.dll", "user32.dll"]));
+        assert!(plan.groups.contains(&DependencyGroup::ScriptHookV));
+        assert!(plan.groups.contains(&DependencyGroup::WindowsKernel));
+        assert!(plan.groups.contains(&DependencyGroup::WindowsUi));
+        assert!(!plan.executable_here);
+        assert!(plan.blockers.iter().any(|b| b.contains("ScriptHookV")));
+    }
+
+    #[test]
+    fn empty_imports_do_not_mean_compatible() {
+        let plan = plan_compatibility(&report(&[]));
+        assert!(!plan.executable_here);
+        assert!(!plan.blockers.is_empty());
+    }
+}
