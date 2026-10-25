@@ -99,6 +99,12 @@ pub fn find(ns: usize, lua: &str) -> Option<usize> {
     NATIVES.binary_search_by(|n| (n.ns, n.lua).cmp(&(ns, lua))).ok()
 }
 
+/// Find a native by its GTA hash for source trainers using InvokeNative.
+/// This uses only the native definitions bundled for this exact Glue5 game build.
+pub fn find_hash(hash: u64) -> Option<usize> {
+    NATIVES.iter().position(|native| native.hash == hash)
+}
+
 thread_local! {
     /// The engine thread's environment while a mod runs: natives can only
     /// be called then.
