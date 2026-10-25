@@ -413,13 +413,16 @@ fn require(lua: &Lua, name: &str, dir: &Path) -> mlua::Result<Function> {
             .strip_prefix("./")
             .filter(|r| !r.split('/').any(|p| p.is_empty() || p.starts_with('.')))
             .ok_or_else(|| mlua::Error::runtime(format!("require(\"{path}\"): a file of the mod, as \"./name\"")))?;
-        let file = dir.join(format!("{rel}.luau"));
+        let file = [dir.join(format!("{rel}.luau")), dir.join(format!("{rel}.lua"))]
+            .into_iter().find(|candidate| candidate.is_file())
+            .ok_or_else(|| mlua::Error::runtime(format!("require(\"{path}\"): module .luau/.lua file not found")))?;
         if let Some(v) = loaded.borrow().get(&file) {
             return Ok(v.clone());
         }
         let source = std::fs::read_to_string(&file)
             .map_err(|e| mlua::Error::runtime(format!("require(\"{path}\"): {e}")))?;
-        let value: Value = lua.load(source).set_name(format!("@{name}/{rel}.luau")).call(())?;
+        let entrypoint = file.file_name().unwrap_or_default().to_string_lossy();
+        let value: Value = lua.load(source).set_name(format!("@{name}/{entrypoint}")).call(())?;
         let value = if value.is_nil() { Value::Boolean(true) } else { value };
         loaded.borrow_mut().insert(file, value.clone());
         Ok(value)
