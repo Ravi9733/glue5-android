@@ -146,7 +146,7 @@ impl Request {
 }
 
 const MAX_HEAD: usize = 32 << 10;
-const MAX_BODY: usize = 8 << 20;
+const MAX_BODY: usize = 64 << 20;\nstatic NEXT_UPLOAD: AtomicU32 = AtomicU32::new(1);
 
 impl Server {
     fn serve(&self, stream: TcpStream) -> std::io::Result<()> {
@@ -174,6 +174,35 @@ impl Server {
                         return r;
                     }
                     return session::run(ws);
+                }
+                ("GET", "/install-mod") => {
+                    if !self.authorized(&request) {
+                        respond(&mut out, 401, "text/plain", b"pair with the game first", &[])?;
+                    } else {
+                        let page = r#"<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Glue 5 · Install mod</title><style>body{font:16px system-ui;max-width:560px;margin:36px auto;padding:0 18px;background:#111;color:#eee}input,button{font:inherit;margin:10px 0;padding:12px;width:100%;box-sizing:border-box}button{background:#eee;color:#111;border:0;border-radius:10px}small{color:#aaa}</style></head><body><h1>Install a Glue 5 mod</h1><p>Select a ZIP containing <code>main.luau</code>, either at the ZIP root or inside one top-level folder.</p><input id="name" placeholder="Mod name (optional; lowercase, numbers, - or _)"><input id="file" type="file" accept=".zip,application/zip"><button id="install">Install ZIP</button><p id="status"></p><small>Only Glue 5 Luau script mods are supported here. PC .asi and iOS executable mods cannot be installed by this tool.</small><script>const token=new URLSearchParams(location.search).get('token')||'';document.querySelector('#install').onclick=async()=>{const f=document.querySelector('#file').files[0];const s=document.querySelector('#status');if(!f){s.textContent='Choose a ZIP first.';return;}if(f.size>64*1024*1024){s.textContent='ZIP is larger than 64 MiB.';return;}s.textContent='Installing…';const n=document.querySelector('#name').value.trim();const q=new URLSearchParams({token});if(n)q.set('name',n);try{const r=await fetch('/install-mod?'+q,{method:'POST',headers:{'Content-Type':'application/zip'},body:f});s.textContent=await r.text();}catch(e){s.textContent='Install failed: '+e;}};</script></body></html>"#;
+                        respond(&mut out, 200, "text/html; charset=utf-8", page.as_bytes(), &[("Cache-Control", "no-store")])?;
+                    }
+                }
+                ("POST", "/install-mod") => {
+                    if !self.authorized(&request) {
+                        respond(&mut out, 401, "text/plain", b"missing or wrong token", &[])?;
+                    } else if request.header("content-type").is_none_or(|v| !v.to_ascii_lowercase().starts_with("application/zip")) {
+                        respond(&mut out, 415, "text/plain", b"send a ZIP archive", &[])?;
+                    } else {
+                        let id = NEXT_UPLOAD.fetch_add(1, Ordering::Relaxed);
+                        let path = std::env::temp_dir().join(format!("glue5-mod-upload-{}-{id}.zip", std::process::id()));
+                        let result = std::fs::write(&path, &request.body)
+                            .map_err(|e| format!("cannot save upload: {e}"))
+                            .and_then(|()| {
+                                let name = request.param("name").filter(|s| !s.is_empty());
+                                crate::installer::install_zip(&path, name)
+                            });
+                        let _ = std::fs::remove_file(&path);
+                        match result {
+                            Ok(name) => respond(&mut out, 200, "text/plain; charset=utf-8", format!("Installed mod: {name}. Restart the game if it is already running.").as_bytes(), &[])?,
+                            Err(error) => respond(&mut out, 400, "text/plain; charset=utf-8", error.as_bytes(), &[])?,
+                        }
+                    }
                 }
                 ("POST", "/mcp") => {
                     if !self.authorized(&request) || request.header("origin").is_some_and(|_| !same_origin(&request)) {
