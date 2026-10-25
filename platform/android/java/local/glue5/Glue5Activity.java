@@ -5,6 +5,9 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.Settings;
 import android.os.Looper;
 import android.system.ErrnoException;
 import android.system.Os;
@@ -48,10 +51,31 @@ public class Glue5Activity extends SDLActivity {
             }
         }
         super.onCreate(savedInstanceState);
+        requestPublicStorageAccess();
         // The native Settings page requests the document picker through a
         // marker in this private files directory. No broad storage permission
         // is required, and the import action is available whenever needed.
         turnipHandler.postDelayed(turnipImportWatcher, 500);
+    }
+
+
+    /** Ask Android for access to the user-owned GTA5 folder in shared storage. */
+    private void requestPublicStorageAccess() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+            return;
+        }
+        try {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+            Toast.makeText(this,
+                    "Allow Glue 5: Allow access to manage all files. Then return to the game.",
+                    Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this,
+                    "Storage permission not opened. You can enable it in Android Settings > Apps > Glue 5 > All files access.",
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private void checkTurnipImportRequest() {
