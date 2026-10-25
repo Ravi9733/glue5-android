@@ -44,3 +44,10 @@ mod tests {
         assert!(status_text(&result).contains("Unsupported Windows PC plugin"));
     }
 }
+
+
+/// Inspect a Windows plugin's declared DLL dependencies without loading it.
+/// This helps plan the required API shims; it is not an executable loader.
+pub fn inspect_pe_dependencies(bytes: &[u8]) -> Result<glue5_pc_mod_runtime::PeImportReport, glue5_pc_mod_runtime::PeParseError> {
+    glue5_pc_mod_runtime::inspect_pe_imports(bytes)
+}
