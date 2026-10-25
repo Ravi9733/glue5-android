@@ -366,12 +366,7 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
         let hash = match hash_value {
             Value::Integer(i) => i as u64,
             Value::Number(n) if n.is_finite() && n >= 0.0 && n <= u64::MAX as f64 => n as u64,
-            Value::String(s) => {
-                let raw = s.to_str()?;
-                let trimmed = raw.trim().trim_start_matches("0x").trim_start_matches("0X");
-                u64::from_str_radix(trimmed, 16).or_else(|_| raw.parse::<u64>())
-                    .map_err(|_| mlua::Error::runtime("Citizen.InvokeNative: hash string must be decimal or hexadecimal"))?
-            }
+            Value::String(s) => parse_native_hash_string(&s.to_str()?)?
             _ => return Err(mlua::Error::runtime("Citizen.InvokeNative: hash must be an integer or string")),
         };
         let index = natives::find_hash(hash).ok_or_else(|| mlua::Error::runtime(format!(
@@ -445,6 +440,40 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
 }
 
 /// `require("./menu")`: the mod's `menu.luau`, run once.
+
+/// Parse decimal strings as decimal; hexadecimal strings require a 0x prefix.
+fn parse_native_hash_string(raw: &str) -> mlua::Result<u64> {
+    let value = raw.trim();
+    let parsed = if let Some(hex) = value.strip_prefix("0x").or_else(|| value.strip_prefix("0X")) {
+        u64::from_str_radix(hex, 16)
+    } else {
+        value.parse::<u64>()
+    };
+    parsed.map_err(|_| mlua::Error::runtime("Citizen.InvokeNative: hash string must be decimal or 0x-prefixed hexadecimal"))
+}
+
+#[cfg(test)]
+mod invoke_native_hash_tests {
+    use super::parse_native_hash_string;
+
+    #[test]
+    fn parses_decimal_string_as_decimal() {
+        assert_eq!(parse_native_hash_string("123").unwrap(), 123);
+    }
+
+    #[test]
+    fn parses_prefixed_hex_string() {
+        assert_eq!(parse_native_hash_string("0x1A").unwrap(), 26);
+        assert_eq!(parse_native_hash_string("0X1a").unwrap(), 26);
+    }
+
+    #[test]
+    fn rejects_unprefixed_hex_and_invalid_values() {
+        assert!(parse_native_hash_string("1A").is_err());
+        assert!(parse_native_hash_string("").is_err());
+    }
+}
+
 fn require(lua: &Lua, name: &str, dir: &Path) -> mlua::Result<Function> {
     let loaded: RefCell<HashMap<PathBuf, Value>> = RefCell::default();
     let (name, dir) = (name.to_string(), dir.to_path_buf());
