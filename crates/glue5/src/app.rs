@@ -580,6 +580,7 @@ impl App {
         glue5_runtime::input::set_touch_play(show);
         glue5_runtime::input::set_touch_targeting(self.settings.touch_aim.targeting());
         if show {
+            self.touch.set_button_tiki_layout(self.settings.button_tiki_layout);
             self.touch.haptics = self.settings.haptics;
             self.touch.camera_speed = self.settings.touch_camera;
             self.touch.aim_locked = glue5_runtime::input::aim_locked();
