@@ -12,6 +12,7 @@ mod engine;
 pub mod files;
 mod json;
 mod menus;
+pub mod pc_runtime;
 pub mod natives;
 mod storage;
 pub mod studio;
