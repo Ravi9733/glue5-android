@@ -25,3 +25,14 @@ Validation status
 These changes are source edits only. They have not been compiled or exercised
 inside the game; no APK has been produced. Treat compatibility as experimental
 until the Rust workspace builds and each supported mod is tested in-game.
+
+
+PE dependency inspection
+------------------------
+The runtime foundation now has a bounds-checked PE import-table reader for
+PE32/PE32+ images. It reports imported DLL names and flags common ScriptHookV,
+.NET/SHVDN-related, and proxy-loader dependencies. The mod crate exposes this
+as `inspect_pe_dependencies` for future diagnostics. This is static analysis
+only: it neither resolves imports nor executes a plugin, and dependency names
+alone cannot prove which APIs a plugin calls. It is groundwork for selecting
+and implementing a compatibility subset, not Windows plugin support.
