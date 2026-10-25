@@ -146,7 +146,8 @@ impl Request {
 }
 
 const MAX_HEAD: usize = 32 << 10;
-const MAX_BODY: usize = 64 << 20;\nstatic NEXT_UPLOAD: AtomicU32 = AtomicU32::new(1);
+const MAX_BODY: usize = 64 << 20;
+static NEXT_UPLOAD: AtomicU32 = AtomicU32::new(1);
 
 impl Server {
     fn serve(&self, stream: TcpStream) -> std::io::Result<()> {
