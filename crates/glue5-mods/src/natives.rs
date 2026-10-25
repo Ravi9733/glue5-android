@@ -99,6 +99,11 @@ pub fn find(ns: usize, lua: &str) -> Option<usize> {
     NATIVES.binary_search_by(|n| (n.ns, n.lua).cmp(&(ns, lua))).ok()
 }
 
+/// Find a generated native by its canonical GTA name (for source-trainer aliases).
+pub fn find_game_name(name: &str) -> Option<usize> {
+    NATIVES.iter().position(|native| native.name.eq_ignore_ascii_case(name))
+}
+
 /// Find a native by its GTA hash for source trainers using InvokeNative.
 /// This uses only the native definitions bundled for this exact Glue5 game build.
 pub fn find_hash(hash: u64) -> Option<usize> {
