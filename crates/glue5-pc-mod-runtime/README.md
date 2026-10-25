@@ -52,8 +52,11 @@ Source Lua trainer aliases
 --------------------------
 The Lua VM now exposes compatibility aliases commonly used by source-based
 trainer scripts: `CreateThread`, `Citizen.CreateThread`, `Citizen.Wait`,
-`Wait`, `SetTimeout`, `Citizen.SetTimeout`, and `GetHashKey`. They adapt
-thread scheduling and hashing to Glue 5's existing mod VM. The VM also exposes
+`Wait`, `SetTimeout`, `Citizen.SetTimeout`, and `GetHashKey`, plus global aliases
+for a conservative set of common GTA natives (for example `PlayerPedId`,
+`GetEntityCoords`, `CreateVehicle`, and `DrawMarker`) when those natives exist in
+the generated database. These aliases route through Glue 5's checked native-call
+metadata rather than a PC game's memory ABI. The VM also exposes
 `Citizen.InvokeNative` / `InvokeNative` for hashes present in Glue 5's generated
 native database for the exact game build; hexadecimal string hashes must use a
 `0x` prefix. These features adapt selected source-script conventions, not a
