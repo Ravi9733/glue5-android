@@ -41,6 +41,11 @@ pub fn default_game_dirs() -> Vec<PathBuf> {
             dirs.push(docs.join("game"));
         }
     } else if cfg!(target_os = "android") {
+        // Prefer a public, user-owned folder so uninstalling Glue 5 does not
+        // remove the ~21 GB game. Android's all-files access permission is
+        // requested by Glue5Activity; keep the old app-specific location as
+        // a fallback for existing installations.
+        dirs.push(PathBuf::from("/storage/emulated/0/GTA5/game"));
         #[cfg(target_os = "android")]
         if let Some(ext) = android_external_dir() {
             dirs.push(ext.join("game"));
@@ -142,7 +147,7 @@ pub fn where_the_game_goes() -> &'static str {
         "Copy the game folder into the app's files, named game: Finder (iPhone › Files › Glue 5) \
          or the Files app (On My iPhone › Glue 5). This page looks again when the app comes back."
     } else if cfg!(target_os = "android") {
-        "Copy the game folder, named game, into Android/data/<app>/files/ on the device."
+        "Copy the game folder, named game, into Internal storage/GTA5/game. Allow Glue 5 access to all files when Android asks. This folder stays after uninstalling the APK."
     } else {
         "Choose the game folder, or start glue5 with its path."
     }
