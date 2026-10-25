@@ -172,11 +172,40 @@ pub fn held_back() -> Vec<String> {
 
 /// The mods folder `dir` (made if missing): its mods listed, their files
 /// open to the Studio. Before the game too; they run once [`install`]ed.
+/// Installs the bundled touch-friendly trainer adapter on first launch.
+/// Never overwrites a player's existing copy or changes their custom mods.
+fn install_bundled_android_trainer(dir: &Path) {
+    const NAME: &str = "pc-trainer-v-android";
+    let target = dir.join(NAME);
+    if target.exists() {
+        return;
+    }
+    let result = (|| -> std::io::Result<()> {
+        std::fs::create_dir_all(&target)?;
+        std::fs::write(
+            target.join("main.luau"),
+            include_str!("../../../examples/android-pc-trainer-adapter/main.luau"),
+        )?;
+        std::fs::write(
+            target.join("mod.json"),
+            include_str!("../../../examples/android-pc-trainer-adapter/mod.json"),
+        )?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        log::warn!("mods: could not install bundled Android trainer: {error}");
+        let _ = std::fs::remove_dir_all(&target);
+    } else {
+        log::info!("mods: installed bundled Android trainer adapter");
+    }
+}
+
 pub fn open(dir: &Path) {
     let _ = std::fs::create_dir_all(dir);
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
         return;
     }
+    install_bundled_android_trainer(dir);
     world::load_saved(dir);
     refresh();
 }
