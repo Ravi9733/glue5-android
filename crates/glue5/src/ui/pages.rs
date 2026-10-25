@@ -933,6 +933,8 @@ fn settings_items(
                 )
             })
             .on_hover_text("Auto: shown on touch screens; hidden while using a controller or keyboard");
+            setting(ui, "Button Tiki layout", Control::Toggle, None, |ui| toggle(ui, &mut settings.button_tiki_layout))
+                .on_hover_text("On: alternate thumb-friendly button arrangement. Off: original Glue 5 layout.");
             setting(ui, "Size", Control::Slider, None, |ui| {
                 slider(ui, &mut settings.touch_size, 0.7..=1.5, 0.1, "×", 1)
             });
