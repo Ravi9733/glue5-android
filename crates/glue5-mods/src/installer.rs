@@ -32,7 +32,7 @@ pub fn install_zip(archive_path: &Path, requested_name: Option<&str>) -> Result<
         let mut total = 0u64;
         for i in 0..archive.len() {
             let mut entry = archive.by_index(i).map_err(|e| format!("ZIP entry error: {e}"))?;
-            let Some(relative) = entry.enclosed_name().map(Path::to_path_buf) else {
+            let Some(relative) = entry.enclosed_name() else {
                 return Err(format!("unsafe path in ZIP entry {}", entry.name()));
             };
             if relative.components().any(|c| !matches!(c, Component::Normal(_))) {
