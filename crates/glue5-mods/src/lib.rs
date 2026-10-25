@@ -247,7 +247,7 @@ pub fn refresh() {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.join("main.luau").is_file() {
+            if path.join("main.luau").is_file() || path.join("main.lua").is_file() {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 found.push((name, files::autostart(&path)));
             }
