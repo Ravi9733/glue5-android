@@ -131,3 +131,181 @@ mod tests {
         assert_eq!(got.compatibility, Compatibility::WasmNeedsPluginAbi { architecture: Architecture::Wasm32 });
     }
 }
+
+
+/// Parsed import table for a Windows PE image. This is static analysis only:
+/// imports are useful for deciding which compatibility APIs a plugin would
+/// require, but parsing them does not make the plugin executable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PeImportReport {
+    pub architecture: Architecture,
+    pub is_pe32_plus: bool,
+    pub imported_dlls: Vec<String>,
+    pub uses_scripthookv: bool,
+    pub uses_dotnet_bridge: bool,
+    pub has_common_proxy_loader: bool,
+}
+
+/// Errors while safely reading a PE import table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PeParseError {
+    NotPe,
+    Truncated,
+    UnsupportedOptionalHeader,
+    InvalidSectionTable,
+    InvalidRva,
+    InvalidImportTable,
+}
+
+impl fmt::Display for PeParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", match self {
+            Self::NotPe => "not a Windows PE image",
+            Self::Truncated => "truncated PE image",
+            Self::UnsupportedOptionalHeader => "unsupported PE optional-header format",
+            Self::InvalidSectionTable => "invalid PE section table",
+            Self::InvalidRva => "PE data directory points outside mapped sections",
+            Self::InvalidImportTable => "malformed PE import table",
+        })
+    }
+}
+
+fn pe_u16(bytes: &[u8], at: usize) -> Result<u16, PeParseError> {
+    let b = bytes.get(at..at.checked_add(2).ok_or(PeParseError::Truncated)?)
+        .ok_or(PeParseError::Truncated)?;
+    Ok(u16::from_le_bytes([b[0], b[1]]))
+}
+fn pe_u32(bytes: &[u8], at: usize) -> Result<u32, PeParseError> {
+    let b = bytes.get(at..at.checked_add(4).ok_or(PeParseError::Truncated)?)
+        .ok_or(PeParseError::Truncated)?;
+    Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+}
+fn pe_c_string(bytes: &[u8], at: usize) -> Result<String, PeParseError> {
+    let tail = bytes.get(at..).ok_or(PeParseError::Truncated)?;
+    let end = tail.iter().position(|b| *b == 0).ok_or(PeParseError::Truncated)?;
+    if end == 0 { return Err(PeParseError::InvalidImportTable); }
+    Ok(String::from_utf8_lossy(&tail[..end]).into_owned())
+}
+
+/// Read imported DLL names from a PE32/PE32+ file without loading or executing it.
+/// The parser rejects malformed offsets and never follows arbitrary pointers.
+pub fn inspect_pe_imports(bytes: &[u8]) -> Result<PeImportReport, PeParseError> {
+    if bytes.len() < 0x40 || !bytes.starts_with(b"MZ") { return Err(PeParseError::NotPe); }
+    let pe_at = pe_u32(bytes, 0x3c)? as usize;
+    if bytes.get(pe_at..pe_at.saturating_add(4)) != Some(b"PE\0\0".as_slice()) {
+        return Err(PeParseError::NotPe);
+    }
+    let coff = pe_at.checked_add(4).ok_or(PeParseError::Truncated)?;
+    let machine = pe_u16(bytes, coff)?;
+    let sections = pe_u16(bytes, coff + 2)? as usize;
+    let optional_size = pe_u16(bytes, coff + 16)? as usize;
+    let optional = coff.checked_add(20).ok_or(PeParseError::Truncated)?;
+    let magic = pe_u16(bytes, optional)?;
+    let (is_pe32_plus, directory_offset, number_directories_offset) = match magic {
+        0x10b => (false, 96usize, 92usize),
+        0x20b => (true, 112usize, 108usize),
+        _ => return Err(PeParseError::UnsupportedOptionalHeader),
+    };
+    if optional_size < directory_offset + 16 { return Err(PeParseError::Truncated); }
+    let directory_count = pe_u32(bytes, optional + number_directories_offset)?;
+    let (import_rva, import_size) = if directory_count > 1 {
+        (pe_u32(bytes, optional + directory_offset + 8)?, pe_u32(bytes, optional + directory_offset + 12)?)
+    } else { (0, 0) };
+    let section_table = optional.checked_add(optional_size).ok_or(PeParseError::Truncated)?;
+    let section_bytes = sections.checked_mul(40).ok_or(PeParseError::InvalidSectionTable)?;
+    if section_table.checked_add(section_bytes).filter(|end| *end <= bytes.len()).is_none() {
+        return Err(PeParseError::InvalidSectionTable);
+    }
+
+    // Map an RVA only through a section's raw file data, not virtual padding.
+    let rva_offset = |rva: u32| -> Result<usize, PeParseError> {
+        for i in 0..sections {
+            let s = section_table + i * 40;
+            let virtual_size = pe_u32(bytes, s + 8)? as u64;
+            let virtual_address = pe_u32(bytes, s + 12)? as u64;
+            let raw_size = pe_u32(bytes, s + 16)? as u64;
+            let raw_pointer = pe_u32(bytes, s + 20)? as u64;
+            let delta = (rva as u64).checked_sub(virtual_address);
+            if let Some(delta) = delta {
+                if delta < virtual_size.max(raw_size) && delta < raw_size {
+                    let pos = raw_pointer.checked_add(delta).ok_or(PeParseError::InvalidRva)?;
+                    let pos = usize::try_from(pos).map_err(|_| PeParseError::InvalidRva)?;
+                    if pos < bytes.len() { return Ok(pos); }
+                }
+            }
+        }
+        Err(PeParseError::InvalidRva)
+    };
+
+    let mut imported_dlls = Vec::new();
+    if import_rva != 0 && import_size != 0 {
+        let mut descriptor = rva_offset(import_rva)?;
+        let table_end = descriptor.checked_add(import_size as usize).ok_or(PeParseError::InvalidImportTable)?;
+        let mut terminated = false;
+        while descriptor.checked_add(20).filter(|end| *end <= table_end && *end <= bytes.len()).is_some() {
+            let original_first_thunk = pe_u32(bytes, descriptor)?;
+            let timestamp = pe_u32(bytes, descriptor + 4)?;
+            let forwarder_chain = pe_u32(bytes, descriptor + 8)?;
+            let name_rva = pe_u32(bytes, descriptor + 12)?;
+            let first_thunk = pe_u32(bytes, descriptor + 16)?;
+            if original_first_thunk == 0 && timestamp == 0 && forwarder_chain == 0 && name_rva == 0 && first_thunk == 0 {
+                terminated = true;
+                break;
+            }
+            if name_rva == 0 { return Err(PeParseError::InvalidImportTable); }
+            imported_dlls.push(pe_c_string(bytes, rva_offset(name_rva)?)?);
+            descriptor = descriptor.checked_add(20).ok_or(PeParseError::InvalidImportTable)?;
+        }
+        if !terminated { return Err(PeParseError::InvalidImportTable); }
+    }
+
+    let lower: Vec<String> = imported_dlls.iter().map(|s| s.to_ascii_lowercase()).collect();
+    let uses_scripthookv = lower.iter().any(|s| s == "scripthookv.dll" || s == "scripthookv.lib");
+    let uses_dotnet_bridge = lower.iter().any(|s| s.contains("scriptshvdn") || s == "clr.dll" || s == "mscoree.dll");
+    let has_common_proxy_loader = lower.iter().any(|s| matches!(s.as_str(), "dinput8.dll" | "version.dll" | "dsound.dll" | "winmm.dll"));
+    let architecture = match machine {
+        0x014c => Architecture::X86,
+        0x8664 => Architecture::X86_64,
+        0x01c0 | 0x01c4 => Architecture::Arm32,
+        0xaa64 => Architecture::Arm64,
+        _ => Architecture::Unknown,
+    };
+    Ok(PeImportReport { architecture, is_pe32_plus, imported_dlls, uses_scripthookv, uses_dotnet_bridge, has_common_proxy_loader })
+}
+
+#[cfg(test)]
+mod pe_import_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_non_pe_and_truncated_images_without_panicking() {
+        assert_eq!(inspect_pe_imports(b"").unwrap_err(), PeParseError::NotPe);
+        let mut b = vec![0u8; 0x40];
+        b[..2].copy_from_slice(b"MZ");
+        b[0x3c..0x40].copy_from_slice(&0x1000u32.to_le_bytes());
+        assert_eq!(inspect_pe_imports(&b).unwrap_err(), PeParseError::NotPe);
+    }
+
+    #[test]
+    fn recognizes_pe64_without_claiming_it_can_run() {
+        let mut b = vec![0u8; 0x40];
+        b[..2].copy_from_slice(b"MZ");
+        b[0x3c..0x40].copy_from_slice(&0x40u32.to_le_bytes());
+        b.extend_from_slice(b"PE\0\0");
+        b.extend_from_slice(&0x8664u16.to_le_bytes());
+        b.extend_from_slice(&1u16.to_le_bytes()); // sections
+        b.extend_from_slice(&[0u8; 12]);
+        b.extend_from_slice(&0xf0u16.to_le_bytes()); // optional header size
+        b.extend_from_slice(&[0u8; 2]); // characteristics
+        let optional = b.len();
+        b.extend_from_slice(&0x20bu16.to_le_bytes());
+        b.resize(optional + 0xf0, 0);
+        // One empty section header; no imports.
+        b.extend_from_slice(&[0u8; 40]);
+        let report = inspect_pe_imports(&b).unwrap();
+        assert_eq!(report.architecture, Architecture::X86_64);
+        assert!(report.is_pe32_plus);
+        assert!(report.imported_dlls.is_empty());
+        assert!(!report.uses_scripthookv);
+    }
+}
