@@ -11,6 +11,9 @@
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.type.pc" android:required="false" />
 
+    <!-- Keep large game files outside Android/data so uninstalling the APK does not delete them. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
     <!-- Controller rumble. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
