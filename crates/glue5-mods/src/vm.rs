@@ -345,6 +345,21 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
             Ok(())
         })?,
     )?;
+    // Source-level aliases for common ScriptHook-style Lua trainers.
+    // This adapts Lua scheduling conventions only; it does not load Windows
+    // .asi/.dll binaries or implement ScriptHookV's native API.
+    let citizen = lua.create_table()?;
+    citizen.set("Wait", wait.clone())?;
+    citizen.set("wait", wait.clone())?;
+    let spawn = lua.load("return function(task, f, ...) return task.spawn(f, ...) end")
+        .set_name("=pc-trainer-create-thread")
+        .eval::<Function>()?;
+    g.set("CreateThread", spawn.call::<Function>(task.clone())?)?;
+    citizen.set("CreateThread", spawn.call::<Function>(task.clone())?)?;
+    citizen.set("SetTimeout", task.get::<Function>("delay")?)?;
+    g.set("SetTimeout", task.get::<Function>("delay")?)?;
+    g.set("Citizen", citizen)?;
+    g.set("task", task.clone())?;
     menus::install(&lua, name, sched.handlers.clone())?;
     json::install(&lua)?;
     // `world.vehicles()`..., the catalog's lists.
@@ -362,7 +377,9 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
     world.set("pedModels", lua.create_function(|_, ()| Ok(crate::world::catalog().map(|c| c.peds).unwrap_or_default()))?)?;
     world.set("weapons", lua.create_function(|_, ()| Ok(crate::world::catalog().map(|c| c.weapons).unwrap_or_default()))?)?;
     g.set("world", world)?;
-    g.set("joaat", lua.create_function(|_, s: mlua::LuaString| Ok(natives::joaat(&s.to_str()?)))?)?;
+    let get_hash_key = lua.create_function(|_, s: mlua::LuaString| Ok(natives::joaat(&s.to_str()?)))?;
+    g.set("joaat", get_hash_key.clone())?;
+    g.set("GetHashKey", get_hash_key)?;
     let m = lua.create_table()?;
     m.set("name", name)?;
     g.set("mod", m)?;
