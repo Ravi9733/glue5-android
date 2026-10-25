@@ -51,3 +51,11 @@ mod tests {
 pub fn inspect_pe_dependencies(bytes: &[u8]) -> Result<glue5_pc_mod_runtime::PeImportReport, glue5_pc_mod_runtime::PeParseError> {
     glue5_pc_mod_runtime::inspect_pe_imports(bytes)
 }
+
+/// Turn the parsed imports into a list of compatibility blockers. This is
+/// diagnostic planning only; it never marks a Windows plugin as runnable.
+pub fn compatibility_plan(
+    report: &glue5_pc_mod_runtime::PeImportReport,
+) -> glue5_pc_mod_runtime::CompatibilityPlan {
+    glue5_pc_mod_runtime::plan_compatibility(report)
+}
