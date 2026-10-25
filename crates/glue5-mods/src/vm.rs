@@ -433,12 +433,82 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
         g.set(*space, table)?;
     }
 
+    install_pc_trainer_native_aliases(&lua)?;
+
     let deadline = Rc::new(Cell::new(Instant::now() + SLICE));
     let interrupt_deadline = deadline.clone();
     lua.set_interrupt(move |_| {
         Ok(if Instant::now() >= interrupt_deadline.get() { VmState::Yield } else { VmState::Continue })
     });
     Ok((lua, deadline))
+}
+
+
+/// Expose a conservative set of common GTA native names as global functions,
+/// as expected by many ScriptHook-style Lua trainers. Glue5 still supplies the
+/// actual WASM-native metadata and validates every argument; this is not a PE
+/// loader or a complete ScriptHookV API.
+fn install_pc_trainer_native_aliases(lua: &Lua) -> mlua::Result<()> {
+    const COMMON: &[&str] = &[
+        "PLAYER_ID", "PLAYER_PED_ID", "GET_PLAYER_PED", "GET_PLAYER_NAME",
+        "GET_ENTITY_COORDS", "SET_ENTITY_COORDS", "SET_ENTITY_COORDS_NO_OFFSET",
+        "GET_ENTITY_HEADING", "SET_ENTITY_HEADING", "GET_ENTITY_HEALTH",
+        "SET_ENTITY_HEALTH", "GET_ENTITY_MAX_HEALTH", "SET_ENTITY_MAX_HEALTH",
+        "DOES_ENTITY_EXIST", "IS_ENTITY_DEAD", "IS_ENTITY_A_PED",
+        "IS_ENTITY_A_VEHICLE", "IS_ENTITY_IN_A_VEHICLE", "GET_ENTITY_MODEL",
+        "GET_ENTITY_SPEED", "GET_ENTITY_FORWARD_VECTOR", "GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS",
+        "GET_VEHICLE_PED_IS_IN", "GET_VEHICLE_ENGINE_HEALTH", "SET_VEHICLE_ENGINE_HEALTH",
+        "SET_VEHICLE_ENGINE_ON", "SET_VEHICLE_FIXED", "SET_VEHICLE_DIRT_LEVEL",
+        "SET_VEHICLE_MOD", "GET_VEHICLE_MOD", "GET_NUM_VEHICLE_MODS",
+        "CREATE_VEHICLE", "DELETE_VEHICLE", "SET_VEHICLE_ON_GROUND_PROPERLY",
+        "CREATE_PED", "DELETE_PED", "SET_PED_INTO_VEHICLE", "GET_PED_IN_VEHICLE_SEAT",
+        "IS_PED_IN_ANY_VEHICLE", "SET_PED_ARMOUR", "GET_PED_ARMOUR",
+        "GIVE_WEAPON_TO_PED", "REMOVE_WEAPON_FROM_PED", "HAS_PED_GOT_WEAPON",
+        "GET_SELECTED_PED_WEAPON", "SET_CURRENT_PED_WEAPON",
+        "REQUEST_MODEL", "HAS_MODEL_LOADED", "IS_MODEL_VALID",
+        "IS_MODEL_IN_CDIMAGE", "SET_MODEL_AS_NO_LONGER_NEEDED",
+        "CREATE_OBJECT", "DELETE_OBJECT", "PLACE_OBJECT_ON_GROUND_PROPERLY",
+        "GET_GAME_TIMER", "GET_FRAME_TIME", "GET_FRAME_COUNT",
+        "GET_GROUND_Z_FOR_3D_COORD", "GET_WATER_HEIGHT",
+        "SET_WEATHER_TYPE_NOW", "SET_WEATHER_TYPE_NOW_PERSIST",
+        "SET_OVERRIDE_WEATHER", "CLEAR_OVERRIDE_WEATHER", "GET_PREV_WEATHER_TYPE_HASH_NAME",
+        "SET_CLOCK_TIME", "GET_CLOCK_HOURS", "GET_CLOCK_MINUTES", "GET_CLOCK_SECONDS",
+        "IS_CONTROL_PRESSED", "IS_CONTROL_JUST_PRESSED", "IS_CONTROL_JUST_RELEASED",
+        "DISABLE_CONTROL_ACTION", "ENABLE_CONTROL_ACTION",
+        "DRAW_MARKER", "DRAW_LINE", "DRAW_RECT", "DRAW_TEXT",
+        "SET_TEXT_SCALE", "SET_TEXT_COLOUR", "SET_TEXT_CENTRE",
+        "BEGIN_TEXT_COMMAND_DISPLAY_TEXT", "ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME",
+        "END_TEXT_COMMAND_DISPLAY_TEXT", "SET_NEW_WAYPOINT", "GET_FIRST_BLIP_INFO_ID",
+        "GET_BLIP_INFO_ID_COORD", "ADD_BLIP_FOR_COORD", "ADD_BLIP_FOR_ENTITY",
+        "SET_BLIP_SPRITE", "SET_BLIP_COLOUR", "SET_BLIP_ROUTE", "REMOVE_BLIP",
+        "GET_ENTITY_ALPHA", "SET_ENTITY_ALPHA", "RESET_ENTITY_ALPHA",
+        "SET_ENTITY_VISIBLE", "SET_ENTITY_INVINCIBLE", "SET_ENTITY_COLLISION",
+        "FREEZE_ENTITY_POSITION", "APPLY_FORCE_TO_ENTITY", "SET_ENTITY_VELOCITY",
+        "GET_ENTITY_VELOCITY", "GET_ENTITY_ROTATION", "SET_ENTITY_ROTATION",
+        "GET_PLAYER_WANTED_LEVEL", "SET_PLAYER_WANTED_LEVEL",
+        "IS_PLAYER_PLAYING", "IS_PLAYER_FREE_AIMING", "GET_PLAYER_GROUP",
+        "GET_HASH_KEY",
+    ];
+    let globals = lua.globals();
+    for name in COMMON {
+        let Some(index) = natives::find_game_name(name) else { continue };
+        let native = &natives::NATIVES[index];
+        let mut pascal = String::new();
+        for part in native.name.split('_').filter(|part| !part.is_empty()) {
+            let mut chars = part.chars();
+            if let Some(first) = chars.next() {
+                pascal.push(first.to_ascii_uppercase());
+                pascal.extend(chars.map(|ch| ch.to_ascii_lowercase()));
+            }
+        }
+        let function = lua.create_function(move |lua, args: MultiValue| natives::call(lua, index, args))?;
+        for alias in [name.to_string(), pascal] {
+            if globals.get::<Value>(alias.as_str())?.is_nil() {
+                globals.set(alias, function.clone())?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// `require("./menu")`: the mod's `menu.luau`, run once.
