@@ -649,20 +649,28 @@ impl Touch {
     }
 
     fn button_tiki_at(&self, a: &Action) -> Option<At> {
-        if !self.button_tiki_layout { return None; }
+        if !self.button_tiki_layout {
+            return None;
+        }
+
+        // Keep the left-side movement/wheel controls and the top HUD keys
+        // where they are, but place the right-hand gameplay buttons in a
+        // clearly different two-column arrangement.
         Some(match a.label {
-            "Fire" => At::RightBottom(86.0, 172.0),
-            "Aim" => At::RightBottom(168.0, 248.0),
-            "Jump" | "Pedal" | "Up" => At::RightBottom(78.0, 76.0),
-            "Enter" | "Exit" => At::RightBottom(78.0, 158.0),
-            "Melee\\nReload" => At::RightBottom(158.0, 76.0),
-            "Action" => At::RightBottom(158.0, 158.0),
-            "Cover" => At::RightBottom(78.0, 248.0),
-            "Gas" => At::RightBottom(78.0, 164.0),
-            "Brake" | "Down" => At::RightBottom(168.0, 244.0),
-            "H.brake" => At::RightBottom(168.0, 164.0),
-            "Shoot" => At::RightBottom(78.0, 244.0),
-            "Horn" => At::RightBottom(168.0, 76.0),
+            "Fire" | "Shoot" => At::RightBottom(76.0, 236.0),
+            "Aim" => At::RightBottom(164.0, 236.0),
+            "Jump" | "Pedal" | "Open" | "Rise" => At::RightBottom(76.0, 76.0),
+            "Enter" | "Exit" | "Detach" => At::RightBottom(164.0, 76.0),
+            "Melee\nReload" => At::RightBottom(76.0, 156.0),
+            "Action" | "Seat" => At::RightBottom(164.0, 156.0),
+            "Cover" | "H.brake" | "◀ Yaw" | "◀ Brake" => At::RightBottom(76.0, 316.0),
+            "Brake" | "Down" | "Dive" | "Brake ▶" | "Yaw ▶" => At::RightBottom(164.0, 316.0),
+            "Gas" | "Throttle" | "Up" | "Ahead" => At::RightBottom(76.0, 236.0),
+            "Horn" | "Bell" | "Gear" => At::RightBottom(164.0, 236.0),
+            "Behind" | "Lights" | "Radio" | "Special" | "Weapons" | "Throw" | "Crouch" => {
+                // These remain on the left-side utility cluster by design.
+                return None;
+            }
             _ => return None,
         })
     }
