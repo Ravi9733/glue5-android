@@ -10,6 +10,7 @@
 mod checker;
 mod engine;
 pub mod files;
+pub mod manager;
 mod json;
 mod menus;
 pub mod natives;
