@@ -102,11 +102,11 @@ jobs:
               ;;
           esac
 
-      - name: Package the Android time, weather and graphics mod
+      - name: Package the bundled Vehicle Mods script
         if: inputs.platform == 'android' || github.event_name == 'push'
         run: |
-          zip -j Glue5-android-weather-graphics.zip examples/android-weather-graphics/main.luau
-          echo "Packaged lightweight Photorealistic, Warm Natural, Original, Time and Weather mod." >>"$GITHUB_STEP_SUMMARY"
+          zip -j Glue5-android-vehicle-mods.zip crates/glue5-mods/bundled/vehicle-mods/main.luau
+          echo "Packaged the bundled Vehicle Mods script." >>"$GITHUB_STEP_SUMMARY"
 
       - name: Into the draft release
         run: |
