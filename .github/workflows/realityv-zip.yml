@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - realityv-graphics-zip
     paths:
       - 'mods/RealityV_Graphics/**'
