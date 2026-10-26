@@ -59,6 +59,7 @@ jobs:
           cache_key_prefix: mise-${{ inputs.platform || 'android' }}
 
       - name: Test Windows PE inspector
+        if: env.PLATFORM == 'android'
         run: cargo test -p glue5-mods --lib pc_binary::tests
 
       - name: Android signing key
