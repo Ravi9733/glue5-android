@@ -14,6 +14,8 @@ pub mod files;
 mod json;
 mod menus;
 pub mod natives;
+/// Non-executing inspection of Windows PE plugin files; not a PE loader.
+pub mod pc_binary;
 mod storage;
 pub mod studio;
 mod vm;
