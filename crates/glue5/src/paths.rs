@@ -42,6 +42,10 @@ pub fn default_game_dirs() -> Vec<PathBuf> {
         }
     } else if cfg!(target_os = "android") {
         #[cfg(target_os = "android")]
+        // Prefer a user-visible shared-storage folder so the game survives
+        // app uninstall/update. Glue5Activity requests MANAGE_EXTERNAL_STORAGE.
+        // Place data/ and b/ directly inside Internal storage/GTA5/.
+        dirs.push(PathBuf::from("/storage/emulated/0/GTA5"));
         if let Some(ext) = android_external_dir() {
             dirs.push(ext.join("game"));
         }
@@ -142,7 +146,7 @@ pub fn where_the_game_goes() -> &'static str {
         "Copy the game folder into the app's files, named game: Finder (iPhone › Files › Glue 5) \
          or the Files app (On My iPhone › Glue 5). This page looks again when the app comes back."
     } else if cfg!(target_os = "android") {
-        "Copy the game folder, named game, into Android/data/<app>/files/ on the device."
+        "Put the game files in Internal storage/GTA5/ (data/ and b/ directly inside). On first launch, allow Glue 5 to manage files so it can read this shared folder. The folder remains after the app is uninstalled."
     } else {
         "Choose the game folder, or start glue5 with its path."
     }
