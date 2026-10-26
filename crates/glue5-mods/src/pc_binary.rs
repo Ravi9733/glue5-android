@@ -71,7 +71,7 @@ pub fn inspect_bytes(bytes: &[u8]) -> Result<PeReport, String> {
     }
     let pe_offset = read_u32(bytes, 0x3c)? as usize;
     let coff = pe_offset.checked_add(4).ok_or("PE header offset overflow")?;
-    if bytes.get(pe_offset..coff) != Some(b"PE\0\0") {
+    if bytes.get(pe_offset..coff) != Some(&b"PE\\0\\0"[..]) {
         return Err("missing PE signature".into());
     }
     let machine = read_u16(bytes, coff)?;
