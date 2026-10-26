@@ -91,6 +91,7 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
             toggle(ui, &mut settings.mods);
         });
         if !settings.mods && !status.mods {
+            manager_panel(ui, page);
             ui.add_space(4.0 * scale);
             panel(ui, |ui| {
                 card_title(ui, "WHAT MODS ARE", None);
@@ -188,6 +189,7 @@ fn menu_item(ui: &mut egui::Ui, module: &str, item: &glue5_mods::MenuItem) {
 }
 
 fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
+    manager_panel(ui, page);
     let held = glue5_mods::held_back();
     if !held.is_empty() {
         small(
@@ -263,6 +265,47 @@ fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
     if glue5_mods::tainted() {
         small(ui, "A native failed inside the game: restart the game before long.", WARN);
     }
+}
+
+fn manager_panel(ui: &mut egui::Ui, page: &mut ModsPage) {
+    panel(ui, |ui| {
+        card_title(ui, "MOD MANAGER", None);
+        small(ui, "Copy ZIP files or mod folders containing main.luau into the import folder below.", theme::MUTED);
+        if let Ok(dir) = glue5_mods::manager::staging_dir() {
+            small(ui, &dir.display().to_string(), theme::MUTED);
+        }
+        if let Some(msg) = page.manager_message.clone() { small(ui, &msg, WARN); }
+        let items = glue5_mods::manager::candidates().unwrap_or_default();
+        for item in items {
+            ui.horizontal(|ui| {
+                ui.label(format!("{} ({})", item.name, item.kind));
+                if action_button(ui, "Install").clicked() {
+                    page.manager_message = Some(match glue5_mods::manager::install_candidate(&item.name) {
+                        Ok(v) => v, Err(e) => format!("Install failed: {e}")
+                    });
+                }
+            });
+        }
+        card_title(ui, "INSTALLED", None);
+        for m in glue5_mods::mods() {
+            ui.horizontal(|ui| {
+                ui.label(&m.name);
+                if action_button(ui, "Delete").clicked() { page.manager_confirm = Some(m.name.clone()); }
+            });
+        }
+        if let Some(name) = page.manager_confirm.clone() {
+            ui.label(format!("Delete {name}? This cannot be undone."));
+            ui.horizontal(|ui| {
+                if action_button(ui, "Confirm delete").clicked() {
+                    page.manager_message = Some(match glue5_mods::manager::delete_mod(&name) {
+                        Ok(()) => format!("Deleted {name}"), Err(e) => format!("Delete failed: {e}")
+                    });
+                    page.manager_confirm = None;
+                }
+                if inline_button(ui, "Cancel").clicked() { page.manager_confirm = None; }
+            });
+        }
+    });
 }
 
 fn studio_tab(ui: &mut egui::Ui, settings: &mut Settings, status: &Status) {
