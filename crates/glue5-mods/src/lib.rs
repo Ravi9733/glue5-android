@@ -193,7 +193,7 @@ fn seed_bundled_vehicle_mod(dir: &Path) {
     }
     let config = mod_dir.join("mod.json");
     if !config.exists() {
-        let _ = std::fs::write(&config, "{\\n  \\"autostart\\": true\\n}\\n");
+        let _ = std::fs::write(&config, r#"{"autostart": true}"#);
     }
 }
 
