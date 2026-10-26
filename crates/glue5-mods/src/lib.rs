@@ -169,49 +169,10 @@ pub fn held_back() -> Vec<String> {
     HELD_BACK.lock().unwrap().clone()
 }
 
-/// On Android, seed the user's game mods folder with the lightweight weather,
-/// time and colour mod, updating only our known bundled script.
-#[cfg(target_os = "android")]
-fn install_bundled_weather_mod(dir: &Path) {
-    let mod_dir = dir.join("weather-color-enhancer");
-    if let Err(e) = std::fs::create_dir_all(&mod_dir) {
-        log::warn!("cannot create bundled weather mod: {e}");
-        return;
-    }
-    let script = mod_dir.join("main.luau");
-    let bundled_script = include_str!("../../../examples/android-weather-graphics/main.luau");
-    let should_write = match std::fs::read_to_string(&script) {
-        Err(_) => true,
-        Ok(existing) => {
-            !existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V4")
-                && (existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V3")
-                    || existing.contains("GLUE5_ANDROID_WEATHER_COLOR_V2")
-                    || existing.contains("Android weather, time, teleport and lightweight graphics controls for Glue 5.")
-                    || existing.contains("Lightweight GTA V weather, time and natural colour controls for Glue 5 Android.")
-                    || existing.contains("Weather, Time Changer and Colorful Graphics loaded.")
-                    || existing.contains("Weather Changer, Time Changer and Colorful Graphics menus loaded."))
-        }
-    };
-    if should_write
-        && let Err(e) = std::fs::write(&script, bundled_script)
-    {
-        log::warn!("cannot install/upgrade bundled weather mod script: {e}");
-        return;
-    }
-    let manifest = mod_dir.join("mod.json");
-    if !manifest.exists()
-        && let Err(e) = std::fs::write(&manifest, r#"{ "autostart": true }"#)
-    {
-        log::warn!("cannot install bundled weather mod manifest: {e}");
-    }
-}
-
 /// The mods folder `dir` (made if missing): its mods listed, their files
 /// open to the Studio. Before the game too; they run once [`install`]ed.
 pub fn open(dir: &Path) {
     let _ = std::fs::create_dir_all(dir);
-    #[cfg(target_os = "android")]
-    install_bundled_weather_mod(dir);
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
         return;
     }
