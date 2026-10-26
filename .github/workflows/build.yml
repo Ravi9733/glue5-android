@@ -58,6 +58,9 @@ jobs:
           install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo:cargo-ndk","windows":"rust cmake"}')[inputs.platform || 'android'] }}
           cache_key_prefix: mise-${{ inputs.platform || 'android' }}
 
+      - name: Test Windows PE inspector
+        run: cargo test -p glue5-mods --lib pc_binary::tests
+
       - name: Android signing key
         if: inputs.platform == 'android' || github.event_name == 'push'
         run: |
