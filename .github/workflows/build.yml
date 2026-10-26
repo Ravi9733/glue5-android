@@ -58,6 +58,10 @@ jobs:
           install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo:cargo-ndk","windows":"rust cmake"}')[inputs.platform || 'android'] }}
           cache_key_prefix: mise-${{ inputs.platform || 'android' }}
 
+      - name: Prepare workspace dependencies
+        if: env.PLATFORM == 'android'
+        run: mise run setup
+
       - name: Test Windows PE inspector
         if: env.PLATFORM == 'android'
         run: cargo test -p glue5-mods --lib pc_binary::tests
