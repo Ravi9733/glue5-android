@@ -173,11 +173,28 @@ pub fn held_back() -> Vec<String> {
 /// open to the Studio. Before the game too; they run once [`install`]ed.
 pub fn open(dir: &Path) {
     let _ = std::fs::create_dir_all(dir);
+    seed_bundled_vehicle_mod(dir);
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
         return;
     }
     world::load_saved(dir);
     refresh();
+}
+
+/// Installs the built-in vehicle menu once, without overwriting user edits.
+fn seed_bundled_vehicle_mod(dir: &Path) {
+    let mod_dir = dir.join("vehicle-mods");
+    if std::fs::create_dir_all(&mod_dir).is_err() {
+        return;
+    }
+    let main = mod_dir.join("main.luau");
+    if !main.exists() {
+        let _ = std::fs::write(&main, include_str!("../bundled/vehicle-mods/main.luau"));
+    }
+    let config = mod_dir.join("mod.json");
+    if !config.exists() {
+        let _ = std::fs::write(&config, "{\\n  \\"autostart\\": true\\n}\\n");
+    }
 }
 
 /// Mods run with the game about to start (the folder [`open`]ed if it was
