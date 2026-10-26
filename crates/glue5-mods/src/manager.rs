@@ -48,7 +48,7 @@ pub fn install_candidate(candidate: &str) -> Result<String, String> {
         match extract_zip(&src, &temp) {
             Ok(()) => match find_main(&temp, 4) {
                 Some(root) => {
-                    let raw = if root == temp { src.file_stem().unwrap_or_default().to_string_lossy().into_owned() } else { root.file_name().unwrap_or_default().to_string_lossy().into_owned() };
+                    let raw = if root == temp.as_path() { src.file_stem().unwrap_or_default().to_string_lossy().into_owned() } else { root.file_name().unwrap_or_default().to_string_lossy().into_owned() };
                     match safe_name(&raw, candidate) { Ok(name) => copy_install(&root, &name), Err(e) => Err(e) }
                 }
                 None => Err("ZIP has no main.luau (searched up to 4 folders deep)".into()),
