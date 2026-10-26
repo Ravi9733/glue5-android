@@ -24,3 +24,5 @@ sha2.workspace = true
 # The same version as glue5-studio's wasm-bindgen.
 wasm-bindgen-cli-support = "=0.2.129"
 serde_json.workspace = true
+
+zip = { version = "4", default-features = false, features = ["deflate"] }
