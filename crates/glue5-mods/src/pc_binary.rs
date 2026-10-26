@@ -66,7 +66,7 @@ pub fn inspect_file(path: impl AsRef<Path>) -> Result<PeReport, String> {
 
 /// Inspect an in-memory PE image. This function only reads headers and import names.
 pub fn inspect_bytes(bytes: &[u8]) -> Result<PeReport, String> {
-    if bytes.len() < 0x40 || bytes.get(0..2) != Some(b"MZ") {
+    if bytes.len() < 0x40 || bytes.get(0..2) != Some(&b"MZ"[..]) {
         return Err("missing DOS MZ header (not a Windows PE file)".into());
     }
     let pe_offset = read_u32(bytes, 0x3c)? as usize;
