@@ -24,6 +24,8 @@ pub enum Tab {
 #[derive(Default)]
 pub struct ModsPage {
     tab: Tab,
+    manager_confirm: Option<String>,
+    manager_message: Option<String>,
 }
 
 impl ModsPage {
