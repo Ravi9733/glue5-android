@@ -2,31 +2,33 @@
 name: Build
 
 on:
+  push:
+    branches: [android-pc-trainer-runtime]
   workflow_dispatch:
     inputs:
       platform:
         description: Platform
         type: choice
         options: [ios, android, windows, macos, linux-x86_64, linux-aarch64]
-        default: ios
+        default: android
 
 permissions:
   contents: write
 
 concurrency:
-  group: build-${{ inputs.platform }}
+  group: build-${{ inputs.platform || 'android' }}
 
 jobs:
   build:
-    name: ${{ inputs.platform }}
-    runs-on: ${{ fromJSON('{"ios":"macos-26","macos":"macos-26","android":"ubuntu-24.04","linux-x86_64":"ubuntu-24.04","linux-aarch64":"ubuntu-24.04-arm","windows":"windows-2025"}')[inputs.platform] }}
+    name: ${{ inputs.platform || 'android' }}
+    runs-on: ${{ fromJSON('{"ios":"macos-26","macos":"macos-26","android":"ubuntu-24.04","linux-x86_64":"ubuntu-24.04","linux-aarch64":"ubuntu-24.04-arm","windows":"windows-2025"}')[inputs.platform || 'android'] }}
     timeout-minutes: 360
     defaults:
       run:
         shell: bash
     env:
       GH_TOKEN: ${{ github.token }}
-      PLATFORM: ${{ inputs.platform }}
+      PLATFORM: ${{ inputs.platform || 'android' }}
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
       MISE_TASK_RUN_AUTO_INSTALL: "false"
 
@@ -53,11 +55,19 @@ jobs:
         with:
           version: 2026.7.5
           install: ${{ !startsWith(inputs.platform, 'linux') }}
-          install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo:cargo-ndk","windows":"rust cmake"}')[inputs.platform] }}
-          cache_key_prefix: mise-${{ inputs.platform }}
+          install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo:cargo-ndk","windows":"rust cmake"}')[inputs.platform || 'android'] }}
+          cache_key_prefix: mise-${{ inputs.platform || 'android' }}
+
+      - name: Prepare workspace dependencies
+        if: env.PLATFORM == 'android'
+        run: mise run setup
+
+      - name: Test Windows PE inspector
+        if: env.PLATFORM == 'android'
+        run: cargo test -p glue5-mods --lib pc_binary::tests
 
       - name: Android signing key
-        if: inputs.platform == 'android'
+        if: inputs.platform == 'android' || github.event_name == 'push'
         run: |
           yes | mise exec -- sdkmanager --licenses >/dev/null || true
           mkdir -p ~/.android
@@ -99,6 +109,29 @@ jobs:
               mv target/package/*.AppImage "Glue5-$PLATFORM.AppImage"
               ;;
           esac
+
+
+      - name: Package Android PC trainer adapter ZIP
+        if: env.PLATFORM == 'android'
+        run: |
+          mkdir -p trainer-package/pc-trainer-v-android
+          cp examples/android-pc-trainer-adapter/main.luau trainer-package/pc-trainer-v-android/main.luau
+          cp examples/android-pc-trainer-adapter/mod.json trainer-package/pc-trainer-v-android/mod.json
+          cp examples/android-pc-trainer-adapter/README.md trainer-package/pc-trainer-v-android/README.md
+          (cd trainer-package && zip -qr ../Glue5-PC-Trainer-V-Android.zip pc-trainer-v-android)
+          echo "This is a Luau feature adapter, not a Windows ASI/DLL loader. Device-side feature tests are still required." >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Android APK and trainer adapter artifacts
+        if: github.ref_name == 'android-pc-trainer-runtime' && env.PLATFORM == 'android'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glue5-Android-PC-Trainer-Runtime
+          path: |
+            Glue5-android.apk
+            Glue5-android.keystore
+            Glue5-PC-Trainer-V-Android.zip
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Into the draft release
         run: |
