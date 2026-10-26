@@ -46,6 +46,7 @@ pub fn default_game_dirs() -> Vec<PathBuf> {
         // app uninstall/update. Glue5Activity requests MANAGE_EXTERNAL_STORAGE.
         // Place data/ and b/ directly inside Internal storage/GTA5/.
         dirs.push(PathBuf::from("/storage/emulated/0/GTA5"));
+        #[cfg(target_os = "android")]
         if let Some(ext) = android_external_dir() {
             dirs.push(ext.join("game"));
         }
