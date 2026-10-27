@@ -22,16 +22,20 @@ The upstream graphics contract in `native-port/app/Source/NativeGraphics.h` incl
 
 The Metal renderer header confirms that the renderer consumes the engine's graphics command ring directly. Android needs a separate implementation of that contract, with Vulkan rendering and a compatible shader pipeline; replacing only the window/layer call is insufficient. The exact command encoding, memory layout, shader inputs, synchronization and resource lifetime must be traced before an adapter can safely submit Vulkan commands.
 
+### Glue5 renderer comparison
+
+Glue5's `crates/glue5-runtime/src/gpu.rs` documents its ring as a browser-build `wgpu_worker.js` / `wgpu_backend` protocol. It has a 64-word header area and commands encoded as an opcode, payload length in 32-bit words, and payload; its known opcode table includes texture/buffer creation, shader/layout/state setup, draws, dispatches, fences and readbacks. Its backend runs the queue on a dedicated thread and uses Glue5 runtime memory helpers.
+
+That is useful reference material, but it does **not yet prove wire compatibility** with Mugoat's Metal renderer. The next implementation gate is to inspect the upstream renderer's command decoder and compare every consumed opcode, field width, address interpretation, ring wrap rule, synchronization point and shader format against Glue5's definitions. No renderer adapter should be wired until that comparison is complete; guessing at this boundary could corrupt engine memory or produce a black screen.
+
 The upstream `native-port/app/Scripts/prepare.py` is also a hard platform gate: it exits unless running on an Apple Silicon Mac with Xcode, validates the exact `game.wasm` SHA-256 (`11ca8d2c04c5e843d18ff4aea4899d72c86973c6b031df334e67c446b2ae83e0`), generates C from the engine with a pinned WABT fork, and builds the Metal shader library. This preparation pipeline cannot simply be invoked in Linux GitHub Actions; Android needs a separate preparation path that preserves the expected engine imports and generates Android-compatible shader assets.
 
 The engine host also contains iOS-specific headers and calls (for example `TargetConditionals.h`, `sys/sysctl.h`, Mach/process memory APIs). Audio is exposed via `PGFillAudio`, and controller/touch state is passed through the `PGUpdateController`/virtual-pad APIs. These need Android implementations and lifecycle testing, not just build-file changes.
 
-Glue5 already has an Android/Vulkan stack, but it is a different runtime and renderer. Reusing the Glue5 renderer requires a deliberate adapter for Mugoat's native engine graphics contract and verification that the engine's graphics calls, memory model, audio, input, file APIs, and generated C engine all work under Android. Merely adding an Android Gradle project or renaming an APK would not constitute a port.
-
 ## Planned implementation sequence
 
 1. Pin and preserve the upstream source as a submodule so it can be reviewed independently.
-2. Trace the native renderer's command interface, memory layout, shader inputs, synchronization and resource lifetime; document the mapping to Vulkan before wiring renderer code.
+2. Finish a source-level renderer protocol comparison: opcodes, payload layouts, ring semantics, shaders and resource synchronization.
 3. Build an Android-specific engine preparation path (WASM validation/code generation and Vulkan shader compilation), rather than calling the Apple-only `prepare.py`.
 4. Add an Android app shell and NDK build; exclude iOS-only sources and replace platform-specific host calls.
 5. Implement Android graphics, lifecycle, audio, input, memory and game-data services; build an ARM64 debug APK.
