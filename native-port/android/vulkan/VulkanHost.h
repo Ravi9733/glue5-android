@@ -28,6 +28,8 @@ struct Host {
   std::vector<VkImageView> views;
   std::vector<VkSemaphore> acquired;
   std::vector<VkSemaphore> rendered;
+  VkCommandPool command_pool = VK_NULL_HANDLE;
+  std::vector<VkImageLayout> image_layouts;
   uint32_t frame = 0;
   bool ready = false;
 };
@@ -35,6 +37,9 @@ struct Host {
 // Caller retains ownership of window; it must stay valid until shutdown.
 bool initialize(Host* host, ANativeWindow* window, int32_t width, int32_t height);
 bool resize(Host* host, int32_t width, int32_t height);
+// Smoke-test frame path: clears and presents a Vulkan frame. This is not yet
+// the Mugoat command-ring renderer.
+bool present_clear_frame(Host* host, float red, float green, float blue, float alpha);
 void shutdown(Host* host);
 
 }  // namespace mugoat::vkhost
