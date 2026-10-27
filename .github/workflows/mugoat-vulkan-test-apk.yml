@@ -1,0 +1,53 @@
+name: Mugoat Vulkan test APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mugoat-android]
+    paths:
+      - "native-port/android/vulkan/**"
+      - "native-port/android/vulkan-test/**"
+      - "native-port/android/vulkan-test-native/**"
+      - ".github/workflows/mugoat-vulkan-test-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-apk:
+    name: Build arm64 Vulkan smoke-test APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Install Android SDK components
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Build debug APK
+        working-directory: native-port/android/vulkan-test
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Verify APK and native ABI
+        run: |
+          set -euo pipefail
+          APK="native-port/android/vulkan-test/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -q "local.mugoat.vulkantest"
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libmugoat_vulkan_test.so"
+          mkdir -p dist
+          cp "$APK" dist/Mugoat-Vulkan-Test-arm64-debug.apk
+          sha256sum dist/Mugoat-Vulkan-Test-arm64-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mugoat-Vulkan-Test-arm64-debug
+          path: dist/Mugoat-Vulkan-Test-arm64-debug.apk
+          if-no-files-found: error
+          retention-days: 14
