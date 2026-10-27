@@ -73,3 +73,10 @@ Compared the Glue5 Vulkan executor dispatch in `crates/glue5-gpu/src/exec.rs` ag
 
 Do **not** wire Mugoat's engine directly to Glue5's Vulkan executor and call it a port yet. Matching command IDs and seeing executor arms is insufficient: the shader ABI and native host are incompatible, and an incorrect shortcut risks a black screen, corrupt resources or hangs on readback/fence waits. The next implementation milestone is an Android host/renderer adapter plus a shader-input pipeline; only after those exist does an Android NDK/APK workflow have meaningful build targets.
 
+
+
+## Shader-tool feasibility check
+
+Inspected the pinned upstream `native-port/app/ShaderTool/build_pgmsl.sh`. It builds an offline translator against Dawn/Tint with the Metal Shading Language writer enabled (`TINT_BUILD_MSL_WRITER=1`) and SPIR-V, GLSL and HLSL writers disabled. It also hardcodes macOS/Apple Silicon flags and links Apple frameworks. Therefore this existing tool cannot produce Android Vulkan shader artifacts in Linux CI; merely adding an Android Gradle/NDK target would still fail to create a runnable renderer.
+
+A viable next graphics milestone must either (a) rebuild/configure a compatible Tint toolchain with a Vulkan-target shader output and validate the shader language/ABI expected by Glue5's pipeline, or (b) implement a dedicated translation stage from the engine's actual shader representation. The result must be tested with representative vertex, pixel and compute shaders before integrating it into the APK build.
