@@ -1,47 +1,18 @@
--- RealityV Graphics options for Glue5 Android.
--- Approximate timecycle presets; not custom shader-level graphics.
+-- Glue5 Android: minimal soft-blur graphics mod.
+-- Uses the game's timecycle modifier API; effect depends on runtime support.
 
-local root = ui.menu("RealityV Graphics", "Graphics presets and blur controls")
-local selectedModifier = "vivid"
-local selectedStrength = 0.50
-local blurEnabled = false
+local root = ui.menu("Soft Blur Graphics", "Light blur effect")
 
-local function applyCurrent()
-    if blurEnabled then
-        graphics.setTimecycleModifier("hud_def_blur")
-        graphics.setTimecycleModifierStrength(0.20)
-    else
-        graphics.setTimecycleModifier(selectedModifier)
-        graphics.setTimecycleModifierStrength(selectedStrength)
-    end
-end
-
-local function preset(label, modifier, strength)
-    root:action(label, function()
-        selectedModifier = modifier
-        selectedStrength = strength
-        blurEnabled = false
-        applyCurrent()
-    end)
-end
-
-preset("Colorful / Vivid", "vivid", 0.50)
-preset("Natural", "default", 0.25)
-preset("Realistic / Filmic", "NG_filmic01", 0.45)
-preset("Cartoon Style (Approx.)", "REDMIST", 0.55)
-
-root:action("Blur ON", function()
-    blurEnabled = true
-    applyCurrent()
+root:action("Soft Blur ON", function()
+    graphics.setTimecycleModifier("hud_def_blur")
+    graphics.setTimecycleModifierStrength(0.20)
 end)
+
 root:action("Blur OFF", function()
-    blurEnabled = false
-    applyCurrent()
+    graphics.clearTimecycleModifier()
 end)
+
 root:action("Reset Graphics", function()
-    blurEnabled = false
-    selectedModifier = "vivid"
-    selectedStrength = 0.50
     graphics.clearTimecycleModifier()
 end)
 
