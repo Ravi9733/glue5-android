@@ -1,18 +1,13 @@
-RealityV Graphics — Glue5 Android
+Soft Blur Graphics — Glue5 Android
 
-This ZIP contains only the RealityV Graphics script.
-
-Options:
-- Colorful / Vivid
-- Natural
-- Realistic / Filmic (approximation)
-- Cartoon Style (approximation)
-- Blur ON / Blur OFF
+This mod contains only a simple blur toggle:
+- Soft Blur ON
+- Blur OFF
 - Reset Graphics
 
-Important: These use timecycle modifier effects, not new textures or custom
-shaders. The Realistic and Cartoon options are approximate and depend on the
-Glue5 graphics API and the game build. They are not guaranteed to work until
-tested in-game.
+It calls Glue5's graphics timecycle modifier API using the game's
+`hud_def_blur` modifier at low strength (0.20). The exact visual effect
+depends on the Glue5 build and game runtime; it must be tested in-game.
+This is a post-processing/timecycle effect, not a texture or shader pack.
 
-Install this ZIP through the Glue5 mod manager if ZIP/script mods are supported.
+Install the ZIP through Glue5's mod manager if script ZIP mods are supported.
