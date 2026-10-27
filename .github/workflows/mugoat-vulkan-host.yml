@@ -13,10 +13,19 @@ permissions:
 
 jobs:
   compile-vulkan-host:
-    name: Compile ARM64 Android Vulkan host
+    name: Test ring protocol and compile ARM64 Vulkan host
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+      - name: Test command ring bridge on host
+        run: |
+          set -euo pipefail
+          c++ -std=c++20 -Wall -Wextra -Werror \
+            -Inative-port/android/vulkan \
+            native-port/android/vulkan/CommandRingBridge.cpp \
+            native-port/android/vulkan/tests/CommandRingBridgeTests.cpp \
+            -o /tmp/mugoat-ring-tests
+          /tmp/mugoat-ring-tests
       - name: Select preinstalled Android NDK and CMake
         shell: bash
         run: |
