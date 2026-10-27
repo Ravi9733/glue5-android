@@ -17,10 +17,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - name: Install Android SDK and NDK
+      - name: Install Android SDK, NDK and CMake
         uses: android-actions/setup-android@v3
-      - name: Install NDK and CMake
-        run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
+        with:
+          packages: |
+            platform-tools
+            ndk;27.2.12479018
+            cmake;3.22.1
       - name: Configure ARM64 Android build
         run: >-
           cmake -S native-port/android/vulkan
