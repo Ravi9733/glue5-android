@@ -47,11 +47,11 @@ The engine host also contains iOS-specific headers and calls (for example `Targe
 
 ## Automated guard added
 
-Added `.github/scripts/check_mugoat_gpu_protocol.py` and `.github/workflows/mugoat-protocol-check.yml` on this branch. The workflow checks out the pinned submodule and compares the ring offset, `WRAP` ID and engine opcode IDs against Glue5. It deliberately excludes Glue5's host-only `SCENE_DONE` opcode. This is a static guard only; it does not validate payload fields, Vulkan behavior or gameplay. The workflow has been committed but its CI result has not yet been verified here.
+Added `.github/scripts/check_mugoat_gpu_protocol.py` and `.github/workflows/mugoat-protocol-check.yml` on this branch. The workflow checks out the pinned submodule and compares ring framing and opcode IDs, excludes Glue5's host-only `SCENE_DONE`, and checks that each non-`WRAP` engine opcode has a reference in the Glue5 GPU executor. GitHub Actions runs for commits `cec0821` and `e89751f` completed successfully. This remains a static guard: opcode references do not validate payload fields, Vulkan behavior or gameplay.
 
 ## Current status
 
-**The ring framing and engine opcode IDs match, but command semantics, Glue5 backend coverage, and the Vulkan renderer are not yet ported. No Android Mugoat APK has been built.** A successful Glue5 APK build does not validate Mugoat. Do not claim Vulkan support, working gameplay or FPS performance until verified.
+**Verified:** ring framing and engine opcode IDs match; the static GitHub Actions protocol check passes and the Glue5 executor references all non-`WRAP` engine opcodes. **Not yet implemented/verified:** complete payload semantics, a Mugoat-compatible Vulkan shader/pipeline path, Android host replacements, NDK app integration and an Android APK. No Mugoat Android APK has been built. A successful protocol check or Glue5 APK build does not validate Mugoat gameplay. Do not claim Vulkan support, working gameplay or FPS performance until verified.
 
 
 ## Payload and execution audit — first pass
