@@ -8,6 +8,7 @@ on:
       - ".github/scripts/check_mugoat_gpu_protocol.py"
       - ".github/workflows/mugoat-protocol-check.yml"
       - "crates/glue5-runtime/src/gpu.rs"
+      - "crates/glue5-gpu/src/exec.rs"
       - ".gitmodules"
       - "third_party/mugoat-upstream"
 
