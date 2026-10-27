@@ -28,3 +28,10 @@ The upstream engine currently calls `PGStartGraphics(memory, memorySize, ring, r
 The pinned upstream still uses `MetalGraphicsHost.mm`, `MetalRenderer` and a Metal-only shader build. The Glue5 GPU crate is a useful protocol reference, not a drop-in C ABI renderer. The repository's audit workflows detect these boundaries; they do not claim the renderer replacement is complete.
 
 Do not publish an APK as a working Mugoat port until all compatibility gates above pass.
+
+
+## First code slice added
+
+The branch now contains `native-port/android/vulkan/VulkanHost.h/.cpp` and a CMake target. This code creates an Android Vulkan instance/surface, selects a physical device with graphics + presentation support, creates a logical device and swapchain, makes swapchain image views/semaphores, and handles swapchain recreation/cleanup. It is a real platform-layer starting point, **not yet the Mugoat renderer replacement**: it does not consume the engine's command ring, translate draw/compute commands, compile the game's shaders, or present rendered game frames.
+
+A GitHub Actions workflow, `.github/workflows/mugoat-vulkan-host.yml`, compiles this static library for `arm64-v8a` with Android NDK API 29. The next integration work is to add a frame acquisition/submission API, connect it to the engine's ring bridge, implement opcode/resource translation, and replace the Metal shader output with SPIR-V.
