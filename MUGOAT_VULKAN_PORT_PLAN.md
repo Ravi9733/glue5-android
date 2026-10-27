@@ -30,6 +30,12 @@ The pinned upstream still uses `MetalGraphicsHost.mm`, `MetalRenderer` and a Met
 Do not publish an APK as a working Mugoat port until all compatibility gates above pass.
 
 
+## Current Android branch progress (2026-10-27)
+
+- `native-port/android/vulkan/CommandRingBridge.h/.cpp` now provide a bounds-checked, read-only reader for the shared command ring, including packet-length checks and explicit WRAP advancement. The reader does not mutate producer-owned counters and does not execute GPU commands.
+- `native-port/android/vulkan/CMakeLists.txt` compiles the bridge with the Vulkan host.
+- The `Mugoat Android Vulkan host` workflow is being used to compile-check these native files for Android ARM64. A successful native-library build still does not equal a working game renderer or APK.
+
 ## First code slice added
 
 The branch now contains `native-port/android/vulkan/VulkanHost.h/.cpp` and a CMake target. This code creates an Android Vulkan instance/surface, selects a physical device with graphics + presentation support, creates a logical device and swapchain, makes swapchain image views/semaphores, and handles swapchain recreation/cleanup. It is a real platform-layer starting point, **not yet the Mugoat renderer replacement**: it does not consume the engine's command ring, translate draw/compute commands, compile the game's shaders, or present rendered game frames.
