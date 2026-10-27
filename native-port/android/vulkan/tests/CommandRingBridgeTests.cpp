@@ -121,4 +121,6 @@ int main() {
   oversized_packet_is_rejected();
   wrap_is_accepted_only_at_ring_end();
   invalid_mapping_is_rejected();
+  stale_or_forged_packet_cannot_advance_tail();
+  wrapped_packet_must_not_be_consumed_as_regular_data();
 }
