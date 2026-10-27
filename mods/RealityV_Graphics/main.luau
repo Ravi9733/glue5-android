@@ -1,38 +1,55 @@
--- RealityV-style graphics presets for GLUE 5.
--- Uses built-in timecycle modifiers; does not install replacement textures.
+-- Glue5 Android: Colorful / Clear Graphics + Blur ON/OFF
+-- Uses the same UI and timecycle API as the existing RealityV graphics mod.
+-- Note: Glue5's Lua API does not expose a verified shader-sharpening control here;
+-- "Clear/Sharp look" uses a high-contrast preset, not true image sharpening.
 
-local root = ui.menu("RealityV Graphics", "Choose a graphics preset")
+local root = ui.menu("Colorful Sharp Graphics", "Colorful preset and blur toggle")
 
-local function apply(name, strength)
-    graphics.setTimecycleModifier(name)
-    graphics.setTimecycleModifierStrength(strength)
+local selectedModifier = "vivid"
+local selectedStrength = 0.50
+local blurEnabled = false
+
+local function applyCurrent()
+    if blurEnabled then
+        graphics.setTimecycleModifier("hud_def_blur")
+        graphics.setTimecycleModifierStrength(0.20)
+    else
+        graphics.setTimecycleModifier(selectedModifier)
+        graphics.setTimecycleModifierStrength(selectedStrength)
+    end
 end
 
-root:action("Natural Graphics", function()
-    apply("NG_filmic01", 0.45)
+root:action("Colorful Graphics ON", function()
+    selectedModifier = "vivid"
+    selectedStrength = 0.50
+    blurEnabled = false
+    applyCurrent()
 end)
 
-root:action("Full Colorful", function()
-    apply("vivid", 0.50)
+root:action("Clear / High-Contrast Look", function()
+    selectedModifier = "NG_filmic01"
+    selectedStrength = 0.45
+    blurEnabled = false
+    applyCurrent()
 end)
 
-root:action("Cinematic", function()
-    apply("MP_Arena_theme_attract", 0.35)
+root:action("Blur ON", function()
+    blurEnabled = true
+    applyCurrent()
 end)
 
-root:action("Soft Blur", function()
-    apply("hud_def_blur", 0.20)
+root:action("Blur OFF", function()
+    blurEnabled = false
+    applyCurrent()
 end)
 
-root:action("Strong Blur", function()
-    apply("hud_def_blur", 0.45)
-end)
-
-root:action("Reset / Default Graphics", function()
+root:action("Reset Graphics", function()
+    blurEnabled = false
+    selectedModifier = "vivid"
+    selectedStrength = 0.50
     graphics.clearTimecycleModifier()
 end)
 
--- Show the menu when this mod script starts, if supported by this GLUE 5 build.
 if root.show then
     root:show()
 end
