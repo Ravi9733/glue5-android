@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00400000" android:required="true" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <application
+        android:label="Mugoat Vulkan Test"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+        android:hasCode="false"
+        android:allowBackup="false">
+        <activity
+            android:name="android.app.NativeActivity"
+            android:label="Mugoat Vulkan Test"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:screenOrientation="landscape"
+            android:exported="true">
+            <meta-data android:name="android.app.lib_name" android:value="mugoat_vulkan_test" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
