@@ -1,0 +1,28 @@
+name: Mugoat GPU protocol check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mugoat-android]
+    paths:
+      - ".github/scripts/check_mugoat_gpu_protocol.py"
+      - ".github/workflows/mugoat-protocol-check.yml"
+      - "crates/glue5-runtime/src/gpu.rs"
+      - ".gitmodules"
+      - "third_party/mugoat-upstream"
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    name: Compare ring framing and opcode IDs
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out pinned source submodule
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Verify command ring constants
+        run: python3 .github/scripts/check_mugoat_gpu_protocol.py
