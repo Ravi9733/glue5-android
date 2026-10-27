@@ -1,0 +1,25 @@
+name: Mugoat Android blocker audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mugoat-android]
+    paths:
+      - ".github/scripts/check_mugoat_android_blockers.py"
+      - ".github/workflows/mugoat-android-blocker-audit.yml"
+      - "third_party/mugoat-upstream"
+
+permissions:
+  contents: read
+
+jobs:
+  source-audit:
+    name: Confirm platform blockers are tracked
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out pinned Mugoat source
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Audit Apple-only preparation and Metal shader assumptions
+        run: python3 .github/scripts/check_mugoat_android_blockers.py
