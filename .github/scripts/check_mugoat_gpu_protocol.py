@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MUGOAT = ROOT / "third_party/mugoat-upstream/native-port/app/Source/MetalRenderer/MRRenderer.mm"
 GLUE5 = ROOT / "crates/glue5-runtime/src/gpu.rs"
+GLUE5_EXEC = ROOT / "crates/glue5-gpu/src/exec.rs"
 
 
 def fail(message: str) -> None:
@@ -52,9 +53,12 @@ def main() -> int:
         fail(f"upstream submodule/file missing: {MUGOAT}; initialize third_party/mugoat-upstream first")
     if not GLUE5.is_file():
         fail(f"Glue5 GPU protocol file missing: {GLUE5}")
+    if not GLUE5_EXEC.is_file():
+        fail(f"Glue5 GPU executor missing: {GLUE5_EXEC}")
 
     upstream = parse_mugoat(MUGOAT.read_text(encoding="utf-8"))
     glue5 = parse_glue5(GLUE5.read_text(encoding="utf-8"))
+    executor_text = GLUE5_EXEC.read_text(encoding="utf-8")
     missing = sorted(set(upstream) - set(glue5))
     extra = sorted(set(glue5) - set(upstream))
     mismatched = sorted((name, upstream[name], glue5[name]) for name in set(upstream) & set(glue5) if upstream[name] != glue5[name])
@@ -68,13 +72,21 @@ def main() -> int:
             print(f"Opcode mismatch {name}: Mugoat={a}, Glue5={b}", file=sys.stderr)
         fail("opcode tables differ")
 
+    # WRAP is consumed by the shared ring reader before commands reach exec.rs.
+    # Every other engine opcode should have an explicit executor reference.
+    executor_ops = set(re.findall(r"op::([A-Z][A-Z0-9_]*)", executor_text))
+    unhandled = sorted(set(upstream) - executor_ops - {"WRAP"})
+    if unhandled:
+        fail("engine opcodes with no executor reference (excluding reader-handled WRAP): " + ", ".join(unhandled))
+
     if "RING_DATA = 64" not in MUGOAT.read_text(encoding="utf-8") or "pub const RING_DATA: u32 = 64;" not in GLUE5.read_text(encoding="utf-8"):
         fail("RING_DATA offset is not 64 in both implementations")
     if upstream.get("WRAP") != 1 or glue5.get("WRAP") != 1:
         fail("WRAP opcode is not 1 in both implementations")
 
     print(f"GPU ring framing constants and {len(upstream)} engine opcode IDs match.")
-    print("Note: payload fields, shader formats, resource lifetime and GPU completion semantics are not validated by this static check.")
+    print(f"Glue5 GPU executor references all {len(upstream) - 1} non-WRAP engine opcodes.")
+    print("Note: opcode references do not prove correct payload handling, shader formats, resource lifetime or GPU completion semantics.")
     return 0
 
 
