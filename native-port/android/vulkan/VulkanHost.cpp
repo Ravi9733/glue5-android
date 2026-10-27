@@ -115,6 +115,7 @@ void destroy_swapchain(Host* host) {
   for (auto view : host->views) if (view) vkDestroyImageView(host->device, view, nullptr);
   host->views.clear();
   host->images.clear();
+  host->image_layouts.clear();
   if (host->swapchain) vkDestroySwapchainKHR(host->device, host->swapchain, nullptr);
   host->swapchain = VK_NULL_HANDLE;
 }
@@ -195,6 +196,7 @@ bool create_swapchain(Host* host, int32_t requested_width, int32_t requested_hei
     host->acquired.push_back(a);
     host->rendered.push_back(b);
   }
+  host->image_layouts.assign(actual_count, VK_IMAGE_LAYOUT_UNDEFINED);
   host->frame = 0;
   MUGOAT_LOGI("Swapchain ready: %ux%u, %u images, format=%d", extent.width, extent.height, actual_count, static_cast<int>(host->surface_format));
   return true;
@@ -223,6 +225,12 @@ bool initialize(Host* host, ANativeWindow* window, int32_t width, int32_t height
     if (!ok(vkCreateAndroidSurfaceKHR(host->instance, &surface_info, nullptr, &host->surface), "create Android surface")) goto fail;
   }
   if (!select_physical(host) || !create_device(host) || !create_swapchain(host, width, height)) goto fail;
+  {
+    VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    pool.queueFamilyIndex = host->graphics_family;
+    if (!ok(vkCreateCommandPool(host->device, &pool, nullptr, &host->command_pool), "create command pool")) goto fail;
+  }
   host->ready = true;
   return true;
 fail:
@@ -236,8 +244,85 @@ bool resize(Host* host, int32_t width, int32_t height) {
   return create_swapchain(host, width, height);
 }
 
+bool present_clear_frame(Host* host, float red, float green, float blue, float alpha) {
+  if (!host || !host->ready || !host->device || !host->swapchain || !host->command_pool) return false;
+  uint32_t image_index = 0;
+  const VkResult acquired = vkAcquireNextImageKHR(host->device, host->swapchain, UINT64_MAX,
+      host->acquired[host->frame % host->acquired.size()], VK_NULL_HANDLE, &image_index);
+  if (acquired == VK_ERROR_OUT_OF_DATE_KHR) return false;
+  if (acquired != VK_SUCCESS && acquired != VK_SUBOPTIMAL_KHR) return ok(acquired, "acquire swapchain image");
+  VkCommandBufferAllocateInfo allocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+  allocation.commandPool = host->command_pool;
+  allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  allocation.commandBufferCount = 1;
+  VkCommandBuffer command = VK_NULL_HANDLE;
+  if (!ok(vkAllocateCommandBuffers(host->device, &allocation, &command), "allocate frame command buffer")) return false;
+  VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+  begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  bool recorded = ok(vkBeginCommandBuffer(command, &begin), "begin frame command buffer");
+  if (recorded) {
+    VkImageMemoryBarrier to_clear{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    to_clear.oldLayout = host->image_layouts[image_index];
+    to_clear.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    to_clear.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_clear.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_clear.image = host->images[image_index];
+    to_clear.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    to_clear.srcAccessMask = host->image_layouts[image_index] == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_MEMORY_READ_BIT;
+    to_clear.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(command, host->image_layouts[image_index] == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &to_clear);
+    VkClearColorValue color{{red, green, blue, alpha}};
+    VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdClearColorImage(command, host->images[image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &color, 1, &range);
+    VkImageMemoryBarrier to_present{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    to_present.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    to_present.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    to_present.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_present.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_present.image = host->images[image_index];
+    to_present.subresourceRange = range;
+    to_present.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    to_present.dstAccessMask = 0;
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &to_present);
+    recorded = ok(vkEndCommandBuffer(command), "end frame command buffer");
+  }
+  if (!recorded) { vkFreeCommandBuffers(host->device, host->command_pool, 1, &command); return false; }
+  const VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+  VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+  submit.waitSemaphoreCount = 1;
+  submit.pWaitSemaphores = &host->acquired[host->frame % host->acquired.size()];
+  submit.pWaitDstStageMask = &wait_stage;
+  submit.commandBufferCount = 1;
+  submit.pCommandBuffers = &command;
+  submit.signalSemaphoreCount = 1;
+  submit.pSignalSemaphores = &host->rendered[host->frame % host->rendered.size()];
+  const bool submitted = ok(vkQueueSubmit(host->graphics_queue, 1, &submit, VK_NULL_HANDLE), "submit clear frame");
+  if (submitted) {
+    VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+    present.waitSemaphoreCount = 1;
+    present.pWaitSemaphores = &host->rendered[host->frame % host->rendered.size()];
+    present.swapchainCount = 1;
+    present.pSwapchains = &host->swapchain;
+    present.pImageIndices = &image_index;
+    const VkResult result = vkQueuePresentKHR(host->present_queue, &present);
+    host->image_layouts[image_index] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    ++host->frame;
+    vkQueueWaitIdle(host->present_queue);
+    vkQueueWaitIdle(host->graphics_queue);
+    vkFreeCommandBuffers(host->device, host->command_pool, 1, &command);
+    return result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR;
+  }
+  vkQueueWaitIdle(host->graphics_queue);
+  vkFreeCommandBuffers(host->device, host->command_pool, 1, &command);
+  return false;
+}
+
 void shutdown(Host* host) {
   if (!host) return;
+  if (host->device) vkDeviceWaitIdle(host->device);
+  if (host->command_pool && host->device) vkDestroyCommandPool(host->device, host->command_pool, nullptr);
+  host->command_pool = VK_NULL_HANDLE;
   destroy_swapchain(host);
   if (host->device) vkDestroyDevice(host->device, nullptr);
   host->device = VK_NULL_HANDLE;
