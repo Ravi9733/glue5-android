@@ -60,6 +60,16 @@ PacketStatus CommandRingReader::peek(CommandPacket* out) const {
   return PacketStatus::Ready;
 }
 
+bool CommandRingReader::consumeWrap() {
+  if (!valid_ || tail_ > ring_size_ - kPacketHeaderBytes) return false;
+  const auto* words = reinterpret_cast<const uint32_t*>(memory_ + ring_base_ + tail_);
+  if (words[0] != kWrapOpcode) return false;
+  // WRAP is a marker, not a regular packet. The next readable packet begins
+  // at the first byte after the fixed ring header.
+  tail_ = kHeaderBytes;
+  return true;
+}
+
 bool CommandRingReader::consume(const CommandPacket& packet) {
   if (!valid_ || packet.offset != tail_ ||
       packet.end_offset != static_cast<uint64_t>(tail_) +
