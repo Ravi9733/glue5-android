@@ -105,11 +105,12 @@ jobs:
       - name: Package the Graphic Mods ZIP
         if: inputs.platform == 'android' || github.event_name == 'push'
         run: |
-          mkdir -p /tmp/graphic-mods/RealityV_Graphics
-          cp mods/RealityV_Graphics/main.luau /tmp/graphic-mods/RealityV_Graphics/main.luau
-          cp mods/RealityV_Graphics/README.txt /tmp/graphic-mods/RealityV_Graphics/README.txt
-          (cd /tmp/graphic-mods && zip -r "$GITHUB_WORKSPACE/Glue5-Graphic-Mods.zip" RealityV_Graphics)
-          echo "Packaged Graphic Mods only." >>"$GITHUB_STEP_SUMMARY"
+          mkdir -p /tmp/graphic-mods/soft-blur-graphics
+          cp mods/soft-blur-graphics/main.luau /tmp/graphic-mods/soft-blur-graphics/main.luau
+          cp mods/soft-blur-graphics/mod.json /tmp/graphic-mods/soft-blur-graphics/mod.json
+          cp mods/soft-blur-graphics/README.txt /tmp/graphic-mods/soft-blur-graphics/README.txt
+          (cd /tmp/graphic-mods && zip -r "$GITHUB_WORKSPACE/Glue5-Graphic-Mods.zip" soft-blur-graphics)
+          echo "Packaged loadable Soft Blur Graphics mod." >>"$GITHUB_STEP_SUMMARY"
 
       - name: Into the draft release
         run: |
