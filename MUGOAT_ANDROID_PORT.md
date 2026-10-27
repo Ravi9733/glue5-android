@@ -52,3 +52,24 @@ Added `.github/scripts/check_mugoat_gpu_protocol.py` and `.github/workflows/mugo
 ## Current status
 
 **The ring framing and engine opcode IDs match, but command semantics, Glue5 backend coverage, and the Vulkan renderer are not yet ported. No Android Mugoat APK has been built.** A successful Glue5 APK build does not validate Mugoat. Do not claim Vulkan support, working gameplay or FPS performance until verified.
+
+
+## Payload and execution audit — first pass
+
+Compared the Glue5 Vulkan executor dispatch in `crates/glue5-gpu/src/exec.rs` against the upstream Metal renderer's opcode table and Glue5 runtime's `Command` helpers. The executor has explicit dispatch references for all non-`WRAP` engine opcode IDs; `WRAP` is consumed by the shared ring reader before the executor sees it. This confirms dispatch coverage only, not equivalent rendering behavior.
+
+| Area | Glue5 executor path | Port status / risk |
+|---|---|---|
+| Ring header and command framing | `glue5-runtime/src/gpu.rs` reader | Basic offsets and framing match the pinned upstream renderer. |
+| Resource IDs / object lifetime | `exec.rs`, `objects.rs`, `submit.rs` | Different implementation models; lifetime and deferred destruction need runtime tests. |
+| Textures and formats | `create_texture`, `format.rs`, `uploads.rs` | Vulkan/WebGPU format capabilities and BC fallback differ from Metal. Validate format mappings and large-texture memory behavior on target devices. |
+| Shader / input layout | `create_shader`, `create_layout`, `shader.rs`, `pipeline.rs` | **Major blocker:** Mugoat currently uses precompiled Metal shader libraries. Android needs Vulkan-compatible SPIR-V/pipeline inputs and matching shader ABI. |
+| State and draw commands | `SET_*`, `DRAW`, `dispatch` handlers | Handler presence is not proof of identical D3D semantics. Audit payload counts, slot ranges, dynamic state and shader bindings. |
+| Readback and fences | `readback`, `FENCE`, `done.rs` | Glue5 uses asynchronous wgpu submissions and staging-map completion; must verify engine wait/wakeup ordering and failure behavior. |
+| Queries | `CREATE_QUERY`, `BEGIN_QUERY`, `END_QUERY`, `ops.rs`, `done.rs` | GPU query results are asynchronous and may be approximated when readback fails; compare engine-visible result and sequence semantics. |
+| Presentation / scene boundary | `PRESENT`, host-only `SCENE_DONE` | Host lifecycle differs. Never send Glue5-only opcode 64 to the upstream engine renderer decoder. |
+
+### Current engineering decision
+
+Do **not** wire Mugoat's engine directly to Glue5's Vulkan executor and call it a port yet. Matching command IDs and seeing executor arms is insufficient: the shader ABI and native host are incompatible, and an incorrect shortcut risks a black screen, corrupt resources or hangs on readback/fence waits. The next implementation milestone is an Android host/renderer adapter plus a shader-input pipeline; only after those exist does an Android NDK/APK workflow have meaningful build targets.
+
