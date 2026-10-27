@@ -23,3 +23,5 @@ jobs:
           submodules: recursive
       - name: Audit Apple-only preparation and Metal shader assumptions
         run: python3 .github/scripts/check_mugoat_android_blockers.py
+      - name: Inventory Apple-specific native host APIs
+        run: python3 .github/scripts/audit_mugoat_android_host.py
