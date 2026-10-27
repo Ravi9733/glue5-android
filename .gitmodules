@@ -2,3 +2,7 @@
 	path = third_party/wabt
 	url = https://github.com/WebAssembly/wabt.git
 	shallow = true
+
+[submodule "third_party/mugoat-upstream"]
+	path = third_party/mugoat-upstream
+	url = https://github.com/iOSVNNews/mugoat.git
