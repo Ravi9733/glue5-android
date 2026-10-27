@@ -75,6 +75,43 @@ void invalid_mapping_is_rejected() {
   CommandPacket packet;
   assert(reader.peek(&packet) == PacketStatus::Invalid);
 }
+
+void stale_or_forged_packet_cannot_advance_tail() {
+  auto mem = memory();
+  mem[16] = 10;
+  mem[17] = 1;
+  mem[18] = 0x12345678;
+  CommandRingReader reader(mem.data(), mem.size() * 4, 0, kData, 76, kRingBytes);
+  CommandPacket packet;
+  assert(reader.peek(&packet) == PacketStatus::Ready);
+
+  CommandPacket forged = packet;
+  forged.end_offset = 80;
+  assert(!reader.consume(forged));
+  assert(reader.tail() == kData);
+
+  forged = packet;
+  forged.payload_words = 2;
+  assert(!reader.consume(forged));
+  assert(reader.tail() == kData);
+
+  assert(reader.consume(packet));
+  assert(reader.tail() == 76);
+  assert(!reader.consume(packet));
+  assert(reader.tail() == 76);
+}
+
+void wrapped_packet_must_not_be_consumed_as_regular_data() {
+  auto mem = memory();
+  mem[25] = 1;  // WRAP at byte offset 100
+  CommandRingReader reader(mem.data(), mem.size() * 4, 0, 100, 80, kRingBytes);
+  CommandPacket packet;
+  assert(reader.peek(&packet) == PacketStatus::Wrap);
+  assert(!reader.consume(packet));
+  assert(reader.tail() == 100);
+  assert(reader.consumeWrap());
+  assert(reader.tail() == kData);
+}
 }  // namespace
 
 int main() {
