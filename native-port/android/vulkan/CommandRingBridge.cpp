@@ -42,7 +42,9 @@ PacketStatus CommandRingReader::peek(CommandPacket* out) const {
       memory_ + ring_base_ + tail_);
   const uint32_t opcode = words[0];
   const uint32_t payload_words = words[1];
-  if (opcode == kWrapOpcode) return PacketStatus::Wrap;
+  // Match the pinned upstream NativeRingPackets.h: WRAP is only valid when
+  // the producer has published the wrapped portion (tail >= head).
+  if (opcode == kWrapOpcode) return tail_ < head_ ? PacketStatus::Invalid : PacketStatus::Wrap;
 
   const uint64_t available_words = (ring_size_ - tail_ - kPacketHeaderBytes) / 4U;
   if (payload_words > available_words) return PacketStatus::Invalid;
@@ -63,7 +65,7 @@ PacketStatus CommandRingReader::peek(CommandPacket* out) const {
 bool CommandRingReader::consumeWrap() {
   if (!valid_ || tail_ > ring_size_ - kPacketHeaderBytes) return false;
   const auto* words = reinterpret_cast<const uint32_t*>(memory_ + ring_base_ + tail_);
-  if (words[0] != kWrapOpcode) return false;
+  if (words[0] != kWrapOpcode || tail_ < head_) return false;
   // WRAP is a marker, not a regular packet. The next readable packet begins
   // at the first byte after the fixed ring header.
   tail_ = kHeaderBytes;
