@@ -25,6 +25,8 @@ class CommandRingReader {
 
   PacketStatus peek(CommandPacket* out) const;
   bool consume(const CommandPacket& packet);
+  // Advance past an explicit WRAP marker to the first packet after the ring header.
+  bool consumeWrap();
   uint32_t tail() const { return tail_; }
 
  private:
