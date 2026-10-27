@@ -102,11 +102,14 @@ jobs:
               ;;
           esac
 
-      - name: Package the bundled Vehicle Mods script
+      - name: Package the Graphic Mods ZIP
         if: inputs.platform == 'android' || github.event_name == 'push'
         run: |
-          zip -j Glue5-android-vehicle-mods.zip crates/glue5-mods/bundled/vehicle-mods/main.luau
-          echo "Packaged the bundled Vehicle Mods script." >>"$GITHUB_STEP_SUMMARY"
+          mkdir -p /tmp/graphic-mods/RealityV_Graphics
+          cp mods/RealityV_Graphics/main.luau /tmp/graphic-mods/RealityV_Graphics/main.luau
+          cp mods/RealityV_Graphics/README.txt /tmp/graphic-mods/RealityV_Graphics/README.txt
+          (cd /tmp/graphic-mods && zip -r "$GITHUB_WORKSPACE/Glue5-Graphic-Mods.zip" RealityV_Graphics)
+          echo "Packaged Graphic Mods only." >>"$GITHUB_STEP_SUMMARY"
 
       - name: Into the draft release
         run: |
