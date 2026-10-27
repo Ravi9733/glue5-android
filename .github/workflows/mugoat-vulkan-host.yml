@@ -1,0 +1,33 @@
+name: Mugoat Android Vulkan host
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mugoat-android]
+    paths:
+      - "native-port/android/vulkan/**"
+      - ".github/workflows/mugoat-vulkan-host.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compile-vulkan-host:
+    name: Compile ARM64 Android Vulkan host
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Android SDK and NDK
+        uses: android-actions/setup-android@v3
+      - name: Install NDK and CMake
+        run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Configure ARM64 Android build
+        run: >-
+          cmake -S native-port/android/vulkan
+          -B build/mugoat-vulkan-arm64
+          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/27.2.12479018/build/cmake/android.toolchain.cmake"
+          -DANDROID_ABI=arm64-v8a
+          -DANDROID_PLATFORM=android-29
+          -DCMAKE_BUILD_TYPE=Release
+      - name: Compile Vulkan host
+        run: cmake --build build/mugoat-vulkan-arm64 --parallel 2
