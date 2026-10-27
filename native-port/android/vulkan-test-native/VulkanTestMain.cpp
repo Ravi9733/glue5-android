@@ -45,7 +45,7 @@ void handle_cmd(android_app* app, int32_t cmd) {
 }
 }  // namespace
 
-void android_main(android_app* app) {
+extern "C" void android_main(android_app* app) {
   app->onAppCmd = handle_cmd;
   TEST_LOGI("Mugoat Vulkan test APK started; this is a Vulkan surface smoke test, not GTA V gameplay.");
   while (true) {
