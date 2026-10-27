@@ -45,6 +45,10 @@ The engine host also contains iOS-specific headers and calls (for example `Targe
 5. Implement Android graphics, lifecycle, audio, input, memory and game-data services; build an ARM64 debug APK.
 6. Add CI checks for Android compilation, APK structure and native library ABI. Do not publish a release APK until those checks pass; gameplay and performance still require device testing.
 
+## Automated guard added
+
+Added `.github/scripts/check_mugoat_gpu_protocol.py` and `.github/workflows/mugoat-protocol-check.yml` on this branch. The workflow checks out the pinned submodule and compares the ring offset, `WRAP` ID and engine opcode IDs against Glue5. It deliberately excludes Glue5's host-only `SCENE_DONE` opcode. This is a static guard only; it does not validate payload fields, Vulkan behavior or gameplay. The workflow has been committed but its CI result has not yet been verified here.
+
 ## Current status
 
-**The ring framing and engine opcode IDs match, but command semantics, Glue5 backend coverage, and the Vulkan renderer are not yet verified/ported. No Android Mugoat APK has been built.** A successful Glue5 APK build does not validate Mugoat. Do not claim Vulkan support, working gameplay or FPS performance until verified.
+**The ring framing and engine opcode IDs match, but command semantics, Glue5 backend coverage, and the Vulkan renderer are not yet ported. No Android Mugoat APK has been built.** A successful Glue5 APK build does not validate Mugoat. Do not claim Vulkan support, working gameplay or FPS performance until verified.
