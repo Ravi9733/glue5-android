@@ -922,7 +922,7 @@ impl App {
         // Android Vulkan drivers can take time compiling pipelines they have not seen.
         // Compile these on first use so draws are not skipped while a pipeline is pending.
         // This trades temporarily missing geometry for a hitch when a new pipeline appears.
-        gpu_settings.sync_pipelines = cfg!(target_os = "android");
+        gpu_settings.sync_pipelines = false;
         let Some(screen) = self.screen.as_mut() else { return Ok(()) };
         self.play_requested = !screen.prepare(&gpu_settings);
         if self.play_requested {
