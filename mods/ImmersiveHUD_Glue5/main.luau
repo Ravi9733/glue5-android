@@ -1,5 +1,6 @@
 --!strict
 -- Glue 5/Luau port inspired by ImmersiveHUD + ExtraHUD.
+-- F7 lists this menu because it is created with ui.menu; menu:show() opens it once on startup.
 local menu = ui.menu("Immersive HUD", "Health, armour and vehicle information")
 
 local showHealth = true
@@ -38,7 +39,6 @@ mod.onStop(function()
     pcall(hud.displayRadar, true)
 end)
 
--- Explicitly open once so the menu is easy to find after enabling the mod.
 menu:show()
 
 while true do
