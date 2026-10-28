@@ -1,0 +1,6 @@
+{
+  "name": "Yoga Ball Collect",
+  "description": "A non-combat Glue5 mini-game: spawn collectibles, walk close to collect, and build your score.",
+  "version": "0.1.0",
+  "autostart": true
+}
