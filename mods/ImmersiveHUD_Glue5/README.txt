@@ -1,0 +1,1 @@
+Immersive HUD + ExtraHUD — GLUE 5 Luau port. This folder is intended for Android/data/local.glue5/files/game/mods/. It uses Glue 5 menus and drawing APIs instead of the original script host.
