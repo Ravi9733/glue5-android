@@ -1,19 +1,20 @@
 -- Glue5 Android: minimal soft-blur graphics mod.
--- Uses the game's timecycle modifier API; effect depends on runtime support.
+-- Glue5 menus use :button, not :action; ui.menu accepts only a title.
 
-local root = ui.menu("Soft Blur Graphics", "Light blur effect")
+local root = ui.menu("Soft Blur Graphics")
 
-root:action("Soft Blur ON", function()
+root:button("Soft Blur ON", function()
     graphics.setTimecycleModifier("hud_def_blur")
     graphics.setTimecycleModifierStrength(0.20)
+    ui.notify("Soft Blur enabled")
 end)
 
-root:action("Blur OFF", function()
+root:button("Blur OFF", function()
     graphics.clearTimecycleModifier()
+    ui.notify("Blur disabled")
 end)
 
-root:action("Reset Graphics", function()
+root:button("Reset Graphics", function()
     graphics.clearTimecycleModifier()
+    ui.notify("Graphics effect reset")
 end)
-
-if root.show then root:show() end
