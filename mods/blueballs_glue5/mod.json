@@ -1,0 +1,8 @@
+{
+  "name": "Blue Balls",
+  "description": "Glue5-native ball collection mini-game. Spawn five beach balls and collect them by walking close.",
+  "author": "Community port",
+  "version": "0.2.0",
+  "autostart": true,
+  "restartOnSave": true
+}

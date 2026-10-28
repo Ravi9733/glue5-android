@@ -1,0 +1,26 @@
+name: Package Immersive HUD + ExtraHUD for Glue 5
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - glue5-hud-port
+    paths:
+      - 'mods/ImmersiveHUD_Glue5/**'
+      - '.github/workflows/hud-zip.yml'
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package mod ZIP
+        run: |
+          cd mods
+          zip -r ../ImmersiveHUD_Glue5.zip ImmersiveHUD_Glue5
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmersiveHUD_Glue5
+          path: ImmersiveHUD_Glue5.zip
+          if-no-files-found: error
