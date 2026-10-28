@@ -1,8 +1,8 @@
 {
   "name": "Blue Balls",
-  "description": "Glue5 mini-game port: spawn yoga-ball collectibles and collect them for points.",
+  "description": "Glue5-native ball collection mini-game. Spawn five beach balls and collect them by walking close.",
   "author": "Community port",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "autostart": true,
   "restartOnSave": true
 }
