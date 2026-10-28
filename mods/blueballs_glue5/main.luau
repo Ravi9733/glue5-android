@@ -70,10 +70,7 @@ menu:button("Reset score", { action = "Reset" }, function()
 end)
 
 
-mod.onStop(function()
-    running = false
-    clearBalls()
-end)
+-- Cleanup is handled by Glue5 when this mod thread stops.
 
 while true do
     if running then
