@@ -1,6 +1,5 @@
 --!strict
--- Minimal, robust Glue 5 port inspired by ImmersiveHUD + ExtraHUD.
--- The root menu is deliberately shown on startup so it is easy to find in F7.
+-- Glue 5/Luau port inspired by ImmersiveHUD + ExtraHUD.
 local menu = ui.menu("Immersive HUD", "Health, armour and vehicle information")
 
 local showHealth = true
@@ -8,36 +7,30 @@ local showArmour = true
 local showVehicleInfo = true
 local hideRadar = false
 
-menu:toggle("Health display", true, function(on)
+local healthItem = menu:toggle("Health display", true, function(on)
     showHealth = on
 end)
-menu:toggle("Armour display", true, function(on)
+local armourItem = menu:toggle("Armour display", true, function(on)
     showArmour = on
 end)
-menu:toggle("Vehicle speed and engine", true, function(on)
+local vehicleItem = menu:toggle("Vehicle speed and engine", true, function(on)
     showVehicleInfo = on
 end)
-menu:toggle("Hide radar", false, function(on)
+local radarItem = menu:toggle("Hide radar", false, function(on)
     hideRadar = on
     hud.displayRadar(not on)
 end)
+
 menu:button("Reset HUD", { action = "Reset" }, function()
     showHealth = true
     showArmour = true
     showVehicleInfo = true
     hideRadar = false
+    healthItem.value = true
+    armourItem.value = true
+    vehicleItem.value = true
+    radarItem.value = false
     hud.displayRadar(true)
-    menu:clear()
-    menu:toggle("Health display", true, function(on) showHealth = on end)
-    menu:toggle("Armour display", true, function(on) showArmour = on end)
-    menu:toggle("Vehicle speed and engine", true, function(on) showVehicleInfo = on end)
-    menu:toggle("Hide radar", false, function(on)
-        hideRadar = on
-        hud.displayRadar(not on)
-    end)
-    menu:button("Reset HUD", { action = "Reset" }, function()
-        ui.notify("HUD is already reset")
-    end)
     ui.notify("HUD settings reset")
 end)
 
@@ -45,7 +38,7 @@ mod.onStop(function()
     pcall(hud.displayRadar, true)
 end)
 
--- Open the menu once at startup. It should also remain listed under MENUS (F7).
+-- Explicitly open once so the menu is easy to find after enabling the mod.
 menu:show()
 
 while true do
