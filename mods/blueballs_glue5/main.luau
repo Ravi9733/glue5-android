@@ -69,7 +69,6 @@ menu:button("Reset score", { action = "Reset" }, function()
     ui.notify("Score reset")
 end)
 
-menu:show()
 
 mod.onStop(function()
     running = false
