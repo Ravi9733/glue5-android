@@ -1,20 +1,34 @@
--- Glue5 Android: minimal soft-blur graphics mod.
--- Glue5 menus use :button, not :action; ui.menu accepts only a title.
+-- Glue5 Android: experimental colorful graphics presets.
+-- Uses Glue5's supported menu API. Timecycle names and visual strength
+-- still need verification in the target game build.
 
-local root = ui.menu("Soft Blur Graphics")
+local root = ui.menu("Colorful Graphics")
 
-root:button("Soft Blur ON", function()
-    graphics.setTimecycleModifier("hud_def_blur")
-    graphics.setTimecycleModifierStrength(0.20)
-    ui.notify("Soft Blur enabled")
+local function setLook(name, strength, message)
+    graphics.setTimecycleModifier(name)
+    graphics.setTimecycleModifierStrength(strength)
+    ui.notify(message)
+end
+
+root:button("Super Colourful", function()
+    setLook("rply_saturation", 0.75, "Super Colourful preset applied")
 end)
 
-root:button("Blur OFF", function()
-    graphics.clearTimecycleModifier()
-    ui.notify("Blur disabled")
+root:button("Natural Green", function()
+    setLook("rply_saturation", 0.40, "Natural Green preset applied")
 end)
 
-root:button("Reset Graphics", function()
+root:button("Vibrant Day", function()
+    setLook("rply_saturation", 0.60, "Vibrant Day preset applied")
+end)
+
+root:button("Colour OFF / Reset", function()
     graphics.clearTimecycleModifier()
     ui.notify("Graphics effect reset")
 end)
+
+ui.notify("Colorful Graphics menu ready")
+
+while true do
+    wait()
+end
