@@ -1,37 +1,43 @@
 --!strict
--- Glue 5/Luau rewrite inspired by ImmersiveHUD and ExtraHUD.
-local menu = ui.menu("Immersive HUD", "HUD controls and extra information")
+-- Minimal, robust Glue 5 port inspired by ImmersiveHUD + ExtraHUD.
+-- The root menu is deliberately shown on startup so it is easy to find in F7.
+local menu = ui.menu("Immersive HUD", "Health, armour and vehicle information")
 
 local showHealth = true
 local showArmour = true
 local showVehicleInfo = true
-local hideHud = false
 local hideRadar = false
 
-menu:toggle("Hide original HUD", false, "Hide the game HUD while enabled", function(on)
-    hideHud = on
-end)
-menu:toggle("Hide radar", false, "Hide or restore the minimap", function(on)
-    hideRadar = on
-    hud.displayRadar(not on)
-end)
-menu:separator("Extra HUD")
-menu:toggle("Health", true, function(on)
+menu:toggle("Health display", true, function(on)
     showHealth = on
 end)
-menu:toggle("Armour", true, function(on)
+menu:toggle("Armour display", true, function(on)
     showArmour = on
 end)
 menu:toggle("Vehicle speed and engine", true, function(on)
     showVehicleInfo = on
 end)
+menu:toggle("Hide radar", false, function(on)
+    hideRadar = on
+    hud.displayRadar(not on)
+end)
 menu:button("Reset HUD", { action = "Reset" }, function()
     showHealth = true
     showArmour = true
     showVehicleInfo = true
-    hideHud = false
     hideRadar = false
     hud.displayRadar(true)
+    menu:clear()
+    menu:toggle("Health display", true, function(on) showHealth = on end)
+    menu:toggle("Armour display", true, function(on) showArmour = on end)
+    menu:toggle("Vehicle speed and engine", true, function(on) showVehicleInfo = on end)
+    menu:toggle("Hide radar", false, function(on)
+        hideRadar = on
+        hud.displayRadar(not on)
+    end)
+    menu:button("Reset HUD", { action = "Reset" }, function()
+        ui.notify("HUD is already reset")
+    end)
     ui.notify("HUD settings reset")
 end)
 
@@ -39,11 +45,10 @@ mod.onStop(function()
     pcall(hud.displayRadar, true)
 end)
 
-while true do
-    if hideHud then
-        ui.hideHud()
-    end
+-- Open the menu once at startup. It should also remain listed under MENUS (F7).
+menu:show()
 
+while true do
     local me = player.playerPedId()
     if me then
         local y = 0.15
