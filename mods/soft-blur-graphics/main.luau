@@ -1,33 +1,43 @@
--- Glue5 Android: experimental colorful graphics presets.
--- Uses Glue5's supported menu API. Timecycle names and visual strength
--- still need verification in the target game build.
+-- Glue5 Android: combined Soft Blur + Colorful Graphics menu.
+-- Both feature sets are kept in this single mod so neither menu disappears.
 
-local root = ui.menu("Colorful Graphics")
+local root = ui.menu("Soft Blur + Colorful")
 
-local function setLook(name, strength, message)
-    graphics.setTimecycleModifier(name)
-    graphics.setTimecycleModifierStrength(strength)
-    ui.notify(message)
-end
+root:button("Soft Blur ON", function()
+    graphics.setTimecycleModifier("hud_def_blur")
+    graphics.setTimecycleModifierStrength(0.20)
+    ui.notify("Soft Blur enabled")
+end)
+
+root:button("Blur OFF", function()
+    graphics.clearTimecycleModifier()
+    ui.notify("Blur disabled")
+end)
 
 root:button("Super Colourful", function()
-    setLook("rply_saturation", 0.75, "Super Colourful preset applied")
+    graphics.setTimecycleModifier("rply_saturation")
+    graphics.setTimecycleModifierStrength(0.75)
+    ui.notify("Super Colourful selected")
 end)
 
 root:button("Natural Green", function()
-    setLook("rply_saturation", 0.40, "Natural Green preset applied")
+    graphics.setTimecycleModifier("rply_saturation")
+    graphics.setTimecycleModifierStrength(0.40)
+    ui.notify("Natural Green selected")
 end)
 
 root:button("Vibrant Day", function()
-    setLook("rply_saturation", 0.60, "Vibrant Day preset applied")
+    graphics.setTimecycleModifier("rply_saturation")
+    graphics.setTimecycleModifierStrength(0.60)
+    ui.notify("Vibrant Day selected")
 end)
 
-root:button("Colour OFF / Reset", function()
+root:button("Reset Graphics", function()
     graphics.clearTimecycleModifier()
-    ui.notify("Graphics effect reset")
+    ui.notify("Graphics effects reset")
 end)
 
-ui.notify("Colorful Graphics menu ready")
+ui.notify("Soft Blur + Colorful menu loaded")
 
 while true do
     wait()
