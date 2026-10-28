@@ -1,0 +1,8 @@
+{
+  "name": "Blue Balls",
+  "description": "Glue5 mini-game port: spawn yoga-ball collectibles and collect them for points.",
+  "author": "Community port",
+  "version": "0.1.1",
+  "autostart": true,
+  "restartOnSave": true
+}
