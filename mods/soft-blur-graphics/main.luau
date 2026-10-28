@@ -1,7 +1,5 @@
--- Glue5 Android: layered Soft Blur + Colorful Graphics.
--- The main timecycle controls colour; the extra timecycle layer controls blur,
--- so toggling one should not replace the other.
-
+-- Glue5 Android: keep the graphics menu alive even if this game.wasm
+-- does not expose the optional extra-timecycle natives.
 local root = ui.menu("Soft Blur + Colorful")
 
 local colorfulOn = true
@@ -11,7 +9,19 @@ local colorStrength = 0.75
 local blurName = "hud_def_blur"
 local blurStrength = 0.20
 
+local function hasExtraLayer()
+    return type(graphics.setExtraTimecycleModifier) == "function"
+        and type(graphics.setExtraTimecycleModifierStrength) == "function"
+        and type(graphics.clearExtraTimecycleModifier) == "function"
+end
+
 local function applyColor()
+    if type(graphics.setTimecycleModifier) ~= "function"
+        or type(graphics.setTimecycleModifierStrength) ~= "function"
+        or type(graphics.clearTimecycleModifier) ~= "function" then
+        ui.notify("Color natives unavailable in this game build")
+        return
+    end
     if colorfulOn then
         graphics.setTimecycleModifier(colorName)
         graphics.setTimecycleModifierStrength(colorStrength)
@@ -21,6 +31,10 @@ local function applyColor()
 end
 
 local function applyBlur()
+    if not hasExtraLayer() then
+        ui.notify("Soft Blur layer is not exposed by this game build")
+        return
+    end
     if blurOn then
         graphics.setExtraTimecycleModifier(blurName)
         graphics.setExtraTimecycleModifierStrength(blurStrength)
@@ -32,13 +46,13 @@ end
 root:button("Soft Blur ON", function()
     blurOn = true
     applyBlur()
-    ui.notify("Soft Blur enabled")
+    if hasExtraLayer() then ui.notify("Soft Blur enabled") end
 end)
 
 root:button("Blur OFF", function()
     blurOn = false
     applyBlur()
-    ui.notify("Blur disabled")
+    if hasExtraLayer() then ui.notify("Blur disabled") end
 end)
 
 root:button("Super Colourful", function()
@@ -68,12 +82,16 @@ end)
 root:button("Reset Graphics", function()
     colorfulOn = false
     blurOn = false
-    graphics.clearTimecycleModifier()
-    graphics.clearExtraTimecycleModifier()
-    ui.notify("Graphics effects reset")
+    if type(graphics.clearTimecycleModifier) == "function" then
+        graphics.clearTimecycleModifier()
+    end
+    if hasExtraLayer() then
+        graphics.clearExtraTimecycleModifier()
+    end
+    ui.notify("Graphics reset")
 end)
 
--- Apply both layers when the mod starts.
+-- Do not let an optional unsupported native prevent the mod/menu from loading.
 applyColor()
 applyBlur()
 ui.notify("Soft Blur + Colorful menu loaded")
