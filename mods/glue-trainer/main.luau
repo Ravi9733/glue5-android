@@ -1,5 +1,5 @@
 --!strict
--- Glue Trainer: GLUE 5's trainer. Looks, vehicles, teleports, the world, the camera
+-- Menyoo-style Android Trainer: GLUE 5's trainer. Looks, vehicles, teleports, the world, the camera
 -- and other players, from the Mods page's MENUS (F7), the Studio, or its own key (F4).
 --
 -- Each feature area is a module of features/ with a build(root) that adds its submenu; core/
@@ -10,8 +10,8 @@ local keys = require("./core/keys")
 local loop = require("./core/loop")
 local hub = require("./features/hub")
 
-local root = ui.menu("Glue Trainer", "You, vehicles, teleports and the world")
-keys.action("menu", "Open the trainer", function()
+local root = ui.menu("Menyoo-style Android Trainer", "Vehicles, appearance, teleport, movement and utilities")
+keys.action("menu", "Open the trainer (F7)", function()
 	root:show()
 end)
 
