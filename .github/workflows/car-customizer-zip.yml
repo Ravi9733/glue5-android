@@ -8,6 +8,7 @@ on:
       - 'mods/glue-trainer/core/**'
       - 'mods/glue-trainer/data/vehicles.luau'
       - 'mods/glue-trainer/features/customs.luau'
+      - 'mods/glue-trainer/main.luau'
       - '.github/workflows/car-customizer-zip.yml'
   workflow_dispatch:
 
@@ -39,7 +40,7 @@ jobs:
           keys.action("menu", "Open Car Customizer", function()
             root:show()
           end)
-          customs.build(root)
+          customs.build(root, "Car Customizer")
           LUA
           cat > "$out/mod.json" <<'JSON'
           {
