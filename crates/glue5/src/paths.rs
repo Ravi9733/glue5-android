@@ -42,6 +42,11 @@ pub fn default_game_dirs() -> Vec<PathBuf> {
         }
     } else if cfg!(target_os = "android") {
         #[cfg(target_os = "android")]
+        // Prefer shared Documents so game files survive uninstall.
+        // Keep the old app-specific path as fallback; never move or delete it.
+        if let Some(shared) = android_shared_glue5_dir() {
+            dirs.push(shared.join("game"));
+        }
         if let Some(ext) = android_external_dir() {
             dirs.push(ext.join("game"));
         }
@@ -73,6 +78,16 @@ pub fn default_game_dirs() -> Vec<PathBuf> {
         dirs.push(PathBuf::from("game"));
     }
     dirs
+}
+
+#[cfg(target_os = "android")]
+fn android_shared_glue5_dir() -> Option<PathBuf> {
+    // SDL external dir: /storage/emulated/0/Android/data/<package>/files.
+    let mut root = android_external_dir()?;
+    for _ in 0..4 {
+        root = root.parent()?.to_path_buf();
+    }
+    Some(root.join("Documents").join("Glue5"))
 }
 
 #[cfg(target_os = "android")]
@@ -142,7 +157,7 @@ pub fn where_the_game_goes() -> &'static str {
         "Copy the game folder into the app's files, named game: Finder (iPhone › Files › Glue 5) \
          or the Files app (On My iPhone › Glue 5). This page looks again when the app comes back."
     } else if cfg!(target_os = "android") {
-        "Copy the game folder, named game, into Android/data/<app>/files/ on the device."
+        "Copy the game folder into Internal storage/Documents/Glue5/game. Allow all-files access if Android asks. The old Android/data folder is kept as fallback and is not moved or deleted."
     } else {
         "Choose the game folder, or start glue5 with its path."
     }

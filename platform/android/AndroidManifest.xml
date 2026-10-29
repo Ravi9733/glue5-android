@@ -17,8 +17,8 @@
     <!-- GTA Online: the other players, over UDP. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- The game's files are in the app's external files directory
-         (Android/data/local.glue5/files/game): no storage permission. -->
+    <!-- Required for the user-visible Documents/Glue5 game folder on Android 11+. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <application
         android:label="Glue 5"
         android:icon="@mipmap/ic_launcher"
