@@ -2,6 +2,8 @@
 name: Build
 
 on:
+  push:
+    branches: [integrate-glue-trainer]
   workflow_dispatch:
     inputs:
       platform:
@@ -14,19 +16,19 @@ permissions:
   contents: write
 
 concurrency:
-  group: build-${{ inputs.platform }}
+  group: build-${{ inputs.platform || 'android' }}
 
 jobs:
   build:
     name: ${{ inputs.platform }}
-    runs-on: ${{ fromJSON('{"ios":"macos-26","macos":"macos-26","android":"ubuntu-24.04","linux-x86_64":"ubuntu-24.04","linux-aarch64":"ubuntu-24.04-arm","windows":"windows-2025"}')[inputs.platform] }}
+    runs-on: ${{ fromJSON('{"ios":"macos-26","macos":"macos-26","android":"ubuntu-24.04","linux-x86_64":"ubuntu-24.04","linux-aarch64":"ubuntu-24.04-arm","windows":"windows-2025"}')[inputs.platform || 'android'] }}
     timeout-minutes: 360
     defaults:
       run:
         shell: bash
     env:
       GH_TOKEN: ${{ github.token }}
-      PLATFORM: ${{ inputs.platform }}
+      PLATFORM: ${{ inputs.platform || 'android' }}
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
       MISE_TASK_RUN_AUTO_INSTALL: "false"
 
@@ -53,7 +55,7 @@ jobs:
         with:
           version: 2026.7.5
           install: ${{ !startsWith(inputs.platform, 'linux') }}
-          install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo:cargo-ndk","windows":"rust cmake"}')[inputs.platform] }}
+          install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo:cargo-ndk","windows":"rust cmake"}')[inputs.platform || 'android'] }}
           cache_key_prefix: mise-${{ inputs.platform }}
 
       - name: Android signing key
