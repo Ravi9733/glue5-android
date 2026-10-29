@@ -289,10 +289,11 @@ local function build(menu: Menu, car: Vehicle)
 	end
 end
 
--- The customs submenu of `root`: for the vehicle the player is in when it opens.
-function M.build(root: Menu)
-	local menu = root:submenu("Customs", "Parts, wheels, colours, neon, plate, extras")
-	menu:onOpen(bind.safe("Customs", function()
+-- The vehicle appearance submenu of `root`: for the vehicle the player is in when it opens.
+function M.build(root: Menu, title: string?)
+	local menuTitle = title or "Customs"
+	local menu = root:submenu(menuTitle, "Parts, wheels, colours, neon, plate, extras")
+	menu:onOpen(bind.safe(menuTitle, function()
 		menu:clear()
 		local car = game.vehicle()
 		if not car then
