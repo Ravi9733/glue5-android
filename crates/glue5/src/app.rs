@@ -857,6 +857,9 @@ impl App {
         let Some(game_dir) = self.game_dir.clone() else { return Ok(()) };
         let mut gpu_settings = glue5_gpu::Settings::for_game(&game_dir);
         gpu_settings.cache_dir = Some(self.user_dir.join("cache"));
+        // Experimental Android workaround: do not skip draws while a newly seen
+        // pipeline compiles. This can cause a short hitch instead of missing draws.
+        gpu_settings.sync_pipelines = true;
         let Some(screen) = self.screen.as_mut() else { return Ok(()) };
         self.play_requested = !screen.prepare(&gpu_settings);
         if self.play_requested {
