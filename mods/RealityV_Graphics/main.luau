@@ -4,11 +4,18 @@
 -- Note: this is a Vice City-inspired preset, not a replacement sky texture.
 
 local root = ui.menu("RealityV Graphics", "Colour presets, sunset time and weather")
+local cinematicStrength = 0.20
 
 local function applyFilter(label: string, modifier: string, strength: number)
     graphics.setTimecycleModifier(modifier)
     graphics.setTimecycleModifierStrength(strength)
     ui.notify(label .. " filter applied")
+end
+
+local function applyCinematic()
+    graphics.setTimecycleModifier("NG_filmic03")
+    graphics.setTimecycleModifierStrength(cinematicStrength)
+    ui.notify("Cinematic strength: " .. tostring(cinematicStrength))
 end
 
 root:button("Natural Graphics", { note = "Subtle filmic colour", action = "Apply" }, function()
@@ -19,8 +26,18 @@ root:button("Full Colorful", { note = "Saturated game colours", action = "Apply"
     applyFilter("Full Colorful", "rply_saturation", 0.65)
 end)
 
-root:button("Cinematic", { note = "Lighter filmic look; reduced darkness", action = "Apply" }, function()
-    applyFilter("Cinematic", "NG_filmic03", 0.20)
+root:button("Cinematic", { note = "Apply current Cinematic strength", action = "Apply" }, function()
+    applyCinematic()
+end)
+
+root:button("Cinematic +", { note = "Increase Cinematic effect by 0.05", action = "More" }, function()
+    cinematicStrength = math.min(0.80, cinematicStrength + 0.05)
+    applyCinematic()
+end)
+
+root:button("Cinematic -", { note = "Reduce Cinematic effect by 0.05", action = "Less" }, function()
+    cinematicStrength = math.max(0.05, cinematicStrength - 0.05)
+    applyCinematic()
 end)
 
 root:button("Vice City Sunset", { note = "Sunset clock, clear weather and saturated colours", action = "Apply" }, function()
