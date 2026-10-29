@@ -23,7 +23,7 @@ export type Prefs = {
 local DEFAULTS: Prefs = {
 	-- Every feature can have one (Settings › Keys); these have one from the start.
 	keys = {
-		menu = "F4",
+		menu = "F7",
 		["move.noclip"] = "F6",
 		["move.freecam"] = "F8",
 		["teleport.waypoint"] = "F9",
