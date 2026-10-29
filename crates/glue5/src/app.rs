@@ -919,10 +919,10 @@ impl App {
         let Some(game_dir) = self.game_dir.clone() else { return Ok(()) };
         let mut gpu_settings = glue5_gpu::Settings::for_game(&game_dir);
         gpu_settings.cache_dir = Some(self.user_dir.join("cache"));
-        // Android Vulkan drivers can take time compiling pipelines they have not seen.
-        // Compile these on first use so draws are not skipped while a pipeline is pending.
-        // This trades temporarily missing geometry for a hitch when a new pipeline appears.
-        gpu_settings.sync_pipelines = false;
+        // Compile a newly requested pipeline before drawing with it. On Android
+        // Vulkan, skipping draws while it compiles can leave geometry missing.
+        // This may cause a short hitch for a new pipeline, but avoids blank draws.
+        gpu_settings.sync_pipelines = true;
         let Some(screen) = self.screen.as_mut() else { return Ok(()) };
         self.play_requested = !screen.prepare(&gpu_settings);
         if self.play_requested {
