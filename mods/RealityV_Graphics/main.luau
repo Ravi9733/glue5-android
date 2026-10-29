@@ -19,8 +19,8 @@ root:button("Full Colorful", { note = "Saturated game colours", action = "Apply"
     applyFilter("Full Colorful", "rply_saturation", 0.65)
 end)
 
-root:button("Cinematic", { note = "Filmic contrast", action = "Apply" }, function()
-    applyFilter("Cinematic", "NG_filmic03", 0.45)
+root:button("Cinematic", { note = "Lighter filmic look; reduced darkness", action = "Apply" }, function()
+    applyFilter("Cinematic", "NG_filmic03", 0.20)
 end)
 
 root:button("Vice City Sunset", { note = "Sunset clock, clear weather and saturated colours", action = "Apply" }, function()
