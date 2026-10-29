@@ -1,0 +1,8 @@
+{
+  "name": "Car Colour Changer",
+  "description": "Choose any RGB colour for the primary and secondary paint of the vehicle you are driving.",
+  "author": "Custom GLUE 5 mod",
+  "version": "1.0.0",
+  "autostart": true,
+  "restartOnSave": true
+}
