@@ -244,7 +244,6 @@ function M.build(root: Menu)
 		if not at then
 			return "No waypoint on the map"
 		end
-		weapon.giveWeaponToPed(game.me(), joaat("GADGET_PARACHUTE"), 1, false, false)
 		game.teleport(vector.create(at.x, at.y, 800), false)
 		return nil
 	end)
