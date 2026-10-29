@@ -1,8 +1,8 @@
 {
   "name": "Car Colour Changer",
-  "description": "Choose any RGB primary and secondary paint colour for the car you are driving.",
+  "description": "Choose vehicle paint presets: red, blue, green, yellow, purple, orange, white, black, pink, cyan and random colours.",
   "author": "Custom GLUE 5 mod",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "autostart": true,
   "restartOnSave": true
 }
