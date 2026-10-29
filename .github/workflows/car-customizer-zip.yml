@@ -1,0 +1,78 @@
+name: Car Customizer ZIP
+
+on:
+  push:
+    branches:
+      - integrate-glue-trainer
+    paths:
+      - 'mods/glue-trainer/core/**'
+      - 'mods/glue-trainer/data/vehicles.luau'
+      - 'mods/glue-trainer/features/customs.luau'
+      - '.github/workflows/car-customizer-zip.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Assemble Car Customizer mod
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="Car-Customizer"
+          mkdir -p "$out/core" "$out/data" "$out/features"
+          cp -R mods/glue-trainer/core/. "$out/core/"
+          cp mods/glue-trainer/data/vehicles.luau "$out/data/vehicles.luau"
+          cp mods/glue-trainer/features/customs.luau "$out/features/customs.luau"
+          cat > "$out/main.luau" <<'LUA'
+          --!strict
+          -- Standalone Glue5 Car Customizer: colours, neon, tyre smoke, built-in liveries/decals.
+          local keys = require("./core/keys")
+          local customs = require("./features/customs")
+          local root = ui.menu("Car Customizer", "Vehicle colours, built-in decals, neon and tyre smoke")
+          keys.action("menu", "Open Car Customizer", function()
+            root:show()
+          end)
+          customs.build(root)
+          LUA
+          cat > "$out/mod.json" <<'JSON'
+          {
+            "name": "Car Customizer",
+            "description": "Vehicle colours, built-in decals/racing stripes, neon and tyre-smoke colours. Open with F7 or from the Mods page MENUS.",
+            "author": "GLUE 5 Android community",
+            "version": "1.0",
+            "autostart": true,
+            "restartOnSave": true
+          }
+          JSON
+          cat > "$out/README.txt" <<'TXT'
+          GLUE 5 ANDROID — CAR CUSTOMIZER
+
+          Features:
+          - Primary and secondary custom vehicle colours
+          - Neon toggle and neon colour
+          - Tyre-smoke colour
+          - Built-in vehicle liveries/decals where the vehicle supports them
+          - Existing supported vehicle extras, window tint, plate style and parts
+
+          Menu: F7 (or the GLUE 5 Mods page MENUS entry).
+
+          Important:
+          - Stickers/racing stripes are only selectable when the selected vehicle has built-in liveries.
+          - This mod does not add new texture decals to every vehicle.
+          - This ZIP is a mod package, not an APK. Compatibility depends on the GLUE 5 build's mod loader and API.
+          TXT
+          zip -qr Car-Customizer.zip "$out"
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Car-Customizer-ZIP
+          path: Car-Customizer.zip
+          if-no-files-found: error
