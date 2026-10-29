@@ -1,8 +1,8 @@
 {
   "name": "RealityV Graphics",
-  "description": "Natural, colorful, cinematic and blur presets using built-in GTA V timecycle modifiers.",
+  "description": "Working GLUE 5 menu with Natural, Full Colorful, Cinematic, Vice City Colors and Reset presets.",
   "author": "Custom GLUE 5 mod",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "autostart": true,
   "restartOnSave": true
 }
