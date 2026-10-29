@@ -206,11 +206,19 @@ local function looks(menu: Menu, car: Vehicle)
 	menu:text("Plate", string.gsub(vehicle.getVehicleNumberPlateText(car), "%s+$", ""), { max = 8 }, bind.safe("Plate", function(text)
 		vehicle.setVehicleNumberPlateText(car, text)
 	end))
-	indexed(menu, "Livery", vehicle.getVehicleLiveryCount(car), vehicle.getVehicleLivery(car), function(i)
-		return `Livery {i + 1}`
-	end, function(i)
-		vehicle.setVehicleLivery(car, i)
-	end)
+	menu:separator("Stickers & racing stripes")
+	local liveryCount = vehicle.getVehicleLiveryCount(car)
+	if liveryCount > 0 then
+		local liveries = {}
+		for i = 0, liveryCount - 1 do
+			table.insert(liveries, `Livery {i + 1}`)
+		end
+		menu:choice("Built-in decals / stripes", liveries, math.clamp(vehicle.getVehicleLivery(car) + 1, 1, liveryCount), "Uses designs built into this vehicle", bind.safe("Decals / stripes", function(i: number)
+			vehicle.setVehicleLivery(car, i - 1)
+		end))
+	else
+		menu:label("This vehicle has no built-in decals or stripes")
+	end
 	for id = 1, EXTRAS do
 		if vehicle.doesExtraExist(car, id) then
 			menu:toggle(`Extra {id}`, vehicle.isVehicleExtraTurnedOn(car, id), bind.safe("Extra", function(on)
