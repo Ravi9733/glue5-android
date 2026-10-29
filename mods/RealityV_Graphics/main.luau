@@ -1,38 +1,35 @@
--- RealityV-style graphics presets for GLUE 5.
--- Uses built-in timecycle modifiers; does not install replacement textures.
+--!strict
+-- RealityV Graphics for GLUE 5.
+-- The app lists this menu under Mods > MENUS (F7 on keyboard, touch button beside Settings).
 
-local root = ui.menu("RealityV Graphics", "Choose a graphics preset")
+local root = ui.menu("RealityV Graphics", "Natural, cinematic and Vice City-inspired colours")
 
-local function apply(name, strength)
-    graphics.setTimecycleModifier(name)
+local function apply(label: string, modifier: string, strength: number)
+    graphics.setTimecycleModifier(modifier)
     graphics.setTimecycleModifierStrength(strength)
+    ui.notify(label .. " applied")
 end
 
-root:action("Natural Graphics", function()
-    apply("NG_filmic01", 0.45)
+root:button("Natural Graphics", { note = "Subtle filmic look", action = "Apply" }, function()
+    apply("Natural Graphics", "NG_filmic01", 0.35)
 end)
 
-root:action("Full Colorful", function()
-    apply("vivid", 0.50)
+root:button("Full Colorful", { note = "More saturated colours", action = "Apply" }, function()
+    apply("Full Colorful", "rply_saturation", 0.65)
 end)
 
-root:action("Cinematic", function()
-    apply("MP_Arena_theme_attract", 0.35)
+root:button("Cinematic", { note = "Filmic contrast", action = "Apply" }, function()
+    apply("Cinematic", "NG_filmic03", 0.45)
 end)
 
-root:action("Soft Blur", function()
-    apply("hud_def_blur", 0.20)
+root:button("Vice City Colors", { note = "Saturated retro colours; not a texture/sky replacement", action = "Apply" }, function()
+    apply("Vice City Colors", "rply_saturation", 0.9)
 end)
 
-root:action("Strong Blur", function()
-    apply("hud_def_blur", 0.45)
-end)
-
-root:action("Reset / Default Graphics", function()
+root:button("Reset / Default Graphics", { note = "Clear the screen filter", action = "Reset" }, function()
     graphics.clearTimecycleModifier()
+    ui.notify("Default graphics restored")
 end)
 
--- Show the menu when this mod script starts, if supported by this GLUE 5 build.
-if root.show then
-    root:show()
-end
+-- Diagnostic: if this notification appears after the game starts, the script is loading.
+ui.notify("RealityV Graphics loaded")
