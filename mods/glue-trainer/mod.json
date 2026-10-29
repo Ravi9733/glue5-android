@@ -1,6 +1,6 @@
 {
   "name": "Glue Trainer",
-  "description": "GLUE 5 trainer for player, looks, vehicles, teleports, world, camera and other-player features. Open from F7 / Mods page MENUS or F4.",
+  "description": "GLUE 5 trainer for player, looks, vehicles, teleports, world, camera and other-player features. Open with F7 or from the Mods page MENUS.",
   "author": "GLUE 5 (Android-compatible integration)",
   "version": "1.0-android",
   "autostart": true,
