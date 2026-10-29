@@ -1,0 +1,8 @@
+{
+  "name": "Vehicle Repair",
+  "description": "Instantly repair the current vehicle body, deformation and engine, restore driveability, and clean dirt.",
+  "author": "Custom GLUE 5 mod",
+  "version": "1.0.0",
+  "autostart": true,
+  "restartOnSave": true
+}
