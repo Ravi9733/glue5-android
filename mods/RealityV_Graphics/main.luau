@@ -1,7 +1,6 @@
 --!strict
 -- RealityV Graphics for GLUE 5.
--- Menus use GLUE 5's documented Menu:button API; menus appear under F7 > MENUS.
--- Presets use built-in GTA V timecycle modifiers (no replacement textures).
+-- The app lists this menu under Mods > MENUS (F7 on keyboard, touch button beside Settings).
 
 local root = ui.menu("RealityV Graphics", "Natural, cinematic and Vice City-inspired colours")
 
@@ -23,14 +22,14 @@ root:button("Cinematic", { note = "Filmic contrast", action = "Apply" }, functio
     apply("Cinematic", "NG_filmic03", 0.45)
 end)
 
-root:button("Vice City Colors", { note = "Strong saturated retro colours; not a texture/sky replacement", action = "Apply" }, function()
+root:button("Vice City Colors", { note = "Saturated retro colours; not a texture/sky replacement", action = "Apply" }, function()
     apply("Vice City Colors", "rply_saturation", 0.9)
 end)
 
-root:button("Reset / Default Graphics", { note = "Remove this mod's screen filter", action = "Reset" }, function()
+root:button("Reset / Default Graphics", { note = "Clear the screen filter", action = "Reset" }, function()
     graphics.clearTimecycleModifier()
     ui.notify("Default graphics restored")
 end)
 
--- Ask GLUE 5 to open the Mods page at this menu after the mod starts.
-root:show()
+-- Diagnostic: if this notification appears after the game starts, the script is loading.
+ui.notify("RealityV Graphics loaded")
