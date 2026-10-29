@@ -59,7 +59,7 @@ jobs:
           cache_key_prefix: mise-${{ inputs.platform }}
 
       - name: Android signing key
-        if: inputs.platform == 'android'
+        if: inputs.platform == 'android' || (github.event_name == 'push' && inputs.platform == '')
         run: |
           yes | mise exec -- sdkmanager --licenses >/dev/null || true
           mkdir -p ~/.android
