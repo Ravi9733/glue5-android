@@ -1,20 +1,19 @@
 RealityV Graphics — GLUE 5 Android
 
-Options:
+Menu options:
 - Natural Graphics
 - Full Colorful
 - Cinematic
-- Soft Blur
-- Strong Blur
+- Vice City Colors
 - Reset / Default Graphics
 
-Install by copying the whole RealityV_Graphics folder into:
-Android/data/local.glue5/files/game/mods/
+Correct install path on Android:
+Android/data/local.glue5/files/mods/RealityV_Graphics/
 
-Make sure main.luau and mod.json are directly inside the folder.
+Do NOT put this folder inside the game/ folder. The mods folder is beside game/.
+Make sure main.luau and mod.json are directly inside RealityV_Graphics.
 
-Compatibility note:
-These presets use built-in timecycle modifiers, not the full RealityV texture/asset overhaul.
-Modifier names and appearance can vary by game build. This mod has not been tested on the user's
-device. If the menu API in your build does not support root:show(), remove that final block and
-open the mod menu using the build's normal menu flow.
+Then open GLUE 5, enable Mods in the Mods page / Settings > Game > Mods, and start the game with mods enabled.
+Open F7 > MENUS and choose RealityV Graphics. On a touch screen, use the MENUS button beside Settings.
+
+The presets use built-in GTA V timecycle modifiers. They do not install replacement textures, and Vice City Colors is a saturated retro look rather than a guaranteed pink-sky/orange-sunset overhaul.
