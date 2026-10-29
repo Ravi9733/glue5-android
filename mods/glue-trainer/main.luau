@@ -30,6 +30,9 @@ for _, feature in {
 } do
 	feature.build(root)
 end
+-- Expose vehicle appearance options directly in the trainer menu.
+require("./features/customs").build(root, "Car Customizer")
+
 -- Search and Favourites list every feature: filled last.
 hub.build()
 
