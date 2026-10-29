@@ -703,7 +703,7 @@ impl Ui {
         }
         let scale = crate::touch::control_scale(screen.size(), settings.touch_size);
         self.gear = gear.map(|alpha| draw_gear(&ctx, safe, scale, alpha, self.gear_icon.as_ref()));
-        self.menus_button = gear.filter(|_| status.mod_menus).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha));
+        self.menus_button = gear.filter(|_| status.mods).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha));
         let overlay = hud.then(|| self.perf.draw(&ctx, safe, settings, status));
         // The notifications and the stream's sign keep off everything else
         // drawn over the game.
@@ -913,12 +913,7 @@ fn draw_menus_button(ctx: &egui::Context, safe: Rect, scale: f32, alpha: f32) ->
     let look = crate::touch::Look::new(alpha, scale, glue5_runtime::input::Character::Other);
     let painter = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("gear")));
     painter.circle(c, r, look.fill(false), look.stroke(false));
-    let stroke = egui::Stroke::new(r * 0.1, look.icon);
-    for (dy, knob) in [(-0.24, 0.18), (0.24, -0.2)] {
-        let y = c.y + dy * r;
-        painter.line_segment([pos2(c.x - 0.48 * r, y), pos2(c.x + 0.48 * r, y)], stroke);
-        painter.circle_filled(pos2(c.x + knob * r, y), r * 0.15, look.icon);
-    }
+    painter.text(c, Align2::CENTER_CENTER, "F7", FontId::proportional(r * 0.68), look.icon);
     (c, r)
 }
 
