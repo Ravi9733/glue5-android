@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - realityv-graphics-zip
+      - integrate-glue-trainer
     paths:
       - 'mods/RealityV_Graphics/**'
       - '.github/workflows/realityv-zip.yml'
