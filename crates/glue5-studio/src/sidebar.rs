@@ -2,6 +2,7 @@
 
 use leptos::prelude::*;
 use serde_json::{Value, json};
+use wasm_bindgen::JsCast;
 
 use crate::actions::open_file;
 use crate::icons;
@@ -46,6 +47,19 @@ pub(crate) fn ModsView(s: S) -> impl IntoView {
             <h2>"MODS"</h2>
             <div class="tools">
                 <button class="icon-btn" title="New mod" on:click=new_mod><span class="ico" inner_html=icons::PLUS></span></button>
+                <label class="icon-btn" title="Import mod ZIP">
+                    "ZIP"
+                    <input type="file" accept=".zip,application/zip" style="display:none"
+                        on:change=move |ev| {
+                            let input = ev.target().and_then(|target| target.dyn_into::<web_sys::HtmlInputElement>().ok());
+                            if let Some(file) = input.and_then(|i| i.files()).and_then(|files| files.get(0)) {
+                                let filename = file.name();
+                                let suggested = filename.strip_suffix(".zip").or_else(|| filename.strip_suffix(".ZIP")).unwrap_or("imported-mod").to_ascii_lowercase();
+                                let name = web_sys::window().and_then(|w| w.prompt_with_message_and_default("Mod folder name (lowercase, digits, - and _):", &suggested).ok().flatten());
+                                if let Some(name) = name { crate::net::import_zip(s, file, name.trim().to_lowercase()); }
+                            }
+                        }/>
+                </label>
                 <button class="icon-btn" title="Stop all" on:click=move |_| {
                     for m in s.mods.get_untracked() { if m.state == "running" { request("mods.stop", json!({"name": m.name}), |_| {}); } }
                 }><span class="ico" inner_html=icons::STOP></span></button>
