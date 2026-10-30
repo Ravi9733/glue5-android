@@ -1,8 +1,8 @@
 {
   "name": "Colorful Tyre Smoke",
-  "description": "F7 menu for coloured and rainbow tyre smoke on cars and bikes. Smoke density and particle lifetime are controlled by the game.",
+  "description": "F7 menu with selectable and rainbow tyre-smoke colours. Smoke density and particle lifetime remain game-controlled.",
   "author": "Ravi9733",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "autostart": true,
   "restartOnSave": true
 }
