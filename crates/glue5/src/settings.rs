@@ -43,6 +43,8 @@ pub struct Settings {
     pub android_performance_profile_v3_applied: bool,
     /// One-time Android clarity profile: undo an overly low legacy render scale.
     pub android_graphics_clarity_profile_applied: bool,
+    /// One-time balanced Android graphics profile.
+    pub android_balanced_graphics_profile_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -240,6 +242,7 @@ impl Default for Settings {
             android_performance_profile_v2_applied: false,
             android_performance_profile_v3_applied: false,
             android_graphics_clarity_profile_applied: false,
+            android_balanced_graphics_profile_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -344,6 +347,14 @@ impl Settings {
             settings.upscaler = Upscaling::Bicubic;
             settings.max_fps = 30;
             settings.android_graphics_clarity_profile_applied = true;
+        }
+        #[cfg(target_os = "android")]
+        if !settings.android_balanced_graphics_profile_applied {
+            settings.render_scale = Some(0.50);
+            settings.upscaler = Upscaling::Bicubic;
+            settings.max_fps = 30;
+            settings.vsync = true;
+            settings.android_balanced_graphics_profile_applied = true;
         }
         // Apply the persisted Vulkan choice before the GPU backend creates
         // its first Vulkan entry. The Android activity sets the paths, but
