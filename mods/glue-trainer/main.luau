@@ -16,6 +16,10 @@ keys.action("menu", "Open the trainer", function()
 end)
 
 hub.rows(root)
+
+-- Keep Car Customizer near the top so it is easy to find in the F7 MENUS page.
+require("./features/customs").build(root, "Car Customizer")
+
 for _, feature in {
 	require("./features/self"),
 	require("./features/looks"),
@@ -30,8 +34,6 @@ for _, feature in {
 } do
 	feature.build(root)
 end
--- Expose vehicle appearance options directly in the trainer menu.
-require("./features/customs").build(root, "Car Customizer")
 
 -- Search and Favourites list every feature: filled last.
 hub.build()
