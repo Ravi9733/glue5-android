@@ -15,6 +15,7 @@ mod menus;
 pub mod natives;
 mod storage;
 pub mod studio;
+pub mod vehicle_packs;
 mod vm;
 mod zip_import;
 pub mod world;
