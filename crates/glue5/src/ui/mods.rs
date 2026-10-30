@@ -7,7 +7,7 @@ use egui::{Color32, CornerRadius, RichText, Sense, vec2};
 use glue5_mods::ModState;
 
 use super::pages::{card_title, sheet, small};
-use super::widgets::{Control, action_button, choice, inline_button, segmented, setting, slider, toggle};
+use super::widgets::{Control, action_button, action_buttons, choice, inline_button, segmented, setting, slider, toggle};
 use super::{Status, WARN, theme};
 use crate::settings::Settings;
 
@@ -24,6 +24,7 @@ pub enum Tab {
 #[derive(Default)]
 pub struct ModsPage {
     tab: Tab,
+    confirm_remove: Option<String>,
 }
 
 impl ModsPage {
@@ -213,7 +214,7 @@ fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
     if !status.mods {
         for m in &mods {
             let mut on = m.autostart;
-            let note = if on { "Starts with the game" } else { "Not started with the game" };
+            let note = if on { "Enabled · starts with the game" } else { "Disabled · does not start with the game" };
             setting(ui, &m.name, Control::Toggle, Some(note), |ui| {
                 if toggle(ui, &mut on).changed()
                     && let Err(e) = glue5_mods::set_autostart(&m.name, on)
@@ -221,6 +222,26 @@ fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
                     log::warn!("mods: {e}");
                 }
             });
+            if page.confirm_remove.as_deref() == Some(m.name.as_str()) {
+                setting(ui, &format!("Uninstall {}?", m.name), Control::Action, Some("This permanently removes this mod's files"), |ui| {
+                    let buttons = action_buttons(ui, &["Confirm", "Cancel"]);
+                    if buttons[0].clicked() {
+                        match glue5_mods::uninstall(&m.name) {
+                            Ok(()) => page.confirm_remove = None,
+                            Err(e) => log::warn!("mods: {e}"),
+                        }
+                    }
+                    if buttons[1].clicked() {
+                        page.confirm_remove = None;
+                    }
+                });
+            } else {
+                setting(ui, &format!("Remove {}", m.name), Control::Action, Some("Uninstall this mod and its files"), |ui| {
+                    if action_button(ui, "Uninstall").clicked() {
+                        page.confirm_remove = Some(m.name.clone());
+                    }
+                });
+            }
         }
         return;
     }
@@ -246,6 +267,31 @@ fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
                 }
             }
         });
+        if page.confirm_remove.as_deref() == Some(m.name.as_str()) {
+            setting(ui, &format!("Uninstall {}?", m.name), Control::Action, Some("This permanently removes this mod's files"), |ui| {
+                let buttons = action_buttons(ui, &["Confirm", "Cancel"]);
+                if buttons[0].clicked() {
+                    match glue5_mods::uninstall(&m.name) {
+                        Ok(()) => page.confirm_remove = None,
+                        Err(e) => log::warn!("mods: {e}"),
+                    }
+                }
+                if buttons[1].clicked() {
+                    page.confirm_remove = None;
+                }
+            });
+        } else {
+            setting(ui, &format!("Remove {}", m.name), Control::Action, Some("Uninstall this mod and its files"), |ui| {
+                if action_button(ui, "Uninstall").clicked() {
+                    if m.state == ModState::Running {
+                        glue5_mods::stop(&m.name);
+                        log::warn!("mods: stop {} and try uninstall again", m.name);
+                    } else {
+                        page.confirm_remove = Some(m.name.clone());
+                    }
+                }
+            });
+        }
     }
     let running: Vec<_> = mods.iter().filter(|m| m.state == ModState::Running).collect();
     if !running.is_empty() {
