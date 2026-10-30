@@ -1,9 +1,9 @@
 -- Colorful Tyre Smoke
--- Menu: F7 > MENUS > Colorful Tyre Smoke.
--- Uses GTA V's tyre-smoke colour native. Smoke density and particle lifetime
--- are controlled by the game and are not changed by this mod.
+-- F7 > MENUS > Colorful Tyre Smoke.
+-- Colours tyre smoke on the current car or bike.
+-- Smoke density and particle lifetime are controlled by GTA V.
 
-local menu = ui.menu("Colorful Tyre Smoke", "Colourful tyre smoke for cars and bikes")
+local menu = ui.menu("Colorful Tyre Smoke", "Colourful smoke for cars and bikes")
 
 local colours = {
     { name = "White",  r = 255, g = 255, b = 255 },
@@ -17,9 +17,9 @@ local colours = {
     { name = "Cyan",   r = 20,  g = 230, b = 255 },
 }
 
-local colourNames = {}
-for _, colour in colours do
-    table.insert(colourNames, colour.name)
+local names = {}
+for _, c in colours do
+    table.insert(names, c.name)
 end
 
 local selectedName = "White"
@@ -27,35 +27,25 @@ local rainbowOn = false
 local enabled = true
 
 local function colourByName(name)
-    for _, colour in colours do
-        if colour.name == name then
-            return colour
-        end
+    for _, c in colours do
+        if c.name == name then return c end
     end
     return colours[1]
 end
 
 local function currentVehicle()
     local me = player.playerPedId()
-    if not ped.isPedInAnyVehicle(me, false) then
-        return nil
-    end
-
+    if not ped.isPedInAnyVehicle(me, false) then return nil end
     local veh = ped.getVehiclePedIsIn(me, false)
-    if not veh or veh == 0 then
-        return nil
-    end
+    if not veh or veh == 0 then return nil end
     return veh
 end
 
-local function applyColour(colour)
+local function applyColour(c)
     local veh = currentVehicle()
-    if not veh then
-        return false
-    end
-
+    if not veh then return false end
     vehicle.toggleVehicleMod(veh, 20, true)
-    vehicle.setVehicleTyreSmokeColor(veh, colour.r, colour.g, colour.b)
+    vehicle.setVehicleTyreSmokeColor(veh, c.r, c.g, c.b)
     return true
 end
 
@@ -68,11 +58,10 @@ local function rainbowColour()
     }
 end
 
--- GLUE 5 menu callbacks use the documented argument positions:
--- choice(label, options, default, callback)
--- toggle(label, default, callback)
-menu:choice("Smoke colour", colourNames, "White", function(_, name)
-    selectedName = name
+-- IMPORTANT: GLUE 5 expects the choice default as a 1-based numeric index.
+-- Passing "White" here causes the usize conversion error reported by the user.
+menu:choice("Smoke colour", names, 1, function(index, name)
+    selectedName = name or names[index] or "White"
     rainbowOn = false
     if enabled then
         applyColour(colourByName(selectedName))
@@ -91,7 +80,7 @@ menu:toggle("Enable smoke colour", true, function(on)
 end)
 
 menu:button("Apply Colour", {
-    note = "Apply the selected colour to your current vehicle",
+    note = "Apply selected colour to the current car or bike",
     action = "Apply",
 }, function()
     rainbowOn = false
@@ -103,23 +92,22 @@ menu:button("Apply Colour", {
 end)
 
 menu:button("Disable Rainbow", {
-    note = "Stop cycling rainbow colours",
+    note = "Stop rainbow colour cycling",
     action = "Disable",
 }, function()
     rainbowOn = false
     ui.notify("Rainbow disabled")
 end)
 
-menu:label("Smoke density and duration are controlled by GTA V")
+menu:label("Smoke density and duration are game-controlled")
 
--- Open the actual menu page when this mod starts, rather than relying only
--- on the player finding it in the MENUS list.
+-- The menu is registered on the Mods page; show it when the mod starts.
 menu:show()
 
 while true do
     if enabled then
-        local colour = if rainbowOn then rainbowColour() else colourByName(selectedName)
-        applyColour(colour)
+        local c = if rainbowOn then rainbowColour() else colourByName(selectedName)
+        applyColour(c)
     end
     wait(250)
 end
