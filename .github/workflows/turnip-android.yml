@@ -4,7 +4,7 @@ name: Turnip Android integration build
 on:
   workflow_dispatch:
   push:
-    branches: [turnip-driver-integration]
+    branches: [turnip-driver-integration, turnip-zip-mod-manager]
 
 permissions:
   contents: write
