@@ -154,3 +154,67 @@ pub(crate) fn fetch_text(url: String, then: impl FnOnce(String) + 'static) {
     let _ = window.fetch_with_str(&url).then(&on_response);
     on_response.forget();
 }
+
+/// Uploads a selected ZIP to the paired game's authenticated mod importer.
+pub(crate) fn import_zip(s: S, file: web_sys::File, name: String) {
+    let Some(window) = web_sys::window() else { s.notice.set(Some("Browser window unavailable".into())); return };
+    let Ok(reader) = web_sys::FileReader::new() else { s.notice.set(Some("Could not read ZIP file".into())); return };
+    let load_reader = reader.clone();
+    let on_load = Closure::<dyn FnMut(web_sys::ProgressEvent)>::new(move |_| {
+        let Ok(value) = load_reader.result() else { s.notice.set(Some("Could not read ZIP data".into())); return };
+        let bytes = js_sys::Uint8Array::new(&value);
+        let mut init = web_sys::RequestInit::new();
+        init.set_method("POST");
+        let body: wasm_bindgen::JsValue = bytes.into();
+        init.set_body(&body);
+        let headers = match web_sys::Headers::new() {
+            Ok(h) => h,
+            Err(_) => { s.notice.set(Some("Could not prepare ZIP upload".into())); return; }
+        };
+        if headers.set("Content-Type", "application/zip").is_err() {
+            s.notice.set(Some("Could not prepare ZIP upload".into()));
+            return;
+        }
+        init.set_headers(&headers.into());
+        let token = TOKEN.with(|t| t.borrow().clone());
+        let url = format!(
+            "http://{}/mods/import?name={}&token={}",
+            host(),
+            js_sys::encode_uri_component(&name),
+            js_sys::encode_uri_component(&token)
+        );
+        let promise = window.fetch_with_str_and_init(&url, &init);
+        let response_name = name.clone();
+        let on_response = Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(move |value: wasm_bindgen::JsValue| {
+            let response: web_sys::Response = value.unchecked_into();
+            let ok = response.ok();
+            let text: js_sys::Promise = match response.text() {
+                Ok(p) => p,
+                Err(_) => { s.notice.set(Some("The game returned an unreadable response".into())); return; }
+            };
+            let imported_name = response_name.clone();
+            let on_text = Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(move |value: wasm_bindgen::JsValue| {
+                let message = value.as_string().unwrap_or_default();
+                if ok {
+                    s.notice.set(Some(format!("Mod '{}' imported. Enable it in Mods.", imported_name)));
+                } else {
+                    let error = serde_json::from_str::<serde_json::Value>(&message)
+                        .ok().and_then(|v| v["error"].as_str().map(str::to_string))
+                        .unwrap_or_else(|| format!("ZIP import failed: {}", message));
+                    s.notice.set(Some(error));
+                }
+            });
+            let _ = text.then(&on_text);
+            on_text.forget();
+        });
+        let _ = promise.then(&on_response);
+        on_response.forget();
+    });
+    reader.set_onload(Some(on_load.as_ref().unchecked_ref()));
+    on_load.forget();
+    if reader.read_as_array_buffer(&file).is_err() {
+        s.notice.set(Some("Could not open selected ZIP file".into()));
+    } else {
+        s.notice.set(Some(format!("Reading {}…", file.name())));
+    }
+}
