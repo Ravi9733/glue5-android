@@ -24,6 +24,7 @@ pub enum Tab {
 #[derive(Default)]
 pub struct ModsPage {
     tab: Tab,
+    confirm_remove: Option<String>,
 }
 
 impl ModsPage {
@@ -246,6 +247,30 @@ fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
                 }
             }
         });
+        if page.confirm_remove.as_deref() == Some(m.name.as_str()) {
+            setting(ui, &format!("Uninstall {}?", m.name), Control::Action, Some("This permanently removes this mod's files"), |ui| {
+                if action_button(ui, "Confirm").clicked() {
+                    match glue5_mods::uninstall(&m.name) {
+                        Ok(()) => page.confirm_remove = None,
+                        Err(e) => log::warn!("mods: {e}"),
+                    }
+                }
+                if action_button(ui, "Cancel").clicked() {
+                    page.confirm_remove = None;
+                }
+            });
+        } else {
+            setting(ui, &format!("Remove {}", m.name), Control::Action, Some("Uninstall this mod and its files"), |ui| {
+                if action_button(ui, "Uninstall").clicked() {
+                    if m.state == ModState::Running {
+                        glue5_mods::stop(&m.name);
+                        log::warn!("mods: stop {} and try uninstall again", m.name);
+                    } else {
+                        page.confirm_remove = Some(m.name.clone());
+                    }
+                }
+            });
+        }
     }
     let running: Vec<_> = mods.iter().filter(|m| m.state == ModState::Running).collect();
     if !running.is_empty() {
