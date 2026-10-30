@@ -1,0 +1,39 @@
+name: Package Glue Trainer ZIP
+
+on:
+  push:
+    branches:
+      - integrate-glue-trainer
+    paths:
+      - 'mods/glue-trainer/**'
+      - '.github/workflows/trainer-zip.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify Car Customizer entry and module
+        run: |
+          grep -F 'require("./features/customs").build(root, "Car Customizer")' mods/glue-trainer/main.luau
+          test -s mods/glue-trainer/features/customs.luau
+          test -s mods/glue-trainer/mod.json
+          test -d mods/glue-trainer/core
+          test -d mods/glue-trainer/data
+          test -d mods/glue-trainer/features
+      - name: Package mod folder
+        run: |
+          mkdir -p dist
+          cd mods
+          zip -r ../dist/Glue-Trainer-Car-Customizer-Fix.zip glue-trainer
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glue-Trainer-Car-Customizer-Fix
+          path: dist/Glue-Trainer-Car-Customizer-Fix.zip
+          if-no-files-found: error
