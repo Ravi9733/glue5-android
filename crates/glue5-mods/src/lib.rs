@@ -239,6 +239,25 @@ pub fn set_autostart(name: &str, on: bool) -> Result<(), String> {
     files::set_autostart(name, on)
 }
 
+/// Removes a stopped mod and all of its files. Running mods must be stopped
+/// first so their script thread cannot continue using files being removed.
+pub fn uninstall(name: &str) -> Result<(), String> {
+    if !files::valid_name(name) {
+        return Err(format!("{name}: invalid mod name"));
+    }
+    if mods().iter().any(|m| m.name == name && m.state == ModState::Running) {
+        return Err(format!("{name}: stop this mod before uninstalling it"));
+    }
+    let dir = dir().ok_or("mods are off")?.join(name);
+    if !dir.is_dir() {
+        return Err(format!("{name}: mod not found"));
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("{name}: {e}"))?;
+    changed(&format!("{name}/"));
+    refresh();
+    Ok(())
+}
+
 /// Reads the mods folder again (new or removed mods).
 pub fn refresh() {
     let Some(dir) = dir() else { return };
