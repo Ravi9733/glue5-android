@@ -304,4 +304,18 @@ function M.build(root: Menu, title: string?)
 	end))
 end
 
+-- The standalone Car Customizer uses its own root menu: populate it directly so F7
+-- opens the actual vehicle options, without an extra, empty-looking submenu.
+function M.buildDirect(menu: Menu)
+	menu:onOpen(bind.safe("Car Customizer", function()
+		menu:clear()
+		local car = game.vehicle()
+		if not car then
+			menu:label("Get in a vehicle first.")
+			return
+		end
+		build(menu, car)
+	end))
+end
+
 return M
