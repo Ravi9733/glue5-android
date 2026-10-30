@@ -34,7 +34,7 @@ jobs:
           # Core modules use root-relative require("./prefs"), require("./loop"), etc.
           # Provide root forwarding modules so the standalone package resolves those imports.
           for module in prefs loop game keys bind; do
-            printf 'return require("./core/%s")\\n' "$module" > "$out/$module.luau"
+            printf 'return require("./core/%s")\n' "$module" > "$out/$module.luau"
           done
           cat > "$out/main.luau" <<'LUA'
           --!strict
