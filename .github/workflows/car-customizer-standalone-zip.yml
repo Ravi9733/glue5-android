@@ -1,0 +1,40 @@
+name: Package standalone Car Customizer
+on:
+  push:
+    branches:
+      - car-customizer-f7-standalone
+    paths:
+      - "mods/Car_Customizer/**"
+      - ".github/workflows/car-customizer-standalone-zip.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify standalone mod files
+        run: |
+          test -s mods/Car_Customizer/main.luau
+          test -s mods/Car_Customizer/mod.json
+          grep -q 'ui.menu("Car Customizer"' mods/Car_Customizer/main.luau
+          grep -q '"name": "Car Customizer"' mods/Car_Customizer/mod.json
+      - name: Package ZIP
+        run: |
+          mkdir -p dist
+          cd mods/Car_Customizer
+          zip -r ../../dist/Car-Customizer-F7-Standalone.zip main.luau mod.json
+          cd ../..
+          unzip -l dist/Car-Customizer-F7-Standalone.zip
+          unzip -Z1 dist/Car-Customizer-F7-Standalone.zip | grep -qx main.luau
+          unzip -Z1 dist/Car-Customizer-F7-Standalone.zip | grep -qx mod.json
+          ! unzip -Z1 dist/Car-Customizer-F7-Standalone.zip | grep -q '^Car_Customizer/'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Car-Customizer-F7-Standalone
+          path: dist/Car-Customizer-F7-Standalone.zip
+          if-no-files-found: error
+          retention-days: 14
