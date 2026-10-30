@@ -20,6 +20,13 @@ is one, is a JSON object: `{"autostart": true}` starts the mod with the game
 (false or no mod.json: started by hand). Mods are Luau (typed Lua); start
 files with `--!strict` to have every type checked.
 
+## Installing a ZIP
+- In Studio's Mods panel, choose ZIP and select a script-mod archive.
+- The archive must contain `main.luau` at its root, or all files inside one top-level folder containing `main.luau`.
+- An optional `mod.json` must be a JSON object; `autostart`, if present, is true or false. New imports default to manual start.
+- ZIP imports are limited to 16 MiB compressed, 32 MiB unpacked, 8 MiB per file and 256 entries. Hidden paths, traversal paths and symbolic links are rejected.
+- This installs Luau script mods only. Native GTA V Add-on/Replacement asset packs are not loaded by the script-mod engine.
+
 ## Running
 - A mod runs in a script thread of the game's own, once the player is in
   the game. `main.luau` runs top to bottom: a mod that returns is done
