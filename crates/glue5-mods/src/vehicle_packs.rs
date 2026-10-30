@@ -133,3 +133,67 @@ pub fn inspect_zip(bytes: &[u8]) -> Result<VehiclePackReport, String> {
     }
     Ok(report)
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    fn zip_with(files: &[(&str, &[u8])]) -> Vec<u8> {
+        let cursor = Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(cursor);
+        for (name, bytes) in files {
+            writer.start_file(*name, SimpleFileOptions::default()).unwrap();
+            writer.write_all(bytes).unwrap();
+        }
+        writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn identifies_loose_vehicle_assets_without_claiming_installation() {
+        let bytes = zip_with(&[
+            ("mycar/adder.yft", b"model"),
+            ("mycar/adder_hi.yft", b"model-hi"),
+            ("mycar/adder.ytd", b"texture"),
+            ("mycar/vehicles.meta", b"<CVehicleModelInfo__InitDataList/>"),
+            ("mycar/handling.meta", b"<HandlingDataMgr/>"),
+        ]);
+        let report = inspect_zip(&bytes).unwrap();
+        assert!(report.has_native_vehicle_assets);
+        assert!(!report.likely_addon_pack);
+        assert_eq!(report.yft_models, 2);
+        assert_eq!(report.ytd_textures, 1);
+        assert_eq!(report.vehicles_meta, 1);
+        assert_eq!(report.handling_meta, 1);
+        assert!(report.notes.iter().any(|n| n.contains("not verified")));
+    }
+
+    #[test]
+    fn identifies_rpf7_addon_layout_but_does_not_parse_it() {
+        let bytes = zip_with(&[
+            ("dlc/mycar/dlc.rpf", b"RPF7archive-data"),
+            ("dlc/mycar/content.xml", b"<S/>"),
+            ("dlc/mycar/setup2.xml", b"<S/>"),
+        ]);
+        let report = inspect_zip(&bytes).unwrap();
+        assert!(report.has_native_vehicle_assets);
+        assert!(report.likely_addon_pack);
+        assert_eq!(report.rpf_archives, 1);
+        assert_eq!(report.rpf7_archives, 1);
+        assert!(report.notes.iter().any(|n| n.contains("not been parsed")));
+    }
+
+    #[test]
+    fn rejects_invalid_zip_bytes() {
+        assert!(inspect_zip(b"not a zip").is_err());
+    }
+
+    #[test]
+    fn empty_zip_is_not_a_vehicle_pack() {
+        let bytes = Cursor::new(Vec::new());
+        let archive = zip::ZipWriter::new(bytes).finish().unwrap().into_inner();
+        assert!(inspect_zip(&archive).is_err());
+    }
+}
