@@ -8,7 +8,6 @@
 //! (engine.rs). [`studio`] serves GLUE 5 Studio and the MCP endpoint.
 
 mod checker;
-mod bundled_trainer;
 mod engine;
 pub mod files;
 mod json;
@@ -17,6 +16,7 @@ pub mod natives;
 mod storage;
 pub mod studio;
 mod vm;
+mod zip_import;
 pub mod world;
 
 use std::collections::VecDeque;
@@ -174,34 +174,16 @@ pub fn held_back() -> Vec<String> {
 /// open to the Studio. Before the game too; they run once [`install`]ed.
 pub fn open(dir: &Path) {
     let _ = std::fs::create_dir_all(dir);
-    seed_bundled_graphics_mod(dir);
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
         return;
     }
     world::load_saved(dir);
-    bundled_trainer::install(dir);
     refresh();
 }
-/// Installs the graphics mod bundled with the app, without overwriting user edits.
-fn seed_bundled_graphics_mod(dir: &Path) {
-    let mod_dir = dir.join("soft-blur-graphics");
-    if std::fs::create_dir_all(&mod_dir).is_err() {
-        return;
-    }
-    let main = mod_dir.join("main.luau");
-    if !main.exists() {
-        let _ = std::fs::write(
-            &main,
-            include_str!("../../../mods/soft-blur-graphics/main.luau"),
-        );
-    }
-    let config = mod_dir.join("mod.json");
-    if !config.exists() {
-        let _ = std::fs::write(&config, r#"{"autostart": true}"#);
-    }
-}
 
-
+/// Mods run with the game about to start (the folder [`open`]ed if it was
+/// not): the mods marked autostart start once the game runs scripts. Call
+/// before `glue5_runtime::start`.
 pub fn install(dir: &Path) {
     open(dir);
     if INSTALLED.swap(true, Ordering::AcqRel) {
@@ -258,6 +240,30 @@ pub fn set_autostart(name: &str, on: bool) -> Result<(), String> {
     files::set_autostart(name, on)
 }
 
+/// Removes a stopped mod and all of its files. Running mods must be stopped
+/// first so their script thread cannot continue using files being removed.
+pub fn uninstall(name: &str) -> Result<(), String> {
+    if !files::valid_name(name) {
+        return Err(format!("{name}: invalid mod name"));
+    }
+    if mods().iter().any(|m| m.name == name && m.state == ModState::Running) {
+        return Err(format!("{name}: stop this mod before uninstalling it"));
+    }
+    let dir = dir().ok_or("mods are off")?.join(name);
+    if !dir.is_dir() {
+        return Err(format!("{name}: mod not found"));
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("{name}: {e}"))?;
+    changed(&format!("{name}/"));
+    refresh();
+    Ok(())
+}
+
+/// Installs a script-mod ZIP into the mods folder.
+pub fn install_zip(name: &str, bytes: &[u8]) -> Result<(), String> {
+    zip_import::install(name, bytes)
+}
+
 /// Reads the mods folder again (new or removed mods).
 pub fn refresh() {
     let Some(dir) = dir() else { return };
@@ -274,7 +280,7 @@ pub fn refresh() {
     found.sort();
     let mut s = SHARED.state.lock().unwrap();
     let before = s.mods.len();
-    s.mods.retain(|m| m.state != ModState::Stopped || found.iter().any(|(n, _)| *n == m.name));
+    s.mods.retain(|m| m.state == ModState::Running || found.iter().any(|(n, _)| *n == m.name));
     let mut changed = before != s.mods.len();
     for (name, autostart) in found {
         match s.mods.iter_mut().find(|m| m.name == name) {
