@@ -146,7 +146,7 @@ impl Request {
 }
 
 const MAX_HEAD: usize = 32 << 10;
-const MAX_BODY: usize = 8 << 20;
+const MAX_BODY: usize = 16 << 20;
 
 impl Server {
     fn serve(&self, stream: TcpStream) -> std::io::Result<()> {
@@ -174,6 +174,22 @@ impl Server {
                         return r;
                     }
                     return session::run(ws);
+                }
+                ("POST", "/mods/import") => {
+                    if !self.authorized(&request) || !same_origin(&request) {
+                        respond(&mut out, 401, "application/json", br#"{"error":"missing or wrong token"}"#, &[])?;
+                    } else if !request.header("content-type").is_some_and(|v| v.to_ascii_lowercase().starts_with("application/zip")) {
+                        respond(&mut out, 400, "application/json", br#"{"error":"send a ZIP archive"}"#, &[])?;
+                    } else {
+                        let name = request.param("name").unwrap_or("");
+                        match crate::install_zip(name, &request.body) {
+                            Ok(()) => respond(&mut out, 200, "application/json", br#"{"ok":true}"#, &[])?,
+                            Err(error) => {
+                                let body = serde_json::json!({"error": error}).to_string();
+                                respond(&mut out, 400, "application/json", body.as_bytes(), &[])?;
+                            }
+                        }
+                    }
                 }
                 ("POST", "/mcp") => {
                     if !self.authorized(&request) || request.header("origin").is_some_and(|_| !same_origin(&request)) {
