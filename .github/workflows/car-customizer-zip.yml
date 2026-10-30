@@ -36,11 +36,11 @@ jobs:
           -- Standalone Glue5 Car Customizer: colours, neon, tyre smoke, built-in liveries/decals.
           local keys = require("./core/keys")
           local customs = require("./features/customs")
-          local root = ui.menu("Car Customizer", "Vehicle colours, built-in decals, neon and tyre smoke")
+          local root = ui.menu("Car Customizer", "Colours, decals, stripes, neon, tyre smoke and tuning")
           keys.action("menu", "Open Car Customizer", function()
             root:show()
           end)
-          customs.build(root, "Car Customizer")
+          customs.buildDirect(root)
           LUA
           cat > "$out/mod.json" <<'JSON'
           {
@@ -69,7 +69,8 @@ jobs:
           - This mod does not add new texture decals to every vehicle.
           - This ZIP is a mod package, not an APK. Compatibility depends on the GLUE 5 build's mod loader and API.
           TXT
-          zip -qr Car-Customizer.zip "$out"
+          # GLUE 5 accepts mod files at the ZIP root; avoid an extra nested folder.
+          (cd "$out" && zip -qr ../Car-Customizer.zip .)
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
