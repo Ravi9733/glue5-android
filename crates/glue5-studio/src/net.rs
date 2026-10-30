@@ -184,6 +184,7 @@ pub(crate) fn import_zip(s: S, file: web_sys::File, name: String) {
             js_sys::encode_uri_component(&token)
         );
         let promise = window.fetch_with_str_and_init(&url, &init);
+        let response_name = name.clone();
         let on_response = Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(move |value| {
             let response: web_sys::Response = value.unchecked_into();
             let ok = response.ok();
@@ -191,10 +192,11 @@ pub(crate) fn import_zip(s: S, file: web_sys::File, name: String) {
                 Ok(p) => p,
                 Err(_) => { s.notice.set(Some("The game returned an unreadable response".into())); return; }
             };
+            let imported_name = response_name.clone();
             let on_text = Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(move |value| {
                 let message = value.as_string().unwrap_or_default();
                 if ok {
-                    s.notice.set(Some(format!("Mod '{}' imported. Enable it in Mods.", name)));
+                    s.notice.set(Some(format!("Mod '{}' imported. Enable it in Mods.", imported_name)));
                 } else {
                     let error = serde_json::from_str::<serde_json::Value>(&message)
                         .ok().and_then(|v| v["error"].as_str().map(str::to_string))
