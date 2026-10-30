@@ -274,7 +274,7 @@ pub fn refresh() {
     found.sort();
     let mut s = SHARED.state.lock().unwrap();
     let before = s.mods.len();
-    s.mods.retain(|m| m.state != ModState::Stopped || found.iter().any(|(n, _)| *n == m.name));
+    s.mods.retain(|m| m.state == ModState::Running || found.iter().any(|(n, _)| *n == m.name));
     let mut changed = before != s.mods.len();
     for (name, autostart) in found {
         match s.mods.iter_mut().find(|m| m.name == name) {
