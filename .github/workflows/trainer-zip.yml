@@ -1,9 +1,10 @@
-name: Package Glue Trainer ZIP
+name: Package Glue Trainer with Car Customizer
 
 on:
   push:
     branches:
       - integrate-glue-trainer
+      - car-customizer-complete-zip
     paths:
       - 'mods/glue-trainer/**'
       - '.github/workflows/trainer-zip.yml'
@@ -18,22 +19,53 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Verify Car Customizer entry and module
+
+      - name: Verify Car Customizer is registered in the trainer
+        shell: bash
         run: |
+          set -euo pipefail
           grep -F 'require("./features/customs").build(root, "Car Customizer")' mods/glue-trainer/main.luau
           test -s mods/glue-trainer/features/customs.luau
           test -s mods/glue-trainer/mod.json
+          test -s mods/glue-trainer/core/prefs.luau
+          test -s mods/glue-trainer/core/keys.luau
+          test -s mods/glue-trainer/data/vehicles.luau
+          test -d mods/glue-trainer/features
           test -d mods/glue-trainer/core
           test -d mods/glue-trainer/data
-          test -d mods/glue-trainer/features
-      - name: Package mod folder
+
+      - name: Package the mod contents at ZIP root
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
-          cd mods
-          zip -r ../dist/Glue-Trainer-Car-Customizer-Fix.zip glue-trainer
+          cd mods/glue-trainer
+          zip -qr ../../dist/Glue-Trainer-Car-Customizer-FIXED.zip .
+          cd ../..
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          p = "dist/Glue-Trainer-Car-Customizer-FIXED.zip"
+          with ZipFile(p) as z:
+              names = set(z.namelist())
+              required = {
+                  "main.luau",
+                  "mod.json",
+                  "core/prefs.luau",
+                  "core/keys.luau",
+                  "features/customs.luau",
+                  "data/vehicles.luau",
+              }
+              missing = sorted(required - names)
+              if missing:
+                  raise SystemExit("ZIP is missing: " + ", ".join(missing))
+              if any(n.startswith("glue-trainer/") for n in names):
+                  raise SystemExit("Unexpected nested glue-trainer folder in ZIP")
+              print("Verified ZIP root entries:", ", ".join(sorted(required)))
+          PY
+
       - name: Upload ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: Glue-Trainer-Car-Customizer-Fix
-          path: dist/Glue-Trainer-Car-Customizer-Fix.zip
+          name: Glue-Trainer-Car-Customizer-FIXED
+          path: dist/Glue-Trainer-Car-Customizer-FIXED.zip
           if-no-files-found: error
