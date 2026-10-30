@@ -165,15 +165,18 @@ local function build(menu, car)
     end
 end
 
--- Populate the registered F7 menu when it opens, for the vehicle currently being driven.
-root:onOpen(safe("Car Customizer", function()
-    root:clear()
+-- GLUE 5's official Trainer attaches onOpen to a submenu, not the ui.menu root.
+-- The root remains visible in F7 > MENUS; open Customs to populate vehicle options.
+local customs = root:submenu("Customs", "Paint, liveries, neon, tyre smoke and tuning")
+
+customs:onOpen(safe("Car Customizer", function()
+    customs:clear()
     local car = currentVehicle()
     if not car then
-        root:label("Get into a vehicle, then reopen Car Customizer.")
+        customs:label("Get into a vehicle first, then reopen Customs.")
         return
     end
-    build(root, car)
+    build(customs, car)
 end))
 
-ui.notify("Car Customizer loaded. Open F7 > MENUS.")
+ui.notify("Car Customizer loaded. Open F7 > MENUS > Car Customizer > Customs.")
