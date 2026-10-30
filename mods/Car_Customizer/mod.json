@@ -1,8 +1,8 @@
 {
   "name": "Car Customizer",
-  "description": "Standalone vehicle customizer. Open F7 > MENUS > Car Customizer.",
+  "description": "Vehicle paint, supported built-in liveries, neon, tyre smoke, extras and tuning.",
   "author": "GLUE 5 community mod",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "autostart": true,
   "restartOnSave": true
 }
