@@ -3,8 +3,7 @@
 -- and other players, from the Mods page's MENUS (F7), the Studio, or its own key (F4).
 --
 -- Each feature area is a module of features/ with a build(root) that adds its submenu; core/
--- holds what they share (preferences, the per-frame loop, features and key bindings, the
--- game's catalog), data/ the few tables the game does not give.
+-- holds what they share (preferences, the per-frame loop, features and key bindings, the game's catalog.
 
 local keys = require("./core/keys")
 local loop = require("./core/loop")
@@ -16,6 +15,10 @@ keys.action("menu", "Open the trainer", function()
 end)
 
 hub.rows(root)
+
+-- Put this first so it is immediately visible in the F7 menu.
+require("./features/customs").build(root, "Car Customizer")
+
 for _, feature in {
 	require("./features/self"),
 	require("./features/looks"),
@@ -30,8 +33,6 @@ for _, feature in {
 } do
 	feature.build(root)
 end
--- Expose vehicle appearance options directly in the trainer menu.
-require("./features/customs").build(root, "Car Customizer")
 
 -- Search and Favourites list every feature: filled last.
 hub.build()
