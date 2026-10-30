@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 use std::io::{Cursor, Read};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, PathBuf};
 
 const MAX_ENTRIES: usize = 256;
 const MAX_FILE: u64 = 8 << 20;
@@ -28,7 +28,7 @@ pub fn install(name: &str, bytes: &[u8]) -> Result<(), String> {
 
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|e| format!("Invalid ZIP archive: {e}"))?;
-    if archive.is_empty() || archive.len() > MAX_ENTRIES {
+    if archive.len() == 0 || archive.len() > MAX_ENTRIES {
         return Err(format!("ZIP must contain 1–{MAX_ENTRIES} entries"));
     }
 
