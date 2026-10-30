@@ -185,15 +185,15 @@ pub(crate) fn import_zip(s: S, file: web_sys::File, name: String) {
         );
         let promise = window.fetch_with_str_and_init(&url, &init);
         let response_name = name.clone();
-        let on_response = Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(move |value| {
+        let on_response = Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(move |value: wasm_bindgen::JsValue| {
             let response: web_sys::Response = value.unchecked_into();
             let ok = response.ok();
-            let text = match response.text() {
+            let text: js_sys::Promise = match response.text() {
                 Ok(p) => p,
                 Err(_) => { s.notice.set(Some("The game returned an unreadable response".into())); return; }
             };
             let imported_name = response_name.clone();
-            let on_text = Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(move |value| {
+            let on_text = Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(move |value: wasm_bindgen::JsValue| {
                 let message = value.as_string().unwrap_or_default();
                 if ok {
                     s.notice.set(Some(format!("Mod '{}' imported. Enable it in Mods.", imported_name)));
