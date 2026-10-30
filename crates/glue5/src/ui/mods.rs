@@ -214,7 +214,7 @@ fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
     if !status.mods {
         for m in &mods {
             let mut on = m.autostart;
-            let note = if on { "Starts with the game" } else { "Not started with the game" };
+            let note = if on { "Enabled · starts with the game" } else { "Disabled · does not start with the game" };
             setting(ui, &m.name, Control::Toggle, Some(note), |ui| {
                 if toggle(ui, &mut on).changed()
                     && let Err(e) = glue5_mods::set_autostart(&m.name, on)
@@ -222,6 +222,26 @@ fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
                     log::warn!("mods: {e}");
                 }
             });
+            if page.confirm_remove.as_deref() == Some(m.name.as_str()) {
+                setting(ui, &format!("Uninstall {}?", m.name), Control::Action, Some("This permanently removes this mod's files"), |ui| {
+                    let buttons = action_buttons(ui, &["Confirm", "Cancel"]);
+                    if buttons[0].clicked() {
+                        match glue5_mods::uninstall(&m.name) {
+                            Ok(()) => page.confirm_remove = None,
+                            Err(e) => log::warn!("mods: {e}"),
+                        }
+                    }
+                    if buttons[1].clicked() {
+                        page.confirm_remove = None;
+                    }
+                });
+            } else {
+                setting(ui, &format!("Remove {}", m.name), Control::Action, Some("Uninstall this mod and its files"), |ui| {
+                    if action_button(ui, "Uninstall").clicked() {
+                        page.confirm_remove = Some(m.name.clone());
+                    }
+                });
+            }
         }
         return;
     }
