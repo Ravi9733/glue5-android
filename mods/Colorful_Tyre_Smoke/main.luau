@@ -1,6 +1,8 @@
 --!strict
--- Colorful Tyre Smoke for GLUE 5. Cars and bikes use the same vehicle natives.
-local menu = ui.menu("Colorful Tyre Smoke", "Choose tyre smoke colour")
+-- Colorful Tyre Smoke. Its menu is listed automatically under Mods > MENUS (F7).
+-- F7 belongs to the GLUE 5 app; this mod must not intercept it.
+
+local menu = ui.menu("Colorful Tyre Smoke", "Tyre smoke colours for cars and bikes")
 
 local colours = {
 	{ name = "White", r = 255, g = 255, b = 255 },
@@ -14,32 +16,52 @@ local colours = {
 	{ name = "Cyan", r = 20, g = 230, b = 255 },
 }
 local names = {}
-for _, colour in colours do table.insert(names, colour.name) end
+for _, c in colours do
+	table.insert(names, c.name)
+end
 
 local selected = 1
 local rainbow = false
-local disabled = false
+local enabled = true
 
-menu:choice("Smoke colour", names, selected, function(index: number)
+local function applyColour()
+	local me = player.playerPedId()
+	if not ped.isPedInAnyVehicle(me, false) then
+		ui.notify("Get into a car or bike first")
+		return
+	end
+	local veh = ped.getVehiclePedIsIn(me, false)
+	if not veh or veh == 0 then return end
+	local c = colours[selected]
+	vehicle.toggleVehicleMod(veh, 20, true)
+	vehicle.setVehicleTyreSmokeColor(veh, c.r, c.g, c.b)
+	ui.notify(c.name .. " tyre smoke applied")
+end
+
+menu:choice("Smoke colour", names, "White", function(index: number, _name: string)
 	selected = index
 	rainbow = false
-	disabled = false
+	enabled = true
 end)
-menu:toggle("Rainbow", false, "Cycle through colours", function(on: boolean)
+
+menu:button("Apply Colour", { note = "Apply selected colour to your current vehicle", action = "Apply" }, applyColour)
+
+menu:toggle("Rainbow", false, "Cycle through rainbow colours", function(on: boolean)
 	rainbow = on
-	if on then disabled = false end
-end)
-menu:toggle("Disable smoke colour", false, "Stop applying colour", function(on: boolean)
-	disabled = on
-	if on then rainbow = false end
+	enabled = true
 end)
 
-input.onKey(function(key, down)
-	if down and key == "F7" then menu:show() end
+menu:toggle("Disable Rainbow", false, "Turn rainbow cycling off", function(on: boolean)
+	if on then
+		rainbow = false
+	end
 end)
 
-local function currentColour()
-	if not rainbow then return colours[selected] end
+menu:toggle("Enable smoke colour", true, "Apply the selected or rainbow colour while driving", function(on: boolean)
+	enabled = on
+end)
+
+local function rainbowColour()
 	local t = os.clock() * 2.4
 	return {
 		r = math.floor((math.sin(t) * 0.5 + 0.5) * 255),
@@ -49,14 +71,14 @@ local function currentColour()
 end
 
 while true do
-	if not disabled then
+	if enabled then
 		local me = player.playerPedId()
 		if ped.isPedInAnyVehicle(me, false) then
-			local car = ped.getVehiclePedIsIn(me, false)
-			if car and car ~= 0 then
-				local c = currentColour()
-				vehicle.toggleVehicleMod(car, 20, true)
-				vehicle.setVehicleTyreSmokeColor(car, c.r, c.g, c.b)
+			local veh = ped.getVehiclePedIsIn(me, false)
+			if veh and veh ~= 0 then
+				local c = if rainbow then rainbowColour() else colours[selected]
+				vehicle.toggleVehicleMod(veh, 20, true)
+				vehicle.setVehicleTyreSmokeColor(veh, c.r, c.g, c.b)
 			end
 		end
 	end
