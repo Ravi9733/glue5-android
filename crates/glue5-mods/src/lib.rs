@@ -16,6 +16,7 @@ pub mod natives;
 mod storage;
 pub mod studio;
 mod vm;
+mod zip_import;
 pub mod world;
 
 use std::collections::VecDeque;
@@ -256,6 +257,11 @@ pub fn uninstall(name: &str) -> Result<(), String> {
     changed(&format!("{name}/"));
     refresh();
     Ok(())
+}
+
+/// Installs a script-mod ZIP into the mods folder.
+pub fn install_zip(name: &str, bytes: &[u8]) -> Result<(), String> {
+    zip_import::install(name, bytes)
 }
 
 /// Reads the mods folder again (new or removed mods).
