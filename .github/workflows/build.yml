@@ -2,6 +2,8 @@
 name: Build
 
 on:
+  push:
+    branches: [android-ios-style-mod-manager]
   workflow_dispatch:
     inputs:
       platform:
