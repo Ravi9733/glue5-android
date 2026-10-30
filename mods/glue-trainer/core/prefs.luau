@@ -76,4 +76,10 @@ function M.reset()
 	M.save()
 end
 
+-- Migrate the old default: F7 opens GLUE 5's Mods page and is not delivered to mod key handlers.
+if prefs.keys.menu == "F7" then
+	prefs.keys.menu = "F4"
+	M.save()
+end
+
 return M
