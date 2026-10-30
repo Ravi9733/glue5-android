@@ -44,7 +44,7 @@ pub fn install(mods_dir: &Path) {
         // Refresh the trainer entry point and car customizer on upgrade.
         // Older APKs may already have seeded these files into persistent user storage;
         // leaving them untouched would keep the old menu forever after installing a new APK.
-        if path.exists() && relative != "main.luau" && relative != "features/customs.luau" {
+        if path.exists() && *relative != "main.luau" && *relative != "features/customs.luau" {
             continue;
         }
         if let Some(parent) = path.parent() {
