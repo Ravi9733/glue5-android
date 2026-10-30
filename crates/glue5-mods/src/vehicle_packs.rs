@@ -196,4 +196,29 @@ mod tests {
         let archive = zip::ZipWriter::new(bytes).finish().unwrap().into_inner();
         assert!(inspect_zip(&archive).is_err());
     }
+
+    #[test]
+    fn rejects_parent_directory_traversal() {
+        let bytes = zip_with(&[("../outside.yft", b"not extracted")]);
+        assert!(inspect_zip(&bytes).unwrap_err().contains("Unsafe ZIP path"));
+    }
+
+    #[test]
+    fn rejects_absolute_and_windows_style_paths() {
+        for path in ["/absolute/car.yft", "C:/cars/car.yft", "cars\\\\car.yft"] {
+            let bytes = zip_with(&[(path, b"not extracted")]);
+            assert!(inspect_zip(&bytes).is_err(), "accepted unsafe path: {path}");
+        }
+    }
+
+    #[test]
+    fn rejects_symlink_entries() {
+        let cursor = Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(cursor);
+        let options = SimpleFileOptions::default().unix_permissions(0o120777);
+        writer.start_file("car.yft", options).unwrap();
+        writer.write_all(b"target").unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+        assert!(inspect_zip(&bytes).unwrap_err().contains("Symbolic links"));
+    }
 }
