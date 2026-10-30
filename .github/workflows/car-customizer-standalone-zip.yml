@@ -16,26 +16,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify standalone mod and dependencies
+      - name: Verify standalone mod
         run: |
           test -s mods/Car_Customizer/main.luau
           test -s mods/Car_Customizer/mod.json
-          test -s mods/Car_Customizer/features/customs.luau
-          test -s mods/Car_Customizer/data/vehicles.luau
           grep -q 'ui.menu("Car Customizer"' mods/Car_Customizer/main.luau
-          grep -q 'root:submenu("Customize Vehicle"' mods/Car_Customizer/features/customs.luau
-          ! grep -q 'require("../core/bind")' mods/Car_Customizer/features/customs.luau
-          ! grep -q 'require("../core/game")' mods/Car_Customizer/features/customs.luau
+          grep -q 'menu:onOpen' mods/Car_Customizer/main.luau
+          grep -q 'Primary paint' mods/Car_Customizer/main.luau
+          grep -q 'Tyre-smoke colour' mods/Car_Customizer/main.luau
+          grep -q 'Built-in livery / decals' mods/Car_Customizer/main.luau
+          grep -q 'Upgrade everything' mods/Car_Customizer/main.luau
+          ! grep -q 'require(' mods/Car_Customizer/main.luau
       - name: Package ZIP
         run: |
           mkdir -p dist
           cd mods/Car_Customizer
-          zip -r ../../dist/Car-Customizer-F7-FIXED.zip main.luau mod.json features data
+          zip -r ../../dist/Car-Customizer-F7-FIXED.zip main.luau mod.json
           cd ../..
           unzip -Z1 dist/Car-Customizer-F7-FIXED.zip | grep -qx main.luau
           unzip -Z1 dist/Car-Customizer-F7-FIXED.zip | grep -qx mod.json
-          unzip -Z1 dist/Car-Customizer-F7-FIXED.zip | grep -qx features/customs.luau
-          unzip -Z1 dist/Car-Customizer-F7-FIXED.zip | grep -qx data/vehicles.luau
           ! unzip -Z1 dist/Car-Customizer-F7-FIXED.zip | grep -q '^Car_Customizer/'
       - uses: actions/upload-artifact@v4
         with:
