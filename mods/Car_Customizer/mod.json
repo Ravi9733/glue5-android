@@ -1,8 +1,8 @@
 {
   "name": "Car Customizer",
-  "description": "Vehicle paint, supported built-in liveries, neon, tyre smoke, extras and tuning.",
+  "description": "Vehicle paint, supported built-in liveries and stripes, neon, tyre smoke, extras and tuning.",
   "author": "GLUE 5 community mod",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "autostart": true,
   "restartOnSave": true
 }
