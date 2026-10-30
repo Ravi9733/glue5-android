@@ -7,7 +7,7 @@ use egui::{Color32, CornerRadius, RichText, Sense, vec2};
 use glue5_mods::ModState;
 
 use super::pages::{card_title, sheet, small};
-use super::widgets::{Control, action_button, choice, inline_button, segmented, setting, slider, toggle};
+use super::widgets::{Control, action_button, action_buttons, choice, inline_button, segmented, setting, slider, toggle};
 use super::{Status, WARN, theme};
 use crate::settings::Settings;
 
@@ -249,13 +249,14 @@ fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
         });
         if page.confirm_remove.as_deref() == Some(m.name.as_str()) {
             setting(ui, &format!("Uninstall {}?", m.name), Control::Action, Some("This permanently removes this mod's files"), |ui| {
-                if action_button(ui, "Confirm").clicked() {
+                let buttons = action_buttons(ui, &["Confirm", "Cancel"]);
+                if buttons[0].clicked() {
                     match glue5_mods::uninstall(&m.name) {
                         Ok(()) => page.confirm_remove = None,
                         Err(e) => log::warn!("mods: {e}"),
                     }
                 }
-                if action_button(ui, "Cancel").clicked() {
+                if buttons[1].clicked() {
                     page.confirm_remove = None;
                 }
             });
