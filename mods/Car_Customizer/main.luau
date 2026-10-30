@@ -21,3 +21,5 @@ else
 end
 
 ui.notify("Car Customizer menu registered — F7 > MENUS")
+
+-- Packaging revision: 2.1.1; feature files are included in the ZIP.
