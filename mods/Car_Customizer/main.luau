@@ -3,7 +3,7 @@
 -- All menu calls and native names below follow GLUE 5's bundled Glue Trainer.
 
 local root = ui.menu("Car Customizer", "Paint, built-in liveries, neon, tyre smoke and vehicle tuning")
-local menu = root:submenu("Customize Vehicle", "Get into a supported vehicle first")
+local menu = root -- populate the registered F7 menu directly
 
 local function safe(label: string, f: () -> ())
 	return function(...)
@@ -39,7 +39,7 @@ local function addIndexed(m: Menu, label: string, count: number, current: number
 	for i = 0, count - 1 do
 		table.insert(options, name(i))
 	end
-	m:choice(label, options, math.clamp(current + 1, 1, count), safe(label, function(i: number)
+	m:choice(label, options, math.clamp(current + 1, 1, count), "Select an available option", safe(label, function(i: number)
 		apply(i - 1)
 	end))
 end
@@ -68,7 +68,7 @@ local function build(car: Vehicle)
 		vehicle.setVehicleCustomSecondaryColour(car, c.r, c.g, c.b)
 	end))
 	menu:separator("Neon")
-	local neon = menu:toggle("Neon underglow", vehicle.getVehicleNeonEnabled(car, 0), safe("Neon", function(on)
+	local neon = menu:toggle("Neon underglow", vehicle.getVehicleNeonEnabled(car, 0), "Enable or disable underglow", safe("Neon", function(on)
 		for side = 0, 3 do vehicle.setVehicleNeonEnabled(car, side, on) end
 	end))
 	menu:color("Neon colour", rgb(vehicle.getVehicleNeonColour(car)), safe("Neon colour", function(c)
@@ -103,7 +103,7 @@ local function build(car: Vehicle)
 	for id = 1, 14 do
 		if vehicle.doesExtraExist(car, id) then
 			foundExtra = true
-			menu:toggle(`Extra {id}`, vehicle.isVehicleExtraTurnedOn(car, id), safe(`Extra {id}`, function(on)
+			menu:toggle(`Extra {id}`, vehicle.isVehicleExtraTurnedOn(car, id), "Enable or disable this vehicle extra", safe(`Extra {id}`, function(on)
 				vehicle.setVehicleExtra(car, id, not on)
 			end))
 		end
@@ -112,14 +112,14 @@ local function build(car: Vehicle)
 
 	menu:separator("Wheels and performance")
 	local wheelNames = { "Sport", "Muscle", "Lowrider", "SUV", "Offroad", "Tuner", "Bike", "High end" }
-	menu:choice("Wheel type", wheelNames, math.clamp(vehicle.getVehicleWheelType(car) + 1, 1, #wheelNames), safe("Wheel type", function(i)
+	menu:choice("Wheel type", wheelNames, math.clamp(vehicle.getVehicleWheelType(car) + 1, 1, #wheelNames), "Choose a wheel category", safe("Wheel type", function(i)
 		vehicle.setVehicleWheelType(car, i - 1)
 	end))
 	for slot = 0, 48 do
 		if toggleSlots[slot] then
 			if slot == 18 or slot == 22 then
 				local label = modNames[slot] or `Slot {slot}`
-				menu:toggle(label, vehicle.isToggleModOn(car, slot), safe(label, function(on)
+				menu:toggle(label, vehicle.isToggleModOn(car, slot), "Enable or disable this upgrade", safe(label, function(on)
 					vehicle.toggleVehicleMod(car, slot, on)
 				end))
 			end
@@ -133,7 +133,7 @@ local function build(car: Vehicle)
 					local text = vehicle.getModTextLabel(car, slot, i)
 					table.insert(options, if text ~= "" then text else `{label} {i + 1}`)
 				end
-				menu:choice(label, options, math.clamp(vehicle.getVehicleMod(car, slot) + 2, 1, #options), safe(label, function(i)
+				menu:choice(label, options, math.clamp(vehicle.getVehicleMod(car, slot) + 2, 1, #options), "Choose a vehicle part", safe(label, function(i)
 					if i == 1 then
 						vehicle.removeVehicleMod(car, slot)
 					else
