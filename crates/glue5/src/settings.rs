@@ -41,6 +41,8 @@ pub struct Settings {
     pub android_performance_profile_v2_applied: bool,
     /// One-time Android profile for devices that still struggle to sustain frame pacing.
     pub android_performance_profile_v3_applied: bool,
+    /// One-time Android clarity profile: undo an overly low legacy render scale.
+    pub android_graphics_clarity_profile_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -237,6 +239,7 @@ impl Default for Settings {
             android_performance_profile_applied: false,
             android_performance_profile_v2_applied: false,
             android_performance_profile_v3_applied: false,
+            android_graphics_clarity_profile_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -328,6 +331,19 @@ impl Settings {
             settings.max_fps = 30;
             settings.render_scale = Some(settings.render_scale().min(0.45));
             settings.android_performance_profile_v3_applied = true;
+        }
+        // The earlier mobile profiles pushed some devices down to 45% render
+        // scale, making the whole scene visibly soft. Migrate only that legacy
+        // low setting to a clearer 65% target; preserve a scale the user raised.
+        // Keep a 30 FPS cap and use the supported bicubic path on Android.
+        #[cfg(target_os = "android")]
+        if !settings.android_graphics_clarity_profile_applied {
+            if settings.render_scale.is_none_or(|scale| scale <= 0.50) {
+                settings.render_scale = Some(0.65);
+            }
+            settings.upscaler = Upscaling::Bicubic;
+            settings.max_fps = 30;
+            settings.android_graphics_clarity_profile_applied = true;
         }
         // Apply the persisted Vulkan choice before the GPU backend creates
         // its first Vulkan entry. The Android activity sets the paths, but
