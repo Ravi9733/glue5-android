@@ -31,6 +31,11 @@ jobs:
           cp -R mods/glue-trainer/core/. "$out/core/"
           cp mods/glue-trainer/data/vehicles.luau "$out/data/vehicles.luau"
           cp mods/glue-trainer/features/customs.luau "$out/features/customs.luau"
+          # Core modules use root-relative require("./prefs"), require("./loop"), etc.
+          # Provide root forwarding modules so the standalone package resolves those imports.
+          for module in prefs loop game keys bind; do
+            printf 'return require("./core/%s")\\n' "$module" > "$out/$module.luau"
+          done
           cat > "$out/main.luau" <<'LUA'
           --!strict
           -- Standalone Glue5 Car Customizer: colours, neon, tyre smoke, built-in liveries/decals.
