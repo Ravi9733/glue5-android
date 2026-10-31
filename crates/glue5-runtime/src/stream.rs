@@ -70,6 +70,7 @@ fn overlaid(client: &Client, id: u32) -> Option<&'static File> {
         // userdata/mods/files/<path-under-data>. Only exact-size replacements
         // are accepted because the engine's HTTP manifest is immutable.
         let mods = rt().config.user_dir.join("mods").join("files");
+        let Ok(mods_root) = mods.canonicalize() else { return files };
         for (id, path, size) in client.data_files().unwrap_or_default() {
             if files.iter().any(|(existing, _)| *existing == id) { continue; }
             if !glue5_stream::catalog::safe_path(&path) { continue; }
