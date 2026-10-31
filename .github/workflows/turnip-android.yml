@@ -74,7 +74,17 @@ jobs:
           cp target/android/gradle/outputs/apk/release/Glue5-release.apk Glue5-android-turnip-test.apk
           cp ~/.android/debug.keystore Glue5-android.keystore
 
-      - name: Upload APK to draft release
+      - name: Package the JSON Placement Test Mod
         run: |
-          .github/scripts/draft.sh upload "${{ steps.game.outputs.release }}" Glue5-android-turnip-test.apk Glue5-android.keystore
-          echo "Clean Turnip-branch APK built without bundled custom trainer/weather/vehicle/Iron Man mod packages. Shared game storage remains enabled." >>"$GITHUB_STEP_SUMMARY"
+          mkdir -p /tmp/json-placement-test/road-construction
+          cp mods/road-construction/main.luau /tmp/json-placement-test/road-construction/main.luau
+          cp mods/road-construction/mod.json /tmp/json-placement-test/road-construction/mod.json
+          cp mods/road-construction/road_construction.json /tmp/json-placement-test/road-construction/road_construction.json
+          cp mods/road-construction/README.txt /tmp/json-placement-test/road-construction/README.txt
+          (cd /tmp/json-placement-test && zip -r "$GITHUB_WORKSPACE/Glue5-JSON-Placement-Test.zip" road-construction)
+          echo "Packaged JSON placement test mod." >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK and JSON mod ZIP to draft release
+        run: |
+          .github/scripts/draft.sh upload "${{ steps.game.outputs.release }}" Glue5-android-turnip-test.apk Glue5-android.keystore Glue5-JSON-Placement-Test.zip
+          echo "Turnip APK and JSON placement test ZIP uploaded to the draft release." >>"$GITHUB_STEP_SUMMARY"
