@@ -3,8 +3,6 @@ name: Turnip Android integration build
 
 on:
   workflow_dispatch:
-  push:
-    branches: [turnip-driver-integration]
 
 permissions:
   contents: write

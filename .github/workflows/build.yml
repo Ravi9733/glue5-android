@@ -2,8 +2,6 @@
 name: Build
 
 on:
-  push:
-    branches: [turnip-driver-integration]
   workflow_dispatch:
     inputs:
       platform:
@@ -59,7 +57,7 @@ jobs:
           cache_key_prefix: mise-${{ inputs.platform }}
 
       - name: Android signing key
-        if: inputs.platform == 'android' || github.event_name == 'push'
+        if: inputs.platform == 'android'
         run: |
           yes | mise exec -- sdkmanager --licenses >/dev/null || true
           mkdir -p ~/.android
@@ -103,7 +101,7 @@ jobs:
           esac
 
       - name: Package the Graphic Mods ZIP
-        if: inputs.platform == 'android' || github.event_name == 'push'
+        if: inputs.platform == 'android'
         run: |
           mkdir -p /tmp/graphic-mods/soft-blur-graphics
           cp mods/soft-blur-graphics/main.luau /tmp/graphic-mods/soft-blur-graphics/main.luau
@@ -113,7 +111,7 @@ jobs:
           echo "Packaged loadable Soft Blur Graphics mod." >>"$GITHUB_STEP_SUMMARY"
 
       - name: Package the JSON Placement Test Mod
-        if: inputs.platform == 'android' || github.event_name == 'push'
+        if: inputs.platform == 'android'
         run: |
           mkdir -p /tmp/json-placement-test/road-construction
           cp mods/road-construction/main.luau /tmp/json-placement-test/road-construction/main.luau
@@ -121,7 +119,7 @@ jobs:
           cp mods/road-construction/road_construction.json /tmp/json-placement-test/road-construction/road_construction.json
           cp mods/road-construction/README.txt /tmp/json-placement-test/road-construction/README.txt
           (cd /tmp/json-placement-test && zip -r "$GITHUB_WORKSPACE/Glue5-JSON-Placement-Test.zip" road-construction)
-          echo "Packaged the JSON placement test mod." >>"$GITHUB_STEP_SUMMARY"
+          echo "Packaged JSON placement test mod." >>"$GITHUB_STEP_SUMMARY"
 
       - name: Into the draft release
         run: |
