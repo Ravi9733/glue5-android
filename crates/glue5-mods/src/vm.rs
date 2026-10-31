@@ -145,23 +145,23 @@ impl Vm {
         let spawn: Function = lua
             .load(
                 r#"
-                return function(placements)
-                    assert(type(placements) == "table", "world.spawnPlacements: expected a placement list")
-                    local created = {}
-                    task.spawn(function()
+                local loadPlacements = world.loadPlacements
+                return function(relative)
+                    assert(type(relative) == "string", "world.spawnPlacements: expected a relative .json path")
+                    local placements = loadPlacements(relative)
+                    local taskThread = task.spawn(function()
                         for _, item in placements do
                             if streaming.load(item.model) then
                                 local objectHandle = object.createObject(item.model, item.position, false, false, false)
                                 streaming.setModelAsNoLongerNeeded(item.model)
                                 if objectHandle then
                                     entity.setEntityRotation(objectHandle, item.rotation, 2, true)
-                                    table.insert(created, objectHandle)
                                 end
                             end
                             wait()
                         end
                     end)
-                    return created
+                    return taskThread
                 end
                 "#,
             )
