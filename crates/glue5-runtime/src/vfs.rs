@@ -595,3 +595,39 @@ fn devices() {
     assert_eq!(vfs.stat("/dev/random", true).unwrap().mode, S_IFCHR | 0o666);
     let _ = fs::remove_dir_all(dir);
 }
+
+
+#[test]
+fn pc_data_is_case_insensitive_fallback_and_read_only() {
+    let dir = std::env::temp_dir().join(format!("glue5-vfs-pc-data-{}", std::process::id()));
+    let game = dir.join("game");
+    let pc = dir.join("GTAV_PC");
+    fs::create_dir_all(&game).unwrap();
+    fs::create_dir_all(&pc.join("X64")).unwrap();
+    fs::write(game.join("shared.dat"), b"wasm").unwrap();
+    fs::write(pc.join("shared.dat"), b"pc").unwrap();
+    fs::write(pc.join("X64/PC_ONLY.DAT"), b"pc-only").unwrap();
+
+    let previous = std::env::var_os("GLUE5_PC_DATA_DIR");
+    unsafe { std::env::set_var("GLUE5_PC_DATA_DIR", &pc); }
+    let vfs = Vfs::new(Some(game.clone()), dir.join("user")).unwrap();
+
+    // Existing WebAssembly data always wins over the PC fallback.
+    assert_eq!(vfs.resolve("/game/shared.dat").unwrap().path, game.join("shared.dat"));
+    // PC fallback lookup is case-insensitive and retains the real filename.
+    assert_eq!(
+        vfs.resolve("/game/x64/pc_only.dat").unwrap().path,
+        pc.join("X64/PC_ONLY.DAT")
+    );
+    let fd = vfs.open("/game/x64/pc_only.dat", 0).unwrap();
+    let mut contents = [0u8; 16];
+    let count = vfs.read(fd, &mut contents, None).unwrap();
+    assert_eq!(&contents[..count], b"pc-only");
+    assert_eq!(vfs.open("/game/x64/pc_only.dat", oflag::WRONLY), Err(errno::ROFS));
+
+    match previous {
+        Some(value) => unsafe { std::env::set_var("GLUE5_PC_DATA_DIR", value); },
+        None => unsafe { std::env::remove_var("GLUE5_PC_DATA_DIR"); },
+    }
+    let _ = fs::remove_dir_all(dir);
+}
