@@ -74,22 +74,44 @@ fn always() -> bool {
 /// may size its reads from the game's manifest.
 pub(crate) fn game_file(rel: &str, real: &Path, scratch: &Path) -> Option<PathBuf> {
     static MADE: Mutex<Vec<(&str, Option<PathBuf>)>> = Mutex::new(Vec::new());
-    let (name, _, patch) = OVERLAYS.iter().find(|(name, applies, _)| rel.eq_ignore_ascii_case(name) && applies())?;
-    let mut made = MADE.lock().unwrap();
-    if let Some((_, path)) = made.iter().find(|(n, _)| n == name) {
-        return path.clone();
+    // Built-in compatibility overlays always win over user replacements.
+    if let Some((name, _, patch)) =
+        OVERLAYS.iter().find(|(name, applies, _)| rel.eq_ignore_ascii_case(name) && applies())
+    {
+        let mut made = MADE.lock().unwrap();
+        if let Some((_, path)) = made.iter().find(|(n, _)| n == name) {
+            return path.clone();
+        }
+        let path = (|| {
+            let text = std::fs::read_to_string(real).ok()?;
+            let patched = patch(text.clone()).filter(|p| p.len() == text.len())?;
+            let path = scratch.join("overlay").join(real.file_name()?);
+            std::fs::create_dir_all(path.parent()?).ok()?;
+            std::fs::write(&path, patched).ok()?;
+            log::info!("overlay: {rel} changed");
+            Some(path)
+        })();
+        made.push((name, path.clone()));
+        return path;
     }
-    let path = (|| {
-        let text = std::fs::read_to_string(real).ok()?;
-        let patched = patch(text.clone()).filter(|p| p.len() == text.len())?;
-        let path = scratch.join("overlay").join(real.file_name()?);
-        std::fs::create_dir_all(path.parent()?).ok()?;
-        std::fs::write(&path, patched).ok()?;
-        log::info!("overlay: {rel} changed");
-        Some(path)
-    })();
-    made.push((name, path.clone()));
-    path
+
+    // PC-style loose replacements: only an existing game-data path, with
+    // exactly the original size. Canonicalization prevents symlink escapes.
+    let user = scratch.parent()?;
+    let root = user.join("mods").join("files").canonicalize().ok()?;
+    let candidate = root.join(rel);
+    let actual = candidate.canonicalize().ok()?;
+    if !actual.starts_with(&root) || !actual.is_file() {
+        return None;
+    }
+    let original_size = std::fs::metadata(real).ok()?.len();
+    let replacement_size = std::fs::metadata(&actual).ok()?.len();
+    if original_size != replacement_size {
+        log::warn!("mod replacement ignored (size mismatch): {rel}");
+        return None;
+    }
+    log::info!("mod replacement: {rel}");
+    Some(actual)
 }
 
 /// pausemenu.xml, "Saving And Startup": the engine greys "Startup Flow" out
@@ -190,4 +212,60 @@ fn radio_wheel_mapped_as_weapon_wheel() {
     assert!(out.starts_with(&format!("<a>\r\n\t<Mappings>\r\n{lr}{radio_lr}{ud}{radio_ud}")));
     // Without room for the copies, the file stays as it is.
     assert_eq!(radio_wheel_axes(format!("<a>{}{}</a>", flat(&lr), flat(&ud))), None);
+}
+
+#[cfg(test)]
+mod loose_replacement_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_root() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "glue5-overlay-test-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ))
+    }
+
+    #[test]
+    fn accepts_only_same_size_files_inside_mods_root() {
+        let root = temp_root();
+        let user = root.join("user");
+        let scratch = user.join("fsroot");
+        let game = root.join("game");
+        std::fs::create_dir_all(&scratch).unwrap();
+        std::fs::create_dir_all(game.join("common/data")).unwrap();
+        std::fs::create_dir_all(user.join("mods/files/common/data")).unwrap();
+        let original = game.join("common/data/example.xml");
+        std::fs::write(&original, b"original").unwrap();
+        let replacement = user.join("mods/files/common/data/example.xml");
+        std::fs::write(&replacement, b"modified").unwrap();
+
+        let mounted = game_file("common/data/example.xml", &original, &scratch).unwrap();
+        assert_eq!(std::fs::read(mounted).unwrap(), b"modified");
+
+        std::fs::write(&replacement, b"too long").unwrap();
+        assert!(game_file("common/data/example.xml", &original, &scratch).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+        let root = temp_root();
+        let user = root.join("user");
+        let scratch = user.join("fsroot");
+        let game = root.join("game");
+        std::fs::create_dir_all(&scratch).unwrap();
+        std::fs::create_dir_all(game.join("common/data")).unwrap();
+        std::fs::create_dir_all(user.join("mods/files/common/data")).unwrap();
+        let original = game.join("common/data/example.xml");
+        std::fs::write(&original, b"original").unwrap();
+        let outside = root.join("outside");
+        std::fs::write(&outside, b"original").unwrap();
+        symlink(&outside, user.join("mods/files/common/data/example.xml")).unwrap();
+        assert!(game_file("common/data/example.xml", &original, &scratch).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
