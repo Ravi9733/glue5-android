@@ -905,7 +905,19 @@ impl Gpu {
             t.uploaded.set(self.epoch);
             let (tx, rx) = std::sync::mpsc::channel();
             let bpr = bpr as usize;
-            self.decoder.get_or_insert_with(|| Pool::new("gpu decode", 2)).urgent(move || {
+            // Adreno devices commonly lack native BC texture sampling, so
+            // streamed BC textures are decoded on the CPU. Two workers leave
+            // a long queue during world streaming; use up to four on Android
+            // phones while keeping the pool bounded to avoid starving the
+            // game and renderer threads.
+            let decode_threads = if cfg!(target_os = "android") {
+                glue5_runtime::cores().div_ceil(2).clamp(2, 4)
+            } else {
+                2
+            };
+            self.decoder
+                .get_or_insert_with(|| Pool::new("gpu decode", decode_threads))
+                .urgent(move || {
                 let texels = crate::bc::decode(bc, &src, bpr, src_rows, cols as usize, block_rows as usize, d as usize);
                 let _ = tx.send(if etc2 { crate::bc::etc2_rgba(texels, cols * 4, block_rows * 4 * d) } else { texels });
             });
