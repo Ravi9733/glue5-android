@@ -172,9 +172,9 @@ public class Glue5Activity extends SDLActivity {
 
         int entries = 0;
         long totalExtracted = 0;
-        try (InputStream input = getContentResolver().openInputStream(uri);
-             ZipInputStream zip = new ZipInputStream(input)) {
-            if (input == null) throw new Exception("Cannot read selected ZIP");
+        InputStream source = getContentResolver().openInputStream(uri);
+        if (source == null) throw new Exception("Cannot read selected ZIP");
+        try (InputStream input = source; ZipInputStream zip = new ZipInputStream(input)) {
             ZipEntry entry;
             byte[] buffer = new byte[16384];
             while ((entry = zip.getNextEntry()) != null) {
