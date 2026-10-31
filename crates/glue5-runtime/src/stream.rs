@@ -54,14 +54,32 @@ fn overlaid(client: &Client, id: u32) -> Option<&'static File> {
     let files = FILES.get_or_init(|| {
         let scratch = rt().config.user_dir.join("fsroot");
         let mut files = Vec::new();
+        // Built-in compatibility overlays take precedence: they keep the
+        // engine's expected metadata and fixed-size reads intact.
         for name in crate::overlay::names() {
             let Some(id) = client.find(&format!("data/{name}")) else { continue };
             let Some(real) = client.path(id) else { continue };
-            // The pack brought the whole file (it is a small XML file).
             if let Some(changed) = crate::overlay::game_file(name, &real, &scratch)
                 && let Ok(f) = File::open(&changed)
             {
                 files.push((id, f));
+            }
+        }
+
+        // Optional loose replacements: place a file at
+        // userdata/mods/files/<path-under-data>. Only exact-size replacements
+        // are accepted because the engine's HTTP manifest is immutable.
+        let mods = rt().config.user_dir.join("mods").join("files");
+        for (id, path, size) in client.data_files().unwrap_or_default() {
+            if files.iter().any(|(existing, _)| *existing == id) { continue; }
+            if !glue5_stream::catalog::safe_path(&path) { continue; }
+            let Some(relative) = path.strip_prefix("data/") else { continue };
+            let replacement = mods.join(relative);
+            let Ok(meta) = std::fs::metadata(&replacement) else { continue };
+            if !meta.is_file() || meta.len() != size { continue; }
+            if let Ok(file) = File::open(&replacement) {
+                log::info!("mods: loose replacement mounted for {path}");
+                files.push((id, file));
             }
         }
         files
