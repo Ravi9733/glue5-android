@@ -918,9 +918,14 @@ impl Gpu {
             self.decoder
                 .get_or_insert_with(|| Pool::new("gpu decode", decode_threads))
                 .urgent(move || {
-                let texels = crate::bc::decode(bc, &src, bpr, src_rows, cols as usize, block_rows as usize, d as usize);
-                let _ = tx.send(if etc2 { crate::bc::etc2_rgba(texels, cols * 4, block_rows * 4 * d) } else { texels });
-            });
+                    let texels =
+                        crate::bc::decode(bc, &src, bpr, src_rows, cols as usize, block_rows as usize, d as usize);
+                    let _ = tx.send(if etc2 {
+                        crate::bc::etc2_rgba(texels, cols * 4, block_rows * 4 * d)
+                    } else {
+                        texels
+                    });
+                });
             self.decodes.push(Decode {
                 data: rx,
                 id,
