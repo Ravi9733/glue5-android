@@ -642,17 +642,6 @@ impl App {
             self.ui.nav(nav);
         }
 
-        // A successful Android mod ZIP import is acknowledged by the Java
-        // document-picker side. Refresh the live mod list without restarting.
-        #[cfg(target_os = "android")]
-        if let Some(directory) = std::env::var_os("GLUE5_APP_FILES_DIR") {
-            let complete = PathBuf::from(directory).join("mod-import-complete");
-            if complete.is_file() && std::fs::remove_file(&complete).is_ok() {
-                glue5_mods::refresh();
-                self.ui.note("Mod ZIP installed. Open Mods to start it.");
-            }
-        }
-
         // What applies at once (the engine's own frame limiter at its next start).
         self.presentation.set_vsync(self.settings.vsync);
         self.presentation.set_metal_hud(self.settings.overlay == PerfOverlay::MetalHud);
@@ -748,23 +737,6 @@ impl App {
                             match std::fs::write(request, b"1") {
                                 Ok(()) => self.ui.note("Opening the Android file picker…"),
                                 Err(e) => self.ui.note(format!("Cannot request Turnip ZIP picker: {e}")),
-                            }
-                        }
-                        None => self.ui.note("Android app storage path is unavailable"),
-                    }
-                }
-                Action::ImportModZip => {
-                    match std::env::var_os("GLUE5_APP_FILES_DIR") {
-                        Some(directory) => {
-                            self.settings.mods = true;
-                            let mods_dir = self.mods_dir();
-                            glue5_mods::open(&mods_dir);
-                            let request = PathBuf::from(directory).join("mod-import-request");
-                            let result = std::fs::write(request, mods_dir.to_string_lossy().as_bytes());
-                            self.settings.save(&self.user_dir);
-                            match result {
-                                Ok(()) => self.ui.note("Choose a GLUE 5 mod ZIP. It must contain main.luau."),
-                                Err(e) => self.ui.note(format!("Cannot request mod ZIP picker: {e}")),
                             }
                         }
                         None => self.ui.note("Android app storage path is unavailable"),
