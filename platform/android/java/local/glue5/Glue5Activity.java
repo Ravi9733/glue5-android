@@ -24,8 +24,10 @@ import java.util.zip.ZipInputStream;
 /** The app's activity: SDL's, with our library (libglue5.so) as the main one. */
 public class Glue5Activity extends SDLActivity {
     private static final int REQUEST_TURNIP_ZIP = 47112;
+    private static final int REQUEST_MOD_ZIP = 47113;
     private final Handler turnipHandler = new Handler(Looper.getMainLooper());
     private boolean turnipPickerOpen = false;
+    private String pendingModDirectory;
     private final Runnable turnipImportWatcher = new Runnable() {
         @Override public void run() { checkTurnipImportRequest(); }
     };
@@ -86,6 +88,21 @@ public class Glue5Activity extends SDLActivity {
             openTurnipPicker();
             return;
         }
+        File modRequest = new File(getFilesDir(), "mod-import-request");
+        if (modRequest.isFile()) {
+            try {
+                pendingModDirectory = new String(java.nio.file.Files.readAllBytes(modRequest.toPath()),
+                        java.nio.charset.StandardCharsets.UTF_8).trim();
+            } catch (Exception e) {
+                pendingModDirectory = null;
+            }
+            modRequest.delete();
+            if (pendingModDirectory != null && !pendingModDirectory.isEmpty()) {
+                turnipPickerOpen = true;
+                openModPicker();
+                return;
+            }
+        }
         turnipHandler.postDelayed(turnipImportWatcher, 500);
     }
 
@@ -105,20 +122,186 @@ public class Glue5Activity extends SDLActivity {
         }
     }
 
+    private void openModPicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivityForResult(intent, REQUEST_MOD_ZIP);
+        } catch (Exception e) {
+            turnipPickerOpen = false;
+            Toast.makeText(this, "Cannot open mod ZIP picker: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+        }
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_TURNIP_ZIP) return;
+        if (requestCode != REQUEST_TURNIP_ZIP && requestCode != REQUEST_MOD_ZIP) return;
         turnipPickerOpen = false;
         try {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
-                importTurnipZip(data.getData());
-                Toast.makeText(this, "Turnip driver imported. Select Turnip in Settings, then fully restart Glue 5.", Toast.LENGTH_LONG).show();
+                if (requestCode == REQUEST_TURNIP_ZIP) {
+                    importTurnipZip(data.getData());
+                    Toast.makeText(this, "Turnip driver imported. Select Turnip in Settings, then fully restart Glue 5.", Toast.LENGTH_LONG).show();
+                } else {
+                    importModZip(data.getData(), pendingModDirectory);
+                    Toast.makeText(this, "GLUE 5 mod installed. Open Mods to start it.", Toast.LENGTH_LONG).show();
+                }
             }
         } catch (Exception e) {
-            Toast.makeText(this, "Turnip import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, (requestCode == REQUEST_TURNIP_ZIP ? "Turnip import failed: " : "Mod import failed: ")
+                    + e.getMessage(), Toast.LENGTH_LONG).show();
         } finally {
+            pendingModDirectory = null;
             turnipHandler.postDelayed(turnipImportWatcher, 500);
+        }
+    }
+
+    /** Installs a script mod ZIP containing exactly one main.luau entry point. */
+    private void importModZip(Uri uri, String destinationPath) throws Exception {
+        if (destinationPath == null || destinationPath.isEmpty()) throw new Exception("Mod folder is unavailable");
+        File modsDirectory = new File(destinationPath).getCanonicalFile();
+        if (!modsDirectory.isAbsolute()) throw new Exception("Invalid mod folder");
+        if (!modsDirectory.exists() && !modsDirectory.mkdirs()) throw new Exception("Cannot create mods folder");
+
+        File staging = new File(getFilesDir(), "mod-import-staging");
+        deleteTree(staging);
+        if (!staging.mkdirs()) throw new Exception("Cannot create temporary mod folder");
+
+        int entries = 0;
+        long totalExtracted = 0;
+        try (InputStream input = getContentResolver().openInputStream(uri);
+             ZipInputStream zip = new ZipInputStream(input)) {
+            if (input == null) throw new Exception("Cannot read selected ZIP");
+            ZipEntry entry;
+            byte[] buffer = new byte[16384];
+            while ((entry = zip.getNextEntry()) != null) {
+                if (++entries > 512) throw new Exception("ZIP has too many files");
+                String name = entry.getName().replace('\\', '/');
+                if (name.startsWith("/") || name.indexOf(':') >= 0) throw new Exception("Unsafe ZIP path");
+                String[] parts = name.split("/");
+                for (String part : parts) {
+                    if ("..".equals(part) || ".".equals(part)) throw new Exception("Unsafe ZIP path");
+                }
+                if (entry.isDirectory()) continue;
+                String lower = name.toLowerCase(java.util.Locale.ROOT);
+                if (!(lower.endsWith(".luau") || lower.endsWith(".json") || lower.endsWith(".txt"))) {
+                    throw new Exception("Only .luau, .json and .txt mod files are supported");
+                }
+                File target = new File(staging, name).getCanonicalFile();
+                String root = staging.getCanonicalPath() + File.separator;
+                if (!target.getPath().startsWith(root)) throw new Exception("ZIP path escapes staging folder");
+                File parent = target.getParentFile();
+                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new Exception("Cannot create mod folder");
+                long fileBytes = 0;
+                try (FileOutputStream output = new FileOutputStream(target)) {
+                    int count;
+                    while ((count = zip.read(buffer)) != -1) {
+                        fileBytes += count;
+                        totalExtracted += count;
+                        if (fileBytes > 8L * 1024L * 1024L || totalExtracted > 64L * 1024L * 1024L) {
+                            throw new Exception("Mod ZIP exceeds the 64 MB safety limit");
+                        }
+                        output.write(buffer, 0, count);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            deleteTree(staging);
+            throw e;
+        }
+
+        java.util.ArrayList<File> entryPoints = new java.util.ArrayList<>();
+        findModEntryPoints(staging, entryPoints, 0);
+        if (entryPoints.size() != 1) {
+            deleteTree(staging);
+            throw new Exception("ZIP must contain exactly one main.luau file");
+        }
+        File modRoot = entryPoints.get(0).getParentFile();
+        String name = modRoot.equals(staging) ? modNameFromUri(uri) : safeModName(modRoot.getName());
+        if (name == null || name.isEmpty()) {
+            deleteTree(staging);
+            throw new Exception("Cannot determine a safe mod folder name");
+        }
+
+        File manifest = new File(modRoot, "mod.json");
+        if (manifest.isFile()) {
+            try (InputStream in = new java.io.FileInputStream(manifest)) {
+                byte[] bytes = new byte[(int) Math.min(manifest.length(), 256 * 1024)];
+                int count = in.read(bytes);
+                if (count < 0) throw new Exception("Empty mod.json");
+                new org.json.JSONObject(new String(bytes, 0, count, java.nio.charset.StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                deleteTree(staging);
+                throw new Exception("mod.json is invalid");
+            }
+        }
+
+        File destination = new File(modsDirectory, name).getCanonicalFile();
+        if (!destination.getPath().startsWith(modsDirectory.getPath() + File.separator)) {
+            deleteTree(staging);
+            throw new Exception("Invalid mod folder name");
+        }
+        if (destination.exists()) {
+            deleteTree(staging);
+            throw new Exception("A mod named '" + name + "' is already installed");
+        }
+        copyModTree(modRoot, destination);
+        deleteTree(staging);
+        File complete = new File(getFilesDir(), "mod-import-complete");
+        try (FileOutputStream output = new FileOutputStream(complete)) {
+            output.write(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+    }
+
+    private static void findModEntryPoints(File directory, java.util.List<File> found, int depth) {
+        if (depth > 5 || found.size() > 1) return;
+        File[] children = directory.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            if (child.isDirectory()) findModEntryPoints(child, found, depth + 1);
+            else if ("main.luau".equalsIgnoreCase(child.getName())) found.add(child);
+        }
+    }
+
+    private String modNameFromUri(Uri uri) throws Exception {
+        String display = "imported-mod";
+        try (android.database.Cursor cursor = getContentResolver().query(uri,
+                new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (column >= 0) display = cursor.getString(column);
+            }
+        }
+        int dot = display.lastIndexOf('.');
+        if (dot > 0) display = display.substring(0, dot);
+        return safeModName(display);
+    }
+
+    private static String safeModName(String raw) {
+        String name = raw.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-");
+        name = name.replaceAll("^-+|-+$", "");
+        if (name.length() > 40) name = name.substring(0, 40);
+        return name.isEmpty() ? null : name;
+    }
+
+    private static void copyModTree(File source, File destination) throws Exception {
+        if (source.isDirectory()) {
+            if (!destination.isDirectory() && !destination.mkdirs()) throw new Exception("Cannot create installed mod folder");
+            File[] children = source.listFiles();
+            if (children == null) throw new Exception("Cannot read extracted mod");
+            for (File child : children) copyModTree(child, new File(destination, child.getName()));
+        } else {
+            File parent = destination.getParentFile();
+            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new Exception("Cannot create installed mod folder");
+            try (InputStream input = new java.io.FileInputStream(source);
+                 FileOutputStream output = new FileOutputStream(destination)) {
+                byte[] buffer = new byte[16384];
+                int count;
+                while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            }
         }
     }
 
