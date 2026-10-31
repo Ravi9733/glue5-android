@@ -1,6 +1,6 @@
 # Android mod compatibility (experimental)
 
-This branch currently provides two limited mod paths. It is **not** a general PC GTA V mod loader.
+This branch provides limited PC-style loose asset replacement and Luau runtime mods. It is **not** a general PC GTA V mod loader.
 
 ## 1. Runtime object placements
 
@@ -41,7 +41,7 @@ For example, a replacement for `data/common/example.xml` goes at:
 <Glue5 user data>/mods/files/common/example.xml
 ```
 
-Only files already present in the engine's game-data manifest are considered. A replacement is mounted only when its byte size exactly matches the original manifest entry. Built-in compatibility overlays take precedence. Paths are checked to remain inside the mods directory.
+Only files already present in the installed game's data tree are considered. A replacement is mounted only when its byte size exactly matches the original file, because the engine's immutable manifest still supplies the original size. Built-in compatibility overlays take precedence. Canonical path checks reject symlink/path escapes. The replacement is read directly from the mods folder; it is not copied into the game data.
 
 This restriction is deliberate: the engine receives an immutable file manifest with original file sizes. Different-size replacements need manifest and archive/VFS integration, which is not implemented yet.
 
