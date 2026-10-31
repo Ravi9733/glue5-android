@@ -76,6 +76,8 @@ fn overlaid(client: &Client, id: u32) -> Option<&'static File> {
             if !glue5_stream::catalog::safe_path(&path) { continue; }
             let Some(relative) = path.strip_prefix("data/") else { continue };
             let replacement = mods.join(relative);
+            let Ok(replacement) = replacement.canonicalize() else { continue };
+            if !replacement.starts_with(&mods_root) { continue; }
             let Ok(meta) = std::fs::metadata(&replacement) else { continue };
             if !meta.is_file() || meta.len() != size { continue; }
             if let Ok(file) = File::open(&replacement) {
