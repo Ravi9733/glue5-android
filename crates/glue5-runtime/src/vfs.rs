@@ -109,6 +109,10 @@ pub struct Vfs {
     game: Option<PathBuf>,
     /// Lowercase path under `game` -> real path, for case-insensitive lookups.
     game_index: HashMap<String, String>,
+    /// Optional extracted PC data directory, used only as a read-only fallback.
+    pc_data: Option<PathBuf>,
+    /// Lowercase path under `pc_data` -> real path.
+    pc_index: HashMap<String, String>,
     user: PathBuf,
     scratch: PathBuf,
     fds: Mutex<Vec<Option<Arc<Open>>>>,
@@ -132,12 +136,28 @@ impl Vfs {
             }
             None => log::info!("vfs: /game streamed, /userdata -> {}", user.display()),
         }
+        // PC data is a separate, optional read-only fallback. It never replaces
+        // a file already supplied by the WebAssembly game's own data folder.
+        let pc_data = std::env::var_os("GLUE5_PC_DATA_DIR").map(PathBuf::from).filter(|p| p.is_dir());
+        let mut pc_index = HashMap::new();
+        if let Some(pc) = &pc_data {
+            if let Err(e) = index(pc, "", &mut pc_index) {
+                log::warn!("vfs: cannot index PC data {}: {e}", pc.display());
+                pc_index.clear();
+            } else {
+                log::info!("vfs: PC data fallback -> {} ({} loose entries)", pc.display(), pc_index.len());
+            }
+        } else if std::env::var_os("GLUE5_PC_DATA_DIR").is_some() {
+            log::warn!("vfs: GLUE5_PC_DATA_DIR is set but is not an accessible directory");
+        }
         let std_fd = |node| {
             Some(Arc::new(Open { node, path: String::new(), flags: 0, dir: Mutex::default(), pos: Mutex::default() }))
         };
         Ok(Vfs {
             game: game_data,
             game_index,
+            pc_data,
+            pc_index,
             user,
             scratch,
             fds: Mutex::new(vec![std_fd(Node::Stdin), std_fd(Node::Stdout), std_fd(Node::Stderr)]),
@@ -160,6 +180,16 @@ impl Vfs {
             let real = self.game_index.get(&rel.to_ascii_lowercase()).map_or(rel, String::as_str);
             let real = game.join(real);
             let path = crate::overlay::game_file(rel, &real, &self.scratch).unwrap_or(real);
+            if path.exists() {
+                return Ok(Host { path, read_only: true });
+            }
+            // Preserve the WebAssembly data tree as the primary source. Only
+            // unresolved loose-file paths fall back to the separate PC folder.
+            if let Some(pc) = &self.pc_data {
+                if let Some(pc_rel) = self.pc_index.get(&rel.to_ascii_lowercase()) {
+                    return Ok(Host { path: pc.join(pc_rel), read_only: true });
+                }
+            }
             return Ok(Host { path, read_only: true });
         }
         if let Some(rel) = path.strip_prefix("/userdata")
