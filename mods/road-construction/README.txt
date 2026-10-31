@@ -1,1 +1,7 @@
-Glue5 JSON Placement Test\n\nThis sample calls world.spawnPlacements() with one existing-game prop.\n\nThe sample coordinates [10, 20, 30] are illustrative world coordinates; the object may not be near the player at your current location. If it does not appear, the next test must use confirmed nearby world coordinates.\n\nThe model must already exist in the installed game. This test does not add new vehicles, DLC, RPF archives, or assets.\n
+Glue5 JSON Placement Test
+
+This sample reads road_construction.json and spawns its existing-game prop about 3 metres in front of the local player when the mod starts.
+
+No in-game menu or button is required. Restart the game with mods enabled to run the test. The model must already exist in the installed game.
+
+This test does not add new vehicles, DLC, RPF archives, or assets.
