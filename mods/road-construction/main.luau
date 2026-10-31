@@ -2,8 +2,8 @@
 local placements = world.loadPlacements("road_construction.json")
 
 task.spawn(function()
-    local ped = player.getPlayerPed(player.playerId())
-    if not ped then
+    local ped = player.playerPedId()
+    if not ped or ped == 0 then
         error("Road Construction JSON Test: local player ped is unavailable")
     end
 
