@@ -36,6 +36,9 @@ public class Glue5Activity extends SDLActivity {
         try {
             Os.setenv("GLUE5_NATIVE_LIB_DIR", getApplicationInfo().nativeLibraryDir, true);
             Os.setenv("GLUE5_APP_FILES_DIR", getFilesDir().getAbsolutePath(), true);
+            // Separate folder for user-supplied, extracted PC game data.
+            // Launch-intent GLUE5_* extras below may override this default.
+            Os.setenv("GLUE5_PC_DATA_DIR", "/storage/emulated/0/GTAV_PC", false);
         } catch (ErrnoException e) {
             // The system Vulkan driver remains available if path setup fails.
         }
