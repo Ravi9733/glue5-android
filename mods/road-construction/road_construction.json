@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "placements": [
+    {
+      "model": "prop_barrel_02a",
+      "position": [
+        10,
+        20,
+        30
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}\n

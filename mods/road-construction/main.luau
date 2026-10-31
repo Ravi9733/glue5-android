@@ -1,0 +1,1 @@
+-- JSON placement smoke test for the Android placement loader.\nworld.spawnPlacements("road_construction.json")\n

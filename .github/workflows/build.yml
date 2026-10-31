@@ -55,7 +55,7 @@ jobs:
         with:
           version: 2026.7.5
           install: ${{ !startsWith(inputs.platform, 'linux') }}
-          install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo:cargo-ndk","windows":"rust cmake"}')[inputs.platform || 'android'] }}
+          install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo-ndk","windows":"rust cmake"}')[inputs.platform || 'android'] }}
           cache_key_prefix: mise-${{ inputs.platform }}
 
       - name: Android signing key
@@ -111,6 +111,17 @@ jobs:
           cp mods/soft-blur-graphics/README.txt /tmp/graphic-mods/soft-blur-graphics/README.txt
           (cd /tmp/graphic-mods && zip -r "$GITHUB_WORKSPACE/Glue5-Graphic-Mods.zip" soft-blur-graphics)
           echo "Packaged loadable Soft Blur Graphics mod." >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Package the JSON Placement Test Mod
+        if: inputs.platform == 'android' || github.event_name == 'push'
+        run: |
+          mkdir -p /tmp/json-placement-test/road-construction
+          cp mods/road-construction/main.luau /tmp/json-placement-test/road-construction/main.luau
+          cp mods/road-construction/mod.json /tmp/json-placement-test/road-construction/mod.json
+          cp mods/road-construction/road_construction.json /tmp/json-placement-test/road-construction/road_construction.json
+          cp mods/road-construction/README.txt /tmp/json-placement-test/road-construction/README.txt
+          (cd /tmp/json-placement-test && zip -r "$GITHUB_WORKSPACE/Glue5-JSON-Placement-Test.zip" road-construction)
+          echo "Packaged the JSON placement test mod." >>"$GITHUB_STEP_SUMMARY"
 
       - name: Into the draft release
         run: |

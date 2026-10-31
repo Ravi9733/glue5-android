@@ -1,0 +1,8 @@
+{
+  "name": "Road Construction JSON Test",
+  "description": "Small test mod for Glue5's JSON object placement loader.",
+  "author": "GLUE 5 community test",
+  "version": "1.0",
+  "autostart": true,
+  "restartOnSave": true
+}\n
