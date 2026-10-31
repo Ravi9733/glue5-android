@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 glue5-game.workspace = true
+glue5-pc-mod-runtime = { path = "../glue5-pc-mod-runtime" }
 glue5-runtime.workspace = true
 log.workspace = true
 serde_json.workspace = true
