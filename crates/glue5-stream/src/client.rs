@@ -375,6 +375,16 @@ impl Client {
         self.ready.get()?.catalog.find(path)
     }
 
+    /// Game data files in engine file-id order: (id, catalog path, size).
+    /// Used by the runtime to apply optional loose-file overrides without
+    /// changing the engine manifest or its file sizes.
+    pub fn data_files(&self) -> Option<Vec<(u32, String, u64)>> {
+        let r = self.ready.get()?;
+        Some(r.catalog.entries[..r.catalog.data_files].iter().enumerate()
+            .map(|(id, entry)| (id as u32, entry.path.clone(), entry.size))
+            .collect())
+    }
+
     /// Where the copy keeps file `id`.
     pub fn path(&self, id: u32) -> Option<PathBuf> {
         let r = self.ready.get()?;
