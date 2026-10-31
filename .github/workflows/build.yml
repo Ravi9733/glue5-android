@@ -55,7 +55,7 @@ jobs:
         with:
           version: 2026.7.5
           install: ${{ !startsWith(inputs.platform, 'linux') }}
-          install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo-ndk","windows":"rust cmake"}')[inputs.platform || 'android'] }}
+          install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo:cargo-ndk","windows":"rust cmake"}')[inputs.platform || 'android'] }}
           cache_key_prefix: mise-${{ inputs.platform }}
 
       - name: Android signing key
