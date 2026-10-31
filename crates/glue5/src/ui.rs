@@ -82,8 +82,6 @@ pub enum Action {
     FindGame,
     /// Open Android's document picker to import a custom Vulkan driver ZIP.
     ImportTurnip,
-    /// Open Android's document picker to install a supported GLUE 5 mod ZIP.
-    ImportModZip,
     /// The game's graphics settings back to the engine's defaults.
     ResetGraphics,
     /// Join a friend (by its key) playing GTA Online in `lobby`, from the
