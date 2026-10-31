@@ -1057,13 +1057,6 @@ fn settings_items(
                 }
                 open
             });
-            setting(ui, "Install mod ZIP", Control::Action, Some("Import a GLUE 5 Luau mod package"), |ui| {
-                let install = action_button(ui, "Choose ZIP");
-                if install.clicked() {
-                    actions.push(Action::ImportModZip);
-                }
-                install
-            });
             let version = concat!("Glue 5 ", env!("CARGO_PKG_VERSION"), " and the projects it builds on");
             setting(ui, "Credits", Control::Action, Some(version), |ui| {
                 if action_button(ui, "View").clicked() {
