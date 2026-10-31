@@ -7,6 +7,7 @@
 //! from any thread; the mods themselves run on the engine's script update
 //! (engine.rs). [`studio`] serves GLUE 5 Studio and the MCP endpoint.
 
+pub mod pc_runtime;
 mod checker;
 mod bundled_trainer;
 mod engine;
