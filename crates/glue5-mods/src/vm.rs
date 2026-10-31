@@ -139,6 +139,34 @@ impl Vm {
                 Ok(result)
             })?,
         )?;
+        // Spawn a validated placement set on the mod's own coroutine. The
+        // model load may yield while streaming, so keep this in Luau rather
+        // than calling yielding helpers from a Rust callback.
+        let spawn: Function = lua
+            .load(
+                r#"
+                return function(placements)
+                    assert(type(placements) == "table", "world.spawnPlacements: expected a placement list")
+                    local created = {}
+                    task.spawn(function()
+                        for _, item in placements do
+                            if streaming.load(item.model) then
+                                local objectHandle = object.createObject(item.model, item.position, false, false, false)
+                                streaming.setModelAsNoLongerNeeded(item.model)
+                                if objectHandle then
+                                    entity.setEntityRotation(objectHandle, item.rotation, 2, true)
+                                    table.insert(created, objectHandle)
+                                end
+                            end
+                            wait()
+                        end
+                    end)
+                    return created
+                end
+                "#,
+            )
+            .eval()?;
+        world.set("spawnPlacements", spawn)?;
         let storage = Storage::open(name);
         storage.install(&lua)?;
         // The mod's code starts once the player is in the game (not on
