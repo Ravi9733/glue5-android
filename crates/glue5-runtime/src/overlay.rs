@@ -244,7 +244,7 @@ mod loose_replacement_tests {
         let mounted = game_file("common/data/example.xml", &original, &scratch).unwrap();
         assert_eq!(std::fs::read(mounted).unwrap(), b"modified");
 
-        std::fs::write(&replacement, b"too long").unwrap();
+        std::fs::write(&replacement, b"longer-than-original").unwrap();
         assert!(game_file("common/data/example.xml", &original, &scratch).is_none());
         std::fs::remove_dir_all(root).unwrap();
     }
