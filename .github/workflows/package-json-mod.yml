@@ -1,0 +1,35 @@
+name: Package JSON Placement ZIP
+
+on:
+  push:
+    branches: [turnip-driver-integration]
+    paths:
+      - "mods/road-construction/**"
+      - ".github/workflows/package-json-mod.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate JSON and create ZIP
+        run: |
+          python3 - <<'PY'
+          import json
+          for path in ("mods/road-construction/mod.json", "mods/road-construction/road_construction.json"):
+              with open(path, encoding="utf-8") as f:
+                  json.load(f)
+          PY
+          mkdir -p /tmp/json-placement-test
+          cp -r mods/road-construction /tmp/json-placement-test/
+          cd /tmp/json-placement-test
+          zip -r "$GITHUB_WORKSPACE/Glue5-JSON-Placement-Test.zip" road-construction
+      - name: Upload ZIP to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v1.0.0 Glue5-JSON-Placement-Test.zip --clobber --repo "$GITHUB_REPOSITORY"
