@@ -80,6 +80,65 @@ impl Vm {
         let sched = Sched::default();
         let (lua, deadline) = base(name, log, &sched)?;
         lua.globals().set("require", require(&lua, name, dir)?)?;
+        // Data-driven placement manifests are read from this mod's own
+        // directory. The parser bounds file size, placement count, model
+        // names and coordinates before any script can use the data.
+        let world: Table = lua.globals().get("world")?;
+        let placement_dir = dir.to_path_buf();
+        world.set(
+            "loadPlacements",
+            lua.create_function(move |lua, relative: String| {
+                use std::path::Component;
+                let path = Path::new(&relative);
+                if relative.is_empty()
+                    || relative.len() > 128
+                    || path.is_absolute()
+                    || !path.components().all(|c| matches!(c, Component::Normal(_)))
+                    || !relative.ends_with(".json")
+                {
+                    return Err(mlua::Error::runtime(
+                        "world.loadPlacements: expected a relative .json file inside this mod",
+                    ));
+                }
+                let file = placement_dir.join(path);
+                let metadata = std::fs::metadata(&file).map_err(|e| {
+                    mlua::Error::runtime(format!("world.loadPlacements: {e}"))
+                })?;
+                if metadata.len() > 256 * 1024 {
+                    return Err(mlua::Error::runtime(
+                        "world.loadPlacements: manifest exceeds 256 KiB",
+                    ));
+                }
+                let source = std::fs::read_to_string(&file).map_err(|e| {
+                    mlua::Error::runtime(format!("world.loadPlacements: {e}"))
+                })?;
+                let set = crate::placements::parse_manifest(&source)
+                    .map_err(|e| mlua::Error::runtime(format!("world.loadPlacements: {e}")))?;
+                let result = lua.create_table()?;
+                for (index, placement) in set.placements.iter().enumerate() {
+                    let item = lua.create_table()?;
+                    item.set("model", placement.model.as_str())?;
+                    item.set(
+                        "position",
+                        mlua::Vector::new(
+                            placement.position[0],
+                            placement.position[1],
+                            placement.position[2],
+                        ),
+                    )?;
+                    item.set(
+                        "rotation",
+                        mlua::Vector::new(
+                            placement.rotation[0],
+                            placement.rotation[1],
+                            placement.rotation[2],
+                        ),
+                    )?;
+                    result.set(index + 1, item)?;
+                }
+                Ok(result)
+            })?,
+        )?;
         let storage = Storage::open(name);
         storage.install(&lua)?;
         // The mod's code starts once the player is in the game (not on
