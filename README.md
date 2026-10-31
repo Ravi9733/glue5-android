@@ -67,6 +67,25 @@ Symlink your game directory
 `GLUE5_GAME_DIR` at it. The build checks `game.wasm` against the supported
 build.
 
+### Optional PC data folder (Android)
+
+The Android app can also index a separate folder of **extracted loose files**
+at `/storage/emulated/0/GTAV_PC`. Keep the WebAssembly game folder unchanged.
+The runtime checks the WebAssembly `data/` tree first and consults this PC
+folder only when the requested relative path is absent there. The PC folder is
+read-only to the game.
+
+Create `GTAV_PC` in shared internal storage and place extracted files under
+their original relative folder names. The app's existing Android all-files
+access permission is required. A different folder can be selected by setting
+`GLUE5_PC_DATA_DIR` before the native runtime starts.
+
+**Limitations:** this is a loose-file path fallback, not a PC GTA V RPF archive
+reader or a full PC asset converter. Files inside `.rpf` archives are not
+mounted or unpacked by this layer, and merely exposing a file does not make an
+unsupported asset format render in Glue5. Existing WebAssembly assets remain
+the primary source and are never overwritten by the PC folder.
+
 ## Building
 
 Requirements: [mise] and a C/C++ compiler; for iOS, Xcode; for Windows
