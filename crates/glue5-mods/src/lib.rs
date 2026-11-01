@@ -274,6 +274,16 @@ pub fn install_pc_package(name: &str, bytes: &[u8]) -> Result<pc_mods::PackageRe
     pc_mods::install_package(name, bytes)
 }
 
+/// Lists imported PC packages, excluding temporary staging directories.
+pub fn installed_pc_packages() -> Result<Vec<pc_mods::InstalledPackage>, String> {
+    pc_mods::installed_packages()
+}
+
+/// Removes an imported PC package from the isolated package directory.
+pub fn uninstall_pc_package(name: &str) -> Result<(), String> {
+    pc_mods::uninstall_package(name)
+}
+
 /// Parses an RPF archive TOC. This does not mount it into the game VFS.
 pub fn inspect_rpf_archive(name: &str, bytes: &[u8]) -> Result<rpf_archive::RpfReport, String> {
     rpf_archive::inspect(name, bytes)
