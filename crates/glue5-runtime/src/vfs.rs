@@ -428,10 +428,31 @@ impl Vfs {
         let mut dir = open.dir.lock().unwrap();
         if dir.entries.is_none() {
             let mut list = vec![(".".to_string(), 4), ("..".to_string(), 4)];
+            let mut seen = std::collections::HashSet::new();
             for entry in fs::read_dir(path).map_err(io_errno)? {
                 let entry = entry.map_err(io_errno)?;
+                let name = entry.file_name().to_string_lossy().into_owned();
                 let kind = if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) { 4 } else { 8 };
-                list.push((entry.file_name().to_string_lossy().into_owned(), kind));
+                seen.insert(name.to_ascii_lowercase());
+                list.push((name, kind));
+            }
+            // Merge immediate children from package overlays into /game directory
+            // listings. Without this, path lookup can find a loose file but engine
+            // directory scans (including DLC discovery) cannot see it.
+            if open.path == "/game" || open.path.starts_with("/game/") {
+                let rel = open.path.trim_start_matches("/game").trim_start_matches('/');
+                let parent_key = rel.to_ascii_lowercase();
+                let prefix = if parent_key.is_empty() { String::new() } else { format!("{parent_key}/") };
+                for (root, entries) in &self.game_overlays {
+                    for (key, relative) in entries {
+                        let Some(rest) = key.strip_prefix(&prefix) else { continue };
+                        if rest.is_empty() || rest.contains('/') { continue; }
+                        if !seen.insert(rest.to_owned()) { continue; }
+                        let host = root.join(relative);
+                        let kind = if host.is_dir() { 4 } else { 8 };
+                        list.push((relative.rsplit('/').next().unwrap_or(rest).to_owned(), kind));
+                    }
+                }
             }
             dir.entries = Some(list);
         }
