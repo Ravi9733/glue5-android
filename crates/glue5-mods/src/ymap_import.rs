@@ -286,9 +286,9 @@ mod tests {
         let mut combined = String::new();
         append_scoped_map_script(&mut combined, "maps/a.ymap", "local placements = {}");
         append_scoped_map_script(&mut combined, "maps/b.ymap", "local placements = {}");
-        assert_eq!(combined.matches("do\\n").count(), 2);
+        assert_eq!(combined.matches("do\n").count(), 2);
         assert_eq!(combined.matches("local placements").count(), 2);
-        assert_eq!(combined.matches("\\nend\\n").count(), 2);
+        assert_eq!(combined.matches("\nend\n").count(), 2);
     }
 
     #[test]
