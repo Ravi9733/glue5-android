@@ -153,6 +153,14 @@ fn build_overlay_state(client: &Client) -> StreamOverlay {
         if visited >= MAX_PC_OVERLAY_FILES { break; }
     }
 
+    // A DLC archive appearing in the virtual file manifest only proves that
+    // the engine's file device can read it. It does not mean RAGE registered
+    // the pack or streamed any of its vehicle models.
+    let vehicle_dlc_archives = candidates.values()
+        .filter(|(relative, _)| is_expected_vehicle_dlc_archive(relative))
+        .map(|(relative, _)| relative.clone())
+        .collect::<Vec<_>>();
+
     let mut files = std::collections::HashMap::new();
     let mut digest = Sha256::new();
     let mut replaced = 0usize;
@@ -176,6 +184,14 @@ fn build_overlay_state(client: &Client) -> StreamOverlay {
         files.insert(id, file);
     }
 
+    if !vehicle_dlc_archives.is_empty() {
+        log::info!(
+            "stream: {} add-on DLC archive(s) exposed through the virtual file device (RAGE pack registration/model streaming not verified): {}",
+            vehicle_dlc_archives.len(),
+            vehicle_dlc_archives.join(", ")
+        );
+    }
+
     if replaced + added > 0 {
         let version = manifest.get("version").and_then(serde_json::Value::as_str).unwrap_or("base");
         let hash = digest.finalize();
@@ -191,6 +207,17 @@ fn build_overlay_state(client: &Client) -> StreamOverlay {
         base_bytes.to_vec()
     });
     StreamOverlay { manifest: bytes, files }
+}
+
+/// True for the canonical GTA V add-on DLC archive location.
+fn is_expected_vehicle_dlc_archive(relative: &str) -> bool {
+    let parts = relative.split('/').collect::<Vec<_>>();
+    parts.len() == 5
+        && parts[0].eq_ignore_ascii_case("update")
+        && parts[1].eq_ignore_ascii_case("x64")
+        && parts[2].eq_ignore_ascii_case("dlcpacks")
+        && !parts[3].is_empty()
+        && parts[4].eq_ignore_ascii_case("dlc.rpf")
 }
 
 /// Update an existing engine-manifest entry or append a package-only path.
@@ -219,6 +246,15 @@ fn register_manifest_entry(
 #[cfg(test)]
 mod manifest_tests {
     use super::*;
+
+    #[test]
+    fn recognizes_only_canonical_vehicle_dlc_archive_paths() {
+        assert!(is_expected_vehicle_dlc_archive("update/x64/dlcpacks/mycar/dlc.rpf"));
+        assert!(is_expected_vehicle_dlc_archive("UPDATE/X64/DLCPACKS/MyCar/DLC.RPF"));
+        assert!(!is_expected_vehicle_dlc_archive("dlcpacks/mycar/dlc.rpf"));
+        assert!(!is_expected_vehicle_dlc_archive("update/x64/dlcpacks/dlc.rpf"));
+        assert!(!is_expected_vehicle_dlc_archive("update/x64/dlcpacks/mycar/content.xml"));
+    }
 
     #[test]
     fn replacement_updates_size_and_mtime_without_changing_id_or_path() {
