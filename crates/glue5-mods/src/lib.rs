@@ -17,6 +17,7 @@ pub mod natives;
 pub mod pc_mods;
 pub mod rpf_archive;
 pub mod placement_mod;
+pub mod ymap_import;
 mod storage;
 pub mod studio;
 pub mod vehicle_packs;
@@ -300,6 +301,12 @@ pub fn scan_pc_dlc_packages() -> Result<dlc::DlcScanReport, String> {
 /// Luau mod. Models must already be available in the game's loaded assets.
 pub fn install_placement_mod(name: &str, bytes: &[u8]) -> Result<usize, String> {
     placement_mod::install(name, bytes)
+}
+
+/// Imports a limited exterior HD YMAP as an opt-in object-placement script.
+/// MLOs, LOD chains, collision, streaming extents and custom assets are not loaded.
+pub fn install_ymap_mod(name: &str, bytes: &[u8]) -> Result<ymap_import::YmapImportReport, String> {
+    ymap_import::install(name, bytes)
 }
 
 /// Reads the mods folder again (new or removed mods).
