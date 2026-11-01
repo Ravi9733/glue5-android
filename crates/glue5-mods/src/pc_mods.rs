@@ -187,6 +187,27 @@ const MAX_PACKAGE_FILE_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_PACKAGE_TOTAL_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 
+/// Convert common OpenIV ZIP paths (mods/update/...) to paths relative to the
+/// game's virtual root (update/...). Packages without a leading mods/ folder
+/// keep their paths unchanged.
+fn package_parts<'a>(raw: &'a str, is_dir: bool) -> Result<Vec<&'a str>, String> {
+    if raw.starts_with('/') || raw.contains('\\') || raw.contains(':') {
+        return Err(format!("unsafe package path: {raw}"));
+    }
+    let mut parts: Vec<&str> = raw.split('/').collect();
+    if is_dir && parts.last() == Some(&"") { parts.pop(); }
+    if parts.first().is_some_and(|part| part.eq_ignore_ascii_case("mods")) {
+        parts.remove(0);
+    }
+    if parts.is_empty() {
+        return if is_dir { Ok(parts) } else { Err(format!("unsafe package path: {raw}")) };
+    }
+    if parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".." || p.starts_with('.')) {
+        return Err(format!("unsafe package path: {raw}"));
+    }
+    Ok(parts)
+}
+
 /// Inspect a PC-style ZIP without extracting it. Rejects unsafe paths,
 /// duplicate normalized paths, symlinks and decompression-size bombs.
 /// RPF/YFT/YTD recognition is only file classification; it does not mount
@@ -214,18 +235,12 @@ pub fn inspect_package(bytes: &[u8]) -> Result<PackageReport, String> {
         let mut file = archive.by_index(index)
             .map_err(|e| format!("package entry {index}: {e}"))?;
         let raw = file.name().to_owned();
-        if raw.starts_with('/') || raw.contains('\\') || raw.contains(':') {
-            return Err(format!("unsafe package path: {raw}"));
-        }
         let is_dir = file.is_dir();
-        let mut parts: Vec<&str> = raw.split('/').collect();
-        if is_dir && parts.last() == Some(&"") { parts.pop(); }
-        if parts.is_empty() || parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".." || p.starts_with('.')) {
-            return Err(format!("unsafe package path: {raw}"));
-        }
+        let parts = package_parts(&raw, is_dir)?;
         if file.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
             return Err(format!("package symlink is not allowed: {raw}"));
         }
+        if parts.is_empty() { continue; }
         let normalized = parts.join("/");
         if !seen.insert(normalized.to_ascii_lowercase()) {
             return Err(format!("duplicate package path: {raw}"));
@@ -241,7 +256,7 @@ pub fn inspect_package(bytes: &[u8]) -> Result<PackageReport, String> {
             return Err("package exceeds 2 GiB unpacked size".into());
         }
 
-        let lower = raw.to_ascii_lowercase();
+        let lower = normalized.to_ascii_lowercase();
         if lower.ends_with(".rpf") { rpf += 1; }
         if lower.ends_with(".yft") { yft += 1; }
         if lower.ends_with(".ytd") { ytd += 1; }
@@ -296,6 +311,17 @@ mod package_tests {
         writer.start_file(path, zip::write::SimpleFileOptions::default()).unwrap();
         writer.write_all(data).unwrap();
         writer.finish().unwrap().into_inner()
+    }
+
+
+    #[test]
+    fn strips_openiv_mods_root_for_game_overlay_paths() {
+        assert_eq!(package_parts("mods/update/x64/dlcpacks/car/dlc.rpf", false).unwrap(),
+            vec!["update", "x64", "dlcpacks", "car", "dlc.rpf"]);
+        assert_eq!(package_parts("update/x64/dlcpacks/car/dlc.rpf", false).unwrap(),
+            vec!["update", "x64", "dlcpacks", "car", "dlc.rpf"]);
+        assert!(package_parts("mods/../outside.rpf", false).is_err());
+        assert!(package_parts("mods/", true).unwrap().is_empty());
     }
 
     #[test]
@@ -367,11 +393,8 @@ pub fn install_package(name: &str, bytes: &[u8]) -> Result<PackageReport, String
             let mut file = archive.by_index(index).map_err(|e| format!("ZIP entry {index}: {e}"))?;
             let raw = file.name().to_owned();
             let is_dir = file.is_dir();
-            let mut parts: Vec<&str> = raw.split('/').collect();
-            if is_dir && parts.last() == Some(&"") { parts.pop(); }
-            if parts.is_empty() || parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".." || p.starts_with('.')) {
-                return Err(format!("unsafe package path: {raw}"));
-            }
+            let parts = package_parts(&raw, is_dir)?;
+            if parts.is_empty() { continue; }
             let relative: PathBuf = parts.iter().collect();
             if relative.components().any(|part| !matches!(part, Component::Normal(_))) {
                 return Err(format!("unsafe package path: {raw}"));
