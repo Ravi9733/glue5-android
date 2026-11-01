@@ -24,6 +24,8 @@ import java.util.zip.ZipInputStream;
 /** The app's activity: SDL's, with our library (libglue5.so) as the main one. */
 public class Glue5Activity extends SDLActivity {
     private static final int REQUEST_TURNIP_ZIP = 47112;
+    private static final int REQUEST_PC_MOD_FILE = 47113;
+    private String pendingPcImportKind = null;
     private final Handler turnipHandler = new Handler(Looper.getMainLooper());
     private boolean turnipPickerOpen = false;
     private final Runnable turnipImportWatcher = new Runnable() {
@@ -86,7 +88,36 @@ public class Glue5Activity extends SDLActivity {
             openTurnipPicker();
             return;
         }
+        File pcRequest = new File(getFilesDir(), "pc-mod-import-request");
+        if (pcRequest.isFile()) {
+            try {
+                pendingPcImportKind = new String(java.nio.file.Files.readAllBytes(pcRequest.toPath()), java.nio.charset.StandardCharsets.UTF_8).trim();
+                pcRequest.delete();
+                if ("zip".equals(pendingPcImportKind) || "json".equals(pendingPcImportKind)) {
+                    turnipPickerOpen = true;
+                    openPcModPicker();
+                    return;
+                }
+            } catch (Exception e) {
+                pcRequest.delete();
+                Toast.makeText(this, "PC mod import request failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        }
         turnipHandler.postDelayed(turnipImportWatcher, 500);
+    }
+
+    private void openPcModPicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivityForResult(intent, REQUEST_PC_MOD_FILE);
+        } catch (Exception e) {
+            turnipPickerOpen = false;
+            pendingPcImportKind = null;
+            Toast.makeText(this, "Cannot open PC mod picker: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+        }
     }
 
     private void openTurnipPicker() {
@@ -108,6 +139,21 @@ public class Glue5Activity extends SDLActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_PC_MOD_FILE) {
+            turnipPickerOpen = false;
+            try {
+                if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                    importPcModFile(data.getData(), pendingPcImportKind);
+                    Toast.makeText(this, "PC mod file copied. Return to Mods to finish import.", Toast.LENGTH_LONG).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(this, "PC mod import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            } finally {
+                pendingPcImportKind = null;
+                turnipHandler.postDelayed(turnipImportWatcher, 500);
+            }
+            return;
+        }
         if (requestCode != REQUEST_TURNIP_ZIP) return;
         turnipPickerOpen = false;
         try {
@@ -119,6 +165,35 @@ public class Glue5Activity extends SDLActivity {
             Toast.makeText(this, "Turnip import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
         } finally {
             turnipHandler.postDelayed(turnipImportWatcher, 500);
+        }
+    }
+
+    private void importPcModFile(Uri uri, String kind) throws Exception {
+        if (!"zip".equals(kind) && !"json".equals(kind)) throw new Exception("Unknown import type");
+        File inbox = new File(getFilesDir(), "pc-mod-import-inbox");
+        if (!inbox.isDirectory() && !inbox.mkdirs()) throw new Exception("Cannot create import inbox");
+        File target = new File(inbox, "incoming." + kind);
+        File temp = new File(inbox, "incoming." + kind + ".tmp");
+        long limit = "json".equals(kind) ? 4L * 1024L * 1024L : 128L * 1024L * 1024L;
+        long total = 0;
+        InputStream input = getContentResolver().openInputStream(uri);
+        if (input == null) throw new Exception("Cannot read selected file");
+        try (InputStream in = input; FileOutputStream out = new FileOutputStream(temp)) {
+            byte[] buffer = new byte[32768];
+            int count;
+            while ((count = in.read(buffer)) != -1) {
+                total += count;
+                if (total > limit) throw new Exception("Selected file exceeds " + (limit / (1024 * 1024)) + " MiB limit");
+                out.write(buffer, 0, count);
+            }
+        } catch (Exception e) {
+            temp.delete();
+            throw e;
+        }
+        if (target.exists() && !target.delete()) throw new Exception("Cannot replace previous import");
+        if (!temp.renameTo(target)) {
+            temp.delete();
+            throw new Exception("Cannot finalize selected file");
         }
     }
 
