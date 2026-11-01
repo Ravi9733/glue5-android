@@ -191,7 +191,7 @@ pub fn inspect_package(bytes: &[u8]) -> Result<PackageReport, String> {
     }
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|e| format!("invalid package ZIP: {e}"))?;
-    if archive.is_empty() || archive.len() > MAX_PACKAGE_ENTRIES {
+    if archive.len() == 0 || archive.len() > MAX_PACKAGE_ENTRIES {
         return Err(format!("package must contain 1–{MAX_PACKAGE_ENTRIES} entries"));
     }
 
@@ -274,4 +274,52 @@ pub fn inspect_package(bytes: &[u8]) -> Result<PackageReport, String> {
         rpf_files: rpf, yft_files: yft, ytd_files: ytd, ymap_files: ymap,
         meta_files: meta, asi_or_dll_files: native, manifest_name,
     })
+}
+
+
+#[cfg(test)]
+mod package_tests {
+    use super::*;
+    use std::io::{Cursor, Write};
+
+    fn zip_with(path: &str, data: &[u8]) -> Vec<u8> {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        writer.start_file(path, zip::write::SimpleFileOptions::default()).unwrap();
+        writer.write_all(data).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn identifies_vehicle_asset_package_without_claiming_runtime_support() {
+        let bytes = zip_with("vehicles/adder.yft", b"not-a-real-model");
+        let report = inspect_package(&bytes).unwrap();
+        assert_eq!(report.kind, PackageKind::VehiclePack);
+        assert_eq!(report.yft_files, 1);
+    }
+
+    #[test]
+    fn identifies_native_plugins_as_mixed_or_unsupported_content() {
+        let bytes = zip_with("plugins/example.asi", b"not-a-real-plugin");
+        let report = inspect_package(&bytes).unwrap();
+        assert_eq!(report.kind, PackageKind::Unknown);
+        assert_eq!(report.asi_or_dll_files, 1);
+    }
+
+    #[test]
+    fn rejects_traversal_paths_in_pc_packages() {
+        let bytes = zip_with("../outside.ymap", b"bad");
+        assert!(inspect_package(&bytes).unwrap_err().contains("unsafe"));
+    }
+
+    #[test]
+    fn rejects_case_insensitive_duplicate_paths() {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        writer.start_file("data/test.ytd", options).unwrap();
+        writer.write_all(b"a").unwrap();
+        writer.start_file("DATA/TEST.YTD", options).unwrap();
+        writer.write_all(b"b").unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+        assert!(inspect_package(&bytes).unwrap_err().contains("duplicate"));
+    }
 }
