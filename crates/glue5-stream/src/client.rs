@@ -387,6 +387,11 @@ impl Client {
         ((id as usize) < r.cache.len()).then(|| r.cache.size(id))
     }
 
+    /// Number of files in the engine's HTTPFS manifest (excludes renderer shaders).
+    pub fn engine_file_count(&self) -> Option<usize> {
+        self.ready.get().map(|r| r.catalog.data_files)
+    }
+
     /// Downloads every file of the game, at the lowest priority (the game's
     /// own reads first), or stops doing so.
     pub fn set_fill(&self, on: bool) {
