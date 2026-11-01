@@ -93,7 +93,7 @@ public class Glue5Activity extends SDLActivity {
             try {
                 pendingPcImportKind = new String(java.nio.file.Files.readAllBytes(pcRequest.toPath()), java.nio.charset.StandardCharsets.UTF_8).trim();
                 pcRequest.delete();
-                if ("zip".equals(pendingPcImportKind) || "json".equals(pendingPcImportKind) || "ymap".equals(pendingPcImportKind)) {
+                if ("zip".equals(pendingPcImportKind) || "json".equals(pendingPcImportKind) || "ymap".equals(pendingPcImportKind) || "rpf".equals(pendingPcImportKind)) {
                     turnipPickerOpen = true;
                     openPcModPicker();
                     return;
@@ -169,7 +169,7 @@ public class Glue5Activity extends SDLActivity {
     }
 
     private void importPcModFile(Uri uri, String kind) throws Exception {
-        if (!"zip".equals(kind) && !"json".equals(kind) && !"ymap".equals(kind)) throw new Exception("Unknown import type");
+        if (!"zip".equals(kind) && !"json".equals(kind) && !"ymap".equals(kind) && !"rpf".equals(kind)) throw new Exception("Unknown import type");
         File inbox = new File(getFilesDir(), "pc-mod-import-inbox");
         if (!inbox.isDirectory() && !inbox.mkdirs()) throw new Exception("Cannot create import inbox");
         File target = new File(inbox, "incoming." + kind);
