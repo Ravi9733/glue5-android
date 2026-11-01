@@ -3,7 +3,7 @@ name: Build
 
 on:
   push:
-    branches: [turnip-driver-integration, feature/pc-mod-loader]
+    branches: [turnip-driver-integration, feature/pc-mod-loader, android-ios-experience-port]
   workflow_dispatch:
     inputs:
       platform:
