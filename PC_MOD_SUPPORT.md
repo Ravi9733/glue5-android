@@ -13,6 +13,7 @@ This page describes the current feature-branch implementation. It is intentional
 - The DLC scanner searches imported packages for `dlcpacks/<name>/dlc.rpf`, reads accessible `setup2.xml` / `dlclist.xml`, and attempts YFT/YTD resource parsing.
 - Supported JSON placement files are validated and converted into an opt-in Luau mod. It uses models that are already present in the game's loaded asset catalog.
 - Plain exterior HD entities in readable RSC7 YMAP files can be converted into an opt-in Luau object-placement mod using their existing archetype hashes. MLO instances and non-HD LOD entities are skipped.
+- **Import RPF maps** extracts readable `.ymap` entries from an unencrypted RPF and combines supported exterior HD placements into one opt-in script mod. This is a limited content conversion, not RPF mounting; encrypted archives and unsupported YMAP features are skipped or rejected.
 
 ## JSON placement format
 
@@ -72,7 +73,7 @@ Keep the original relative paths inside the ZIP. The scanner reports pack discov
 - **RPF runtime mounting:** local VFS overlays can supply an RPF file at an existing path, and streamed mode can now expose loose package paths through a merged HTTPFS manifest. Neither mechanism itself mounts an RPF archive; the engine's packfile manager must successfully open/register it. A newly listed DLC archive still needs native packfile registration and DLC-list activation before the game will use it.
 - **DLC activation:** discovering `dlcpacks`, parsing `setup2.xml`, or finding a `dlclist.xml` does not register a pack with RAGE.
 - **Custom YFT/YTD loading:** parsing a resource header is not equivalent to registering its dictionary/archetype with the running game. Custom add-on vehicles are not yet guaranteed to appear in the F7 vehicle catalog.
-- **YMAP streaming:** the importer now parses RSC7 YMAP entity lists and converts plain exterior HD placements into sequential object-spawn calls. It is not native YMAP streaming: map extents, LOD relationships, MLO interiors, collision, navmeshes, scale, archetype registration and custom assets are not loaded. All referenced archetypes must already be available in the game. The Android picker offers a separate **Import YMAP** action; the resulting script is disabled by default.
+- **YMAP streaming:** direct YMAP and RPF-contained YMAP import convert plain exterior HD placements into sequential object-spawn calls. This is not native YMAP streaming: map extents, LOD relationships, MLO interiors, collision, navmeshes, scale, archetype registration and custom assets are not loaded. All referenced archetypes must already be available in the game. The Android picker offers **Import YMAP** and **Import RPF maps**; resulting script mods are disabled by default.
 - **ASI/DLL:** Windows native plugins are not loaded or executed on Android. Their features need a safe Luau/Rust port or a purpose-built Android-compatible implementation.
 
 ## Safe test sequence
