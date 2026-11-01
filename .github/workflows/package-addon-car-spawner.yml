@@ -26,7 +26,9 @@ jobs:
           assert data.get("name") == "Glue Trainer"
           assert Path("mods/glue-trainer/main.luau").is_file()
           assert Path("mods/glue-trainer/features/spawner.luau").is_file()
-          print("Glue Trainer metadata and spawner source validated.")
+          assert Path("mods/glue-trainer/core/keys.luau").is_file()
+          assert Path("mods/glue-trainer/core/prefs.luau").is_file(), "Missing required core/prefs.luau"
+          print("Glue Trainer metadata, spawner, and required core modules validated.")
           PY
           mkdir -p /tmp/glue5-mod-package
           cp -R mods/glue-trainer /tmp/glue5-mod-package/
