@@ -132,8 +132,11 @@ fn build_overlay_state(client: &Client) -> StreamOverlay {
     for root in roots {
         let Ok(packages) = std::fs::read_dir(&root) else { continue };
         let mut packages = packages.flatten().map(|entry| entry.path())
-            .filter(|path| path.is_dir()
-                && !path.file_name().is_some_and(|name| name.to_string_lossy().starts_with('.')))
+            .filter(|path| {
+                let Ok(metadata) = std::fs::symlink_metadata(path) else { return false };
+                metadata.file_type().is_dir()
+                    && !path.file_name().is_some_and(|name| name.to_string_lossy().starts_with('.'))
+            })
             .collect::<Vec<PathBuf>>();
         packages.sort();
         for package in packages {
@@ -148,7 +151,8 @@ fn build_overlay_state(client: &Client) -> StreamOverlay {
     let mut replaced = 0usize;
     let mut added = 0usize;
     for (_, (relative, path)) in candidates {
-        let Ok(metadata) = std::fs::metadata(&path) else { continue };
+        let Ok(file) = File::open(&path) else { continue };
+        let Ok(metadata) = file.metadata() else { continue };
         let size = metadata.len();
         let mtime = metadata.modified().ok()
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
@@ -162,9 +166,7 @@ fn build_overlay_state(client: &Client) -> StreamOverlay {
         digest.update(relative.as_bytes());
         digest.update(size.to_le_bytes());
         digest.update(mtime.to_le_bytes());
-        if let Ok(file) = File::open(&path) {
-            files.insert(id, file);
-        }
+        files.insert(id, file);
     }
 
     if replaced + added > 0 {
