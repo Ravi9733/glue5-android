@@ -149,7 +149,7 @@ impl Vfs {
 
     /// Adds a read-only directory tree below /game. The package root is
     /// indexed once, case-insensitively, like the original game data.
-    /// Existing game files take precedence; overlays add files absent from the base game.
+    /// Package overlays take precedence over base game files; later mounts win.
     pub fn mount_game_overlay(&mut self, root: &Path) -> io::Result<usize> {
         if !root.is_dir() {
             return Ok(0);
@@ -178,15 +178,18 @@ impl Vfs {
                 return Ok(Host { path: game.clone(), read_only: true });
             }
             let key = rel.to_ascii_lowercase();
+            // Later-mounted packages win, allowing an imported RPF/DLC archive
+            // to replace a same-path base archive. The game engine still performs
+            // its own RPF parsing; this layer only supplies the archive bytes.
+            for (root, entries) in self.game_overlays.iter().rev() {
+                if let Some(real) = entries.get(&key) {
+                    return Ok(Host { path: root.join(real), read_only: true });
+                }
+            }
             if let Some(real) = self.game_index.get(&key) {
                 let real = game.join(real);
                 let path = crate::overlay::game_file(rel, &real, &self.scratch).unwrap_or(real);
                 return Ok(Host { path, read_only: true });
-            }
-            for (root, entries) in &self.game_overlays {
-                if let Some(real) = entries.get(&key) {
-                    return Ok(Host { path: root.join(real), read_only: true });
-                }
             }
             return Ok(Host { path: game.join(rel), read_only: true });
         }
@@ -663,6 +666,45 @@ mod package_overlay_tests {
         let mut indexed = HashMap::new();
         index(&package, "", &mut indexed).unwrap();
         assert!(indexed.is_empty());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn package_overlay_replaces_a_base_game_archive() {
+        let dir = std::env::temp_dir().join(format!("glue5-vfs-overlay-replace-{}", std::process::id()));
+        let game = dir.join("game");
+        let overlay = dir.join("packages").join("replacement");
+        fs::create_dir_all(game.join("update/x64/dlcpacks/car")).unwrap();
+        fs::create_dir_all(overlay.join("update/x64/dlcpacks/car")).unwrap();
+        fs::write(game.join("update/x64/dlcpacks/car/dlc.rpf"), b"base-rpf").unwrap();
+        fs::write(overlay.join("update/x64/dlcpacks/car/dlc.rpf"), b"mod-rpf").unwrap();
+
+        let mut vfs = Vfs::new(Some(game.clone()), dir.join("user")).unwrap();
+        assert_eq!(vfs.mount_game_overlay(&overlay).unwrap(), 5);
+        let host = vfs.resolve("/game/update/x64/dlcpacks/car/dlc.rpf").unwrap();
+        assert_eq!(fs::read(host.path).unwrap(), b"mod-rpf");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn later_package_overlay_wins_for_same_archive_path() {
+        let dir = std::env::temp_dir().join(format!("glue5-vfs-overlay-order-{}", std::process::id()));
+        let game = dir.join("game");
+        let first = dir.join("packages").join("first");
+        let second = dir.join("packages").join("second");
+        fs::create_dir_all(&game).unwrap();
+        fs::create_dir_all(&first.join("update")).unwrap();
+        fs::create_dir_all(&second.join("update")).unwrap();
+        fs::write(first.join("update/dlc.rpf"), b"first").unwrap();
+        fs::write(second.join("update/dlc.rpf"), b"second").unwrap();
+
+        let mut vfs = Vfs::new(Some(game), dir.join("user")).unwrap();
+        vfs.mount_game_overlay(&first).unwrap();
+        vfs.mount_game_overlay(&second).unwrap();
+        let host = vfs.resolve("/game/update/dlc.rpf").unwrap();
+        assert_eq!(fs::read(host.path).unwrap(), b"second");
 
         let _ = fs::remove_dir_all(dir);
     }
