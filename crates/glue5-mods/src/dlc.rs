@@ -330,7 +330,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("glue5-dlc-list-{}", std::process::id()));
         let pack = root.join("pc_pack/dlcpacks/testcar");
         std::fs::create_dir_all(&pack).unwrap();
-        std::fs::write(root.join("pc_pack/dlclist.xml"),
+        std::fs::write(root.join("pc_pack/DLCLIST.XML"),
             br#"<SMandatoryPacksData><Paths><Item>dlcpacks:/testcar/</Item></Paths></SMandatoryPacksData>"#).unwrap();
         let mut builder = RpfBuilder::new(RpfEncryption::Open);
         builder.add_file("setup2.xml", br#"<SSetupData><order value="2"/></SSetupData>"#.to_vec());
