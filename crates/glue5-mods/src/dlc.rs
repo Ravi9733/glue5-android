@@ -254,12 +254,25 @@ pub fn scan_root(root: &Path) -> Result<DlcScanReport, String> {
 
 fn dlc_pack_name(path: &str) -> Option<(usize, String)> {
     let parts = path.split('/').collect::<Vec<_>>();
-    let index = parts.iter().position(|part| *part == "dlcpacks")?;
-    let name = *parts.get(index + 1)?;
-    if name.is_empty() || parts.get(index + 2).copied() != Some("dlc.rpf") {
-        return None;
+    if let Some(index) = parts.iter().position(|part| *part == "dlcpacks") {
+        let name = *parts.get(index + 1)?;
+        if name.is_empty() || parts.get(index + 2).copied() != Some("dlc.rpf") {
+            return None;
+        }
+        return Some((index, name.to_string()));
     }
-    Some((index, name.to_string()))
+
+    // Many PC vehicle ZIPs wrap the DLC in vendor folders such as
+    // "Legacy/<pack-name>/dlc.rpf" instead of the game's canonical
+    // "dlcpacks/<pack-name>/dlc.rpf" layout. Treat the parent directory
+    // as a candidate pack name for inspection only; this does not activate it.
+    if parts.last().copied() == Some("dlc.rpf") && parts.len() >= 2 {
+        let name = parts[parts.len() - 2];
+        if !name.is_empty() {
+            return Some((parts.len() - 2, name.to_string()));
+        }
+    }
+    None
 }
 
 fn collect_files(root: &Path, warnings: &mut Vec<String>) -> Result<Vec<PathBuf>, String> {
@@ -301,6 +314,23 @@ mod tests {
     use super::*;
     use rpf_archive::{RpfBuilder, RpfEncryption};
     use std::io::Write;
+
+    #[test]
+    fn discovers_dlc_pack_wrapped_in_vendor_folders() {
+        let root = std::env::temp_dir().join(format!("glue5-dlc-nested-{}", std::process::id()));
+        let pack = root.join("pc_pack/Legacy/dyfurai");
+        std::fs::create_dir_all(&pack).unwrap();
+        let mut builder = RpfBuilder::new(RpfEncryption::Open);
+        builder.add_file("setup2.xml", br#"<SSetupData><order value="3"/></SSetupData>"#.to_vec());
+        let bytes = builder.build(None).unwrap();
+        std::fs::write(pack.join("dlc.rpf"), bytes).unwrap();
+
+        let report = scan_root(&root).unwrap();
+        assert_eq!(report.packs.len(), 1);
+        assert_eq!(report.packs[0].name, "dyfurai");
+        assert_eq!(report.packs[0].archive, "Legacy/dyfurai/dlc.rpf");
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn discovers_dlc_pack_and_reads_setup_order_from_rpf() {
