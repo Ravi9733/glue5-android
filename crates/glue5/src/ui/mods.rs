@@ -25,6 +25,7 @@ pub enum Tab {
 pub struct ModsPage {
     tab: Tab,
     confirm_remove: Option<String>,
+    dlc_scan: Option<glue5_mods::dlc::DlcScanReport>,
 }
 
 impl ModsPage {
@@ -112,11 +113,11 @@ fn process_android_pc_import() {
 #[cfg(not(target_os = "android"))]
 fn process_android_pc_import() {}
 
-fn android_pc_import_controls(ui: &mut egui::Ui, settings: &mut Settings, game_running: bool) {
+fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: &mut Settings, game_running: bool) {
     panel(ui, |ui| {
         card_title(ui, "IMPORT PC MODS", None);
         small(ui, "Choose a PC mod ZIP or a supported JSON object-placement map. Package files overlay /game paths; matching package files can replace base files, including RPF archives at their expected paths.", theme::MUTED);
-        small(ui, "DLC discovery, custom YFT/YTD asset registration and in-game vehicle loading still need runtime verification. Native ASI/DLL plugins are not executed.", theme::MUTED);
+        small(ui, "Use Scan DLC packs to inspect add-on archives and setup2.xml order. This does not yet register packs with the game or load custom YFT/YTD vehicles. Native ASI/DLL plugins are not executed.", theme::MUTED);
         if !settings.mods {
             small(ui, "Turn Mods on first; the change takes effect when the game starts.", WARN);
             return;
@@ -134,7 +135,35 @@ fn android_pc_import_controls(ui: &mut egui::Ui, settings: &mut Settings, game_r
                 #[cfg(not(target_os = "android"))]
                 log::info!("JSON file picker is Android-only.");
             }
+            if inline_button(ui, "Scan DLC packs").clicked() {
+                match glue5_mods::scan_pc_dlc_packages() {
+                    Ok(report) => {
+                        log::info!("DLC scan: {} packs found, {} registration entries, {} warnings",
+                            report.packs.len(), report.registered_names.len(), report.warnings.len());
+                        page.dlc_scan = Some(report);
+                    }
+                    Err(error) => log::warn!("DLC scan failed: {error}"),
+                }
+            }
         });
+        if let Some(report) = &page.dlc_scan {
+            ui.add_space(6.0 * theme::density(ui));
+            small(ui, "DLC SCAN · IMPORTED PACKAGES ONLY", theme::MUTED);
+            if report.packs.is_empty() {
+                small(ui, "No dlcpacks/<name>/dlc.rpf archives were found in imported packages.", theme::MUTED);
+            }
+            for pack in &report.packs {
+                let registration = if pack.registered_in_imported_dlclist { "listed in imported dlclist" } else { "not listed in imported dlclist" };
+                let order = pack.setup_order.map(|value| format!("order {value}")).unwrap_or_else(|| "order unavailable".to_owned());
+                small(ui, &format!("{} · {} · {} · {} YFT / {} YTD", pack.name, order, registration, pack.yft_files, pack.ytd_files), theme::MUTED);
+            }
+            for warning in report.warnings.iter().take(8) {
+                small(ui, warning, WARN);
+            }
+            if report.warnings.len() > 8 {
+                small(ui, &format!("{} more scan warnings", report.warnings.len() - 8), theme::MUTED);
+            }
+        }
         match glue5_mods::installed_pc_packages() {
             Ok(packages) if !packages.is_empty() => {
                 ui.add_space(6.0 * theme::density(ui));
@@ -193,7 +222,7 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
             toggle(ui, &mut settings.mods);
         });
         ui.add_space(6.0 * theme::density(ui));
-        android_pc_import_controls(ui, settings, status.started.is_some());
+        android_pc_import_controls(ui, page, settings, status.started.is_some());
         if !settings.mods && !status.mods {
             ui.add_space(4.0 * scale);
             panel(ui, |ui| {
