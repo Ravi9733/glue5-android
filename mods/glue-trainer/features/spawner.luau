@@ -172,7 +172,7 @@ function M.picker(menu: Menu, verb: string, pick: (entry: catalog.VehicleEntry) 
 end
 
 function M.build(root: Menu)
-	local menu = root:submenu("Spawn a vehicle", "Every vehicle of the game, by class or by name; your garage")
+	local menu = root:submenu("Spawn a vehicle", "Every vehicle of the game, plus custom DLC model names")
 	local optionsMenu = menu:submenu("Options", "How vehicles are delivered")
 	options = {
 		warpIn = (bind.feature(optionsMenu, "spawn.warpIn", "Get in", "In the driver's seat; aircraft in the air", {})),
@@ -182,7 +182,28 @@ function M.build(root: Menu)
 		plate = optionsMenu:text("Plate", "", { placeholder = "As the game gives it", max = 8 }),
 	}
 	garage(menu)
-	menu:separator("Vehicles")
+
+	-- Manual model-name spawning is important for add-on DLC cars. The game may
+	-- know a DLC model by hash even when it is absent from the cached vehicle list.
+	local custom = menu:submenu("Spawn by model name", "For add-on cars: enter the model name from vehicles.meta")
+	local modelName = custom:text("Model name", "dyfurai", { placeholder = "e.g. dyfurai", max = 64 })
+	bind.action(custom, "Spawn custom model", { note = "Checks the model before requesting it", action = "Spawn" }, function(): string?
+		local model = string.lower(string.match(modelName.value, "^%s*(.-)%s*$") or "")
+		if model == "" or not string.match(model, "^[%w_%-]+$") then
+			return "Enter a valid vehicle model name"
+		end
+		local hash = joaat(model)
+		if not streaming.isModelInCdimage(hash) then
+			return `{model}: model is not registered in the loaded game data`
+		end
+		if not streaming.isModelAVehicle(hash) then
+			return `{model}: registered model is not a vehicle`
+		end
+		local car, why = M.spawn(hash, model)
+		return if car then `{model} spawned` else why
+	end)
+
+	menu:separator("Vehicles already registered by the game")
 	M.picker(menu, "Spawn", function(entry: catalog.VehicleEntry): string?
 		local car, why = M.spawn(entry.hash, entry.name)
 		return if car then `{entry.name} delivered` else why
