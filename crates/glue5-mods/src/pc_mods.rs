@@ -115,6 +115,15 @@ mod tests {
     }
 
     #[test]
+    fn parses_repository_sample_placement_file() {
+        let sample = include_bytes!("../testdata/sample_placements.json");
+        let report = parse_placements(sample).unwrap();
+        assert_eq!(report.placements.len(), 2);
+        assert_eq!(report.placements[0].model, "prop_roadcone02b");
+        assert_eq!(report.placements[1].model, "prop_crate_11");
+    }
+
+    #[test]
     fn rejects_invalid_model_names() {
         let input = br#"{"objects":[{"model":"../bad","x":0,"y":0,"z":0}]}"#;
         assert!(parse_placements(input).unwrap_err().contains("model"));
