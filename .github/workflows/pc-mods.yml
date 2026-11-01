@@ -9,13 +9,12 @@ on:
       - "crates/glue5/src/ui/mods.rs"
       - "crates/glue5-game/**"
       - "Cargo.toml"
-      - "Cargo.lock"
       - ".mise/**"
       - ".github/workflows/pc-mods.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: pc-mod-checks-${{ github.ref }}
@@ -45,5 +44,15 @@ jobs:
           install_args: rust cmake
       - name: Prepare pinned third-party dependencies
         run: mise run setup
+      - name: Generate and commit the updated dependency lockfile
+        run: |
+          cargo generate-lockfile
+          if ! git diff --quiet -- Cargo.lock; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock
+            git commit -m "chore: update lockfile for PC mod archive parsers"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          fi
       - name: Test PC mod importer and DLC scanner
         run: cargo test --locked -p glue5-mods
