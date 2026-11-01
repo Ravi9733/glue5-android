@@ -1,0 +1,41 @@
+name: Package Glue Trainer Add-on Spawner
+
+on:
+  push:
+    branches: [addon-car-spawner-package]
+    paths:
+      - "mods/glue-trainer/**"
+      - ".github/workflows/package-addon-car-spawner.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate mod metadata and package ZIP
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("mods/glue-trainer/mod.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          assert data.get("name") == "Glue Trainer"
+          assert Path("mods/glue-trainer/main.luau").is_file()
+          assert Path("mods/glue-trainer/features/spawner.luau").is_file()
+          print("Glue Trainer metadata and spawner source validated.")
+          PY
+          mkdir -p /tmp/glue5-mod-package
+          cp -R mods/glue-trainer /tmp/glue5-mod-package/
+          cd /tmp/glue5-mod-package
+          zip -qr "$GITHUB_WORKSPACE/Glue5-Addon-Car-Spawner.zip" glue-trainer
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glue5-Addon-Car-Spawner
+          path: Glue5-Addon-Car-Spawner.zip
+          if-no-files-found: error
+          retention-days: 30
