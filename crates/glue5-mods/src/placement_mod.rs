@@ -25,7 +25,7 @@ pub fn compile(report: &PlacementReport) -> String {
 local created = 0
 local failed = 0
 for index, placement in placements do
-    local model = joaat(placement.model)
+    local model = placement.model -- Hash-typed natives convert model names
     if streaming.load(model) then
         local position = vector.create(placement.x, placement.y, placement.z)
         local objectHandle = object.createObject(model, position, false, false, false)
