@@ -13,6 +13,7 @@ pub mod files;
 mod json;
 mod menus;
 pub mod natives;
+pub mod pc_mods;
 mod storage;
 pub mod studio;
 pub mod vehicle_packs;
