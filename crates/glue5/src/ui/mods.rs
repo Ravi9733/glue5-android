@@ -357,7 +357,33 @@ fn menus_tab(ui: &mut egui::Ui) {
     let scale = theme::density(ui);
     let menus = glue5_mods::menus();
     if menus.is_empty() {
-        muted(ui, "No trainer menu is available yet. Turn Mods on and start Glue Trainer; its touch controls will appear here.");
+        let trainer = glue5_mods::mods().into_iter().find(|m| m.name.eq_ignore_ascii_case("Glue Trainer"));
+        match trainer {
+            Some(m) if m.state == ModState::Stopped => {
+                panel(ui, |ui| {
+                    card_title(ui, "GLUE TRAINER", None);
+                    small(ui, "The touch trainer is installed but not running.", theme::MUTED);
+                    if action_button(ui, "Start Trainer").clicked() {
+                        glue5_mods::start(&m.name);
+                    }
+                });
+            }
+            Some(m) if m.state == ModState::Error => {
+                panel(ui, |ui| {
+                    card_title(ui, "TRAINER START ERROR", None);
+                    small(ui, m.error.as_deref().unwrap_or("The trainer stopped unexpectedly."), WARN);
+                    if action_button(ui, "Restart Trainer").clicked() {
+                        glue5_mods::start(&m.name);
+                    }
+                });
+            }
+            Some(_) => {
+                muted(ui, "Glue Trainer is starting. Its touch controls will appear here when its menu is ready.");
+            }
+            None => {
+                muted(ui, "Glue Trainer is not installed. Enable Mods and install the bundled trainer before opening this tab.");
+            }
+        }
         return;
     }
     for menu in &menus {
