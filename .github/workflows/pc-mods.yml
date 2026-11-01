@@ -1,0 +1,49 @@
+name: PC mod loader checks
+
+on:
+  push:
+    branches: [feature/pc-mod-loader]
+    paths:
+      - "crates/glue5-mods/**"
+      - "crates/glue5-runtime/**"
+      - "crates/glue5/src/ui/mods.rs"
+      - "crates/glue5-game/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".mise/**"
+      - ".github/workflows/pc-mods.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pc-mod-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PLATFORM: linux-x86_64
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Fetch the private game.wasm from the draft release
+        id: game
+        run: |
+          mkdir -p "$RUNNER_TEMP/game"
+          .github/scripts/draft.sh fetch "$RUNNER_TEMP/game"
+          echo "GLUE5_GAME_DIR=$RUNNER_TEMP/game" >> "$GITHUB_ENV"
+      - uses: jdx/mise-action@v2
+        with:
+          version: 2026.7.5
+          install: true
+          install_args: rust cmake
+      - name: Prepare pinned third-party dependencies
+        run: mise run setup
+      - name: Test PC mod importer and DLC scanner
+        run: cargo test --locked -p glue5-mods
