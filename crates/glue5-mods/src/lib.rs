@@ -14,6 +14,7 @@ mod json;
 mod menus;
 pub mod natives;
 pub mod pc_mods;
+pub mod rpf_archive;
 pub mod placement_mod;
 mod storage;
 pub mod studio;
@@ -271,6 +272,11 @@ pub fn install_zip(name: &str, bytes: &[u8]) -> Result<(), String> {
 /// This does not mount RPF archives, register assets, or execute ASI/DLL files.
 pub fn install_pc_package(name: &str, bytes: &[u8]) -> Result<pc_mods::PackageReport, String> {
     pc_mods::install_package(name, bytes)
+}
+
+/// Parses an RPF archive TOC. This does not mount it into the game VFS.
+pub fn inspect_rpf_archive(name: &str, bytes: &[u8]) -> Result<rpf_archive::RpfReport, String> {
+    rpf_archive::inspect(name, bytes)
 }
 
 /// Imports a supported JSON object-placement map as a disabled-by-default
