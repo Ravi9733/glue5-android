@@ -1,9 +1,9 @@
 --!strict
--- Glue Trainer: GLUE 5's trainer. Looks, vehicles, teleports, the world, the camera
--- and other players, from the Mods page's MENUS (F7), the Studio, or its own key (F4).
+-- Glue Trainer: GLUE 5's touch-accessible trainer. Looks, vehicles, teleports, the world, the camera
+-- and other players, from Mods > NATIVE TRAINER; an optional key binding can also open it.
 --
 -- Each feature area is a module of features/ with a build(root) that adds its submenu; core/
--- holds what they share (preferences, the per-frame loop, features and key bindings, the game's catalog.
+-- holds what they share (preferences, the per-frame loop, features and key bindings, the game's catalog).
 
 local keys = require("./core/keys")
 local loop = require("./core/loop")
@@ -16,7 +16,7 @@ end)
 
 hub.rows(root)
 
--- Put this first so it is immediately visible in the F7 menu.
+-- Put this first so it is immediately visible in the touch trainer menu.
 require("./features/customs").build(root, "Car Customizer")
 
 for _, feature in {
