@@ -72,7 +72,7 @@ fn overlaid(client: &Client, id: u32) -> Option<&'static File> {
         append_pc_package_overlays(client, &mut files);
         files
     });
-    files.iter().find(|(i, _)| *i == id).map(|(_, f)| f)
+    files.iter().rev().find(|(i, _)| *i == id).map(|(_, f)| f)
 }
 
 const MAX_PC_OVERLAY_FILES: usize = 50_000;
@@ -117,7 +117,6 @@ fn append_pc_package_overlays(client: &Client, files: &mut Vec<(u32, File)>) {
         rt().config.game_dir.join("mods/.pc-packages"),
         rt().config.user_dir.join("mods/.pc-packages"),
     ];
-    roots.sort();
     let mut replacements = HashMap::new();
     let mut visited = 0usize;
     for root in roots {
