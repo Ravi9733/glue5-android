@@ -402,3 +402,57 @@ pub fn install_package(name: &str, bytes: &[u8]) -> Result<PackageReport, String
     }
     result.map(|()| report)
 }
+
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstalledPackage {
+    pub name: String,
+    pub files: usize,
+    pub unpacked_bytes: u64,
+}
+
+/// Lists safely installed PC package directories. Hidden staging folders are ignored.
+pub fn installed_packages() -> Result<Vec<InstalledPackage>, String> {
+    let root = crate::dir().ok_or("mods are off")?.join(".pc-packages");
+    if !root.is_dir() { return Ok(Vec::new()); }
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&root).map_err(|e| format!("PC package directory: {e}"))? {
+        let entry = entry.map_err(|e| format!("PC package entry: {e}"))?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') || !entry.path().is_dir() { continue; }
+        let mut files = 0usize;
+        let mut bytes = 0u64;
+        let mut stack = vec![entry.path()];
+        while let Some(dir) = stack.pop() {
+            for child in std::fs::read_dir(dir).map_err(|e| format!("scan package {name}: {e}"))? {
+                let child = child.map_err(|e| format!("scan package {name}: {e}"))?;
+                let ty = child.file_type().map_err(|e| format!("scan package {name}: {e}"))?;
+                if ty.is_symlink() { return Err(format!("package {name} contains a symbolic link")); }
+                if ty.is_dir() { stack.push(child.path()); }
+                else if ty.is_file() {
+                    files += 1;
+                    bytes = bytes.saturating_add(child.metadata().map_err(|e| e.to_string())?.len());
+                }
+            }
+        }
+        out.push(InstalledPackage { name, files, unpacked_bytes: bytes });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+/// Removes one isolated PC package. Names are validated and the target is
+/// constrained to the dedicated .pc-packages directory.
+pub fn uninstall_package(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.len() > 40
+        || !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+    {
+        return Err("invalid PC package name".into());
+    }
+    let root = crate::dir().ok_or("mods are off")?.join(".pc-packages");
+    let target = root.join(name);
+    if !target.is_dir() { return Err(format!("PC package {name} not found")); }
+    std::fs::remove_dir_all(&target).map_err(|e| format!("remove PC package {name}: {e}"))?;
+    crate::changed(&format!(".pc-packages/{name}/"));
+    Ok(())
+}
