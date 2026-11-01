@@ -109,8 +109,19 @@ fn process_android_pc_import() {
                 Ok(format!("Imported {name}: {} of {} YMAPs, {} object placements; skipped {} maps; {} warnings", report.imported_maps, report.maps_found, report.entities, report.skipped_maps, report.warnings.len()))
             } else {
                 let name = format!("pc_mod_{stamp}");
+                // Inspect native vehicle-pack structure before installing the
+                // ZIP. This is a compatibility report, not asset registration.
+                let vehicle = glue5_mods::vehicle_packs::inspect_zip(&bytes)?;
                 let report = glue5_mods::install_pc_package(&name, &bytes)?;
-                Ok(format!("Imported {name}: {:?}, {} files", report.kind, report.entries))
+                let mut message = format!(
+                    "Imported {name}: {:?}, {} files. {}",
+                    report.kind, report.entries, vehicle.summary()
+                );
+                for note in &vehicle.notes {
+                    message.push_str("; ");
+                    message.push_str(note);
+                }
+                Ok(message)
             }
         })();
         match result {
