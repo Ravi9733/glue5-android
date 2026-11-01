@@ -261,9 +261,9 @@ mod tests {
         let pack = root.join("pc_pack/dlcpacks/testcar");
         std::fs::create_dir_all(&pack).unwrap();
         let mut builder = RpfBuilder::new(RpfEncryption::Open);
-        builder.add_file("setup2.xml", br#"<SSetupData><order value="7"/></SSetupData>"#);
-        builder.add_file("vehicles/testcar.yft", b"dummy-yft");
-        builder.add_file("vehicles/testcar.ytd", b"dummy-ytd");
+        builder.add_file("setup2.xml", br#"<SSetupData><order value="7"/></SSetupData>"#.to_vec());
+        builder.add_file("vehicles/testcar.yft", b"dummy-yft".to_vec());
+        builder.add_file("vehicles/testcar.ytd", b"dummy-ytd".to_vec());
         let bytes = builder.build(None).unwrap();
         let mut file = std::fs::File::create(pack.join("dlc.rpf")).unwrap();
         file.write_all(&bytes).unwrap();
@@ -286,7 +286,7 @@ mod tests {
         std::fs::write(root.join("pc_pack/dlclist.xml"),
             br#"<SMandatoryPacksData><Paths><Item>dlcpacks:/testcar/</Item></Paths></SMandatoryPacksData>"#).unwrap();
         let mut builder = RpfBuilder::new(RpfEncryption::Open);
-        builder.add_file("setup2.xml", br#"<SSetupData><order value="2"/></SSetupData>"#);
+        builder.add_file("setup2.xml", br#"<SSetupData><order value="2"/></SSetupData>"#.to_vec());
         let bytes = builder.build(None).unwrap();
         std::fs::write(pack.join("dlc.rpf"), bytes).unwrap();
 
