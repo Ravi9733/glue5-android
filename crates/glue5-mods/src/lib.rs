@@ -10,6 +10,7 @@
 mod checker;
 mod engine;
 pub mod files;
+pub mod dlc;
 mod json;
 mod menus;
 pub mod natives;
@@ -287,6 +288,12 @@ pub fn uninstall_pc_package(name: &str) -> Result<(), String> {
 /// Parses an RPF archive TOC. This does not mount it into the game VFS.
 pub fn inspect_rpf_archive(name: &str, bytes: &[u8]) -> Result<rpf_archive::RpfReport, String> {
     rpf_archive::inspect(name, bytes)
+}
+
+/// Scans imported PC packages for add-on DLC archives and setup2.xml order.
+/// This is metadata discovery only; it does not register DLC packs with RAGE.
+pub fn scan_pc_dlc_packages() -> Result<dlc::DlcScanReport, String> {
+    dlc::scan_installed()
 }
 
 /// Imports a supported JSON object-placement map as a disabled-by-default
