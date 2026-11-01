@@ -21,12 +21,30 @@ pub fn compile(report: &PlacementReport) -> String {
         );
     }
     out.push_str(
-        "}\n\n         local created = 0\n         local failed = 0\n         for index, placement in placements do
-        \tlocal model = joaat(placement.model)
-        \tif streaming.load(model) then
-        \t\tlocal position = vector.create(placement.x, placement.y, placement.z)
-        \t\tlocal objectHandle = object.createObject(model, position, false, false, false)
-        \t\tstreaming.setModelAsNoLongerNeeded(model)\n         \t\tif objectHandle then\n         \t\t\tentity.setEntityHeading(objectHandle, placement.heading)\n         \t\t\tcreated += 1\n         \t\telse\n         \t\t\tfailed += 1\n         \t\tend\n         \telse\n         \t\tfailed += 1\n         \tend\n         \tif index % 4 == 0 then task.wait(0) end\n         end\n         print(`PC map finished: {created} objects created, {failed} failed`)\n",
+        r#"}
+local created = 0
+local failed = 0
+for index, placement in placements do
+    local model = joaat(placement.model)
+    if streaming.load(model) then
+        local position = vector.create(placement.x, placement.y, placement.z)
+        local objectHandle = object.createObject(model, position, false, false, false)
+        streaming.setModelAsNoLongerNeeded(model)
+        if objectHandle then
+            entity.setEntityHeading(objectHandle, placement.heading)
+            created += 1
+        else
+            failed += 1
+        end
+    else
+        failed += 1
+    end
+    if index % 4 == 0 then
+        task.wait(0)
+    end
+end
+print(`PC map finished: {created} objects created, {failed} failed`)
+"#,
     );
     out
 }
