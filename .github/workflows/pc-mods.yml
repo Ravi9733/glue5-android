@@ -47,7 +47,7 @@ jobs:
       - name: Compile PC mod loader and commit any lockfile update
         run: |
           set +e
-          cargo check -p glue5-mods
+          cargo check -p glue5-mods -p glue5-runtime
           check_status=$?
           set -e
           if ! git diff --quiet -- Cargo.lock; then
@@ -59,4 +59,4 @@ jobs:
           fi
           exit "$check_status"
       - name: Test PC mod importer and DLC scanner
-        run: cargo test --locked -p glue5-mods
+        run: cargo test --locked -p glue5-mods -p glue5-runtime
