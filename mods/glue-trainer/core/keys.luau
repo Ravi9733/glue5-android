@@ -3,7 +3,7 @@
 -- (prefs.keys, editable in Settings or settings.json). Keys reach the trainer while no page of
 -- the app is open.
 
-local prefs = require("./prefs")
+local prefs = require("./core/prefs")
 
 export type Action = { name: string, label: string, run: () -> () }
 
