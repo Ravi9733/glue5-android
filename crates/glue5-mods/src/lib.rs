@@ -266,6 +266,12 @@ pub fn install_zip(name: &str, bytes: &[u8]) -> Result<(), String> {
     zip_import::install(name, bytes)
 }
 
+/// Safely imports a PC-style package into the isolated .pc-packages area.
+/// This does not mount RPF archives, register assets, or execute ASI/DLL files.
+pub fn install_pc_package(name: &str, bytes: &[u8]) -> Result<pc_mods::PackageReport, String> {
+    pc_mods::install_package(name, bytes)
+}
+
 /// Reads the mods folder again (new or removed mods).
 pub fn refresh() {
     let Some(dir) = dir() else { return };
