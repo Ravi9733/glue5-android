@@ -14,6 +14,7 @@ mod json;
 mod menus;
 pub mod natives;
 pub mod pc_mods;
+pub mod placement_mod;
 mod storage;
 pub mod studio;
 pub mod vehicle_packs;
@@ -270,6 +271,12 @@ pub fn install_zip(name: &str, bytes: &[u8]) -> Result<(), String> {
 /// This does not mount RPF archives, register assets, or execute ASI/DLL files.
 pub fn install_pc_package(name: &str, bytes: &[u8]) -> Result<pc_mods::PackageReport, String> {
     pc_mods::install_package(name, bytes)
+}
+
+/// Imports a supported JSON object-placement map as a disabled-by-default
+/// Luau mod. Models must already be available in the game's loaded assets.
+pub fn install_placement_mod(name: &str, bytes: &[u8]) -> Result<usize, String> {
+    placement_mod::install(name, bytes)
 }
 
 /// Reads the mods folder again (new or removed mods).
