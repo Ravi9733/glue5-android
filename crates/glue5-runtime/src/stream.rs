@@ -36,7 +36,10 @@ pub(crate) fn hooks(hooks: &mut glue5_game::Hooks) {
 /// paths keep their file IDs; new loose files are appended and served locally.
 pub(crate) fn manifest() -> Option<&'static [u8]> {
     let client = client()?;
-    Some(&overlay_state(client).manifest)
+    if client.engine_manifest().is_none() {
+        return None;
+    }
+    Some(&overlay_state(client)?.manifest)
 }
 
 struct StreamOverlay {
@@ -44,9 +47,12 @@ struct StreamOverlay {
     files: std::collections::HashMap<u32, File>,
 }
 
-fn overlay_state(client: &Client) -> &'static StreamOverlay {
+fn overlay_state(client: &Client) -> Option<&'static StreamOverlay> {
+    if client.engine_manifest().is_none() {
+        return None;
+    }
     static STATE: OnceLock<StreamOverlay> = OnceLock::new();
-    STATE.get_or_init(|| build_overlay_state(client))
+    Some(STATE.get_or_init(|| build_overlay_state(client)))
 }
 
 fn build_overlay_state(client: &Client) -> StreamOverlay {
@@ -243,7 +249,7 @@ mod manifest_tests {
 unsafe extern "C" fn pread(env: *mut Env, id: u32, offset: u64, dst: u64, len: u32) -> u32 {
     let Some(client) = client() else { return u32::MAX };
     let buf = unsafe { Mem::of(env) }.bytes_mut(dst, len as usize);
-    if let Some(file) = overlay_state(client).files.get(&id) {
+    if let Some(file) = overlay_state(client).and_then(|state| state.files.get(&id)) {
         return read_at(file, buf, offset).map_or(u32::MAX, |n| n as u32);
     }
     client.read(id, offset, buf).map_or(u32::MAX, |n| n as u32)
