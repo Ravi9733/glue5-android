@@ -647,6 +647,26 @@ fn devices() {
 mod package_overlay_tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn index_does_not_follow_symlinks_outside_package_root() {
+        use std::os::unix::fs::symlink;
+
+        let dir = std::env::temp_dir().join(format!("glue5-vfs-symlink-{}", std::process::id()));
+        let package = dir.join("package");
+        let outside = dir.join("outside");
+        fs::create_dir_all(&package).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.ytd"), b"not part of package").unwrap();
+        symlink(&outside, package.join("external")).unwrap();
+
+        let mut indexed = HashMap::new();
+        index(&package, "", &mut indexed).unwrap();
+        assert!(indexed.is_empty());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn overlay_files_are_visible_to_path_lookup_and_directory_scans() {
         let dir = std::env::temp_dir().join(format!("glue5-vfs-overlay-list-{}", std::process::id()));
