@@ -278,11 +278,13 @@ pub fn start(config: Config, gpu: gpu::GpuBackend) -> Result<Game> {
             config.user_dir.join("mods/.pc-packages"),
         ] {
             if root.is_dir() {
-                for package in std::fs::read_dir(&root).into_iter().flatten().flatten() {
-                    let path = package.path();
-                    if path.is_dir() {
-                        if let Err(e) = vfs.mount_game_overlay(&path) {
-                            log::warn!("pc mods: cannot mount package files from {}: {e}", path.display());
+                if let Ok(packages) = std::fs::read_dir(&root) {
+                    for package in packages.flatten() {
+                        let path = package.path();
+                        if path.is_dir() {
+                            if let Err(e) = vfs.mount_game_overlay(&path) {
+                                log::warn!("pc mods: cannot mount package files from {}: {e}", path.display());
+                            }
                         }
                     }
                 }
