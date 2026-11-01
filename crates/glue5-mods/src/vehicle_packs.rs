@@ -215,9 +215,7 @@ mod tests {
     fn rejects_symlink_entries() {
         let cursor = Cursor::new(Vec::new());
         let mut writer = zip::ZipWriter::new(cursor);
-        let options = SimpleFileOptions::default().unix_permissions(0o120777);
-        writer.start_file("car.yft", options).unwrap();
-        writer.write_all(b"target").unwrap();
+        writer.add_symlink("car.yft", "target", SimpleFileOptions::default()).unwrap();
         let bytes = writer.finish().unwrap().into_inner();
         assert!(inspect_zip(&bytes).unwrap_err().contains("Symbolic links"));
     }
