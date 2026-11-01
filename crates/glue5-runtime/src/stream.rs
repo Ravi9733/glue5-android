@@ -154,22 +154,11 @@ fn build_overlay_state(client: &Client) -> StreamOverlay {
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
             .map_or(0, |duration| duration.as_secs());
 
-        let id = match client.find(&format!("data/{relative}")).filter(|id| (*id as usize) < base_count) {
-            Some(id) => {
-                let Some(entry) = entries.get_mut(id as usize) else { continue };
-                let canonical = entry.as_array().and_then(|array| array.first())
-                    .and_then(serde_json::Value::as_str).unwrap_or(&relative).to_owned();
-                *entry = serde_json::json!([canonical, size, mtime]);
-                replaced += 1;
-                id
-            }
-            None => {
-                let id = entries.len() as u32;
-                entries.push(serde_json::json!([relative, size, mtime]));
-                added += 1;
-                id
-            }
-        };
+        let base_id = client.find(&format!("data/{relative}"));
+        let Some((id, is_new)) = register_manifest_entry(
+            entries, base_count, base_id, &relative, size, mtime
+        ) else { continue };
+        if is_new { added += 1; } else { replaced += 1; }
         digest.update(relative.as_bytes());
         digest.update(size.to_le_bytes());
         digest.update(mtime.to_le_bytes());
@@ -193,6 +182,57 @@ fn build_overlay_state(client: &Client) -> StreamOverlay {
         base_bytes.to_vec()
     });
     StreamOverlay { manifest: bytes, files }
+}
+
+/// Update an existing engine-manifest entry or append a package-only path.
+/// Returns the file ID and whether a new manifest entry was created.
+fn register_manifest_entry(
+    entries: &mut Vec<serde_json::Value>,
+    base_count: usize,
+    base_id: Option<u32>,
+    relative: &str,
+    size: u64,
+    mtime: u64,
+) -> Option<(u32, bool)> {
+    if let Some(id) = base_id.filter(|id| (*id as usize) < base_count) {
+        let entry = entries.get_mut(id as usize)?;
+        let canonical = entry.as_array().and_then(|array| array.first())
+            .and_then(serde_json::Value::as_str).unwrap_or(relative).to_owned();
+        *entry = serde_json::json!([canonical, size, mtime]);
+        Some((id, false))
+    } else {
+        let id = u32::try_from(entries.len()).ok()?;
+        entries.push(serde_json::json!([relative, size, mtime]));
+        Some((id, true))
+    }
+}
+
+#[cfg(test)]
+mod manifest_tests {
+    use super::*;
+
+    #[test]
+    fn replacement_updates_size_and_mtime_without_changing_id_or_path() {
+        let mut entries = vec![serde_json::json!(["update/update.rpf", 100, 10])];
+        let result = register_manifest_entry(&mut entries, 1, Some(0), "UPDATE/UPDATE.RPF", 250, 20);
+        assert_eq!(result, Some((0, false)));
+        assert_eq!(entries[0], serde_json::json!(["update/update.rpf", 250, 20]));
+    }
+
+    #[test]
+    fn new_package_path_is_appended_after_engine_files() {
+        let mut entries = vec![serde_json::json!(["common.rpf", 100, 10])];
+        let result = register_manifest_entry(&mut entries, 1, None, "dlcpacks/new/dlc.rpf", 300, 30);
+        assert_eq!(result, Some((1, true)));
+        assert_eq!(entries[1], serde_json::json!(["dlcpacks/new/dlc.rpf", 300, 30]));
+    }
+
+    #[test]
+    fn non_engine_catalog_id_is_appended_as_a_new_game_path() {
+        let mut entries = vec![serde_json::json!(["common.rpf", 100, 10])];
+        let result = register_manifest_entry(&mut entries, 1, Some(99), "dlcpacks/new/dlc.rpf", 300, 30);
+        assert_eq!(result, Some((1, true)));
+    }
 }
 
 /// Hook for wasm_httpfs_pread(id, offset, dst, len): bytes read, or -1
