@@ -112,7 +112,7 @@ fn process_android_pc_import() {
 #[cfg(not(target_os = "android"))]
 fn process_android_pc_import() {}
 
-fn android_pc_import_controls(ui: &mut egui::Ui, settings: &mut Settings) {
+fn android_pc_import_controls(ui: &mut egui::Ui, settings: &mut Settings, game_running: bool) {
     panel(ui, |ui| {
         card_title(ui, "IMPORT PC MODS", None);
         small(ui, "Choose a PC mod ZIP or a supported JSON object-placement map. ZIP import stores files safely; it does not make RPF/YFT/YTD assets load in-game yet.", theme::MUTED);
@@ -140,11 +140,22 @@ fn android_pc_import_controls(ui: &mut egui::Ui, settings: &mut Settings) {
                 small(ui, "INSTALLED PC PACKAGES · applied at next game launch", theme::MUTED);
                 for package in packages {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(package.name).size(13.0 * theme::density(ui)).color(Color32::WHITE));
+                        ui.label(RichText::new(&package.name).size(13.0 * theme::density(ui)).color(Color32::WHITE));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.label(RichText::new(format!("{} files · {:.1} MiB", package.files, package.unpacked_bytes as f64 / 1_048_576.0)).size(11.0 * theme::density(ui)).color(theme::MUTED));
+                            if game_running {
+                                ui.add_enabled(false, egui::Button::new("Remove"));
+                            } else if inline_button(ui, "Remove").clicked() {
+                                match glue5_mods::uninstall_pc_package(&package.name) {
+                                    Ok(()) => log::info!("PC package {} removed; it will no longer mount next launch.", package.name),
+                                    Err(error) => log::warn!("PC package {} could not be removed: {error}", package.name),
+                                }
+                            }
                         });
                     });
+                }
+                if game_running {
+                    small(ui, "Stop the game before removing an imported package.", theme::MUTED);
                 }
             }
             Ok(_) => small(ui, "No PC ZIP packages imported yet.", theme::MUTED),
@@ -181,7 +192,7 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
             toggle(ui, &mut settings.mods);
         });
         ui.add_space(6.0 * theme::density(ui));
-        android_pc_import_controls(ui, settings);
+        android_pc_import_controls(ui, settings, status.started.is_some());
         if !settings.mods && !status.mods {
             ui.add_space(4.0 * scale);
             panel(ui, |ui| {
