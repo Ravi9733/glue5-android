@@ -155,7 +155,7 @@ fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: 
             for pack in &report.packs {
                 let registration = if pack.registered_in_imported_dlclist { "listed in imported dlclist" } else { "not listed in imported dlclist" };
                 let order = pack.setup_order.map(|value| format!("order {value}")).unwrap_or_else(|| "order unavailable".to_owned());
-                small(ui, &format!("{} · {} · {} · {} YFT / {} YTD", pack.name, order, registration, pack.yft_files, pack.ytd_files), theme::MUTED);
+                small(ui, &format!("{} · {} · {} · {} YFT / {} YTD · parsed {}/{} · invalid {}", pack.name, order, registration, pack.yft_files, pack.ytd_files, pack.valid_yft_files + pack.valid_ytd_files, pack.yft_files + pack.ytd_files, pack.invalid_asset_files), theme::MUTED);
             }
             for warning in report.warnings.iter().take(8) {
                 small(ui, warning, WARN);
