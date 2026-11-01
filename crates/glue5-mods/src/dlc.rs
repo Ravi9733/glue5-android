@@ -26,6 +26,7 @@ pub struct DlcPackInfo {
     pub valid_yft_files: usize,
     pub valid_ytd_files: usize,
     pub invalid_asset_files: usize,
+    pub unverified_asset_files: usize,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -170,16 +171,16 @@ pub fn scan_root(root: &Path) -> Result<DlcScanReport, String> {
 
             let yft_files = entries.iter().filter(|file| file.path.ends_with(".yft")).count();
             let ytd_files = entries.iter().filter(|file| file.path.ends_with(".ytd")).count();
-            let (mut valid_yft_files, mut valid_ytd_files, mut invalid_asset_files) = (0, 0, 0);
+            let (mut valid_yft_files, mut valid_ytd_files, mut invalid_asset_files, mut unverified_asset_files) = (0, 0, 0, 0);
             if !matches!(archive.encryption, RpfEncryption::Aes | RpfEncryption::Ng) {
                 for file in entries.iter().filter(|file| file.path.ends_with(".yft") || file.path.ends_with(".ytd")) {
                     if file.mem_size as u64 > 64 * 1024 * 1024 {
-                        invalid_asset_files += 1;
+                        unverified_asset_files += 1;
                         report.warnings.push(format!("{}: {} exceeds the 64 MiB asset validation limit", path.display(), file.path));
                         continue;
                     }
                     let Some(entry) = archive.entries.get(file.entry_index) else {
-                        invalid_asset_files += 1;
+                        unverified_asset_files += 1;
                         continue;
                     };
                     match archive.extract_entry(&bytes, entry, None) {
@@ -198,13 +199,13 @@ pub fn scan_root(root: &Path) -> Result<DlcScanReport, String> {
                             }
                         }
                         Err(e) => {
-                            invalid_asset_files += 1;
+                            unverified_asset_files += 1;
                             report.warnings.push(format!("{}: cannot extract {}: {e}", path.display(), file.path));
                         }
                     }
                 }
             } else {
-                invalid_asset_files = yft_files + ytd_files;
+                unverified_asset_files = yft_files + ytd_files;
             }
             let archive_path = path.strip_prefix(&package_dir).unwrap_or(&path).display().to_string();
             report.packs.push(DlcPackInfo {
@@ -218,6 +219,7 @@ pub fn scan_root(root: &Path) -> Result<DlcScanReport, String> {
                 valid_yft_files,
                 valid_ytd_files,
                 invalid_asset_files,
+                unverified_asset_files,
             });
         }
     }
