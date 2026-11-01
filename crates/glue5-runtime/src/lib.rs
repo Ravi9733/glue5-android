@@ -268,7 +268,27 @@ pub fn start(config: Config, gpu: gpu::GpuBackend) -> Result<Game> {
     time::fine_timers();
     // Streaming, the engine's HTTP device serves /game (stream.rs).
     let game_files = config.stream.is_none().then(|| data.clone());
-    let vfs = Vfs::new(game_files, config.user_dir.clone()).with_context(|| format!("opening {}", data.display()))?;
+    let mut vfs = Vfs::new(game_files, config.user_dir.clone()).with_context(|| format!("opening {}", data.display()))?;
+    // Imported packages are kept outside the game's data tree. For local game
+    // folders, expose their loose files under /game without overwriting originals.
+    // The streamed HTTP device has its own manifest/read path and is not overlaid here.
+    if config.stream.is_none() {
+        for root in [
+            config.game_dir.join("mods/.pc-packages"),
+            config.user_dir.join("mods/.pc-packages"),
+        ] {
+            if root.is_dir() {
+                for package in std::fs::read_dir(&root).into_iter().flatten().flatten() {
+                    let path = package.path();
+                    if path.is_dir() {
+                        if let Err(e) = vfs.mount_game_overlay(&path) {
+                            log::warn!("pc mods: cannot mount package files from {}: {e}", path.display());
+                        }
+                    }
+                }
+            }
+        }
+    }
     let memory = WasmMemory::reserve()?;
     let runtime = Runtime {
         config,
