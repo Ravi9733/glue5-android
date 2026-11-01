@@ -31,106 +31,103 @@ pub(crate) fn hooks(hooks: &mut glue5_game::Hooks) {
     }
 }
 
-/// The manifest `wasm_httpfs_manifest_js` gives the engine, when streaming.
+/// The manifest wasm_httpfs_manifest_js gives the engine, when streaming.
+/// Imported package paths are merged into this per-launch manifest. Existing
+/// paths keep their file IDs; new loose files are appended and served locally.
 pub(crate) fn manifest() -> Option<&'static [u8]> {
-    client()?.engine_manifest()
+    let client = client()?;
+    Some(&overlay_state(client).manifest)
 }
 
-/// Hook for `wasm_httpfs_pread(id, offset, dst, len)`: bytes read, or -1
-/// (the engine tries again).
-unsafe extern "C" fn pread(env: *mut Env, id: u32, offset: u64, dst: u64, len: u32) -> u32 {
-    let Some(client) = client() else { return u32::MAX };
-    let buf = unsafe { Mem::of(env) }.bytes_mut(dst, len as usize);
-    if let Some(file) = overlaid(client, id) {
-        return read_at(file, buf, offset).map_or(u32::MAX, |n| n as u32);
-    }
-    client.read(id, offset, buf).map_or(u32::MAX, |n| n as u32)
+struct StreamOverlay {
+    manifest: Vec<u8>,
+    files: std::collections::HashMap<u32, File>,
 }
 
-/// The files the runtime changes on their way to the engine
-/// ([`crate::overlay`]), read from their changed copies.
-fn overlaid(client: &Client, id: u32) -> Option<&'static File> {
-    static FILES: OnceLock<Vec<(u32, File)>> = OnceLock::new();
-    let files = FILES.get_or_init(|| {
-        let scratch = rt().config.user_dir.join("fsroot");
-        let mut files = Vec::new();
-        for name in crate::overlay::names() {
-            let Some(id) = client.find(&format!("data/{name}")) else { continue };
-            let Some(real) = client.path(id) else { continue };
-            // The pack brought the whole file (it is a small XML file).
-            if let Some(changed) = crate::overlay::game_file(name, &real, &scratch)
-                && let Ok(f) = File::open(&changed)
-            {
-                files.push((id, f));
-            }
-        }
-
-        // Streamed games normally read /game through HTTPFS, not VFS. Route
-        // replacement files from imported PC packages through the same file-id
-        // read hook. Only paths already present in the stream manifest can be
-        // replaced here; brand-new DLC paths still need manifest/engine support.
-        append_pc_package_overlays(client, &mut files);
-        files
-    });
-    files.iter().rev().find(|(i, _)| *i == id).map(|(_, f)| f)
+fn overlay_state(client: &Client) -> &'static StreamOverlay {
+    static STATE: OnceLock<StreamOverlay> = OnceLock::new();
+    STATE.get_or_init(|| build_overlay_state(client))
 }
 
-const MAX_PC_OVERLAY_FILES: usize = 50_000;
-
-/// Add package files whose game-relative paths already exist in the HTTPFS
-/// manifest. The stream's manifest owns file IDs, so this cannot introduce a
-/// brand-new path; it can safely replace bytes for an existing path.
-fn append_pc_package_overlays(client: &Client, files: &mut Vec<(u32, File)>) {
-    use std::collections::HashMap;
+fn build_overlay_state(client: &Client) -> StreamOverlay {
+    use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
+    use std::time::UNIX_EPOCH;
+    use sha2::{Digest, Sha256};
 
+    let Some(base_bytes) = client.engine_manifest() else {
+        return StreamOverlay { manifest: Vec::new(), files: Default::default() };
+    };
+    let mut manifest: serde_json::Value = match serde_json::from_slice(base_bytes) {
+        Ok(value) => value,
+        Err(error) => {
+            log::warn!("stream: cannot parse engine manifest for PC overlays: {error}");
+            return StreamOverlay { manifest: base_bytes.to_vec(), files: Default::default() };
+        }
+    };
+    let Some(entries) = manifest.get_mut("files").and_then(serde_json::Value::as_array_mut) else {
+        log::warn!("stream: engine manifest has no files array; PC overlays disabled");
+        return StreamOverlay { manifest: base_bytes.to_vec(), files: Default::default() };
+    };
+    let base_count = client.engine_file_count().unwrap_or(entries.len());
+    if entries.len() != base_count {
+        log::warn!("stream: engine manifest count does not match catalog; PC overlays disabled");
+        return StreamOverlay { manifest: base_bytes.to_vec(), files: Default::default() };
+    }
+
+    // Lowercase keys make package priority case-insensitive. Later packages
+    // replace earlier ones, matching the local VFS overlay's last-mount-wins rule.
+    let mut candidates: BTreeMap<String, (String, PathBuf)> = BTreeMap::new();
+
+    // Keep Glue5's own XML changes, but let an imported package override them.
+    let scratch = rt().config.user_dir.join("fsroot");
+    for name in crate::overlay::names() {
+        let Some(id) = client.find(&format!("data/{name}")) else { continue };
+        if id as usize >= base_count { continue; }
+        let Some(real) = client.path(id) else { continue };
+        if let Some(changed) = crate::overlay::game_file(name, &real, &scratch) {
+            candidates.insert(name.to_ascii_lowercase(), (name.to_owned(), changed));
+        }
+    }
+
+    const MAX_PC_OVERLAY_FILES: usize = 50_000;
     fn visit(
         root: &Path,
         dir: &Path,
-        client: &Client,
-        out: &mut HashMap<u32, File>,
+        out: &mut BTreeMap<String, (String, PathBuf)>,
         visited: &mut usize,
     ) {
         let Ok(entries) = std::fs::read_dir(dir) else { return };
         let mut entries = entries.flatten().collect::<Vec<_>>();
         entries.sort_by_key(|entry| entry.file_name());
         for entry in entries {
+            if *visited >= MAX_PC_OVERLAY_FILES { return; }
             let path = entry.path();
             let Ok(kind) = entry.file_type() else { continue };
             if kind.is_symlink() { continue; }
             if kind.is_dir() {
-                visit(root, &path, client, out, visited);
+                visit(root, &path, out, visited);
                 continue;
             }
-            if !kind.is_file() || *visited >= MAX_PC_OVERLAY_FILES { continue; }
+            if !kind.is_file() { continue; }
             *visited += 1;
             let Ok(relative) = path.strip_prefix(root) else { continue };
             let relative = relative.to_string_lossy().replace('\\', "/");
-            let Some(id) = client.find(&format!("data/{relative}")) else { continue };
-            // HTTPFS keeps the base catalog's size. Replacing a streamed file
-            // with a different length would make the engine's manifest stale,
-            // so only same-size replacements are safe until catalog merging
-            // is implemented.
-            let Some(expected_size) = client.file_size(id) else { continue };
-            let Ok(metadata) = std::fs::metadata(&path) else { continue };
-            if metadata.len() != expected_size {
-                log::debug!(
-                    "stream: skip PC overlay {relative}: {} bytes, catalog expects {expected_size}",
-                    metadata.len()
-                );
+            if relative.is_empty()
+                || relative.split('/').any(|part| part.is_empty() || part == "." || part == ".." || part.starts_with('.'))
+            {
                 continue;
             }
-            if let Ok(file) = File::open(&path) {
-                out.insert(id, file);
-            }
+            out.insert(relative.to_ascii_lowercase(), (relative, path));
         }
     }
 
-    let mut roots = vec![
+    // Scan installed packages in stable order. A package in user_dir is
+    // visited after game_dir and therefore has the higher overlay priority.
+    let roots = [
         rt().config.game_dir.join("mods/.pc-packages"),
         rt().config.user_dir.join("mods/.pc-packages"),
     ];
-    let mut replacements = HashMap::new();
     let mut visited = 0usize;
     for root in roots {
         let Ok(packages) = std::fs::read_dir(&root) else { continue };
@@ -140,15 +137,73 @@ fn append_pc_package_overlays(client: &Client, files: &mut Vec<(u32, File)>) {
             .collect::<Vec<PathBuf>>();
         packages.sort();
         for package in packages {
-            visit(&package, &package, client, &mut replacements, &mut visited);
+            visit(&package, &package, &mut candidates, &mut visited);
             if visited >= MAX_PC_OVERLAY_FILES { break; }
         }
         if visited >= MAX_PC_OVERLAY_FILES { break; }
     }
-    if !replacements.is_empty() {
-        log::info!("stream: {} imported PC package files replace existing manifest paths", replacements.len());
-        files.extend(replacements);
+
+    let mut files = std::collections::HashMap::new();
+    let mut digest = Sha256::new();
+    let mut replaced = 0usize;
+    let mut added = 0usize;
+    for (_, (relative, path)) in candidates {
+        let Ok(metadata) = std::fs::metadata(&path) else { continue };
+        let size = metadata.len();
+        let mtime = metadata.modified().ok()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map_or(0, |duration| duration.as_secs());
+
+        let id = match client.find(&format!("data/{relative}")).filter(|id| (*id as usize) < base_count) {
+            Some(id) => {
+                let Some(entry) = entries.get_mut(id as usize) else { continue };
+                let canonical = entry.as_array().and_then(|array| array.first())
+                    .and_then(serde_json::Value::as_str).unwrap_or(&relative).to_owned();
+                *entry = serde_json::json!([canonical, size, mtime]);
+                replaced += 1;
+                id
+            }
+            None => {
+                let id = entries.len() as u32;
+                entries.push(serde_json::json!([relative, size, mtime]));
+                added += 1;
+                id
+            }
+        };
+        digest.update(relative.as_bytes());
+        digest.update(size.to_le_bytes());
+        digest.update(mtime.to_le_bytes());
+        if let Ok(file) = File::open(&path) {
+            files.insert(id, file);
+        }
     }
+
+    if replaced + added > 0 {
+        let version = manifest.get("version").and_then(serde_json::Value::as_str).unwrap_or("base");
+        let hash = digest.finalize();
+        let suffix = hash[..8].iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+        manifest["version"] = serde_json::Value::String(format!("{version}-pcmods-{suffix}"));
+        log::info!(
+            "stream: PC package manifest: {replaced} existing paths replaced, {added} new paths added"
+        );
+    }
+
+    let bytes = serde_json::to_vec(&manifest).unwrap_or_else(|error| {
+        log::warn!("stream: cannot serialize merged manifest: {error}");
+        base_bytes.to_vec()
+    });
+    StreamOverlay { manifest: bytes, files }
+}
+
+/// Hook for wasm_httpfs_pread(id, offset, dst, len): bytes read, or -1
+/// (the engine tries again). Package-only IDs are served from local files.
+unsafe extern "C" fn pread(env: *mut Env, id: u32, offset: u64, dst: u64, len: u32) -> u32 {
+    let Some(client) = client() else { return u32::MAX };
+    let buf = unsafe { Mem::of(env) }.bytes_mut(dst, len as usize);
+    if let Some(file) = overlay_state(client).files.get(&id) {
+        return read_at(file, buf, offset).map_or(u32::MAX, |n| n as u32);
+    }
+    client.read(id, offset, buf).map_or(u32::MAX, |n| n as u32)
 }
 
 /// Called by the engine (`wasm_httpfs_io_start_js`) with the address of its
