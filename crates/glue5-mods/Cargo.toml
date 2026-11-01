@@ -17,6 +17,7 @@ httparse = "1"
 getrandom = "0.4"
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
 rpf-archive = "0.10"
+rage-formats = { version = "0.5.1", default-features = false }
 
 [build-dependencies]
 anyhow.workspace = true
