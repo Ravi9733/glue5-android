@@ -8,6 +8,7 @@ on:
       - "crates/glue5-runtime/**"
       - "crates/glue5-stream/**"
       - "crates/glue5/src/ui/mods.rs"
+      - "platform/android/**"
       - "crates/glue5-game/**"
       - "Cargo.toml"
       - ".mise/**"
@@ -48,7 +49,7 @@ jobs:
       - name: Compile PC mod loader and commit any lockfile update
         run: |
           set +e
-          cargo check -p glue5-mods -p glue5-runtime -p glue5-stream
+          cargo check -p glue5 -p glue5-mods -p glue5-runtime -p glue5-stream
           check_status=$?
           set -e
           if ! git diff --quiet -- Cargo.lock; then
@@ -60,4 +61,4 @@ jobs:
           fi
           exit "$check_status"
       - name: Test PC mod importer and DLC scanner
-        run: cargo test --locked -p glue5-mods -p glue5-runtime -p glue5-stream
+        run: cargo test --locked -p glue5 -p glue5-mods -p glue5-runtime -p glue5-stream
