@@ -54,7 +54,7 @@ pub fn inspect(name: &str, bytes: &[u8]) -> Result<RpfReport, String> {
     };
     for entry in &archive.entries {
         if entry.is_directory() { report.directories += 1; continue; }
-        match entry.kind {
+        match &entry.kind {
             RpfEntryKind::BinaryFile { .. } => report.binary_files += 1,
             RpfEntryKind::ResourceFile { .. } => report.resource_files += 1,
             RpfEntryKind::Directory { .. } => unreachable!(),
