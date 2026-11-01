@@ -25,7 +25,7 @@ concurrency:
 jobs:
   rust-tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
       PLATFORM: linux-x86_64
@@ -33,6 +33,16 @@ jobs:
       MISE_TASK_RUN_AUTO_INSTALL: "false"
     steps:
       - uses: actions/checkout@v5
+      - name: Cache Cargo build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: pc-mods-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            pc-mods-${{ runner.os }}-
       - name: Fetch the private game.wasm from the draft release
         id: game
         run: |
