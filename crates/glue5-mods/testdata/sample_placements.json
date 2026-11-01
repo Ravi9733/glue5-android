@@ -1,0 +1,18 @@
+{
+  "objects": [
+    {
+      "model": "prop_roadcone02b",
+      "x": 1.0,
+      "y": 2.0,
+      "z": 3.0,
+      "heading": 90.0
+    },
+    {
+      "model": "prop_crate_11",
+      "x": 4.0,
+      "y": 2.0,
+      "z": 3.0,
+      "heading": 0.0
+    }
+  ]
+}
