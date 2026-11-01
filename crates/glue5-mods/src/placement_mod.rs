@@ -103,7 +103,8 @@ mod tests {
         )
         .unwrap();
         let script = compile(&report);
-        assert!(script.contains("local model = joaat(placement.model)"));
+        assert!(script.contains("local model = placement.model"));
+        assert!(!script.contains("joaat("));
         assert!(script.contains("streaming.load(model)"));
         assert!(script.contains("object.createObject(model, position, false, false, false)"));
         assert!(script.contains("entity.setEntityHeading(objectHandle, placement.heading)"));
