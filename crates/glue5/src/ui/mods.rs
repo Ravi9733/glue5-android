@@ -26,7 +26,7 @@ pub struct ModsPage {
     tab: Tab,
     confirm_remove: Option<String>,
     dlc_scan: Option<glue5_mods::dlc::DlcScanReport>,
-    pc_import_status: Option<Result<String, String>>, 
+    pc_import_status: Option<Result<String, String>>,
 }
 
 impl ModsPage {
