@@ -9,12 +9,10 @@ wasm-tools dump "$wasm" > "$out/sections.txt"
 wasm-tools print "$wasm" > "$out/module.wat"
 
 # Preserve the full textual module, but also produce compact indexes for review.
-grep -E '\\(import |\\(export |\\(func \\$|\\(memory |\\(table ' \
+grep -E '\(import |\(export |\(func \$|\(memory |\(table ' \
   "$out/module.wat" > "$out/import-export-function-index.txt" || true
 
 # These are search hints only, not proof that a callable hook exists.
-# The WAT/name section and embedded strings are both searched so mangled
-# C++ names and readable engine strings can be reviewed side by side.
 strings -a "$wasm" > "$out/embedded-strings.txt"
 grep -Ein \
   'fwArchetypeManager|GetArchetypeFromHashKey|Archetype|Packfile|Dlc|DLC|Streaming|Streamable|ResourceStore|Rpf|RPF|Yft|Ytd|Vehicle' \
