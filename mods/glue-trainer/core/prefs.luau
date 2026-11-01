@@ -1,27 +1,19 @@
 --!strict
--- The player's preferences: the mod's settings.json (the defaults below with what the player
--- set over them, as mod.settings merges them), written back a moment after the menus change it.
--- Hand-edits of the file count too: it is read at every start.
+-- Preferences use Glue5's supported persistent storage API.
+-- The former mod.settings/mod.write calls are not part of this VM and caused
+-- a nil-call during startup, preventing every trainer menu from being built.
 
 export type Prefs = {
-	-- Key bindings, by action (input key names: "F4", "LeftShift", "PadNorth").
 	keys: { [string]: string },
-	-- Toggles and values come back as they were at the next start.
 	remember: boolean,
-	-- The trainer's own notifications (spawned, teleported...).
 	notify: boolean,
-	-- "km/h" or "mph".
 	speedUnit: string,
-	-- Teleports far away fly there through the sky (game.teleport).
 	flyTeleports: boolean,
-	-- Toggles and values the menus keep (by key), when `remember` is on.
 	state: { [string]: any },
-	-- The features in Favourites, as "Label (Menu)".
 	favourites: { string },
 }
 
 local DEFAULTS: Prefs = {
-	-- Every feature can have one (Settings › Keys); these have one from the start.
 	keys = {
 		menu = "F7",
 		["move.noclip"] = "F6",
@@ -36,37 +28,47 @@ local DEFAULTS: Prefs = {
 	favourites = {},
 }
 
-local prefs = mod.settings(DEFAULTS)
+local saved = storage.get("trainer.preferences")
+local prefs: Prefs = table.clone(DEFAULTS)
+
+-- Restore only known fields; keep defaults for missing or malformed values.
+if type(saved) == "table" then
+	for key, value in saved do
+		if key == "keys" and type(value) == "table" then
+			prefs.keys = value
+		elseif key == "state" and type(value) == "table" then
+			prefs.state = value
+		elseif key == "favourites" and type(value) == "table" then
+			prefs.favourites = value
+		elseif key == "remember" and type(value) == "boolean" then
+			prefs.remember = value
+		elseif key == "notify" and type(value) == "boolean" then
+			prefs.notify = value
+		elseif key == "flyTeleports" and type(value) == "boolean" then
+			prefs.flyTeleports = value
+		elseif key == "speedUnit" and type(value) == "string" then
+			prefs.speedUnit = value
+		end
+	end
+end
 
 local M = {}
-
 M.data = prefs
 M.defaults = DEFAULTS
 
-local pending = false
-
--- Writes settings.json soon (several changes in a row write once).
 function M.save()
-	if pending then
-		return
-	end
-	pending = true
-	task.delay(1, function()
-		pending = false
-		mod.write("settings.json", json.encode(prefs, true) .. "\n")
-	end)
+	storage.set("trainer.preferences", prefs)
 end
 
--- A value the menus keep, `default` when there is none (or `remember` is off).
 function M.get<T>(key: string, default: T): T
 	if not prefs.remember then
 		return default
 	end
-	local v = prefs.state[key]
-	if v == nil then
+	local value = prefs.state[key]
+	if value == nil then
 		return default
 	end
-	return v
+	return value
 end
 
 function M.set(key: string, value: any)
@@ -77,12 +79,14 @@ function M.set(key: string, value: any)
 	M.save()
 end
 
--- Back to the defaults (key bindings, options, kept values).
 function M.reset()
-	for k, v in DEFAULTS :: any do
-		(prefs :: any)[k] = if type(v) == "table" then table.clone(v) else v
-	end
+	prefs.keys = table.clone(DEFAULTS.keys)
+	prefs.remember = DEFAULTS.remember
+	prefs.notify = DEFAULTS.notify
+	prefs.speedUnit = DEFAULTS.speedUnit
+	prefs.flyTeleports = DEFAULTS.flyTeleports
 	prefs.state = {}
+	prefs.favourites = {}
 	M.save()
 end
 
