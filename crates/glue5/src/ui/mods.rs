@@ -76,6 +76,8 @@ pub(super) fn summary(settings: &Settings, status: &Status) -> String {
 /// Android's Java document picker drops one selected file into the private inbox.
 #[cfg(target_os = "android")]
 fn process_android_pc_import() {
+    // Keep the inbox file until the Mods directory has been opened by the app.
+    if glue5_mods::dir().is_none() { return; }
     use std::path::PathBuf;
     let Some(root) = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from) else { return };
     let inbox = root.join("pc-mod-import-inbox");
