@@ -16,6 +16,7 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 httparse = "1"
 getrandom = "0.4"
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
+rpf-archive = "0.10"
 
 [build-dependencies]
 anyhow.workspace = true
