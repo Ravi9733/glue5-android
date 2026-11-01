@@ -129,7 +129,7 @@ pub fn scan_root(root: &Path) -> Result<DlcScanReport, String> {
             if !dlclist_found
                 && !matches!(archive.encryption, RpfEncryption::Aes | RpfEncryption::Ng)
             {
-                if let Some(file) = entries.iter().find(|file| file.path.ends_with("dlclist.xml")) {
+                if let Some(file) = entries.iter().find(|file| file.path.to_ascii_lowercase().ends_with("dlclist.xml")) {
                     if let Some(entry) = archive.entries.get(file.entry_index) {
                         match archive.extract_entry(&bytes, entry, None) {
                             Ok(xml) if xml.len() <= MAX_XML_BYTES => {
@@ -151,7 +151,7 @@ pub fn scan_root(root: &Path) -> Result<DlcScanReport, String> {
             let Some((_, pack_name)) = dlc_pack_name(&lower_path) else { continue };
             let mut setup_order = None;
             if !matches!(archive.encryption, RpfEncryption::Aes | RpfEncryption::Ng) {
-                if let Some(file) = entries.iter().find(|file| file.path.rsplit('/').next() == Some("setup2.xml")) {
+                if let Some(file) = entries.iter().find(|file| file.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case("setup2.xml"))) {
                     if let Some(entry) = archive.entries.get(file.entry_index) {
                         match archive.extract_entry(&bytes, entry, None) {
                             Ok(xml) if xml.len() <= MAX_XML_BYTES => {
@@ -169,11 +169,14 @@ pub fn scan_root(root: &Path) -> Result<DlcScanReport, String> {
                 report.warnings.push(format!("{}: encrypted archive; setup2.xml needs game keys", path.display()));
             }
 
-            let yft_files = entries.iter().filter(|file| file.path.ends_with(".yft")).count();
-            let ytd_files = entries.iter().filter(|file| file.path.ends_with(".ytd")).count();
+            let yft_files = entries.iter().filter(|file| file.path.to_ascii_lowercase().ends_with(".yft")).count();
+            let ytd_files = entries.iter().filter(|file| file.path.to_ascii_lowercase().ends_with(".ytd")).count();
             let (mut valid_yft_files, mut valid_ytd_files, mut invalid_asset_files, mut unverified_asset_files) = (0, 0, 0, 0);
             if !matches!(archive.encryption, RpfEncryption::Aes | RpfEncryption::Ng) {
-                for file in entries.iter().filter(|file| file.path.ends_with(".yft") || file.path.ends_with(".ytd")) {
+                for file in entries.iter().filter(|file| {
+                    let path = file.path.to_ascii_lowercase();
+                    path.ends_with(".yft") || path.ends_with(".ytd")
+                }) {
                     if file.mem_size as u64 > 64 * 1024 * 1024 {
                         unverified_asset_files += 1;
                         report.warnings.push(format!("{}: {} exceeds the 64 MiB asset validation limit", path.display(), file.path));
@@ -184,7 +187,7 @@ pub fn scan_root(root: &Path) -> Result<DlcScanReport, String> {
                         continue;
                     };
                     match archive.extract_entry(&bytes, entry, None) {
-                        Ok(asset) if file.path.ends_with(".yft") => {
+                        Ok(asset) if file.path.to_ascii_lowercase().ends_with(".yft") => {
                             if rage_formats::parse_yft(&asset).is_ok() {
                                 valid_yft_files += 1;
                             } else {
