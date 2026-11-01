@@ -2,7 +2,7 @@
 //!
 //! | engine path | host |
 //! |---|---|
-//! | `/game/…` | the game's `data/` directory, read-only, case-insensitive (none when the game streams: the engine's HTTP device serves it) |
+//! | `/game/…` | the game's `data/` directory plus read-only loose-file package overlays, case-insensitive (none when the game streams: the engine's HTTP device serves it) |
 //! | `/userdata/…` | the per-user directory (saves, settings) |
 //! | `/dev/null`, `/dev/urandom`, `/dev/random` | none: emulated (Windows has no `/dev`; the engine's network crypto reads `/dev/urandom`) |
 //! | anything else | a scratch tree under the user directory |
@@ -149,7 +149,7 @@ impl Vfs {
 
     /// Adds a read-only directory tree below /game. The package root is
     /// indexed once, case-insensitively, like the original game data.
-    /// Existing game files take precedence; overlays are checked in mount order.
+    /// Existing game files take precedence; overlays add files absent from the base game.
     pub fn mount_game_overlay(&mut self, root: &Path) -> io::Result<usize> {
         if !root.is_dir() {
             return Ok(0);
