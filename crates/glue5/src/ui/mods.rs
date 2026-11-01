@@ -103,7 +103,10 @@ fn process_android_pc_import() {
             } else if kind == "rpf" {
                 let name = format!("rpf_map_{stamp}");
                 let report = glue5_mods::install_rpf_ymaps(&name, &bytes)?;
-                Ok(format!("Imported {name}: {} of {} YMAPs, {} object placements; skipped {} maps", report.imported_maps, report.maps_found, report.entities, report.skipped_maps))
+                for warning in &report.warnings {
+                    log::warn!("RPF map import: {warning}");
+                }
+                Ok(format!("Imported {name}: {} of {} YMAPs, {} object placements; skipped {} maps; {} warnings", report.imported_maps, report.maps_found, report.entities, report.skipped_maps, report.warnings.len()))
             } else {
                 let name = format!("pc_mod_{stamp}");
                 let report = glue5_mods::install_pc_package(&name, &bytes)?;
