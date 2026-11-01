@@ -11,6 +11,7 @@ This page describes the current feature-branch implementation. It is intentional
 - RPF7 archives can be inspected and, where the archive is readable, entries can be inventoried/extracted for metadata inspection.
 - The DLC scanner searches imported packages for `dlcpacks/<name>/dlc.rpf`, reads accessible `setup2.xml` / `dlclist.xml`, and attempts YFT/YTD resource parsing.
 - Supported JSON placement files are validated and converted into an opt-in Luau mod. It uses models that are already present in the game's loaded asset catalog.
+- Plain exterior HD entities in readable RSC7 YMAP files can be converted into an opt-in Luau object-placement mod using their existing archetype hashes. MLO instances and non-HD LOD entities are skipped.
 
 ## JSON placement format
 
@@ -54,7 +55,7 @@ Keep the original relative paths inside the ZIP. The scanner reports pack discov
 - **RPF runtime mounting:** the VFS can overlay loose files and supply an RPF file at its expected path. That does not itself mount an archive; the engine's packfile manager must successfully open/register it.
 - **DLC activation:** discovering `dlcpacks`, parsing `setup2.xml`, or finding a `dlclist.xml` does not register a pack with RAGE.
 - **Custom YFT/YTD loading:** parsing a resource header is not equivalent to registering its dictionary/archetype with the running game. Custom add-on vehicles are not yet guaranteed to appear in the F7 vehicle catalog.
-- **YMAP streaming:** the JSON importer is a limited object-placement bridge. It is not a YMAP parser or a general PC map-mod loader.
+- **YMAP streaming:** the importer now parses RSC7 YMAP entity lists and converts plain exterior HD placements into sequential object-spawn calls. It is not native YMAP streaming: map extents, LOD relationships, MLO interiors, collision, navmeshes, scale, archetype registration and custom assets are not loaded. All referenced archetypes must already be available in the game. The Android picker offers a separate **Import YMAP** action; the resulting script is disabled by default.
 - **ASI/DLL:** Windows native plugins are not loaded or executed on Android. Their features need a safe Luau/Rust port or a purpose-built Android-compatible implementation.
 
 ## Safe test sequence
@@ -63,6 +64,7 @@ Keep the original relative paths inside the ZIP. The scanner reports pack discov
 2. Enable Mods and restart the game after importing a ZIP; overlays are initialized at startup.
 3. Use **Scan DLC packs** to inspect imported DLC metadata. Treat encrypted/unverified resources as unknown, not as corrupt.
 4. For a JSON smoke test, import a small file with one or two common base-game prop models. Enable the generated map mod and start it while in a safe open area.
+5. For a YMAP smoke test, use a small exterior map that references base-game assets. Import it with **Import YMAP**, inspect the skipped MLO/LOD counts in the log, then enable the generated script mod. The conversion is experimental until tested in-game.
 5. Check the Mods log for the generated script's `PC map finished` count. A successful import only confirms validation and script creation; the in-game spawn still needs device testing.
 
 ## Build/test status
