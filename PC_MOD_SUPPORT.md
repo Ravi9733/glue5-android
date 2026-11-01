@@ -41,11 +41,27 @@ Each item requires `model`, `x`, `y`, and `z`; `heading` is optional and default
 
 ## Suggested ZIP layout for an add-on pack
 
+Both layouts are accepted. A leading OpenIV `mods/` directory is stripped during import so its contents overlay the game's virtual root:
+
 ```text
 my_addon.zip
-└── dlcpacks/
-    └── my_addon/
-        └── dlc.rpf
+└── mods/
+    └── update/
+        └── x64/
+            └── dlcpacks/
+                └── my_addon/
+                    └── dlc.rpf
+```
+
+Or provide the game-relative path directly:
+
+```text
+my_addon.zip
+└── update/
+    └── x64/
+        └── dlcpacks/
+            └── my_addon/
+                └── dlc.rpf
 ```
 
 Keep the original relative paths inside the ZIP. The scanner reports pack discovery, setup order, imported dlclist registration and resource parse counts. It does not edit the base game's `update.rpf` or automatically add entries to the game's real DLC list.
@@ -65,7 +81,7 @@ Keep the original relative paths inside the ZIP. The scanner reports pack discov
 3. Use **Scan DLC packs** to inspect imported DLC metadata. Treat encrypted/unverified resources as unknown, not as corrupt.
 4. For a JSON smoke test, import a small file with one or two common base-game prop models. Enable the generated map mod and start it while in a safe open area.
 5. For a YMAP smoke test, use a small exterior map that references base-game assets. Import it with **Import YMAP**, inspect the skipped MLO/LOD counts in the log, then enable the generated script mod. The conversion is experimental until tested in-game.
-5. Check the Mods log for the generated script's `PC map finished` count. A successful import only confirms validation and script creation; the in-game spawn still needs device testing.
+6. Check the Mods log for the generated script's completion count. A successful import only confirms validation and script creation; the in-game spawn still needs device testing.
 
 ## Build/test status
 
