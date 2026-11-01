@@ -8,21 +8,17 @@ The current game hook for `HasModelLoaded` resolves archetypes by hash; it is no
 
 ## Candidate format-support components
 
-The source tree currently has no native GTA V RPF/YFT/YTD parser dependency. Two Rust libraries are promising candidates for a native support layer:
+The feature branch now integrates `rpf-archive` for RPF7 inspection/extraction and `rage-formats` for YFT/YTD validation. The DLC scanner can inspect readable pack metadata and count validated or unverified resources. Encrypted RPF archives remain limited by required game keys.
 
-- `rage-rpf` — RPF7 archive parsing/decryption and extraction. Start with unencrypted/Open mod archives; encrypted retail archives must not be assumed supported without the required keys and a clear user-owned-game workflow.
-- `rage-formats` — parsing GTA V resource formats including YFT fragments and YTD texture dictionaries. Parsing a resource is not the same as registering it with Glue5's renderer or game streaming system.
+These libraries are format readers, not the game's asset streaming system. Parsing YFT/YTD bytes does not register archetypes, construct drawable resources, upload textures, or connect custom assets to the RAGE streaming lifecycle. No custom vehicle should be shown as spawnable based on parser success alone.
 
-These are candidates, not integrated dependencies or verified Android builds. Before adding them to the app, check their current APIs, licenses, transitive dependencies, Android/arm64 compilation, binary size and performance. Pin versions and add Android CI coverage. Do not add a dependency or show an install-success state until those checks pass.
+## Remaining engine work
 
-## Required implementation stages
-
-1. **Archive inspection** — identify supported pack layouts and enumerate `.yft`, `.ytd`, `.meta`, and RPF contents without extracting unsafe paths. Keep script-mod ZIP import separate.
-2. **Format support** — use a compatible RPF parser and resource parsers for explicitly supported archive/resource versions. Reject unsupported or encrypted archives explicitly.
-3. **Asset registration and streaming** — integrate vehicle archetypes, drawable/model resources, textures, handling and vehicle metadata with the game's resource/streaming lifecycle. A metadata-only registry is insufficient.
-4. **Android storage** — install into a dedicated user-visible game-mod directory with staging, rollback, size limits and uninstall; never overwrite base game data.
-5. **Spawner integration** — list only vehicles whose assets registered and loaded successfully. Preserve original vehicle entries.
-6. **Validation** — test one replacement/add-on pack on Android, confirm spawn, texture/material rendering, driving, reload, uninstall and base-game integrity before claiming compatibility.
+1. **Packfile registration** — discover and verify a real Glue5 WASM/RAGE packfile open/register path. Windows FiveM/ASI hook names or signatures must not be copied into this build without evidence.
+2. **DLC activation** — integrate the pack into the game's DLC load order without corrupting the user's base files. The current scanner only reads imported `dlclist.xml` and `setup2.xml`; it does not change the game's active DLC list.
+3. **Asset registration and streaming** — connect YFT/YTD resources, archetypes, drawable/model resources, textures, handling and vehicle metadata to the engine's resource lifecycle.
+4. **Spawner integration** — expose only vehicles whose packfile and assets were registered and loaded successfully. Preserve all original vehicle entries.
+5. **Validation** — test one real add-on pack on Android, confirm spawn, textures/materials, driving, reload, uninstall and base-game integrity before claiming compatibility.
 
 ## Compatibility gate
 
