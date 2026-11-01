@@ -8,7 +8,7 @@ This page describes the current feature-branch implementation. It is intentional
 - ZIP inspection rejects unsafe paths, duplicate paths, symlinks, excessive entry counts and oversized content.
 - Packages are extracted into an isolated `mods/.pc-packages/<package>` directory. The original game data directory is not overwritten.
 - Imported loose files are exposed as read-only `/game` overlays on the next game launch. In local-folder mode, package files take precedence over the base file at the same relative path.
-- In streamed mode, imported package files can replace bytes for paths already present in the HTTPFS manifest, but only when the replacement has exactly the same byte length as the catalog entry. Different-sized files are skipped to avoid stale manifest sizes. This does not add new manifest entries or expose new DLC paths to the engine; the replacement is selected by the existing file ID in the stream read hook.
+- In streamed mode, the HTTPFS manifest is merged at startup: imported loose files can replace existing paths (with their size and modification time updated) and new loose paths are appended with local file IDs. The stream read hook serves those files from the package directories. This exposes loose files to the engine's HTTPFS device, but does not itself mount RPF archives or activate DLC packs.
 - RPF7 archives can be inspected and, where the archive is readable, entries can be inventoried/extracted for metadata inspection.
 - The DLC scanner searches imported packages for `dlcpacks/<name>/dlc.rpf`, reads accessible `setup2.xml` / `dlclist.xml`, and attempts YFT/YTD resource parsing.
 - Supported JSON placement files are validated and converted into an opt-in Luau mod. It uses models that are already present in the game's loaded asset catalog.
@@ -69,7 +69,7 @@ Keep the original relative paths inside the ZIP. The scanner reports pack discov
 
 ## Not implemented / not verified yet
 
-- **RPF runtime mounting:** local VFS overlays can supply an RPF file at an existing path, and streamed mode can replace same-sized bytes only for paths already present in its HTTPFS manifest. Neither mechanism itself mounts an archive; the engine's packfile manager must successfully open/register it. New DLC paths are not exposed by the streamed manifest.
+- **RPF runtime mounting:** local VFS overlays can supply an RPF file at an existing path, and streamed mode can now expose loose package paths through a merged HTTPFS manifest. Neither mechanism itself mounts an RPF archive; the engine's packfile manager must successfully open/register it. A newly listed DLC archive still needs native packfile registration and DLC-list activation before the game will use it.
 - **DLC activation:** discovering `dlcpacks`, parsing `setup2.xml`, or finding a `dlclist.xml` does not register a pack with RAGE.
 - **Custom YFT/YTD loading:** parsing a resource header is not equivalent to registering its dictionary/archetype with the running game. Custom add-on vehicles are not yet guaranteed to appear in the F7 vehicle catalog.
 - **YMAP streaming:** the importer now parses RSC7 YMAP entity lists and converts plain exterior HD placements into sequential object-spawn calls. It is not native YMAP streaming: map extents, LOD relationships, MLO interiors, collision, navmeshes, scale, archetype registration and custom assets are not loaded. All referenced archetypes must already be available in the game. The Android picker offers a separate **Import YMAP** action; the resulting script is disabled by default.
