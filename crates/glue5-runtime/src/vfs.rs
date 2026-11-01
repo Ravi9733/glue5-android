@@ -480,12 +480,24 @@ impl Vfs {
 const DIRENT_SIZE: usize = 280;
 
 fn index(root: &Path, rel: &str, out: &mut HashMap<String, String>) -> io::Result<()> {
-    for entry in fs::read_dir(root.join(rel))? {
-        let entry = entry?;
+    // Sort entries so case-insensitive collisions have deterministic precedence
+    // on filesystems whose directory iteration order is not stable.
+    let mut entries = fs::read_dir(root.join(rel))?.collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        // Never follow symlinks while indexing either the base game or imported
+        // overlays. A symlink inside a package could otherwise expose files
+        // outside its package root through the virtual /game namespace.
+        let kind = entry.file_type()?;
+        if kind.is_symlink() || (!kind.is_dir() && !kind.is_file()) {
+            continue;
+        }
+
         let name = entry.file_name().to_string_lossy().into_owned();
         let path = if rel.is_empty() { name } else { format!("{rel}/{name}") };
         out.insert(path.to_ascii_lowercase(), path.clone());
-        if entry.file_type()?.is_dir() {
+        if kind.is_dir() {
             index(root, &path, out)?;
         }
     }
