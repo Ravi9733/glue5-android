@@ -309,6 +309,12 @@ pub fn install_ymap_mod(name: &str, bytes: &[u8]) -> Result<ymap_import::YmapImp
     ymap_import::install(name, bytes)
 }
 
+/// Converts supported exterior YMAPs inside an unencrypted RPF archive into one opt-in script mod.
+/// This does not mount the RPF or load custom assets.
+pub fn install_rpf_ymaps(name: &str, bytes: &[u8]) -> Result<ymap_import::RpfYmapImportReport, String> {
+    ymap_import::install_rpf_ymaps(name, bytes)
+}
+
 /// Reads the mods folder again (new or removed mods).
 pub fn refresh() {
     let Some(dir) = dir() else { return };
