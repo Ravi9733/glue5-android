@@ -13,6 +13,7 @@ on:
       - "Cargo.toml"
       - ".mise/**"
       - ".github/workflows/pc-mods.yml"
+      - ".github/scripts/inspect-game-wasm.sh"
   workflow_dispatch:
 
 permissions:
@@ -61,17 +62,12 @@ jobs:
           cargo install wasm-tools --locked
           GAME_WASM="$(find "$GLUE5_GAME_DIR" -type f -name game.wasm -print -quit)"
           test -n "$GAME_WASM"
-          wasm-tools dump "$GAME_WASM" > "$RUNNER_TEMP/game-wasm-sections.txt"
-          wasm-tools print "$GAME_WASM" > "$RUNNER_TEMP/game-wasm.wat"
-          grep -E '(\(import |\(export |\(func \$|\(memory |\(table )' "$RUNNER_TEMP/game-wasm.wat" > "$RUNNER_TEMP/game-wasm-symbol-index.txt" || true
+          bash .github/scripts/inspect-game-wasm.sh "$GAME_WASM" "$RUNNER_TEMP/game-wasm-report"
       - name: Upload game.wasm interface report
         uses: actions/upload-artifact@v4
         with:
           name: glue5-game-wasm-interface
-          path: |
-            ${{ runner.temp }}/game-wasm-sections.txt
-            ${{ runner.temp }}/game-wasm-symbol-index.txt
-            ${{ runner.temp }}/game-wasm.wat
+          path: ${{ runner.temp }}/game-wasm-report/
           retention-days: 3
       - name: Install SDL3 headless build dependencies
         run: |
