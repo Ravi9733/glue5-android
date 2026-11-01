@@ -6,6 +6,7 @@ on:
     paths:
       - "crates/glue5-mods/**"
       - "crates/glue5-runtime/**"
+      - "crates/glue5-stream/**"
       - "crates/glue5/src/ui/mods.rs"
       - "crates/glue5-game/**"
       - "Cargo.toml"
