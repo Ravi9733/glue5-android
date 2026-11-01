@@ -174,7 +174,7 @@ public class Glue5Activity extends SDLActivity {
         if (!inbox.isDirectory() && !inbox.mkdirs()) throw new Exception("Cannot create import inbox");
         File target = new File(inbox, "incoming." + kind);
         File temp = new File(inbox, "incoming." + kind + ".tmp");
-        long limit = "json".equals(kind) ? 4L * 1024L * 1024L : 128L * 1024L * 1024L;
+        long limit = "json".equals(kind) ? 4L * 1024L * 1024L : 256L * 1024L * 1024L;
         long total = 0;
         InputStream input = getContentResolver().openInputStream(uri);
         if (input == null) throw new Exception("Cannot read selected file");
