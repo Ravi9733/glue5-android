@@ -61,8 +61,15 @@ jobs:
           path: |
             ${{ runner.temp }}/game-wasm-sections.txt
             ${{ runner.temp }}/game-wasm-symbol-index.txt
-            ${{ runner.temp }}/game-wasm-disassembly.txt
+            ${{ runner.temp }}/game-wasm.wat
           retention-days: 3
+      - name: Install SDL3 headless build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxi-dev libxfixes-dev libwayland-dev \
+            libxkbcommon-dev libdecor-0-dev
       - name: Compile PC mod loader and commit any lockfile update
         run: |
           set +e
