@@ -181,10 +181,7 @@ pub fn install_rpf_ymaps(name: &str, bytes: &[u8]) -> Result<RpfYmapImportReport
                 report.skipped_mlo += map_report.skipped_mlo;
                 report.skipped_lod += map_report.skipped_lod;
                 report.skipped_invalid += map_report.skipped_invalid;
-                use std::fmt::Write as _;
-                let _ = writeln!(script, "-- Converted from {}\ndo", file.path);
-                script.push_str(&map_script);
-                script.push_str("\nend\n");
+                append_scoped_map_script(&mut script, &file.path, &map_script);
             }
             Err(error) => {
                 report.skipped_maps += 1;
@@ -212,6 +209,13 @@ pub struct RpfYmapImportReport {
     pub skipped_lod: usize,
     pub skipped_invalid: usize,
     pub warnings: Vec<String>,
+}
+
+fn append_scoped_map_script(out: &mut String, path: &str, script: &str) {
+    use std::fmt::Write as _;
+    let _ = writeln!(out, "-- Converted from {path}\ndo");
+    out.push_str(script);
+    out.push_str("\nend\n");
 }
 
 fn validate_mod_name(name: &str) -> Result<(), String> {
@@ -275,6 +279,16 @@ mod tests {
         assert!(script.contains("streaming.load(model)"));
         assert!(script.contains("object.createObject(model, position, false, false, false)"));
         assert!(!script.contains("joaat("));
+    }
+
+    #[test]
+    fn rpf_maps_are_scoped_so_multiple_files_can_share_one_mod() {
+        let mut combined = String::new();
+        append_scoped_map_script(&mut combined, "maps/a.ymap", "local placements = {}");
+        append_scoped_map_script(&mut combined, "maps/b.ymap", "local placements = {}");
+        assert_eq!(combined.matches("do\\n").count(), 2);
+        assert_eq!(combined.matches("local placements").count(), 2);
+        assert_eq!(combined.matches("\\nend\\n").count(), 2);
     }
 
     #[test]
