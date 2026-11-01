@@ -4,6 +4,7 @@
 //! not patch the game's update.rpf or register packs with the RAGE packfile
 //! manager; that requires an engine packfile integration.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use rpf_archive::{RpfArchive, RpfEncryption, build_directory_tree, list_all_files};
@@ -179,8 +180,10 @@ pub fn scan_root(root: &Path) -> Result<DlcScanReport, String> {
         }
     }
 
-    report.registered_names.sort();
-    report.registered_names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    // Keep the original dlclist order: it is the stable tie-break when
+    // multiple packs declare the same setup2.xml order value.
+    let mut seen_names = HashSet::new();
+    report.registered_names.retain(|name| seen_names.insert(name.to_ascii_lowercase()));
     for pack in &mut report.packs {
         pack.registered_in_imported_dlclist =
             report.registered_names.iter().any(|name| name.eq_ignore_ascii_case(&pack.name));
