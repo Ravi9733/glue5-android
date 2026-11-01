@@ -109,6 +109,8 @@ pub struct Vfs {
     game: Option<PathBuf>,
     /// Lowercase path under `game` -> real path, for case-insensitive lookups.
     game_index: HashMap<String, String>,
+    /// Read-only roots for imported PC mod package files, in mount order.
+    game_overlays: Vec<(PathBuf, HashMap<String, String>)>,
     user: PathBuf,
     scratch: PathBuf,
     fds: Mutex<Vec<Option<Arc<Open>>>>,
@@ -138,10 +140,28 @@ impl Vfs {
         Ok(Vfs {
             game: game_data,
             game_index,
+            game_overlays: Vec::new(),
             user,
             scratch,
             fds: Mutex::new(vec![std_fd(Node::Stdin), std_fd(Node::Stdout), std_fd(Node::Stderr)]),
         })
+    }
+
+    /// Adds a read-only directory tree below /game. The package root is
+    /// indexed once, case-insensitively, like the original game data.
+    /// Existing game files take precedence; overlays are checked in mount order.
+    pub fn mount_game_overlay(&mut self, root: &Path) -> io::Result<usize> {
+        if !root.is_dir() {
+            return Ok(0);
+        }
+        let mut entries = HashMap::new();
+        index(root, "", &mut entries)?;
+        let count = entries.len();
+        if count > 0 {
+            log::info!("vfs: mounted read-only PC package overlay {} ({} entries)", root.display(), count);
+            self.game_overlays.push((root.to_path_buf(), entries));
+        }
+        Ok(count)
     }
 
     /// Maps an absolute engine path to the host.
@@ -157,10 +177,18 @@ impl Vfs {
             if rel.is_empty() {
                 return Ok(Host { path: game.clone(), read_only: true });
             }
-            let real = self.game_index.get(&rel.to_ascii_lowercase()).map_or(rel, String::as_str);
-            let real = game.join(real);
-            let path = crate::overlay::game_file(rel, &real, &self.scratch).unwrap_or(real);
-            return Ok(Host { path, read_only: true });
+            let key = rel.to_ascii_lowercase();
+            if let Some(real) = self.game_index.get(&key) {
+                let real = game.join(real);
+                let path = crate::overlay::game_file(rel, &real, &self.scratch).unwrap_or(real);
+                return Ok(Host { path, read_only: true });
+            }
+            for (root, entries) in &self.game_overlays {
+                if let Some(real) = entries.get(&key) {
+                    return Ok(Host { path: root.join(real), read_only: true });
+                }
+            }
+            return Ok(Host { path: game.join(rel), read_only: true });
         }
         if let Some(rel) = path.strip_prefix("/userdata")
             && (rel.is_empty() || rel.starts_with('/'))
@@ -541,6 +569,22 @@ pub fn epoch(t: SystemTime) -> (i64, u64) {
         Ok(d) => (d.as_secs() as i64, d.subsec_nanos() as u64),
         Err(_) => (0, 0),
     }
+}
+
+#[test]
+fn package_overlay_resolves_case_insensitively_without_mutating_game_data() {
+    let dir = std::env::temp_dir().join(format!("glue5-vfs-overlay-{}", std::process::id()));
+    let game = dir.join("game");
+    let overlay = dir.join("packages").join("carpack");
+    fs::create_dir_all(game.join("update/x64/dlcpacks")).unwrap();
+    fs::create_dir_all(overlay.join("update/x64/dlcpacks/car")).unwrap();
+    fs::write(overlay.join("update/x64/dlcpacks/car/dlc.rpf"), b"RPF7").unwrap();
+    let mut vfs = Vfs::new(Some(game.clone()), dir.join("user")).unwrap();
+    assert_eq!(vfs.mount_game_overlay(&overlay).unwrap(), 4);
+    let host = vfs.resolve("/game/UPDATE/x64/dlcpacks/car/dlc.rpf").unwrap();
+    assert_eq!(fs::read(host.path).unwrap(), b"RPF7");
+    assert!(!game.join("update/x64/dlcpacks/car/dlc.rpf").exists());
+    let _ = fs::remove_dir_all(dir);
 }
 
 #[test]
