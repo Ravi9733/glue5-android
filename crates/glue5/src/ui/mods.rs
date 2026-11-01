@@ -87,8 +87,14 @@ fn process_android_pc_import() {
         if !path.is_file() { continue; }
         let result = (|| -> Result<String, String> {
             let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-            let limit = if kind == "json" { 4 * 1024 * 1024 } else { 128 * 1024 * 1024 };
-            if metadata.len() > limit { return Err(format!("Selected {kind} exceeds size limit")); }
+            let limit = match kind {
+                "json" => 4 * 1024 * 1024,
+                "zip" => 256 * 1024 * 1024,
+                _ => 128 * 1024 * 1024,
+            };
+            if metadata.len() > limit {
+                return Err(format!("Selected {kind} exceeds {} MiB limit", limit / (1024 * 1024)));
+            }
             let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
             let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
                 .map_err(|e| e.to_string())?.as_secs();
