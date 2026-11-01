@@ -21,7 +21,12 @@ pub fn compile(report: &PlacementReport) -> String {
         );
     }
     out.push_str(
-        "}\n\n         local created = 0\n         local failed = 0\n         for index, placement in placements do\n         \tif streaming.load(placement.model) then\n         \t\tlocal position = vector.create(placement.x, placement.y, placement.z)\n         \t\tlocal objectHandle = object.createObject(placement.model, position, false, false, false)\n         \t\tstreaming.setModelAsNoLongerNeeded(placement.model)\n         \t\tif objectHandle then\n         \t\t\tentity.setEntityHeading(objectHandle, placement.heading)\n         \t\t\tcreated += 1\n         \t\telse\n         \t\t\tfailed += 1\n         \t\tend\n         \telse\n         \t\tfailed += 1\n         \tend\n         \tif index % 4 == 0 then task.wait(0) end\n         end\n         print(`PC map finished: {created} objects created, {failed} failed`)\n",
+        "}\n\n         local created = 0\n         local failed = 0\n         for index, placement in placements do
+        \tlocal model = joaat(placement.model)
+        \tif streaming.load(model) then
+        \t\tlocal position = vector.create(placement.x, placement.y, placement.z)
+        \t\tlocal objectHandle = object.createObject(model, position, false, false, false)
+        \t\tstreaming.setModelAsNoLongerNeeded(model)\n         \t\tif objectHandle then\n         \t\t\tentity.setEntityHeading(objectHandle, placement.heading)\n         \t\t\tcreated += 1\n         \t\telse\n         \t\t\tfailed += 1\n         \t\tend\n         \telse\n         \t\tfailed += 1\n         \tend\n         \tif index % 4 == 0 then task.wait(0) end\n         end\n         print(`PC map finished: {created} objects created, {failed} failed`)\n",
     );
     out
 }
@@ -80,8 +85,9 @@ mod tests {
         )
         .unwrap();
         let script = compile(&report);
-        assert!(script.contains("streaming.load(placement.model)"));
-        assert!(script.contains("object.createObject(placement.model, position, false, false, false)"));
+        assert!(script.contains("local model = joaat(placement.model)"));
+        assert!(script.contains("streaming.load(model)"));
+        assert!(script.contains("object.createObject(model, position, false, false, false)"));
         assert!(script.contains("entity.setEntityHeading(objectHandle, placement.heading)"));
         assert!(script.contains("task.wait(0)"));
         assert!(script.contains("prop_roadcone02b"));
