@@ -630,3 +630,40 @@ fn devices() {
     assert_eq!(vfs.stat("/dev/random", true).unwrap().mode, S_IFCHR | 0o666);
     let _ = fs::remove_dir_all(dir);
 }
+
+#[cfg(test)]
+mod package_overlay_tests {
+    use super::*;
+
+    #[test]
+    fn overlay_files_are_visible_to_path_lookup_and_directory_scans() {
+        let dir = std::env::temp_dir().join(format!("glue5-vfs-overlay-list-{}", std::process::id()));
+        let game = dir.join("game");
+        let overlay = dir.join("packages").join("carpack");
+        fs::create_dir_all(game.join("update/x64")).unwrap();
+        fs::create_dir_all(overlay.join("update/x64/dlcpacks/car")).unwrap();
+        fs::write(overlay.join("update/x64/dlcpacks/car/dlc.rpf"), b"RPF7").unwrap();
+
+        let mut vfs = Vfs::new(Some(game.clone()), dir.join("user")).unwrap();
+        assert_eq!(vfs.mount_game_overlay(&overlay).unwrap(), 5);
+
+        let fd = vfs.open("/game/update/x64", 0).unwrap();
+        let mut buf = vec![0u8; DIRENT_SIZE * 16];
+        let n = vfs.getdents(fd, &mut buf).unwrap();
+        let names = buf[..n].chunks_exact(DIRENT_SIZE)
+            .map(|record| {
+                let end = record[19..].iter().position(|b| *b == 0).unwrap_or(255);
+                String::from_utf8_lossy(&record[19..19 + end]).to_ascii_lowercase()
+            }).collect::<Vec<_>>();
+        assert!(names.iter().any(|name| name == "dlcpacks"));
+
+        let fd = vfs.open("/game/update/x64/dlcpacks/car/dlc.rpf", 0).unwrap();
+        let mut magic = [0u8; 4];
+        assert_eq!(vfs.read(fd, &mut magic, None).unwrap(), 4);
+        assert_eq!(&magic, b"RPF7");
+        assert!(!game.join("update/x64/dlcpacks/car/dlc.rpf").exists());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+}
+
