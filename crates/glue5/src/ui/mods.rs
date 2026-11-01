@@ -13,7 +13,7 @@ use crate::settings::Settings;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Tab {
-    Menus,
+    Trainer,
     #[default]
     Mods,
     Studio,
@@ -32,7 +32,7 @@ pub struct ModsPage {
 impl ModsPage {
     /// Opens on the mods' menus.
     pub fn show_menus(&mut self) {
-        self.tab = Tab::Menus;
+        self.tab = Tab::Trainer;
     }
 }
 
@@ -336,14 +336,14 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
         // The menus are there while the game runs with mods.
         let mut tabs = vec![(Tab::Mods, "MODS"), (Tab::Studio, "STUDIO"), (Tab::Log, "LOG")];
         if status.mods {
-            tabs.insert(0, (Tab::Menus, "MENUS"));
-        } else if page.tab == Tab::Menus {
+            tabs.insert(0, (Tab::Trainer, "NATIVE TRAINER"));
+        } else if page.tab == Tab::Trainer {
             page.tab = Tab::Mods;
         }
         segmented(ui, &mut page.tab, &tabs, 40.0 * scale);
         ui.add_space(10.0 * scale);
         match page.tab {
-            Tab::Menus => menus_tab(ui),
+            Tab::Trainer => menus_tab(ui),
             Tab::Mods => mods_tab(ui, page, status),
             Tab::Studio => studio_tab(ui, settings, status),
             Tab::Log => log_tab(ui),
@@ -357,7 +357,7 @@ fn menus_tab(ui: &mut egui::Ui) {
     let scale = theme::density(ui);
     let menus = glue5_mods::menus();
     if menus.is_empty() {
-        muted(ui, "No menus. A mod makes one with ui.menu(\"Title\"); F7 opens them during the game.");
+        muted(ui, "No trainer menu is available yet. Turn Mods on and start Glue Trainer; its touch controls will appear here.");
         return;
     }
     for menu in &menus {
