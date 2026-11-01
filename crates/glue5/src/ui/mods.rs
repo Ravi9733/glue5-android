@@ -73,12 +73,87 @@ pub(super) fn summary(settings: &Settings, status: &Status) -> String {
     parts.join(" · ")
 }
 
+/// Android's Java document picker drops one selected file into the private inbox.
+#[cfg(target_os = "android")]
+fn process_android_pc_import() {
+    use std::path::PathBuf;
+    let Some(root) = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from) else { return };
+    let inbox = root.join("pc-mod-import-inbox");
+    for (file, kind) in [("incoming.json", "json"), ("incoming.zip", "zip")] {
+        let path = inbox.join(file);
+        if !path.is_file() { continue; }
+        let result = (|| -> Result<String, String> {
+            let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+            let limit = if kind == "json" { 4 * 1024 * 1024 } else { 128 * 1024 * 1024 };
+            if metadata.len() > limit { return Err(format!("Selected {kind} exceeds size limit")); }
+            let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+            let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| e.to_string())?.as_secs();
+            if kind == "json" {
+                let name = format!("map_{stamp}");
+                let count = glue5_mods::install_placement_mod(&name, &bytes)?;
+                Ok(format!("Imported {name}: {count} placements"))
+            } else {
+                let name = format!("pc_mod_{stamp}");
+                let report = glue5_mods::install_pc_package(&name, &bytes)?;
+                Ok(format!("Imported {name}: {:?}, {} files", report.kind, report.entries))
+            }
+        })();
+        match result {
+            Ok(message) => log::info!("PC mod importer: {message}"),
+            Err(error) => log::warn!("PC mod importer: {error}"),
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn process_android_pc_import() {}
+
+fn android_pc_import_controls(ui: &mut egui::Ui, settings: &mut Settings) {
+    panel(ui, |ui| {
+        card_title(ui, "IMPORT PC MODS", None);
+        small(ui, "Choose a PC mod ZIP or a supported JSON object-placement map. ZIP import stores files safely; it does not make RPF/YFT/YTD assets load in-game yet.", theme::MUTED);
+        if !settings.mods {
+            small(ui, "Turn Mods on first; the change takes effect when the game starts.", WARN);
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            if inline_button(ui, "Import PC mod ZIP").clicked() {
+                #[cfg(target_os = "android")]
+                request_android_pc_import("zip");
+                #[cfg(not(target_os = "android"))]
+                log::info!("PC mod file picker is Android-only.");
+            }
+            if inline_button(ui, "Import JSON map").clicked() {
+                #[cfg(target_os = "android")]
+                request_android_pc_import("json");
+                #[cfg(not(target_os = "android"))]
+                log::info!("JSON file picker is Android-only.");
+            }
+        });
+    });
+}
+
+#[cfg(target_os = "android")]
+fn request_android_pc_import(kind: &str) {
+    let Some(root) = std::env::var_os("GLUE5_APP_FILES_DIR") else { return };
+    let path = std::path::PathBuf::from(root).join("pc-mod-import-request");
+    if let Err(error) = std::fs::write(path, kind) {
+        log::warn!("PC mod picker request: {error}");
+    }
+}
+
 /// True when closed.
 pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut Settings, status: &Status) -> bool {
+    // Android's Java picker writes into the private inbox; consume it on the UI thread.
+    process_android_pc_import();
     // Mods change by themselves (they end, fail, the Studio starts them).
     ctx.request_repaint_after(std::time::Duration::from_millis(500));
     sheet(ctx, "mods-window", "MODS", |ui| {
         let scale = theme::density(ui);
+        android_pc_import_controls(ui, settings);
+        ui.add_space(6.0 * theme::density(ui));
         let running_with = status.started.as_ref().map(|s| s.mods);
         let note = match running_with {
             Some(with) if with != settings.mods => {
