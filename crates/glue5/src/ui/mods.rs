@@ -121,7 +121,7 @@ fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: 
     panel(ui, |ui| {
         card_title(ui, "IMPORT PC MODS", None);
         small(ui, "Choose a PC mod ZIP, a supported JSON object-placement map, or a limited exterior YMAP conversion. Package files overlay /game paths; matching package files can replace base files, including RPF archives at their expected paths.", theme::MUTED);
-        small(ui, "Use Scan DLC packs to inspect add-on archives and setup2.xml order. This does not yet register packs with the game or load custom YFT/YTD vehicles. Native ASI/DLL plugins are not executed.", theme::MUTED);
+        small(ui, "YMAP conversion only places existing exterior HD models; MLO interiors, LOD chains, collision and custom assets are not loaded. Scan DLC packs only inspects metadata; it does not activate DLC or load custom YFT/YTD vehicles. Native ASI/DLL plugins are not executed.", theme::MUTED);
         if !settings.mods {
             small(ui, "Turn Mods on first; the change takes effect when the game starts.", WARN);
             return;
