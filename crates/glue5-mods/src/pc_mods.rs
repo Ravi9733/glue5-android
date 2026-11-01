@@ -330,7 +330,7 @@ mod package_tests {
 /// plugin is executed. Runtime mounting/registration is a separate feature.
 pub fn install_package(name: &str, bytes: &[u8]) -> Result<PackageReport, String> {
     use std::io::{Cursor, Read};
-    use std::path::{Component, Path, PathBuf};
+    use std::path::{Component, PathBuf};
 
     if name.is_empty() || name.len() > 40
         || !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
@@ -375,13 +375,17 @@ pub fn install_package(name: &str, bytes: &[u8]) -> Result<PackageReport, String
             if let Some(parent) = destination.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", relative.display()))?;
             }
-            let mut output = Vec::with_capacity(file.size().min(MAX_PACKAGE_FILE_BYTES) as usize);
-            file.take(MAX_PACKAGE_FILE_BYTES + 1).read_to_end(&mut output)
+            let expected_size = file.size();
+            if expected_size > MAX_PACKAGE_FILE_BYTES {
+                return Err(format!("package file exceeds 256 MiB: {}", relative.display()));
+            }
+            let mut output = std::fs::File::create(&destination)
                 .map_err(|e| format!("{}: {e}", relative.display()))?;
-            if output.len() as u64 != file.size() || output.len() as u64 > MAX_PACKAGE_FILE_BYTES {
+            let copied = std::io::copy(&mut file.take(MAX_PACKAGE_FILE_BYTES + 1), &mut output)
+                .map_err(|e| format!("{}: {e}", relative.display()))?;
+            if copied != expected_size || copied > MAX_PACKAGE_FILE_BYTES {
                 return Err(format!("invalid or oversized package file: {}", relative.display()));
             }
-            std::fs::write(&destination, output).map_err(|e| format!("{}: {e}", relative.display()))?;
         }
         let manifest = staging.join("glue5-mod.json");
         if manifest.exists() {
