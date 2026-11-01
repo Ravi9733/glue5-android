@@ -75,14 +75,32 @@ pub(super) fn summary(settings: &Settings, status: &Status) -> String {
     parts.join(" · ")
 }
 
-/// Android's Java document picker drops one selected file into the private inbox.
-#[cfg(target_os = "android")]
-fn process_android_pc_import(page: &mut ModsPage) {
+/// Platform-specific file picker/inbox feeds the same shared PC package importer.
+fn pc_import_inbox() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "android")]
+    {
+        return std::env::var_os("GLUE5_APP_FILES_DIR")
+            .map(std::path::PathBuf::from)
+            .map(|root| root.join("pc-mod-import-inbox"));
+    }
+    #[cfg(target_os = "ios")]
+    {
+        return glue5_mods::dir().map(|mods| mods.join("pc-mod-import-inbox"));
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        None
+    }
+}
+
+fn process_pc_import(page: &mut ModsPage) {
     // Keep the inbox file until the Mods directory has been opened by the app.
     if glue5_mods::dir().is_none() { return; }
-    use std::path::PathBuf;
-    let Some(root) = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from) else { return };
-    let inbox = root.join("pc-mod-import-inbox");
+    let Some(inbox) = pc_import_inbox() else { return };
+    if let Err(error) = std::fs::create_dir_all(&inbox) {
+        log::warn!("PC mod inbox: {error}");
+        return;
+    }
     for (file, kind) in [("incoming.json", "json"), ("incoming.zip", "zip"), ("incoming.ymap", "ymap"), ("incoming.rpf", "rpf")] {
         let path = inbox.join(file);
         if !path.is_file() { continue; }
@@ -168,12 +186,11 @@ fn process_android_pc_import(page: &mut ModsPage) {
     }
 }
 
-#[cfg(not(target_os = "android"))]
-fn process_android_pc_import(_page: &mut ModsPage) {}
-
-fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: &mut Settings, game_running: bool) {
+fn pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: &mut Settings, game_running: bool) {
     panel(ui, |ui| {
         card_title(ui, "IMPORT PC MODS", None);
+        #[cfg(target_os = "ios")]
+        small(ui, "iOS: in the Files app open Glue 5 > Documents > game > mods > pc-mod-import-inbox. Copy your file there as incoming.zip, incoming.json, incoming.ymap or incoming.rpf; return to Glue 5 and open Mods to import it.", WARN);
         small(ui, "Choose a PC mod ZIP, JSON placement map, YMAP, or readable RPF archive. RPF import converts supported embedded exterior YMAP placements into a script mod; it does not mount the archive or load custom vehicle assets.", theme::MUTED);
         small(ui, "YMAP conversion only places existing exterior HD models; MLO interiors, LOD chains, collision and custom assets are not loaded. Scan DLC packs only inspects metadata; it does not activate DLC or load custom YFT/YTD vehicles. Native ASI/DLL plugins are not executed.", theme::MUTED);
         if !settings.mods {
@@ -184,26 +201,26 @@ fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: 
             if inline_button(ui, "Import PC mod ZIP").clicked() {
                 #[cfg(target_os = "android")]
                 request_android_pc_import("zip");
-                #[cfg(not(target_os = "android"))]
-                log::info!("PC mod file picker is Android-only.");
+                #[cfg(target_os = "ios")]
+                log::info!("iOS: place incoming.zip in Documents/game/mods/pc-mod-import-inbox, then reopen Mods.");
             }
             if inline_button(ui, "Import JSON map").clicked() {
                 #[cfg(target_os = "android")]
                 request_android_pc_import("json");
-                #[cfg(not(target_os = "android"))]
-                log::info!("JSON file picker is Android-only.");
+                #[cfg(target_os = "ios")]
+                log::info!("iOS: place incoming.json in Documents/game/mods/pc-mod-import-inbox, then reopen Mods.");
             }
             if inline_button(ui, "Import YMAP").clicked() {
                 #[cfg(target_os = "android")]
                 request_android_pc_import("ymap");
-                #[cfg(not(target_os = "android"))]
-                log::info!("YMAP file picker is Android-only.");
+                #[cfg(target_os = "ios")]
+                log::info!("iOS: place incoming.ymap in Documents/game/mods/pc-mod-import-inbox, then reopen Mods.");
             }
             if inline_button(ui, "Import RPF maps").clicked() {
                 #[cfg(target_os = "android")]
                 request_android_pc_import("rpf");
-                #[cfg(not(target_os = "android"))]
-                log::info!("PC mod file picker is Android-only.");
+                #[cfg(target_os = "ios")]
+                log::info!("iOS: place incoming.rpf in Documents/game/mods/pc-mod-import-inbox, then reopen Mods.");
             }
             if inline_button(ui, "Scan DLC packs").clicked() {
                 match glue5_mods::scan_pc_dlc_packages() {
@@ -284,7 +301,7 @@ fn request_android_pc_import(kind: &str) {
 /// True when closed.
 pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut Settings, status: &Status) -> bool {
     // Android's Java picker writes into the private inbox; consume it on the UI thread.
-    process_android_pc_import(page);
+    process_pc_import(page);
     // Mods change by themselves (they end, fail, the Studio starts them).
     ctx.request_repaint_after(std::time::Duration::from_millis(500));
     sheet(ctx, "mods-window", "MODS", |ui| {
@@ -300,7 +317,7 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
             toggle(ui, &mut settings.mods);
         });
         ui.add_space(6.0 * theme::density(ui));
-        android_pc_import_controls(ui, page, settings, status.started.is_some());
+        pc_import_controls(ui, page, settings, status.started.is_some());
         if !settings.mods && !status.mods {
             ui.add_space(4.0 * scale);
             panel(ui, |ui| {
