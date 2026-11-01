@@ -117,6 +117,34 @@ fn process_android_pc_import() {
                     "Imported {name}: {:?}, {} files. {}",
                     report.kind, report.entries, vehicle.summary()
                 );
+                // Validate the imported DLC archives immediately. This parses
+                // readable embedded YFT/YTD resources but does not register or
+                // mount them in the game's engine.
+                match glue5_mods::scan_pc_dlc_packages() {
+                    Ok(scan) => {
+                        let packs = scan.packs.iter().filter(|pack| pack.package == name).collect::<Vec<_>>();
+                        if packs.is_empty() {
+                            message.push_str("; no dlcpacks/<name>/dlc.rpf found for engine loading");
+                        }
+                        for pack in packs {
+                            message.push_str(&format!(
+                                "; {}: parsed {}/{} YFT and {}/{} YTD; invalid {}; unverified {}",
+                                pack.name,
+                                pack.valid_yft_files, pack.yft_files,
+                                pack.valid_ytd_files, pack.ytd_files,
+                                pack.invalid_asset_files, pack.unverified_asset_files
+                            ));
+                        }
+                        for warning in scan.warnings.iter().take(4) {
+                            message.push_str("; ");
+                            message.push_str(warning);
+                        }
+                    }
+                    Err(error) => {
+                        message.push_str("; DLC asset validation unavailable: ");
+                        message.push_str(&error);
+                    }
+                }
                 for note in &vehicle.notes {
                     message.push_str("; ");
                     message.push_str(note);
