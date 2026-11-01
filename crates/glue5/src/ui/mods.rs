@@ -26,6 +26,7 @@ pub struct ModsPage {
     tab: Tab,
     confirm_remove: Option<String>,
     dlc_scan: Option<glue5_mods::dlc::DlcScanReport>,
+    pc_import_status: Option<Result<String, String>>, 
 }
 
 impl ModsPage {
@@ -76,7 +77,7 @@ pub(super) fn summary(settings: &Settings, status: &Status) -> String {
 
 /// Android's Java document picker drops one selected file into the private inbox.
 #[cfg(target_os = "android")]
-fn process_android_pc_import() {
+fn process_android_pc_import(page: &mut ModsPage) {
     // Keep the inbox file until the Mods directory has been opened by the app.
     if glue5_mods::dir().is_none() { return; }
     use std::path::PathBuf;
@@ -158,16 +159,17 @@ fn process_android_pc_import() {
                 Ok(message)
             }
         })();
-        match result {
+        match &result {
             Ok(message) => log::info!("PC mod importer: {message}"),
             Err(error) => log::warn!("PC mod importer: {error}"),
         }
+        page.pc_import_status = Some(result);
         let _ = std::fs::remove_file(&path);
     }
 }
 
 #[cfg(not(target_os = "android"))]
-fn process_android_pc_import() {}
+fn process_android_pc_import(_page: &mut ModsPage) {}
 
 fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: &mut Settings, game_running: bool) {
     panel(ui, |ui| {
@@ -214,6 +216,14 @@ fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: 
                 }
             }
         });
+        if let Some(result) = &page.pc_import_status {
+            ui.add_space(6.0 * theme::density(ui));
+            small(ui, "LAST IMPORT RESULT", theme::MUTED);
+            match result {
+                Ok(message) => small(ui, message, theme::MUTED),
+                Err(error) => small(ui, &format!("Import failed: {error}"), WARN),
+            }
+        }
         if let Some(report) = &page.dlc_scan {
             ui.add_space(6.0 * theme::density(ui));
             small(ui, "DLC SCAN · IMPORTED PACKAGES ONLY", theme::MUTED);
@@ -274,7 +284,7 @@ fn request_android_pc_import(kind: &str) {
 /// True when closed.
 pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut Settings, status: &Status) -> bool {
     // Android's Java picker writes into the private inbox; consume it on the UI thread.
-    process_android_pc_import();
+    process_android_pc_import(page);
     // Mods change by themselves (they end, fail, the Studio starts them).
     ctx.request_repaint_after(std::time::Duration::from_millis(500));
     sheet(ctx, "mods-window", "MODS", |ui| {
