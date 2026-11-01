@@ -323,3 +323,78 @@ mod package_tests {
         assert!(inspect_package(&bytes).unwrap_err().contains("duplicate"));
     }
 }
+
+
+/// Imports a PC-style package into a private staging area under the mods
+/// directory. Nothing is copied into the game's data tree and no native
+/// plugin is executed. Runtime mounting/registration is a separate feature.
+pub fn install_package(name: &str, bytes: &[u8]) -> Result<PackageReport, String> {
+    use std::io::{Cursor, Read};
+    use std::path::{Component, Path, PathBuf};
+
+    if name.is_empty() || name.len() > 40
+        || !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+    {
+        return Err("Package name must use lowercase letters, digits, - or _ (max 40)".into());
+    }
+    let report = inspect_package(bytes)?;
+    let root = crate::dir().ok_or("mods are off")?.join(".pc-packages");
+    std::fs::create_dir_all(&root).map_err(|e| format!("PC package directory: {e}"))?;
+    let target = root.join(name);
+    if target.exists() {
+        return Err(format!("PC package {name} already exists"));
+    }
+
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
+        .map_err(|e| format!("invalid package ZIP: {e}"))?;
+    let mut random = [0u8; 6];
+    getrandom::fill(&mut random).map_err(|e| format!("staging name: {e}"))?;
+    let suffix = random.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let staging = root.join(format!(".stage-{name}-{suffix}"));
+    std::fs::create_dir(&staging).map_err(|e| format!("create staging directory: {e}"))?;
+
+    let result = (|| {
+        for index in 0..archive.len() {
+            let mut file = archive.by_index(index).map_err(|e| format!("ZIP entry {index}: {e}"))?;
+            let raw = file.name().to_owned();
+            let is_dir = file.is_dir();
+            let mut parts: Vec<&str> = raw.split('/').collect();
+            if is_dir && parts.last() == Some(&"") { parts.pop(); }
+            if parts.is_empty() || parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".." || p.starts_with('.')) {
+                return Err(format!("unsafe package path: {raw}"));
+            }
+            let relative: PathBuf = parts.iter().collect();
+            if relative.components().any(|part| !matches!(part, Component::Normal(_))) {
+                return Err(format!("unsafe package path: {raw}"));
+            }
+            let destination = staging.join(&relative);
+            if is_dir {
+                std::fs::create_dir_all(&destination).map_err(|e| format!("{}: {e}", relative.display()))?;
+                continue;
+            }
+            if let Some(parent) = destination.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", relative.display()))?;
+            }
+            let mut output = Vec::with_capacity(file.size().min(MAX_PACKAGE_FILE_BYTES) as usize);
+            file.take(MAX_PACKAGE_FILE_BYTES + 1).read_to_end(&mut output)
+                .map_err(|e| format!("{}: {e}", relative.display()))?;
+            if output.len() as u64 != file.size() || output.len() as u64 > MAX_PACKAGE_FILE_BYTES {
+                return Err(format!("invalid or oversized package file: {}", relative.display()));
+            }
+            std::fs::write(&destination, output).map_err(|e| format!("{}: {e}", relative.display()))?;
+        }
+        let manifest = staging.join("glue5-mod.json");
+        if manifest.exists() {
+            let text = std::fs::read_to_string(&manifest).map_err(|e| format!("glue5-mod.json: {e}"))?;
+            let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("glue5-mod.json: {e}"))?;
+            if !value.is_object() { return Err("glue5-mod.json must be a JSON object".into()); }
+        }
+        std::fs::rename(&staging, &target).map_err(|e| format!("finish PC package import: {e}"))?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    result.map(|()| report)
+}
