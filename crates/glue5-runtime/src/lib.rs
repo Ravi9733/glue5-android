@@ -279,12 +279,16 @@ pub fn start(config: Config, gpu: gpu::GpuBackend) -> Result<Game> {
         ] {
             if root.is_dir() {
                 if let Ok(packages) = std::fs::read_dir(&root) {
-                    for package in packages.flatten() {
-                        let path = package.path();
-                        if path.is_dir() {
-                            if let Err(e) = vfs.mount_game_overlay(&path) {
-                                log::warn!("pc mods: cannot mount package files from {}: {e}", path.display());
-                            }
+                    let mut paths = packages.flatten()
+                        .map(|entry| entry.path())
+                        .filter(|path| path.is_dir()
+                            && !path.file_name().is_some_and(|name| name.to_string_lossy().starts_with('.')))
+                        .collect::<Vec<_>>();
+                    // Stable package order makes duplicate loose-file precedence reproducible.
+                    paths.sort();
+                    for path in paths {
+                        if let Err(e) = vfs.mount_game_overlay(&path) {
+                            log::warn!("pc mods: cannot mount package files from {}: {e}", path.display());
                         }
                     }
                 }
