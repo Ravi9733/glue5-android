@@ -152,8 +152,6 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
     ctx.request_repaint_after(std::time::Duration::from_millis(500));
     sheet(ctx, "mods-window", "MODS", |ui| {
         let scale = theme::density(ui);
-        android_pc_import_controls(ui, settings);
-        ui.add_space(6.0 * theme::density(ui));
         let running_with = status.started.as_ref().map(|s| s.mods);
         let note = match running_with {
             Some(with) if with != settings.mods => {
@@ -164,6 +162,8 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
         setting(ui, "Mods", Control::Toggle, Some(note.unwrap_or("Luau scripts that change the game, run with it")), |ui| {
             toggle(ui, &mut settings.mods);
         });
+        ui.add_space(6.0 * theme::density(ui));
+        android_pc_import_controls(ui, settings);
         if !settings.mods && !status.mods {
             ui.add_space(4.0 * scale);
             panel(ui, |ui| {
