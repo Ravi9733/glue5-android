@@ -64,9 +64,79 @@ fn overlaid(client: &Client, id: u32) -> Option<&'static File> {
                 files.push((id, f));
             }
         }
+
+        // Streamed games normally read /game through HTTPFS, not VFS. Route
+        // replacement files from imported PC packages through the same file-id
+        // read hook. Only paths already present in the stream manifest can be
+        // replaced here; brand-new DLC paths still need manifest/engine support.
+        append_pc_package_overlays(client, &mut files);
         files
     });
     files.iter().find(|(i, _)| *i == id).map(|(_, f)| f)
+}
+
+const MAX_PC_OVERLAY_FILES: usize = 50_000;
+
+/// Add package files whose game-relative paths already exist in the HTTPFS
+/// manifest. The stream's manifest owns file IDs, so this cannot introduce a
+/// brand-new path; it can safely replace bytes for an existing path.
+fn append_pc_package_overlays(client: &Client, files: &mut Vec<(u32, File)>) {
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+
+    fn visit(
+        root: &Path,
+        dir: &Path,
+        client: &Client,
+        out: &mut HashMap<u32, File>,
+        visited: &mut usize,
+    ) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let mut entries = entries.flatten().collect::<Vec<_>>();
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_symlink() { continue; }
+            if kind.is_dir() {
+                visit(root, &path, client, out, visited);
+                continue;
+            }
+            if !kind.is_file() || *visited >= MAX_PC_OVERLAY_FILES { continue; }
+            *visited += 1;
+            let Ok(relative) = path.strip_prefix(root) else { continue };
+            let relative = relative.to_string_lossy().replace('\\', "/");
+            let Some(id) = client.find(&format!("data/{relative}")) else { continue };
+            if let Ok(file) = File::open(&path) {
+                out.insert(id, file);
+            }
+        }
+    }
+
+    let mut roots = vec![
+        rt().config.game_dir.join("mods/.pc-packages"),
+        rt().config.user_dir.join("mods/.pc-packages"),
+    ];
+    roots.sort();
+    let mut replacements = HashMap::new();
+    let mut visited = 0usize;
+    for root in roots {
+        let Ok(packages) = std::fs::read_dir(&root) else { continue };
+        let mut packages = packages.flatten().map(|entry| entry.path())
+            .filter(|path| path.is_dir()
+                && !path.file_name().is_some_and(|name| name.to_string_lossy().starts_with('.')))
+            .collect::<Vec<PathBuf>>();
+        packages.sort();
+        for package in packages {
+            visit(&package, &package, client, &mut replacements, &mut visited);
+            if visited >= MAX_PC_OVERLAY_FILES { break; }
+        }
+        if visited >= MAX_PC_OVERLAY_FILES { break; }
+    }
+    if !replacements.is_empty() {
+        log::info!("stream: {} imported PC package files replace existing manifest paths", replacements.len());
+        files.extend(replacements);
+    }
 }
 
 /// Called by the engine (`wasm_httpfs_io_start_js`) with the address of its
