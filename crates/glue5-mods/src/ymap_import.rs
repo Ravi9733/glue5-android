@@ -120,12 +120,111 @@ pub fn inspect(bytes: &[u8]) -> Result<(YmapImportReport, String), String> {
 
 /// Install the converted YMAP as a disabled-by-default script mod.
 pub fn install(name: &str, bytes: &[u8]) -> Result<YmapImportReport, String> {
+    let (report, script) = inspect(bytes)?;
+    install_script(name, &script)?;
+    Ok(report)
+}
+
+/// Import ordinary exterior YMAP files contained in a readable RPF archive.
+/// This is a conversion to script placements, not native archive mounting.
+pub fn install_rpf_ymaps(name: &str, bytes: &[u8]) -> Result<RpfYmapImportReport, String> {
+    use rpf_archive::{RpfArchive, RpfEncryption, build_directory_tree, list_all_files};
+
+    const MAX_RPF_IMPORT_BYTES: usize = 128 * 1024 * 1024;
+    const MAX_RPF_YMAPS: usize = 32;
+    if bytes.is_empty() { return Err("RPF archive is empty".into()); }
+    if bytes.len() > MAX_RPF_IMPORT_BYTES {
+        return Err("RPF exceeds the 128 MiB Android import limit".into());
+    }
+    validate_mod_name(name)?;
+    let archive = RpfArchive::parse(bytes, "import.rpf", None)
+        .map_err(|e| format!("RPF parse failed: {e}"))?;
+    if archive.entries.len() > crate::rpf_archive::MAX_RPF_ENTRIES {
+        return Err("RPF contains too many entries".into());
+    }
+    if matches!(archive.encryption, RpfEncryption::Aes | RpfEncryption::Ng | RpfEncryption::Tfit) {
+        return Err("Encrypted RPF cannot be converted without its game keys".into());
+    }
+
+    let tree = build_directory_tree(&archive.entries);
+    let files = list_all_files(&tree);
+    let mut report = RpfYmapImportReport::default();
+    let mut script = String::new();
+    for file in files.iter().filter(|file| file.path.to_ascii_lowercase().ends_with(".ymap")) {
+        report.maps_found += 1;
+        if report.maps_found > MAX_RPF_YMAPS {
+            report.warnings.push(format!("Only the first {MAX_RPF_YMAPS} YMAP files are considered"));
+            break;
+        }
+        let Some(entry) = archive.entries.get(file.entry_index) else {
+            report.skipped_maps += 1;
+            report.warnings.push(format!("{}: invalid RPF entry index", file.path));
+            continue;
+        };
+        let map_bytes = match archive.extract_entry(bytes, entry, None) {
+            Ok(data) if data.len() <= MAX_YMAP_BYTES => data,
+            Ok(_) => {
+                report.skipped_maps += 1;
+                report.warnings.push(format!("{}: YMAP exceeds the 128 MiB limit", file.path));
+                continue;
+            }
+            Err(error) => {
+                report.skipped_maps += 1;
+                report.warnings.push(format!("{}: extraction failed: {error}", file.path));
+                continue;
+            }
+        };
+        match inspect(&map_bytes) {
+            Ok((map_report, map_script)) => {
+                report.imported_maps += 1;
+                report.entities += map_report.supported_entities;
+                report.skipped_mlo += map_report.skipped_mlo;
+                report.skipped_lod += map_report.skipped_lod;
+                report.skipped_invalid += map_report.skipped_invalid;
+                use std::fmt::Write as _;
+                let _ = writeln!(script, "-- Converted from {}\ndo", file.path);
+                script.push_str(&map_script);
+                script.push_str("\nend\n");
+            }
+            Err(error) => {
+                report.skipped_maps += 1;
+                report.warnings.push(format!("{}: {error}", file.path));
+            }
+        }
+    }
+    if report.maps_found == 0 {
+        return Err("RPF contains no YMAP files".into());
+    }
+    if report.imported_maps == 0 {
+        return Err(format!("No supported YMAP placements found ({} maps skipped)", report.skipped_maps));
+    }
+    install_script(name, &script)?;
+    Ok(report)
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RpfYmapImportReport {
+    pub maps_found: usize,
+    pub imported_maps: usize,
+    pub skipped_maps: usize,
+    pub entities: usize,
+    pub skipped_mlo: usize,
+    pub skipped_lod: usize,
+    pub skipped_invalid: usize,
+    pub warnings: Vec<String>,
+}
+
+fn validate_mod_name(name: &str) -> Result<(), String> {
     if name.is_empty() || name.len() > 40
         || !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
     {
         return Err("Map name must use lowercase letters, digits, - or _ (max 40)".into());
     }
-    let (report, script) = inspect(bytes)?;
+    Ok(())
+}
+
+fn install_script(name: &str, script: &str) -> Result<(), String> {
+    validate_mod_name(name)?;
     let dir = crate::dir().ok_or("mods are off")?;
     let target = dir.join(name);
     if target.exists() { return Err(format!("Mod {name} already exists")); }
@@ -133,14 +232,14 @@ pub fn install(name: &str, bytes: &[u8]) -> Result<YmapImportReport, String> {
     let mut random = [0u8; 6];
     getrandom::fill(&mut random).map_err(|e| format!("staging name: {e}"))?;
     let suffix = random.iter().map(|b| format!("{b:02x}")).collect::<String>();
-    let staging = dir.join(format!(".stage-ymap-{name}-{suffix}"));
-    std::fs::create_dir(&staging).map_err(|e| format!("create YMAP staging directory: {e}"))?;
+    let staging = dir.join(format!(".stage-map-{name}-{suffix}"));
+    std::fs::create_dir(&staging).map_err(|e| format!("create map staging directory: {e}"))?;
     let result = (|| {
         std::fs::write(staging.join("main.luau"), script)
-            .map_err(|e| format!("write YMAP script: {e}"))?;
+            .map_err(|e| format!("write map script: {e}"))?;
         std::fs::write(staging.join("mod.json"), "{\n  \"autostart\": false\n}\n")
-            .map_err(|e| format!("write YMAP settings: {e}"))?;
-        std::fs::rename(&staging, &target).map_err(|e| format!("install YMAP mod: {e}"))?;
+            .map_err(|e| format!("write map settings: {e}"))?;
+        std::fs::rename(&staging, &target).map_err(|e| format!("install map mod: {e}"))?;
         Ok(())
     })();
     if result.is_err() {
@@ -149,7 +248,7 @@ pub fn install(name: &str, bytes: &[u8]) -> Result<YmapImportReport, String> {
         crate::changed(&format!("{name}/"));
         crate::refresh();
     }
-    result.map(|()| report)
+    result
 }
 
 #[cfg(test)]
