@@ -145,3 +145,133 @@ mod tests {
         assert!(parse_placements(input.as_bytes()).unwrap_err().contains("objects"));
     }
 }
+
+
+/// PC mod package classification. This is metadata inspection, not proof that
+/// the game can load the contained engine assets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PackageKind {
+    Script,
+    VehiclePack,
+    MapOrWorld,
+    MixedContent,
+    Unknown,
+}
+
+/// A bounded summary of a ZIP before an installer or runtime sees it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageReport {
+    pub kind: PackageKind,
+    pub entries: usize,
+    pub unpacked_bytes: u64,
+    pub rpf_files: usize,
+    pub yft_files: usize,
+    pub ytd_files: usize,
+    pub ymap_files: usize,
+    pub meta_files: usize,
+    pub asi_or_dll_files: usize,
+    pub manifest_name: Option<String>,
+}
+
+const MAX_PACKAGE_ENTRIES: usize = 4096;
+const MAX_PACKAGE_FILE_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_PACKAGE_TOTAL_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
+
+/// Inspect a PC-style ZIP without extracting it. Rejects unsafe paths,
+/// duplicate normalized paths, symlinks and decompression-size bombs.
+/// RPF/YFT/YTD recognition is only file classification; it does not mount
+/// archives or register game assets.
+pub fn inspect_package(bytes: &[u8]) -> Result<PackageReport, String> {
+    use std::collections::HashSet;
+    use std::io::{Cursor, Read};
+
+    if bytes.is_empty() {
+        return Err("package ZIP is empty".into());
+    }
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
+        .map_err(|e| format!("invalid package ZIP: {e}"))?;
+    if archive.is_empty() || archive.len() > MAX_PACKAGE_ENTRIES {
+        return Err(format!("package must contain 1–{MAX_PACKAGE_ENTRIES} entries"));
+    }
+
+    let mut seen = HashSet::with_capacity(archive.len());
+    let mut total = 0u64;
+    let (mut rpf, mut yft, mut ytd, mut ymap, mut meta, mut native) = (0, 0, 0, 0, 0, 0);
+    let mut has_script = false;
+    let mut manifest_name = None;
+
+    for index in 0..archive.len() {
+        let mut file = archive.by_index(index)
+            .map_err(|e| format!("package entry {index}: {e}"))?;
+        let raw = file.name().to_owned();
+        if raw.starts_with('/') || raw.contains('\\') || raw.contains(':') {
+            return Err(format!("unsafe package path: {raw}"));
+        }
+        let is_dir = file.is_dir();
+        let mut parts: Vec<&str> = raw.split('/').collect();
+        if is_dir && parts.last() == Some(&"") { parts.pop(); }
+        if parts.is_empty() || parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".." || p.starts_with('.')) {
+            return Err(format!("unsafe package path: {raw}"));
+        }
+        if file.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
+            return Err(format!("package symlink is not allowed: {raw}"));
+        }
+        let normalized = parts.join("/");
+        if !seen.insert(normalized.to_ascii_lowercase()) {
+            return Err(format!("duplicate package path: {raw}"));
+        }
+        if is_dir { continue; }
+
+        let size = file.size();
+        if size > MAX_PACKAGE_FILE_BYTES {
+            return Err(format!("package file exceeds 256 MiB: {raw}"));
+        }
+        total = total.checked_add(size).ok_or("package size overflow")?;
+        if total > MAX_PACKAGE_TOTAL_BYTES {
+            return Err("package exceeds 2 GiB unpacked size".into());
+        }
+
+        let lower = raw.to_ascii_lowercase();
+        if lower.ends_with(".rpf") { rpf += 1; }
+        if lower.ends_with(".yft") { yft += 1; }
+        if lower.ends_with(".ytd") { ytd += 1; }
+        if lower.ends_with(".ymap") { ymap += 1; }
+        if lower.ends_with(".meta") || lower.ends_with(".xml") { meta += 1; }
+        if lower.ends_with(".asi") || lower.ends_with(".dll") { native += 1; }
+        if lower.ends_with("main.luau") { has_script = true; }
+        if lower == "glue5-mod.json" {
+            if size > MAX_MANIFEST_BYTES {
+                return Err("glue5-mod.json exceeds 64 KiB".into());
+            }
+            let mut text = String::new();
+            file.take(MAX_MANIFEST_BYTES + 1).read_to_string(&mut text)
+                .map_err(|e| format!("glue5-mod.json: {e}"))?;
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|e| format!("invalid glue5-mod.json: {e}"))?;
+            let object = value.as_object().ok_or("glue5-mod.json must be a JSON object")?;
+            if let Some(name) = object.get("name") {
+                let name = name.as_str().ok_or("manifest name must be a string")?;
+                if name.is_empty() || name.len() > 64 || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') {
+                    return Err("manifest name must be 1–64 ASCII letters, digits, _ or -".into());
+                }
+                manifest_name = Some(name.to_owned());
+            }
+        }
+    }
+
+    let has_assets = rpf + yft + ytd + ymap + meta > 0;
+    let kind = match (has_script, has_assets, native > 0) {
+        (true, false, false) => PackageKind::Script,
+        (false, true, false) if yft + ytd > 0 => PackageKind::VehiclePack,
+        (false, true, false) if ymap > 0 => PackageKind::MapOrWorld,
+        (true, true, _) | (_, true, true) => PackageKind::MixedContent,
+        _ => PackageKind::Unknown,
+    };
+
+    Ok(PackageReport {
+        kind, entries: archive.len(), unpacked_bytes: total,
+        rpf_files: rpf, yft_files: yft, ytd_files: ytd, ymap_files: ymap,
+        meta_files: meta, asi_or_dll_files: native, manifest_name,
+    })
+}
