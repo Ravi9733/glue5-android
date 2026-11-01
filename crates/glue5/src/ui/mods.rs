@@ -82,7 +82,7 @@ fn process_android_pc_import() {
     use std::path::PathBuf;
     let Some(root) = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from) else { return };
     let inbox = root.join("pc-mod-import-inbox");
-    for (file, kind) in [("incoming.json", "json"), ("incoming.zip", "zip"), ("incoming.ymap", "ymap")] {
+    for (file, kind) in [("incoming.json", "json"), ("incoming.zip", "zip"), ("incoming.ymap", "ymap"), ("incoming.rpf", "rpf")] {
         let path = inbox.join(file);
         if !path.is_file() { continue; }
         let result = (|| -> Result<String, String> {
@@ -100,6 +100,10 @@ fn process_android_pc_import() {
                 let name = format!("ymap_{stamp}");
                 let report = glue5_mods::install_ymap_mod(&name, &bytes)?;
                 Ok(format!("Imported {name}: {} HD placements; skipped {} MLO, {} LOD", report.supported_entities, report.skipped_mlo, report.skipped_lod))
+            } else if kind == "rpf" {
+                let name = format!("rpf_map_{stamp}");
+                let report = glue5_mods::install_rpf_ymaps(&name, &bytes)?;
+                Ok(format!("Imported {name}: {} of {} YMAPs, {} object placements; skipped {} maps", report.imported_maps, report.maps_found, report.entities, report.skipped_maps))
             } else {
                 let name = format!("pc_mod_{stamp}");
                 let report = glue5_mods::install_pc_package(&name, &bytes)?;
@@ -120,7 +124,7 @@ fn process_android_pc_import() {}
 fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: &mut Settings, game_running: bool) {
     panel(ui, |ui| {
         card_title(ui, "IMPORT PC MODS", None);
-        small(ui, "Choose a PC mod ZIP, a supported JSON object-placement map, or a limited exterior YMAP conversion. Package files overlay /game paths; matching package files can replace base files, including RPF archives at their expected paths.", theme::MUTED);
+        small(ui, "Choose a PC mod ZIP, JSON placement map, YMAP, or readable RPF archive. RPF import converts supported embedded exterior YMAP placements into a script mod; it does not mount the archive or load custom vehicle assets.", theme::MUTED);
         small(ui, "YMAP conversion only places existing exterior HD models; MLO interiors, LOD chains, collision and custom assets are not loaded. Scan DLC packs only inspects metadata; it does not activate DLC or load custom YFT/YTD vehicles. Native ASI/DLL plugins are not executed.", theme::MUTED);
         if !settings.mods {
             small(ui, "Turn Mods on first; the change takes effect when the game starts.", WARN);
@@ -144,6 +148,12 @@ fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: 
                 request_android_pc_import("ymap");
                 #[cfg(not(target_os = "android"))]
                 log::info!("YMAP file picker is Android-only.");
+            }
+            if inline_button(ui, "Import RPF maps").clicked() {
+                #[cfg(target_os = "android")]
+                request_android_pc_import("rpf");
+                #[cfg(not(target_os = "android"))]
+                log::info!("PC mod file picker is Android-only.");
             }
             if inline_button(ui, "Scan DLC packs").clicked() {
                 match glue5_mods::scan_pc_dlc_packages() {
