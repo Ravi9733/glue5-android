@@ -170,6 +170,15 @@ mod tests {
     }
 
     #[test]
+    fn compiled_ymap_uses_precomputed_numeric_hashes() {
+        let script = compile(&[(0x1234ABCD, 1.0, 2.0, 3.0, 90.0)]);
+        assert!(script.contains("model = 0x1234ABCD"));
+        assert!(script.contains("streaming.load(model)"));
+        assert!(script.contains("object.createObject(model, position, false, false, false)"));
+        assert!(!script.contains("joaat("));
+    }
+
+    #[test]
     fn rejects_oversized_ymap_before_parsing() {
         assert!(inspect(&vec![0; MAX_YMAP_BYTES + 1]).unwrap_err().contains("MiB"));
     }
