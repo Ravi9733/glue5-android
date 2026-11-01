@@ -115,8 +115,8 @@ fn process_android_pc_import() {}
 fn android_pc_import_controls(ui: &mut egui::Ui, settings: &mut Settings, game_running: bool) {
     panel(ui, |ui| {
         card_title(ui, "IMPORT PC MODS", None);
-        small(ui, "Choose a PC mod ZIP or a supported JSON object-placement map. Loose files are overlaid under /game; this does not register custom vehicle assets or mount RPF archives yet.", theme::MUTED);
-        small(ui, "RPF/YFT/YTD content is stored for inspection only. Native ASI/DLL plugins are not executed.", theme::MUTED);
+        small(ui, "Choose a PC mod ZIP or a supported JSON object-placement map. Package files overlay /game paths; matching package files can replace base files, including RPF archives at their expected paths.", theme::MUTED);
+        small(ui, "DLC discovery, custom YFT/YTD asset registration and in-game vehicle loading still need runtime verification. Native ASI/DLL plugins are not executed.", theme::MUTED);
         if !settings.mods {
             small(ui, "Turn Mods on first; the change takes effect when the game starts.", WARN);
             return;
