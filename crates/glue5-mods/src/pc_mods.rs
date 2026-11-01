@@ -183,7 +183,9 @@ pub struct PackageReport {
 }
 
 const MAX_PACKAGE_ENTRIES: usize = 4096;
-const MAX_PACKAGE_FILE_BYTES: u64 = 256 * 1024 * 1024;
+// A single archive may be as large as the total package budget. Files are copied
+// to disk incrementally, so this limit does not require buffering the RPF in RAM.
+const MAX_PACKAGE_FILE_BYTES: u64 = MAX_PACKAGE_TOTAL_BYTES;
 const MAX_PACKAGE_TOTAL_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 
@@ -249,7 +251,7 @@ pub fn inspect_package(bytes: &[u8]) -> Result<PackageReport, String> {
 
         let size = file.size();
         if size > MAX_PACKAGE_FILE_BYTES {
-            return Err(format!("package file exceeds 256 MiB: {raw}"));
+            return Err(format!("package file exceeds 2 GiB package budget: {raw}"));
         }
         total = total.checked_add(size).ok_or("package size overflow")?;
         if total > MAX_PACKAGE_TOTAL_BYTES {
@@ -421,7 +423,7 @@ pub fn install_package(name: &str, bytes: &[u8]) -> Result<PackageReport, String
             }
             let expected_size = file.size();
             if expected_size > MAX_PACKAGE_FILE_BYTES {
-                return Err(format!("package file exceeds 256 MiB: {}", relative.display()));
+                return Err(format!("package file exceeds 2 GiB package budget: {}", relative.display()));
             }
             let mut output = std::fs::File::create(&destination)
                 .map_err(|e| format!("{}: {e}", relative.display()))?;
