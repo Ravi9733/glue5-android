@@ -48,13 +48,12 @@ jobs:
         run: mise run setup
       - name: Inspect the exact game.wasm engine interface
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wabt
+          cargo install wasm-tools --locked
           GAME_WASM="$(find "$GLUE5_GAME_DIR" -type f -name game.wasm -print -quit)"
           test -n "$GAME_WASM"
-          wasm-objdump -x "$GAME_WASM" > "$RUNNER_TEMP/game-wasm-sections.txt"
-          wasm-objdump -d "$GAME_WASM" > "$RUNNER_TEMP/game-wasm-disassembly.txt"
-          grep -E '(^Import\[|^Export\[|^Function\[|^Custom:|name:|func\[[0-9]+\].*name=)' "$RUNNER_TEMP/game-wasm-sections.txt" > "$RUNNER_TEMP/game-wasm-symbol-index.txt" || true
+          wasm-tools dump "$GAME_WASM" > "$RUNNER_TEMP/game-wasm-sections.txt"
+          wasm-tools print "$GAME_WASM" > "$RUNNER_TEMP/game-wasm.wat"
+          grep -E '(\(import |\(export |\(func \$|\(memory |\(table )' "$RUNNER_TEMP/game-wasm.wat" > "$RUNNER_TEMP/game-wasm-symbol-index.txt" || true
       - name: Upload game.wasm interface report
         uses: actions/upload-artifact@v4
         with:
