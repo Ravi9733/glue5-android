@@ -12,7 +12,7 @@ local customs = require("./customs")
 local M = {}
 
 -- The options, read when spawning.
-type Options = { warpIn: Toggle, replace: Toggle, maxed: Toggle, god: Toggle, plate: Text }
+type Options = { warpIn: Toggle, replace: Toggle, maxed: Toggle, god: Toggle }
 
 type Saved = { name: string, look: customs.Look }
 
@@ -86,9 +86,6 @@ function M.spawn(hash: number, name: string): (Vehicle?, string?)
 	if options.god.value then
 		entity.setEntityInvincible(car, true)
 		vehicle.setVehicleCanBeVisiblyDamaged(car, false)
-	end
-	if options.plate.value ~= "" then
-		vehicle.setVehicleNumberPlateText(car, options.plate.value)
 	end
 	return car, nil
 end
@@ -172,35 +169,33 @@ function M.picker(menu: Menu, verb: string, pick: (entry: catalog.VehicleEntry) 
 end
 
 function M.build(root: Menu)
-	local menu = root:submenu("Spawn a vehicle", "Every vehicle of the game, plus custom DLC model names")
+	local menu = root:submenu("Add-on Car Spawner", "Spawn registered DLC cars and vehicles already in the game")
 	local optionsMenu = menu:submenu("Options", "How vehicles are delivered")
 	options = {
-		warpIn = (bind.feature(optionsMenu, "spawn.warpIn", "Get in", "In the driver's seat; aircraft in the air", {})),
-		replace = (bind.feature(optionsMenu, "spawn.replace", "Replace the last one", "The vehicle spawned before goes", {})),
-		maxed = (bind.feature(optionsMenu, "spawn.maxed", "Fully upgraded", "Every upgrade the vehicle has", {})),
-		god = (bind.feature(optionsMenu, "spawn.god", "Indestructible", "No damage, no wear", {})),
-		plate = optionsMenu:text("Plate", "", { placeholder = "As the game gives it", max = 8 }),
+		warpIn = bind.feature(optionsMenu, "spawn.warpIn", "Get in", "In the driver's seat; aircraft in the air", {}),
+		replace = bind.feature(optionsMenu, "spawn.replace", "Replace the last one", "The vehicle spawned before goes", {}),
+		maxed = bind.feature(optionsMenu, "spawn.maxed", "Fully upgraded", "Every upgrade the vehicle has", {}),
+		god = bind.feature(optionsMenu, "spawn.god", "Indestructible", "No damage, no wear", {}),
 	}
 	garage(menu)
 
-	-- Manual model-name spawning is important for add-on DLC cars. The game may
-	-- know a DLC model by hash even when it is absent from the cached vehicle list.
-	local custom = menu:submenu("Spawn by model name", "For add-on cars: enter the model name from vehicles.meta")
-	local modelName = custom:text("Model name", "dyfurai", { placeholder = "e.g. dyfurai", max = 64 })
-	bind.action(custom, "Spawn custom model", { note = "Checks the model before requesting it", action = "Spawn" }, function(): string?
-		local model = string.lower(string.match(modelName.value, "^%s*(.-)%s*$") or "")
-		if model == "" or not string.match(model, "^[%w_%-]+$") then
-			return "Enter a valid vehicle model name"
-		end
+	-- The Android menu API has no text-entry control. Use a real DLC preset
+	-- instead of calling the unsupported :text() method and aborting setup.
+	local custom = menu:submenu("Add-on DLC models", "Models must already be registered by the loaded game data")
+	bind.action(custom, "Mazda Furai (dyfurai)", {
+		note = "Requires the dyfurai DLC model to be mounted by the game",
+		action = "Spawn",
+	}, function(): string?
+		local model = "dyfurai"
 		local hash = joaat(model)
 		if not streaming.isModelInCdimage(hash) then
-			return `{model}: model is not registered in the loaded game data`
+			return "dyfurai is not registered in the loaded game data; the DLC loader must mount it first"
 		end
 		if not streaming.isModelAVehicle(hash) then
-			return `{model}: registered model is not a vehicle`
+			return "dyfurai is registered, but the game does not identify it as a vehicle"
 		end
-		local car, why = M.spawn(hash, model)
-		return if car then `{model} spawned` else why
+		local car, why = M.spawn(hash, "Mazda Furai")
+		return if car then "Mazda Furai spawned" else why
 	end)
 
 	menu:separator("Vehicles already registered by the game")
@@ -209,5 +204,4 @@ function M.build(root: Menu)
 		return if car then `{entry.name} delivered` else why
 	end)
 end
-
 return M
