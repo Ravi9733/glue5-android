@@ -270,7 +270,8 @@ pub fn start(config: Config, gpu: gpu::GpuBackend) -> Result<Game> {
     let game_files = config.stream.is_none().then(|| data.clone());
     let mut vfs = Vfs::new(game_files, config.user_dir.clone()).with_context(|| format!("opening {}", data.display()))?;
     // Imported packages are kept outside the game's data tree. For local game
-    // folders, expose their loose files under /game without overwriting originals.
+    // folders, expose their files under /game; package files override same-path
+    // base files so replacement RPF/DLC archives can be read by the game engine.
     // The streamed HTTP device has its own manifest/read path and is not overlaid here.
     if config.stream.is_none() {
         for root in [
