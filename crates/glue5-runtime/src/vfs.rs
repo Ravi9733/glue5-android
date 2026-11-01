@@ -580,7 +580,7 @@ fn package_overlay_resolves_case_insensitively_without_mutating_game_data() {
     fs::create_dir_all(overlay.join("update/x64/dlcpacks/car")).unwrap();
     fs::write(overlay.join("update/x64/dlcpacks/car/dlc.rpf"), b"RPF7").unwrap();
     let mut vfs = Vfs::new(Some(game.clone()), dir.join("user")).unwrap();
-    assert_eq!(vfs.mount_game_overlay(&overlay).unwrap(), 4);
+    assert_eq!(vfs.mount_game_overlay(&overlay).unwrap(), 5);
     let host = vfs.resolve("/game/UPDATE/x64/dlcpacks/car/dlc.rpf").unwrap();
     assert_eq!(fs::read(host.path).unwrap(), b"RPF7");
     assert!(!game.join("update/x64/dlcpacks/car/dlc.rpf").exists());
