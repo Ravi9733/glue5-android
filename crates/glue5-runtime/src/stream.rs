@@ -107,6 +107,19 @@ fn append_pc_package_overlays(client: &Client, files: &mut Vec<(u32, File)>) {
             let Ok(relative) = path.strip_prefix(root) else { continue };
             let relative = relative.to_string_lossy().replace('\\', "/");
             let Some(id) = client.find(&format!("data/{relative}")) else { continue };
+            // HTTPFS keeps the base catalog's size. Replacing a streamed file
+            // with a different length would make the engine's manifest stale,
+            // so only same-size replacements are safe until catalog merging
+            // is implemented.
+            let Some(expected_size) = client.file_size(id) else { continue };
+            let Ok(metadata) = std::fs::metadata(&path) else { continue };
+            if metadata.len() != expected_size {
+                log::debug!(
+                    "stream: skip PC overlay {relative}: {} bytes, catalog expects {expected_size}",
+                    metadata.len()
+                );
+                continue;
+            }
             if let Ok(file) = File::open(&path) {
                 out.insert(id, file);
             }
