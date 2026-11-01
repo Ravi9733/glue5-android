@@ -357,6 +357,18 @@ mod package_tests {
         let bytes = writer.finish().unwrap().into_inner();
         assert!(inspect_package(&bytes).unwrap_err().contains("duplicate"));
     }
+
+    #[test]
+    fn rejects_collisions_between_openiv_and_game_root_paths() {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        writer.start_file("mods/update/update.rpf", options).unwrap();
+        writer.write_all(b"a").unwrap();
+        writer.start_file("update/update.rpf", options).unwrap();
+        writer.write_all(b"b").unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+        assert!(inspect_package(&bytes).unwrap_err().contains("duplicate"));
+    }
 }
 
 
