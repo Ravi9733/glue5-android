@@ -106,6 +106,7 @@ fn build_overlay_state(client: &Client) -> StreamOverlay {
             let Ok(kind) = entry.file_type() else { continue };
             if kind.is_symlink() { continue; }
             if kind.is_dir() {
+                if entry.file_name().to_string_lossy().starts_with('.') { continue; }
                 visit(root, &path, out, visited);
                 continue;
             }
