@@ -82,7 +82,7 @@ fn process_android_pc_import() {
     use std::path::PathBuf;
     let Some(root) = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from) else { return };
     let inbox = root.join("pc-mod-import-inbox");
-    for (file, kind) in [("incoming.json", "json"), ("incoming.zip", "zip")] {
+    for (file, kind) in [("incoming.json", "json"), ("incoming.zip", "zip"), ("incoming.ymap", "ymap")] {
         let path = inbox.join(file);
         if !path.is_file() { continue; }
         let result = (|| -> Result<String, String> {
@@ -96,6 +96,10 @@ fn process_android_pc_import() {
                 let name = format!("map_{stamp}");
                 let count = glue5_mods::install_placement_mod(&name, &bytes)?;
                 Ok(format!("Imported {name}: {count} placements"))
+            } else if kind == "ymap" {
+                let name = format!("ymap_{stamp}");
+                let report = glue5_mods::install_ymap_mod(&name, &bytes)?;
+                Ok(format!("Imported {name}: {} HD placements; skipped {} MLO, {} LOD", report.supported_entities, report.skipped_mlo, report.skipped_lod))
             } else {
                 let name = format!("pc_mod_{stamp}");
                 let report = glue5_mods::install_pc_package(&name, &bytes)?;
@@ -116,7 +120,7 @@ fn process_android_pc_import() {}
 fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: &mut Settings, game_running: bool) {
     panel(ui, |ui| {
         card_title(ui, "IMPORT PC MODS", None);
-        small(ui, "Choose a PC mod ZIP or a supported JSON object-placement map. Package files overlay /game paths; matching package files can replace base files, including RPF archives at their expected paths.", theme::MUTED);
+        small(ui, "Choose a PC mod ZIP, a supported JSON object-placement map, or a limited exterior YMAP conversion. Package files overlay /game paths; matching package files can replace base files, including RPF archives at their expected paths.", theme::MUTED);
         small(ui, "Use Scan DLC packs to inspect add-on archives and setup2.xml order. This does not yet register packs with the game or load custom YFT/YTD vehicles. Native ASI/DLL plugins are not executed.", theme::MUTED);
         if !settings.mods {
             small(ui, "Turn Mods on first; the change takes effect when the game starts.", WARN);
@@ -134,6 +138,12 @@ fn android_pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: 
                 request_android_pc_import("json");
                 #[cfg(not(target_os = "android"))]
                 log::info!("JSON file picker is Android-only.");
+            }
+            if inline_button(ui, "Import YMAP").clicked() {
+                #[cfg(target_os = "android")]
+                request_android_pc_import("ymap");
+                #[cfg(not(target_os = "android"))]
+                log::info!("YMAP file picker is Android-only.");
             }
             if inline_button(ui, "Scan DLC packs").clicked() {
                 match glue5_mods::scan_pc_dlc_packages() {
