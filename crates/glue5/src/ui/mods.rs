@@ -134,6 +134,22 @@ fn android_pc_import_controls(ui: &mut egui::Ui, settings: &mut Settings) {
                 log::info!("JSON file picker is Android-only.");
             }
         });
+        match glue5_mods::installed_pc_packages() {
+            Ok(packages) if !packages.is_empty() => {
+                ui.add_space(6.0 * theme::density(ui));
+                small(ui, "INSTALLED PC PACKAGES · applied at next game launch", theme::MUTED);
+                for package in packages {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(package.name).size(13.0 * theme::density(ui)).color(Color32::WHITE));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(RichText::new(format!("{} files · {:.1} MiB", package.files, package.unpacked_bytes as f64 / 1_048_576.0)).size(11.0 * theme::density(ui)).color(theme::MUTED));
+                        });
+                    });
+                }
+            }
+            Ok(_) => small(ui, "No PC ZIP packages imported yet.", theme::MUTED),
+            Err(error) => small(ui, &format!("Package list: {error}"), WARN),
+        }
     });
 }
 
