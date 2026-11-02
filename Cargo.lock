@@ -1047,6 +1047,7 @@ dependencies = [
  "mlua",
  "rage-formats",
  "rpf-archive",
+ "serde",
  "serde_json",
  "sha2",
  "tungstenite",
