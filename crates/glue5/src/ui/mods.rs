@@ -268,6 +268,32 @@ fn pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: &mut Set
                 small(ui, &format!("{} more scan warnings", report.warnings.len() - 8), theme::MUTED);
             }
         }
+        match glue5_mods::installed_native_plugins() {
+            Ok(plugins) if !plugins.is_empty() => {
+                ui.add_space(6.0 * theme::density(ui));
+                small(ui, "INSTALLED NATIVE PLUGINS · NOT LOADED", theme::MUTED);
+                for plugin in plugins {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(format!("{} · v{}", plugin.manifest.name, plugin.manifest.version))
+                            .size(13.0 * theme::density(ui)).color(Color32::WHITE));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(RichText::new(&plugin.architecture).size(11.0 * theme::density(ui)).color(theme::MUTED));
+                            if game_running {
+                                ui.add_enabled(false, egui::Button::new("Remove"));
+                            } else if inline_button(ui, "Remove").clicked() {
+                                match glue5_mods::uninstall_native_plugin(&plugin.manifest.id) {
+                                    Ok(()) => log::info!("Native plugin {} removed.", plugin.manifest.id),
+                                    Err(error) => log::warn!("Native plugin {} could not be removed: {error}", plugin.manifest.id),
+                                }
+                            }
+                        });
+                    });
+                }
+                small(ui, "These ARM64 libraries are installed and validated, but the native execution bridge is not enabled yet.", WARN);
+            }
+            Ok(_) => small(ui, "No Android native plugins installed.", theme::MUTED),
+            Err(error) => small(ui, &format!("Native plugin list: {error}"), WARN),
+        }
         match glue5_mods::installed_pc_packages() {
             Ok(packages) if !packages.is_empty() => {
                 ui.add_space(6.0 * theme::density(ui));
