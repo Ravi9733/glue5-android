@@ -90,7 +90,11 @@ pub fn inspect_android_arm64_elf(bytes: &[u8]) -> Result<String, String> {
     if bytes[5] != ELFDATA2LSB {
         return Err("native plugin must use little-endian ELF".into());
     }
-    let object_type = u16::from_le_bytes([bytes[16], bytes[17]]);\n    if object_type != 3 {\n        return Err("native plugin ELF must be a shared object (ET_DYN)".into());\n    }\n    let machine = u16::from_le_bytes([bytes[18], bytes[19]]);
+    let object_type = u16::from_le_bytes([bytes[16], bytes[17]]);
+    if object_type != 3 {
+        return Err("native plugin ELF must be a shared object (ET_DYN)".into());
+    }
+    let machine = u16::from_le_bytes([bytes[18], bytes[19]]);
     if machine != EM_AARCH64 {
         return Err(format!("native plugin ELF machine {machine} is not Android ARM64 (AArch64)"));
     }
@@ -127,6 +131,7 @@ mod tests {
         bytes[..4].copy_from_slice(b"\x7fELF");
         bytes[4] = ELFCLASS64;
         bytes[5] = ELFDATA2LSB;
+        bytes[16..18].copy_from_slice(&3u16.to_le_bytes());
         bytes[18..20].copy_from_slice(&EM_AARCH64.to_le_bytes());
         bytes
     }
