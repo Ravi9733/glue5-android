@@ -271,6 +271,12 @@ pub fn install_zip(name: &str, bytes: &[u8]) -> Result<(), String> {
     zip_import::install(name, bytes)
 }
 
+/// Validates and stages an Android ARM64 native plugin ZIP. The installed
+/// library remains disabled and is not dlopen'd by this API.
+pub fn install_native_plugin_zip(bytes: &[u8]) -> Result<native_mods::NativePluginReport, String> {
+    native_mods::install_zip(bytes)
+}
+
 /// Safely imports a PC-style package into the isolated .pc-packages area.
 /// This does not mount RPF archives, register assets, or execute ASI/DLL files.
 pub fn install_pc_package(name: &str, bytes: &[u8]) -> Result<pc_mods::PackageReport, String> {
