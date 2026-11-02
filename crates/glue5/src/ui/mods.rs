@@ -101,14 +101,14 @@ fn process_pc_import(page: &mut ModsPage) {
         log::warn!("PC mod inbox: {error}");
         return;
     }
-    for (file, kind) in [("incoming.json", "json"), ("incoming.zip", "zip"), ("incoming.ymap", "ymap"), ("incoming.rpf", "rpf")] {
+    for (file, kind) in [("incoming.json", "json"), ("incoming.zip", "zip"), ("incoming.ymap", "ymap"), ("incoming.rpf", "rpf"), ("incoming.native.zip", "native")] {
         let path = inbox.join(file);
         if !path.is_file() { continue; }
         let result = (|| -> Result<String, String> {
             let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
             let limit = match kind {
                 "json" => 4 * 1024 * 1024,
-                "zip" => 256 * 1024 * 1024,
+                "zip" | "native" => 256 * 1024 * 1024,
                 _ => 128 * 1024 * 1024,
             };
             if metadata.len() > limit {
@@ -117,7 +117,10 @@ fn process_pc_import(page: &mut ModsPage) {
             let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
             let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
                 .map_err(|e| e.to_string())?.as_secs();
-            if kind == "json" {
+            if kind == "native" {
+                let report = glue5_mods::install_native_plugin_zip(&bytes)?;
+                Ok(format!("Installed native plugin {} v{} ({}). Binary validated; plugin remains disabled until the native runtime is implemented.", report.manifest.name, report.manifest.version, report.architecture))
+            } else if kind == "json" {
                 let name = format!("map_{stamp}");
                 let count = glue5_mods::install_placement_mod(&name, &bytes)?;
                 Ok(format!("Imported {name}: {count} placements"))
@@ -191,7 +194,7 @@ fn pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: &mut Set
         card_title(ui, "IMPORT PC MODS", None);
         #[cfg(target_os = "ios")]
         small(ui, "iOS: in the Files app open Glue 5 > Documents > game > mods > pc-mod-import-inbox. Copy your file there as incoming.zip, incoming.json, incoming.ymap or incoming.rpf; return to Glue 5 and open Mods to import it.", WARN);
-        small(ui, "Choose a PC mod ZIP, JSON placement map, YMAP, or readable RPF archive. RPF import converts supported embedded exterior YMAP placements into a script mod; it does not mount the archive or load custom vehicle assets.", theme::MUTED);
+        small(ui, "Choose a PC mod ZIP, JSON placement map, YMAP, readable RPF archive, or Android ARM64 native-plugin ZIP. Native plugin ZIPs are validated and installed disabled; Windows ASI/DLL files are not Android plugins.", theme::MUTED);
         small(ui, "YMAP conversion only places existing exterior HD models; MLO interiors, LOD chains, collision and custom assets are not loaded. Scan DLC packs only inspects metadata; it does not activate DLC or load custom YFT/YTD vehicles. Native ASI/DLL plugins are not executed.", theme::MUTED);
         if !settings.mods {
             small(ui, "Turn Mods on first; the change takes effect when the game starts.", WARN);
@@ -203,6 +206,12 @@ fn pc_import_controls(ui: &mut egui::Ui, page: &mut ModsPage, settings: &mut Set
                 request_android_pc_import("zip");
                 #[cfg(target_os = "ios")]
                 log::info!("iOS: place incoming.zip in Documents/game/mods/pc-mod-import-inbox, then reopen Mods.");
+            }
+            if inline_button(ui, "Import native plugin ZIP").clicked() {
+                #[cfg(target_os = "android")]
+                request_android_pc_import("native");
+                #[cfg(target_os = "ios")]
+                log::info!("iOS: Android ARM64 native plugin ZIP import is not available on iOS.");
             }
             if inline_button(ui, "Import JSON map").clicked() {
                 #[cfg(target_os = "android")]
