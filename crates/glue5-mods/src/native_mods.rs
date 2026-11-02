@@ -11,7 +11,7 @@ use serde::Deserialize;
 pub const MANIFEST_FILE: &str = "glue5-native-mod.json";
 pub const ABI_V1: &str = "glue5-native-v1";
 pub const MAX_MANIFEST_BYTES: usize = 16 * 1024;
-const ELF_HEADER_MIN: usize = 20;
+const ELF_HEADER_MIN: usize = 64;
 const ELFCLASS64: u8 = 2;
 const ELFDATA2LSB: u8 = 1;
 const EM_AARCH64: u16 = 183;
@@ -90,7 +90,7 @@ pub fn inspect_android_arm64_elf(bytes: &[u8]) -> Result<String, String> {
     if bytes[5] != ELFDATA2LSB {
         return Err("native plugin must use little-endian ELF".into());
     }
-    let machine = u16::from_le_bytes([bytes[18], bytes[19]]);
+    let object_type = u16::from_le_bytes([bytes[16], bytes[17]]);\n    if object_type != 3 {\n        return Err("native plugin ELF must be a shared object (ET_DYN)".into());\n    }\n    let machine = u16::from_le_bytes([bytes[18], bytes[19]]);
     if machine != EM_AARCH64 {
         return Err(format!("native plugin ELF machine {machine} is not Android ARM64 (AArch64)"));
     }
