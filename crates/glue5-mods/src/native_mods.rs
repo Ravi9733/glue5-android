@@ -193,7 +193,7 @@ pub fn inspect_zip(bytes: &[u8]) -> Result<NativePluginReport, String> {
     for index in 0..archive.len() {
         let mut file = archive.by_index(index).map_err(|e| format!("ZIP entry {index}: {e}"))?;
         let name = file.name().to_owned();
-        if name.starts_with('/') || name.contains('\\\\') || name.contains(':')
+        if name.starts_with('/') || name.contains('\\') || name.contains(':')
             || name.split('/').any(|part| part == ".." || part == "." || part.is_empty() && !name.ends_with('/'))
         {
             return Err(format!("unsafe native plugin ZIP path: {name}"));
@@ -255,6 +255,7 @@ pub fn inspect_zip(bytes: &[u8]) -> Result<NativePluginReport, String> {
 /// Installation does not load or execute the library; a separate explicit
 /// enable/trust step and game-thread runtime are required.
 pub fn install_zip(bytes: &[u8]) -> Result<NativePluginReport, String> {
+    use std::io::Read;
     let report = inspect_zip(bytes)?;
     let root = crate::dir().ok_or("mods are off")?.join(".native-plugins");
     std::fs::create_dir_all(&root).map_err(|e| format!("cannot create native plugin folder: {e}"))?;
