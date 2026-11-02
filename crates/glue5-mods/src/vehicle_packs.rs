@@ -22,6 +22,8 @@ pub struct VehiclePackReport {
     pub setup_xml: usize,
     pub rpf_archives: usize,
     pub rpf7_archives: usize,
+    /// Windows ASI/DLL binaries found in the ZIP (not executable by Android Glue5).
+    pub windows_pe_plugins: usize,
     pub other_files: usize,
     pub has_native_vehicle_assets: bool,
     pub likely_addon_pack: bool,
@@ -31,6 +33,12 @@ pub struct VehiclePackReport {
 impl VehiclePackReport {
     /// A concise status suitable for a future import screen.
     pub fn summary(&self) -> String {
+        if self.windows_pe_plugins > 0 {
+            return format!(
+                "{} Windows PE plugin(s) detected (.asi/.dll); Android Glue5 cannot execute these binaries. Their features need a native Android/Luau port.",
+                self.windows_pe_plugins
+            );
+        }
         if !self.has_native_vehicle_assets {
             return "No native GTA V vehicle assets found; this may be a script-mod ZIP.".into();
         }
@@ -100,6 +108,17 @@ pub fn inspect_zip(bytes: &[u8]) -> Result<VehiclePackReport, String> {
             Some("meta") if leaf == "handling.meta" => report.handling_meta += 1,
             Some("xml") if leaf == "content.xml" => report.content_xml += 1,
             Some("xml") if leaf == "setup2.xml" => report.setup_xml += 1,
+            Some("asi") | Some("dll") => {
+                // ASI plugins are Windows DLLs in the GTA mod ecosystem. Detect the
+                // PE signature rather than treating a filename alone as proof.
+                let mut signature = [0u8; 2];
+                let read = entry.read(&mut signature).map_err(|e| format!("Could not inspect {raw}: {e}"))?;
+                if read == 2 && &signature == b"MZ" {
+                    report.windows_pe_plugins += 1;
+                } else {
+                    report.other_files += 1;
+                }
+            }
             Some("rpf") => {
                 report.rpf_archives += 1;
                 let mut magic = [0u8; 4];
@@ -121,6 +140,12 @@ pub fn inspect_zip(bytes: &[u8]) -> Result<VehiclePackReport, String> {
 
     if report.rpf_archives > report.rpf7_archives {
         report.notes.push("One or more RPF files did not have the RPF7 magic; format support is unconfirmed.".into());
+    }
+    if report.windows_pe_plugins > 0 {
+        report.notes.push(format!(
+            "{} Windows PE ASI/DLL plugin(s) detected. These cannot be loaded by the Android ARM64 app; port their functionality to Glue5's native/Luau APIs instead.",
+            report.windows_pe_plugins
+        ));
     }
     if report.rpf7_archives > 0 {
         report.notes.push("RPF7 was detected, but archive contents have not been parsed.".into());
@@ -149,6 +174,15 @@ mod tests {
             writer.write_all(bytes).unwrap();
         }
         writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn identifies_windows_asi_plugin_as_not_android_executable() {
+        let bytes = zip_with(&[("Menyoo-iOS.asi", b"MZ\\x90\\0Windows PE plugin")]);
+        let report = inspect_zip(&bytes).unwrap();
+        assert_eq!(report.windows_pe_plugins, 1);
+        assert!(report.summary().contains("Android Glue5 cannot execute"));
+        assert!(report.notes.iter().any(|note| note.contains("Android ARM64 app")));
     }
 
     #[test]
