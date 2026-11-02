@@ -15,6 +15,7 @@ mod json;
 mod menus;
 pub mod natives;
 pub mod pc_mods;
+pub mod native_mods;
 pub mod rpf_archive;
 pub mod placement_mod;
 pub mod ymap_import;
