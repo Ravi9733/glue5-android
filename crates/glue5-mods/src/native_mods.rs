@@ -251,6 +251,77 @@ pub fn inspect_zip(bytes: &[u8]) -> Result<NativePluginReport, String> {
     inspect(&manifest, &library)
 }
 
+
+/// List installed native plugin packages. Every manifest and library is
+/// revalidated from disk; symlinks and malformed packages are skipped.
+pub fn installed() -> Result<Vec<NativePluginReport>, String> {
+    let root = crate::dir().ok_or("mods are off")?.join(".native-plugins");
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    let root_meta = std::fs::symlink_metadata(&root)
+        .map_err(|e| format!("cannot inspect native plugin folder: {e}"))?;
+    if !root_meta.is_dir() || root_meta.file_type().is_symlink() {
+        return Err("native plugin folder is not a regular directory".into());
+    }
+    let mut reports = Vec::new();
+    for entry in std::fs::read_dir(&root).map_err(|e| format!("cannot list native plugins: {e}"))? {
+        let entry = entry.map_err(|e| format!("cannot read native plugin entry: {e}"))?;
+        let meta = std::fs::symlink_metadata(entry.path())
+            .map_err(|e| format!("cannot inspect native plugin entry: {e}"))?;
+        if !meta.is_dir() || meta.file_type().is_symlink() {
+            continue;
+        }
+        let manifest_path = entry.path().join(MANIFEST_FILE);
+        let manifest_meta = match std::fs::symlink_metadata(&manifest_path) {
+            Ok(m) if m.is_file() && !m.file_type().is_symlink() => m,
+            _ => continue,
+        };
+        if manifest_meta.len() == 0 || manifest_meta.len() > MAX_MANIFEST_BYTES as u64 {
+            continue;
+        }
+        let manifest_bytes = std::fs::read(&manifest_path).map_err(|e| format!("cannot read plugin manifest: {e}"))?;
+        let manifest = match parse_manifest(&manifest_bytes) {
+            Ok(m) if m.id == entry.file_name().to_string_lossy() => m,
+            _ => continue,
+        };
+        let library_path = entry.path().join(&manifest.library);
+        let library_meta = match std::fs::symlink_metadata(&library_path) {
+            Ok(m) if m.is_file() && !m.file_type().is_symlink() && m.len() <= 64 * 1024 * 1024 => m,
+            _ => continue,
+        };
+        let library_bytes = std::fs::read(&library_path).map_err(|e| format!("cannot read plugin library: {e}"))?;
+        if library_bytes.len() as u64 != library_meta.len() {
+            continue;
+        }
+        if let Ok(report) = inspect(&manifest_bytes, &library_bytes) {
+            reports.push(report);
+        }
+    }
+    reports.sort_by(|a, b| a.manifest.id.cmp(&b.manifest.id));
+    Ok(reports)
+}
+
+/// Remove an installed native plugin by its validated package identifier.
+/// Running plugins cannot exist yet because this module does not load code.
+pub fn uninstall(id: &str) -> Result<(), String> {
+    if !safe_component(id, 64) {
+        return Err("invalid native plugin id".into());
+    }
+    let root = crate::dir().ok_or("mods are off")?.join(".native-plugins");
+    let target = root.join(id);
+    let meta = std::fs::symlink_metadata(&target).map_err(|_| format!("native plugin {id} not found"))?;
+    if !meta.is_dir() || meta.file_type().is_symlink() {
+        return Err("native plugin path is not a regular package directory".into());
+    }
+    let canonical_root = root.canonicalize().map_err(|e| format!("cannot resolve native plugin folder: {e}"))?;
+    let canonical_target = target.canonicalize().map_err(|e| format!("cannot resolve native plugin package: {e}"))?;
+    if canonical_target.parent() != Some(canonical_root.as_path()) {
+        return Err("native plugin package escaped its install folder".into());
+    }
+    std::fs::remove_dir_all(&canonical_target).map_err(|e| format!("cannot uninstall native plugin {id}: {e}"))
+}
+
 /// Install a validated native plugin package into the app-private mods area.
 /// Installation does not load or execute the library; a separate explicit
 /// enable/trust step and game-thread runtime are required.
