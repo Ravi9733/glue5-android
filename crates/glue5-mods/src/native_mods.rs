@@ -359,6 +359,11 @@ pub fn install_zip(bytes: &[u8]) -> Result<NativePluginReport, String> {
     let report = inspect_zip(bytes)?;
     let root = crate::dir().ok_or("mods are off")?.join(".native-plugins");
     std::fs::create_dir_all(&root).map_err(|e| format!("cannot create native plugin folder: {e}"))?;
+    let root_meta = std::fs::symlink_metadata(&root)
+        .map_err(|e| format!("cannot inspect native plugin folder: {e}"))?;
+    if !root_meta.is_dir() || root_meta.file_type().is_symlink() {
+        return Err("native plugin folder is not a regular directory".into());
+    }
     let target = root.join(&report.manifest.id);
     if target.exists() {
         return Err(format!("native plugin {} is already installed", report.manifest.id));
@@ -379,8 +384,17 @@ pub fn install_zip(bytes: &[u8]) -> Result<NativePluginReport, String> {
             if name != MANIFEST_FILE && name != report.manifest.library {
                 return Err(format!("unsupported native plugin ZIP path: {name}"));
             }
-            let mut data = Vec::with_capacity(file.size() as usize);
-            file.read_to_end(&mut data).map_err(|e| format!("cannot extract {name}: {e}"))?;
+            let expected_size = file.size();
+            let limit = if name == MANIFEST_FILE { MAX_MANIFEST_BYTES as u64 } else { 64 * 1024 * 1024 };
+            if expected_size > limit {
+                return Err(format!("native plugin file is too large: {name}"));
+            }
+            let mut data = Vec::with_capacity(expected_size as usize);
+            file.take(limit + 1).read_to_end(&mut data)
+                .map_err(|e| format!("cannot extract {name}: {e}"))?;
+            if data.len() as u64 != expected_size {
+                return Err(format!("native plugin file size does not match ZIP metadata: {name}"));
+            }
             std::fs::write(staging.join(&name), data).map_err(|e| format!("cannot write {name}: {e}"))?;
         }
         std::fs::rename(&staging, &target).map_err(|e| format!("cannot finalize native plugin install: {e}"))?;
