@@ -25,13 +25,15 @@ The validator rejects unknown fields, unsafe paths, unsupported ABI versions, no
 
 ## Stage 2: host ABI and lifecycle
 
-The Android host ABI must be versioned and narrow. The initial contract should expose:
+A draft C ABI v1 contract is defined in `crates/glue5-mods/include/glue5_native_mod.h`. It specifies:
 - ABI/version and engine-build handshake;
 - plugin init, per-frame tick, and shutdown callbacks;
-- opaque handles rather than raw engine pointers;
-- a queued command channel for game-thread native calls;
+- opaque host context rather than raw engine pointers;
+- a bounded queued command channel (not direct arbitrary native invocation);
 - bounded callback time and memory budgets;
 - structured logging and fault isolation.
+
+The header is a contract draft only; the host does not yet implement these function pointers or load plugins.
 
 All engine/native access must be marshalled onto Glue5's existing game script thread. UI/controller threads must never call game natives directly. A plugin must not retain transient engine pointers across ticks.
 
@@ -54,4 +56,5 @@ Native code loading does not mount GTA V RPF/DLC content. Vehicle packs still ne
 
 - Added `native_mods` manifest and Android ARM64 ELF validation module with tests.
 - Exposed the module from `glue5-mods`.
+- Added a draft, versioned C ABI v1 header for future Android plugins.
 - No dynamic library loading, plugin callback execution, RPF mounting, or Menyoo binary compatibility is claimed yet.
