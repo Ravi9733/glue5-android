@@ -1,0 +1,8 @@
+{
+  "name": "Menyoo Vehicle Spawner",
+  "description": "Touch-friendly paged vehicle spawner using GLUE 5's loaded vehicle catalog and game natives.",
+  "author": "Ravi9733",
+  "version": "0.1.0",
+  "autostart": true,
+  "restartOnSave": true
+}
