@@ -229,10 +229,11 @@ pub fn inspect_zip(bytes: &[u8]) -> Result<NativePluginReport, String> {
             if library_bytes.is_some() {
                 return Err("native plugin ZIP must contain only one root .so library".into());
             }
-            let mut data = Vec::with_capacity(file.size() as usize);
+            let expected_size = file.size();
+            let mut data = Vec::with_capacity(expected_size as usize);
             file.take(MAX_FILE + 1).read_to_end(&mut data)
                 .map_err(|e| format!("cannot read native plugin library: {e}"))?;
-            if data.len() as u64 != file.size() {
+            if data.len() as u64 != expected_size {
                 return Err("native plugin library size does not match ZIP metadata".into());
             }
             library_bytes = Some(data);
