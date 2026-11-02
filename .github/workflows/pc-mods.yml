@@ -2,7 +2,7 @@ name: PC mod loader checks
 
 on:
   push:
-    branches: [feature/pc-mod-loader]
+    branches: [feature/pc-mod-loader, android-ios-experience-port]
     paths:
       - "crates/glue5-mods/**"
       - "crates/glue5-runtime/**"
