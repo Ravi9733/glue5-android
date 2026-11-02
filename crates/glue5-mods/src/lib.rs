@@ -8,6 +8,7 @@
 //! (engine.rs). [`studio`] serves GLUE 5 Studio and the MCP endpoint.
 
 mod checker;
+mod bundled_trainer;
 mod engine;
 pub mod files;
 pub mod dlc;
@@ -184,6 +185,9 @@ pub fn open(dir: &Path) {
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
         return;
     }
+    // Seed the Android touch trainer into the persistent mods directory before
+    // discovery, preserving user-installed mods and existing trainer submodules.
+    bundled_trainer::install(dir);
     world::load_saved(dir);
     refresh();
 }
