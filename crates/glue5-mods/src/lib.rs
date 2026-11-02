@@ -277,6 +277,16 @@ pub fn install_native_plugin_zip(bytes: &[u8]) -> Result<native_mods::NativePlug
     native_mods::install_zip(bytes)
 }
 
+/// Lists validated Android ARM64 native plugin packages (not necessarily loaded).
+pub fn installed_native_plugins() -> Result<Vec<native_mods::NativePluginReport>, String> {
+    native_mods::installed()
+}
+
+/// Uninstalls a disabled native plugin package by id.
+pub fn uninstall_native_plugin(id: &str) -> Result<(), String> {
+    native_mods::uninstall(id)
+}
+
 /// Safely imports a PC-style package into the isolated .pc-packages area.
 /// This does not mount RPF archives, register assets, or execute ASI/DLL files.
 pub fn install_pc_package(name: &str, bytes: &[u8]) -> Result<pc_mods::PackageReport, String> {
