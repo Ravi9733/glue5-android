@@ -82,6 +82,7 @@ local function buildMenu()
     menu:button("Previous page", "Browse earlier vehicle models", function()
         if page > 1 then
             page = page - 1
+            menu:remove()
             buildMenu()
         end
     end)
@@ -89,6 +90,7 @@ local function buildMenu()
     menu:button("Next page", "Browse more vehicle models", function()
         if page < pageCount then
             page = page + 1
+            menu:remove()
             buildMenu()
         end
     end)
