@@ -163,6 +163,34 @@ mod tests {
         let unknown = br#"{"format_version":1,"id":"x","name":"x","version":"1","abi":"glue5-native-v1","library":"x.so","entry":"init","min_engine":"x","extra":true}"#;
         assert!(parse_manifest(unknown).is_err());
     }
+
+    #[test]
+    fn validates_native_plugin_zip_without_loading_it() {
+        use std::io::{Cursor, Write};
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file(MANIFEST_FILE, options).unwrap();
+        zip.write_all(&manifest()).unwrap();
+        zip.start_file("libsample.so", options).unwrap();
+        zip.write_all(&arm64_elf()).unwrap();
+        let bytes = zip.finish().unwrap().into_inner();
+        let report = inspect_zip(&bytes).unwrap();
+        assert_eq!(report.manifest.id, "sample-native");
+        assert!(report.compatible_binary);
+    }
+
+    #[test]
+    fn native_plugin_zip_rejects_windows_asi_payloads() {
+        use std::io::{Cursor, Write};
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file(MANIFEST_FILE, options).unwrap();
+        zip.write_all(&manifest()).unwrap();
+        zip.start_file("libsample.so", options).unwrap();
+        zip.write_all(b"MZ\x90\\0").unwrap();
+        let bytes = zip.finish().unwrap().into_inner();
+        assert!(inspect_zip(&bytes).unwrap_err().contains("ELF"));
+    }
 }
 
 
