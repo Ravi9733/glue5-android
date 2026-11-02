@@ -65,8 +65,9 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<NativePluginManifest, String> {
     if manifest.abi != ABI_V1 {
         return Err(format!("unsupported native plugin ABI: {}", manifest.abi));
     }
-    if !safe_component(&manifest.library, 96) || !manifest.library.ends_with(".so") {
-        return Err("library must be a plain .so filename inside the package".into());
+    let library_stem = manifest.library.strip_suffix(".so").unwrap_or("");
+    if !safe_component(library_stem, 92) {
+        return Err("library must be a plain lib*.so filename inside the package".into());
     }
     if !safe_component(&manifest.entry, 96) {
         return Err("entry must be a plain exported symbol name".into());
