@@ -40,9 +40,8 @@ pub struct NativePluginReport {
 fn safe_component(value: &str, max: usize) -> bool {
     !value.is_empty()
         && value.len() <= max
-        && value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
+        && value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
         && !value.starts_with('.')
-        && !value.contains("..")
 }
 
 pub fn parse_manifest(bytes: &[u8]) -> Result<NativePluginManifest, String> {
@@ -163,4 +162,131 @@ mod tests {
         let unknown = br#"{"format_version":1,"id":"x","name":"x","version":"1","abi":"glue5-native-v1","library":"x.so","entry":"init","min_engine":"x","extra":true}"#;
         assert!(parse_manifest(unknown).is_err());
     }
+}
+
+
+/// Inspect a native plugin ZIP without executing its code. The archive must
+/// contain a root manifest and the single ARM64 .so named by that manifest.
+/// This is deliberately separate from the PC ZIP importer: ASI/DLL files are
+/// never treated as Android native libraries.
+pub fn inspect_zip(bytes: &[u8]) -> Result<NativePluginReport, String> {
+    use std::io::Read;
+    const MAX_ENTRIES: usize = 512;
+    const MAX_FILE: u64 = 64 * 1024 * 1024;
+    const MAX_TOTAL: u64 = 256 * 1024 * 1024;
+
+    if bytes.is_empty() {
+        return Err("native plugin ZIP is empty".into());
+    }
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| format!("invalid native plugin ZIP: {e}"))?;
+    if archive.is_empty() || archive.len() > MAX_ENTRIES {
+        return Err(format!("native plugin ZIP must contain 1–{MAX_ENTRIES} entries"));
+    }
+
+    let mut total = 0u64;
+    let mut names = std::collections::HashSet::new();
+    let mut manifest_bytes: Option<Vec<u8>> = None;
+    let mut library_bytes: Option<Vec<u8>> = None;
+    let mut manifest_library: Option<String> = None;
+
+    for index in 0..archive.len() {
+        let mut file = archive.by_index(index).map_err(|e| format!("ZIP entry {index}: {e}"))?;
+        let name = file.name().to_owned();
+        if name.starts_with('/') || name.contains('\\\\') || name.contains(':')
+            || name.split('/').any(|part| part == ".." || part == "." || part.is_empty() && !name.ends_with('/'))
+        {
+            return Err(format!("unsafe native plugin ZIP path: {name}"));
+        }
+        if !names.insert(name.clone()) {
+            return Err(format!("duplicate native plugin ZIP path: {name}"));
+        }
+        if file.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
+            return Err(format!("symbolic links are not allowed: {name}"));
+        }
+        if file.is_dir() {
+            continue;
+        }
+        if file.size() > MAX_FILE {
+            return Err(format!("native plugin file is too large: {name}"));
+        }
+        total = total.checked_add(file.size()).ok_or("native plugin ZIP size overflow")?;
+        if total > MAX_TOTAL {
+            return Err("native plugin ZIP expands beyond 256 MiB".into());
+        }
+
+        if name == MANIFEST_FILE {
+            let mut data = Vec::with_capacity(file.size() as usize);
+            file.take(MAX_MANIFEST_BYTES as u64 + 1).read_to_end(&mut data)
+                .map_err(|e| format!("cannot read native plugin manifest: {e}"))?;
+            if data.len() > MAX_MANIFEST_BYTES {
+                return Err("native plugin manifest is too large".into());
+            }
+            let parsed = parse_manifest(&data)?;
+            manifest_library = Some(parsed.library);
+            manifest_bytes = Some(data);
+        } else if name.ends_with(".so") && !name.contains('/') {
+            if library_bytes.is_some() {
+                return Err("native plugin ZIP must contain only one root .so library".into());
+            }
+            let mut data = Vec::with_capacity(file.size() as usize);
+            file.take(MAX_FILE + 1).read_to_end(&mut data)
+                .map_err(|e| format!("cannot read native plugin library: {e}"))?;
+            if data.len() as u64 != file.size() {
+                return Err("native plugin library size does not match ZIP metadata".into());
+            }
+            library_bytes = Some(data);
+        } else {
+            return Err(format!("unsupported file in native plugin ZIP: {name}"));
+        }
+    }
+
+    let manifest = manifest_bytes.ok_or_else(|| format!("ZIP is missing {MANIFEST_FILE}"))?;
+    let library_name = manifest_library.ok_or("native plugin manifest is invalid")?;
+    let library = library_bytes.ok_or("ZIP is missing its root Android .so library")?;
+    if !names.contains(&library_name) {
+        return Err(format!("ZIP is missing manifest library: {library_name}"));
+    }
+    inspect(&manifest, &library)
+}
+
+/// Install a validated native plugin package into the app-private mods area.
+/// Installation does not load or execute the library; a separate explicit
+/// enable/trust step and game-thread runtime are required.
+pub fn install_zip(bytes: &[u8]) -> Result<NativePluginReport, String> {
+    let report = inspect_zip(bytes)?;
+    let root = crate::dir().ok_or("mods are off")?.join(".native-plugins");
+    std::fs::create_dir_all(&root).map_err(|e| format!("cannot create native plugin folder: {e}"))?;
+    let target = root.join(&report.manifest.id);
+    if target.exists() {
+        return Err(format!("native plugin {} is already installed", report.manifest.id));
+    }
+
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| format!("invalid native plugin ZIP: {e}"))?;
+    let staging = root.join(format!(".stage-{}", report.manifest.id));
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging).map_err(|e| format!("cannot clear staging folder: {e}"))?;
+    }
+    std::fs::create_dir(&staging).map_err(|e| format!("cannot create staging folder: {e}"))?;
+    let result = (|| {
+        for index in 0..archive.len() {
+            let mut file = archive.by_index(index).map_err(|e| format!("ZIP entry {index}: {e}"))?;
+            if file.is_dir() { continue; }
+            let name = file.name().to_owned();
+            if name != MANIFEST_FILE && name != report.manifest.library {
+                return Err(format!("unsupported native plugin ZIP path: {name}"));
+            }
+            let mut data = Vec::with_capacity(file.size() as usize);
+            file.read_to_end(&mut data).map_err(|e| format!("cannot extract {name}: {e}"))?;
+            std::fs::write(staging.join(&name), data).map_err(|e| format!("cannot write {name}: {e}"))?;
+        }
+        std::fs::rename(&staging, &target).map_err(|e| format!("cannot finalize native plugin install: {e}"))?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    result?;
+    Ok(report)
 }
