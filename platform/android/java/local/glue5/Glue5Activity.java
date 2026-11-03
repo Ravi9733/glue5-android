@@ -36,6 +36,23 @@ public class Glue5Activity extends SDLActivity {
         try {
             Os.setenv("GLUE5_NATIVE_LIB_DIR", getApplicationInfo().nativeLibraryDir, true);
             Os.setenv("GLUE5_APP_FILES_DIR", getFilesDir().getAbsolutePath(), true);
+            // Activate the imported custom driver before SDL starts native code.
+            // An explicit GLUE5_VULKAN_DRIVER launch extra below can override this
+            // (for example, "system" to recover from a bad driver).
+            File turnipDir = new File(getFilesDir(), "turnip");
+            File driverNameFile = new File(turnipDir, "driver_name");
+            String driverName = null;
+            if (driverNameFile.isFile()) {
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.FileReader(driverNameFile))) {
+                    driverName = reader.readLine();
+                } catch (Exception ignored) {}
+            }
+            boolean validTurnip = driverName != null && !driverName.isEmpty()
+                    && driverName.equals(new File(driverName).getName())
+                    && driverName.endsWith(".so")
+                    && new File(turnipDir, driverName).isFile();
+            Os.setenv("GLUE5_VULKAN_DRIVER", validTurnip ? "turnip" : "system", true);
             // Separate folder for user-supplied, extracted PC game data.
             // Launch-intent GLUE5_* extras below may override this default.
             Os.setenv("GLUE5_PC_DATA_DIR", "/storage/emulated/0/GTAV_PC", false);
