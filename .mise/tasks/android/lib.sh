@@ -30,8 +30,15 @@ sdk_packages() {
     for package in "${packages[@]}"; do
         [ -d "$ANDROID_HOME/${package//;//}" ] || missing+=("$package")
     done
-    if [ ${#missing[@]} -gt 0 ]; then sdkmanager --install "${missing[@]}"; fi
+    if [ ${#missing[@]} -gt 0 ]; then
+        local sdkmanager_bin
+        sdkmanager_bin="$(command -v sdkmanager)" || die "sdkmanager is not on PATH"
+        "$sdkmanager_bin" --sdk_root="$ANDROID_HOME" --install "${missing[@]}"
+    fi
     export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$(setting ndk)
+    # cargo-ndk prefers ANDROID_NDK_ROOT when both variables are set. Keep
+    # both names pinned to the same mise-managed NDK, not the runner SDK.
+    export ANDROID_NDK_ROOT=$ANDROID_NDK_HOME
     # adb, also when platform-tools came just now.
     PATH=$ANDROID_HOME/platform-tools:$PATH
 }
