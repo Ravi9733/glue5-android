@@ -2,6 +2,9 @@
 name: Build
 
 on:
+  # Build the Turnip branch after code fixes so the APK can be validated.
+  push:
+    branches: [turnip-driver-integration]
   workflow_dispatch:
     inputs:
       platform:
