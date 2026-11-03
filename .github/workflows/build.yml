@@ -71,7 +71,11 @@ jobs:
         run: |
           set -euo pipefail
           sdkmanager_bin="$(command -v sdkmanager)"
+          # sdkmanager closes the pipe after the final prompt; keep its
+          # exit status (the last command), not yes's expected SIGPIPE.
+          set +o pipefail
           yes | "$sdkmanager_bin" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
+          set -o pipefail
           mkdir -p ~/.android
           cd ~/.android
           "$GITHUB_WORKSPACE/.github/scripts/draft.sh" get "${{ steps.game.outputs.release }}" Glue5-android.keystore
