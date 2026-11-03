@@ -106,7 +106,7 @@ jobs:
           esac
 
       - name: Package the Graphic Mods ZIP
-        if: inputs.platform == 'android'
+        if: env.PLATFORM == 'android'
         run: |
           mkdir -p /tmp/graphic-mods/soft-blur-graphics
           cp mods/soft-blur-graphics/main.luau /tmp/graphic-mods/soft-blur-graphics/main.luau
@@ -116,7 +116,7 @@ jobs:
           echo "Packaged loadable Soft Blur Graphics mod." >>"$GITHUB_STEP_SUMMARY"
 
       - name: Package the JSON Placement Test Mod
-        if: inputs.platform == 'android'
+        if: env.PLATFORM == 'android'
         run: |
           mkdir -p /tmp/json-placement-test/road-construction
           cp mods/road-construction/main.luau /tmp/json-placement-test/road-construction/main.luau
