@@ -9,7 +9,6 @@
 
 pub mod pc_runtime;
 mod checker;
-mod bundled_trainer;
 mod engine;
 pub mod files;
 mod json;
@@ -172,8 +171,8 @@ pub fn held_back() -> Vec<String> {
     HELD_BACK.lock().unwrap().clone()
 }
 
-/// The mods folder `dir` (made if missing): its mods listed, their files
-/// open to the Studio. Before the game too; they run once [`install`]ed.
+/// The mods folder `dir` (made if missing): only the bundled Soft Blur
+/// mod is exposed to the game. Other mod folders are left untouched on disk.
 pub fn open(dir: &Path) {
     let _ = std::fs::create_dir_all(dir);
     seed_bundled_graphics_mod(dir);
@@ -181,26 +180,23 @@ pub fn open(dir: &Path) {
         return;
     }
     world::load_saved(dir);
-    bundled_trainer::install(dir);
     refresh();
 }
-/// Installs the graphics mod bundled with the app, without overwriting user edits.
+
+/// Installs the single bundled Soft Blur mod. This app-owned mod is refreshed
+/// on upgrade so stale graphics options cannot survive in persistent storage.
 fn seed_bundled_graphics_mod(dir: &Path) {
     let mod_dir = dir.join("soft-blur-graphics");
     if std::fs::create_dir_all(&mod_dir).is_err() {
         return;
     }
     let main = mod_dir.join("main.luau");
-    if !main.exists() {
-        let _ = std::fs::write(
-            &main,
-            include_str!("../../../mods/soft-blur-graphics/main.luau"),
-        );
-    }
+    let _ = std::fs::write(
+        &main,
+        include_str!("../../../mods/soft-blur-graphics/main.luau"),
+    );
     let config = mod_dir.join("mod.json");
-    if !config.exists() {
-        let _ = std::fs::write(&config, r#"{"autostart": true}"#);
-    }
+    let _ = std::fs::write(&config, r#"{"autostart": true}"#);
 }
 
 
@@ -260,15 +256,16 @@ pub fn set_autostart(name: &str, on: bool) -> Result<(), String> {
     files::set_autostart(name, on)
 }
 
-/// Reads the mods folder again (new or removed mods).
+/// Reads the mods folder again (new or removed mods). Only Soft Blur is
+/// allowed in this build; user files for other mods are not deleted.
 pub fn refresh() {
     let Some(dir) = dir() else { return };
     let mut found = Vec::new();
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.join("main.luau").is_file() {
-                let name = entry.file_name().to_string_lossy().into_owned();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name == "soft-blur-graphics" && path.join("main.luau").is_file() {
                 found.push((name, files::autostart(&path)));
             }
         }
