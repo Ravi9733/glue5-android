@@ -670,6 +670,14 @@ impl Gpu {
             }
             _ => 0,
         };
+        if dropped != 0 {
+            crate::log_once(&format!("mipdrop-{dxgi}-{}x{}", size.width, size.height), || {
+                format!(
+                    "texture fallback: DXGI {dxgi} {}x{} uses {:?}; dropping top mip to limit uncompressed BC memory ({} -> {} mips)",
+                    size.width, size.height, tf.format, mips, mips - dropped
+                )
+            });
+        }
         let gpu_size = wgpu::Extent3d {
             width: (size.width >> dropped).max(1),
             height: (size.height >> dropped).max(1),

@@ -299,7 +299,23 @@ impl Device {
             ..Default::default()
         }))
         .context("creating the GPU device")?;
-        log::info!("gpu: {} ({:?}, {}), features {:?}", info.name, info.backend, info.driver_info, features);
+        log::info!(
+            "gpu: adapter={} backend={:?} vendor={:#06x} device={:#06x} driver={} driver_info={}",
+            info.name, info.backend, info.vendor, info.device, info.driver, info.driver_info
+        );
+        log::info!(
+            "gpu: adapter_features={:?}; enabled_features={:?}; ETC2={:?}; BC={:?}; RGBA8={:?}",
+            adapter.features(),
+            features,
+            adapter.get_texture_format_features(wgpu::TextureFormat::Etc2Rgba8Unorm),
+            adapter.get_texture_format_features(wgpu::TextureFormat::Bc3RgbaUnorm),
+            adapter.get_texture_format_features(wgpu::TextureFormat::Rgba8Unorm)
+        );
+        #[cfg(target_os = "android")]
+        log::info!(
+            "gpu: Android Vulkan driver selection env GLUE5_VULKAN_DRIVER={:?}",
+            std::env::var("GLUE5_VULKAN_DRIVER").ok()
+        );
         device.on_uncaptured_error(error_handler(None));
         device.set_device_lost_callback(|reason, message| log::error!("gpu: device lost ({reason:?}): {message}"));
         Ok(Device { adapter, device, queue, features, profile })
