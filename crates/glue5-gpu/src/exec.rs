@@ -654,14 +654,17 @@ impl Gpu {
             height: if dim == 1 { 1 } else { h.max(1) },
             depth_or_array_layers: layers.max(1),
         };
-        // BC decoded on the CPU takes 4-8 times the memory (1-2 times
-        // re-encoded as ETC2), which phones cannot spare (on iOS it counts
-        // against the app's limit): large mipmapped textures lose their first
-        // level, a quarter of the texels to decode and keep. Small and
-        // unmipmapped ones (UI) stay whole.
+        // BC decoded to uncompressed texels can multiply memory use by 4-8x.
+        // In that fallback, omit the largest mip of large mipmapped textures
+        // to protect mobile memory. If BC is re-encoded as ETC2, keep mip 0:
+        // ETC2 remains compressed and dropping the top mip makes roads and
+        // buildings visibly blurry while the game streams their smaller mips.
         let dropped = match tf.upload {
             format::Upload::Bc(_)
-                if mips >= 2 && dimension == wgpu::TextureDimension::D2 && size.width.max(size.height) >= 512 =>
+                if !tf.format.is_compressed()
+                    && mips >= 2
+                    && dimension == wgpu::TextureDimension::D2
+                    && size.width.max(size.height) >= 512 =>
             {
                 1
             }
