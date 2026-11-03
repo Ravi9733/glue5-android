@@ -59,6 +59,13 @@ jobs:
           install_args: ${{ fromJSON('{"ios":"rust cmake xcodegen","macos":"rust cmake cargo:cargo-packager","android":"rust cmake java gradle android-sdk cargo:cargo-ndk","windows":"rust cmake"}')[inputs.platform || 'android'] }}
           cache_key_prefix: mise-${{ inputs.platform }}
 
+      - name: Use mise-managed Android SDK
+        if: env.PLATFORM == 'android'
+        run: |
+          sdk_root="$(mise where android-sdk)"
+          echo "ANDROID_HOME=$sdk_root" >>"$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk_root" >>"$GITHUB_ENV"
+
       - name: Android signing key
         if: env.PLATFORM == 'android'
         run: |
