@@ -2,9 +2,9 @@
 name: Build
 
 on:
-  # Build the Turnip branch after code fixes so the APK can be validated.
+  # Build both the original Turnip branch and the clean Soft Blur validation branch.
   push:
-    branches: [turnip-driver-integration]
+    branches: [turnip-driver-integration, turnip-soft-blur-cleanup]
   workflow_dispatch:
     inputs:
       platform:
@@ -71,8 +71,6 @@ jobs:
         run: |
           set -euo pipefail
           sdkmanager_bin="$(command -v sdkmanager)"
-          # sdkmanager closes the pipe after the final prompt; keep its
-          # exit status (the last command), not yes's expected SIGPIPE.
           set +o pipefail
           yes | "$sdkmanager_bin" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
           set -o pipefail
@@ -82,11 +80,11 @@ jobs:
           if [ -f Glue5-android.keystore ]; then
             mv Glue5-android.keystore debug.keystore
           else
-            keytool -genkeypair -v \
-              -keystore debug.keystore \
-              -storepass android -keypass android \
-              -alias androiddebugkey \
-              -keyalg RSA -keysize 2048 -validity 10000 \
+            keytool -genkeypair -v \\
+              -keystore debug.keystore \\
+              -storepass android -keypass android \\
+              -alias androiddebugkey \\
+              -keyalg RSA -keysize 2048 -validity 10000 \\
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
@@ -116,7 +114,7 @@ jobs:
               ;;
           esac
 
-      - name: Package the Graphic Mods ZIP
+      - name: Package the Soft Blur Graphics ZIP
         if: env.PLATFORM == 'android'
         run: |
           mkdir -p /tmp/graphic-mods/soft-blur-graphics
@@ -124,18 +122,7 @@ jobs:
           cp mods/soft-blur-graphics/mod.json /tmp/graphic-mods/soft-blur-graphics/mod.json
           cp mods/soft-blur-graphics/README.txt /tmp/graphic-mods/soft-blur-graphics/README.txt
           (cd /tmp/graphic-mods && zip -r "$GITHUB_WORKSPACE/Glue5-Graphic-Mods.zip" soft-blur-graphics)
-          echo "Packaged loadable Soft Blur Graphics mod." >>"$GITHUB_STEP_SUMMARY"
-
-      - name: Package the JSON Placement Test Mod
-        if: env.PLATFORM == 'android'
-        run: |
-          mkdir -p /tmp/json-placement-test/road-construction
-          cp mods/road-construction/main.luau /tmp/json-placement-test/road-construction/main.luau
-          cp mods/road-construction/mod.json /tmp/json-placement-test/road-construction/mod.json
-          cp mods/road-construction/road_construction.json /tmp/json-placement-test/road-construction/road_construction.json
-          cp mods/road-construction/README.txt /tmp/json-placement-test/road-construction/README.txt
-          (cd /tmp/json-placement-test && zip -r "$GITHUB_WORKSPACE/Glue5-JSON-Placement-Test.zip" road-construction)
-          echo "Packaged JSON placement test mod." >>"$GITHUB_STEP_SUMMARY"
+          echo "Packaged only the Soft Blur Graphics mod." >>"$GITHUB_STEP_SUMMARY"
 
       - name: Into the draft release
         run: |
