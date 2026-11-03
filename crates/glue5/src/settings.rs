@@ -234,7 +234,16 @@ impl Default for Settings {
             download_all: false,
             low_memory: MOBILE && sdl3::cpuinfo::system_ram() < LOW_MEMORY_RAM_MB,
             light_graphics_mode: false,
-            vulkan_driver: VulkanDriver::System,
+            // Android activity auto-selects an imported Turnip driver before Rust starts.
+            // Keep an explicit saved System choice, but let older settings files
+            // (which have no vulkan_driver field) inherit that startup selection.
+            vulkan_driver: if cfg!(target_os = "android")
+                && std::env::var("GLUE5_VULKAN_DRIVER").ok().as_deref() == Some("turnip")
+            {
+                VulkanDriver::Turnip
+            } else {
+                VulkanDriver::System
+            },
             low_preset_written: false,
             android_performance_profile_applied: false,
             android_performance_profile_v2_applied: false,
