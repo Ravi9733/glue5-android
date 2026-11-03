@@ -1,17 +1,23 @@
 # Turnip driver integration status
 
-This branch targets optional Turnip support on Android Adreno GPUs. The working renderer currently creates a standard wgpu Vulkan instance; selecting a driver in the UI alone would not switch Vulkan implementations.
+This branch contains an optional Android Adreno custom Vulkan-driver path. The app imports a user-supplied driver ZIP into app-private storage and packages AdrenoTools plus its hook libraries for arm64-v8a.
 
-## Integration requirements
+## Startup selection
 
-- Keep the system Vulkan path as the default and fallback.
-- Package AdrenoTools and its hook libraries for `arm64-v8a`, with Android legacy JNI library packaging enabled.
-- Let the user import a compatible Turnip driver archive into app-private internal storage. Never attempt to load a driver library directly from shared/external storage.
-- Validate archive paths and expected library names before extracting; reject path traversal and unsupported ABIs.
-- Retain the native driver handle for the lifetime of Vulkan objects.
-- Route wgpu-hal's Vulkan entry creation through the custom `vkGetInstanceProcAddr` only when the user has selected a successfully installed driver; otherwise preserve `ash::Entry::load()`.
-- Expose status and an explicit system-driver fallback in Settings. Do not promise FPS gains: results depend on driver version, device firmware, and the game workload.
+- `Glue5Activity` sets the app-private files directory and Android native-library directory before SDL starts.
+- If `files/turnip/driver_name` names an existing `.so` inside `files/turnip`, startup sets `GLUE5_VULKAN_DRIVER=turnip`.
+- If no valid imported driver is present, startup explicitly selects the Android system Vulkan driver.
+- A launch-intent extra `GLUE5_VULKAN_DRIVER=system` can force the system driver for recovery; `turnip` requests the imported driver.
+- The wgpu-hal patch routes Vulkan entry loading through AdrenoTools only for the Turnip selection and falls back to the system loader if custom loading fails.
 
-## Current status
+## Remaining verification
 
-The app already uses `useLegacyPackaging = true`, which AdrenoTools requires for its hook library path. The actual driver loader, archive importer, Settings selector, and device validation are not yet implemented. This note deliberately does not label Turnip as working until the custom Vulkan entry path is wired and tested on an Adreno device.
+A successful APK build is not proof that the custom driver loaded or that the graphics glitch is fixed. Verify on an Adreno device using logcat and the app-private `turnip-status.txt`:
+
+1. Confirm the log says Turnip loaded through AdrenoTools (not system fallback).
+2. Confirm Vulkan enumerates the Adreno GPU and wgpu reports the expected driver.
+3. Run a repeatable in-game route covering roads, buildings, distant LODs, streamed textures, and weather/time changes.
+4. Check for texture upload, Vulkan validation, device-lost, and shader/pipeline errors.
+5. Compare the same route with the system driver to isolate driver-specific regressions.
+
+Do not describe the graphics issue as fixed until this device test passes. If the selected driver fails, force `GLUE5_VULKAN_DRIVER=system` and preserve the imported driver for diagnosis.
