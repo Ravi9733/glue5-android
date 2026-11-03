@@ -198,6 +198,10 @@ public class Glue5Activity extends SDLActivity {
                         output.write(buffer, 0, count);
                     }
                 }
+                // Android's linker must be able to execute native shared libraries
+                // loaded from app-private storage. FileOutputStream creates files
+                // without the executable bit, so explicitly set owner-only rwx.
+                Os.chmod(target.getAbsolutePath(), 0700);
                 foundLibrary = true;
             }
         }
