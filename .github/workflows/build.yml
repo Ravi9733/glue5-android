@@ -18,6 +18,7 @@ permissions:
 
 concurrency:
   group: build-${{ inputs.platform || 'android' }}
+  cancel-in-progress: true
 
 jobs:
   build:
