@@ -60,9 +60,11 @@ jobs:
           cache_key_prefix: mise-${{ inputs.platform }}
 
       - name: Android signing key
-        if: inputs.platform == 'android'
+        if: env.PLATFORM == 'android'
         run: |
-          yes | mise exec -- sdkmanager --licenses >/dev/null || true
+          set -euo pipefail
+          sdkmanager_bin="$(command -v sdkmanager)"
+          yes | "$sdkmanager_bin" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
           mkdir -p ~/.android
           cd ~/.android
           "$GITHUB_WORKSPACE/.github/scripts/draft.sh" get "${{ steps.game.outputs.release }}" Glue5-android.keystore
