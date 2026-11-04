@@ -94,7 +94,7 @@ pub fn decode_interleaved_vertices(
         for element in elements {
             let start = usize::from(element.offset);
             let raw = &vertex_bytes[start..start + element.format.byte_len()];
-            let components = match element.format {
+            let components: Vec<f32> = match element.format {
                 VertexElementFormat::Float32x2 | VertexElementFormat::Float32x3 | VertexElementFormat::Float32x4 => {
                     raw.chunks_exact(4).map(|v| f32::from_le_bytes(v.try_into().unwrap())).collect()
                 }
