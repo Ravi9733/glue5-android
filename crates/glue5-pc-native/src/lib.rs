@@ -1361,6 +1361,7 @@ pub fn read_rsc7_pointer_array<'a>(
             count, max_count
         )));
     }
+    if count == 0 { return Ok(Vec::new()); }
     let array_bytes = u32::from(count).checked_mul(4)
         .ok_or_else(|| ManifestError("RSC7 pointer-array byte length overflow".into()))?;
     let bytes = read_rsc7_pointer(body, array_pointer, array_bytes, page_sizes)?
@@ -1467,5 +1468,31 @@ mod rsc7_pointer_list_tests {
         assert!(read_rsc7_pointer_list(&[0; 64],
             Rsc7PointerListHeader { pointer: 0x5000_0000, count: 1, capacity: 1 }, 0, 4,
             Rpf7ResourcePageSizes { system_bytes: 64, graphics_bytes: 0 }).is_err());
+    }
+}
+
+
+#[cfg(test)]
+mod rsc7_pointer_array_reader_tests {
+    use super::*;
+
+    #[test]
+    fn reads_array_and_resolves_each_target_payload() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 32, graphics_bytes: 16 };
+        let mut body = vec![0_u8; 48];
+        body[0..4].copy_from_slice(&0x5000_0010_u32.to_le_bytes());
+        body[4..8].copy_from_slice(&0x6000_0004_u32.to_le_bytes());
+        body[16..20].copy_from_slice(b"SYS!");
+        body[32..36].copy_from_slice(b"GPU!");
+        let result = read_rsc7_pointer_array(&body, 0x5000_0000, 2, 4, 4, sizes).unwrap();
+        assert_eq!(result, vec![Some(&b"SYS!"[..]), Some(&b"GPU!"[..])]);
+    }
+
+    #[test]
+    fn handles_empty_and_rejects_null_or_oversized_array() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 16, graphics_bytes: 0 };
+        assert!(read_rsc7_pointer_array(&[0; 16], 0, 0, 4, 4, sizes).unwrap().is_empty());
+        assert!(read_rsc7_pointer_array(&[0; 16], 0, 1, 4, 4, sizes).is_err());
+        assert!(read_rsc7_pointer_array(&[0; 16], 0x5000_0000, 2, 1, 4, sizes).is_err());
     }
 }
