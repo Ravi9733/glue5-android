@@ -139,6 +139,9 @@ pub fn extract_rpf7_rsc7_entry_from_reader<R: Read + Seek, W: std::io::Write>(
         let mut header = [0_u8; 16];
         reader.read_exact(&mut header)
             .map_err(|e| ManifestError(format!("cannot read RPF7 resource size header: {e}")))?;
+        if &header[..4] != b"RSC7" {
+            return Err(ManifestError("RPF7 resource size sentinel does not point to an RSC7 header".into()));
+        }
         u64::from(header[7]) | (u64::from(header[14]) << 8)
             | (u64::from(header[5]) << 16) | (u64::from(header[2]) << 24)
     } else { stored_size };
@@ -230,6 +233,19 @@ mod tests {
         let mut output = Vec::new();
         let error = extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 64).unwrap_err();
         assert!(error.0.contains("sentinel header is outside archive payload bounds"));
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn rejects_file_backed_resource_sentinel_with_non_rsc7_header() {
+        let mut bytes = fixture();
+        bytes[34..37].copy_from_slice(&[0xFF, 0xFF, 0xFF]);
+        bytes[39] |= 0x80;
+        bytes[512..528].fill(0);
+        let mut reader = Cursor::new(bytes);
+        let mut output = Vec::new();
+        let error = extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 64).unwrap_err();
+        assert!(error.0.contains("does not point to an RSC7 header"));
         assert!(output.is_empty());
     }
 
