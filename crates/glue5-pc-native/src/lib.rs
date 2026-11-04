@@ -170,6 +170,38 @@ pub fn probe_rpf_header(header: &[u8]) -> Result<RpfProbe, ManifestError> {
 }
 
 
+/// Decoded page allocation metadata for an RPF7 resource entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rpf7ResourcePageSizes {
+    pub system_bytes: u64,
+    pub graphics_bytes: u64,
+}
+
+/// Decode the page-count bitfields used by RPF7 resource entries.
+/// This reports allocation metadata only; it does not decode RSC7 pages.
+pub fn rpf7_resource_page_sizes(system_flags: u32, graphics_flags: u32) -> Result<Rpf7ResourcePageSizes, ManifestError> {
+    fn decode(flags: u32) -> Result<u64, ManifestError> {
+        let base = 0x200_u64.checked_shl(flags & 0x0f)
+            .ok_or_else(|| ManifestError("RPF7 resource page base-size overflow".into()))?;
+        let multiplier = u64::from((flags >> 27) & 1)
+            + u64::from((flags >> 26) & 1) * 2
+            + u64::from((flags >> 25) & 1) * 4
+            + u64::from((flags >> 24) & 1) * 8
+            + u64::from((flags >> 17) & 0x7f) * 16
+            + u64::from((flags >> 11) & 0x3f) * 32
+            + u64::from((flags >> 7) & 0x0f) * 64
+            + u64::from((flags >> 5) & 0x03) * 128
+            + u64::from((flags >> 4) & 0x01) * 256;
+        base.checked_mul(multiplier)
+            .ok_or_else(|| ManifestError("RPF7 resource page-size overflow".into()))
+    }
+
+    Ok(Rpf7ResourcePageSizes {
+        system_bytes: decode(system_flags)?,
+        graphics_bytes: decode(graphics_flags)?,
+    })
+}
+
 /// One entry in a safely inventoried, unencrypted GTA V Legacy RPF7 archive.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rpf7Entry { pub index: u32, pub name: String, pub kind: Rpf7EntryKind }
@@ -581,6 +613,16 @@ mod tests {
         assert_eq!(ranges[0].start, 512);
         assert_eq!(ranges[0].end, 516);
         assert!(ranges[0].in_bounds);
+    }
+
+    #[test]
+    fn decodes_rpf7_resource_system_and_graphics_page_sizes() {
+        let sizes = rpf7_resource_page_sizes((1 << 0) | (1 << 27), (1 << 1) | (1 << 26)).unwrap();
+        assert_eq!(sizes.system_bytes, 1024);
+        assert_eq!(sizes.graphics_bytes, 4096);
+        assert_eq!(rpf7_resource_page_sizes(0, 0).unwrap(), Rpf7ResourcePageSizes {
+            system_bytes: 0, graphics_bytes: 0,
+        });
     }
 
     #[test]
