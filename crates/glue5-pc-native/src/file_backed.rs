@@ -851,6 +851,37 @@ pub fn decode_mounted_rsc7_asset_from_reader<R: Read + Seek, W: std::io::Write>(
     crate::decode_rsc7_resource_stream(reader, asset.offset, asset.length, output, max_output_bytes)
 }
 
+
+/// Decode a mounted RSC7 resource directly into separate system and graphics
+/// page writers. The mounted absolute range is checked against the backing file
+/// before streaming; no combined decompressed page buffer is retained.
+pub fn decode_mounted_rsc7_asset_pages_from_reader<
+    R: Read + Seek, WS: std::io::Write, WG: std::io::Write,
+>(
+    reader: &mut R,
+    asset: &crate::MountedAsset,
+    system_output: &mut WS,
+    graphics_output: &mut WG,
+    max_output_bytes: usize,
+) -> Result<crate::Rsc7StreamReport, ManifestError> {
+    if asset.kind != crate::MountedAssetKind::Resource {
+        return Err(ManifestError("mounted asset is not an RSC7 resource".into()));
+    }
+    if asset.length < 16 {
+        return Err(ManifestError("mounted RSC7 resource is shorter than its header".into()));
+    }
+    let end = asset.offset.checked_add(asset.length)
+        .ok_or_else(|| ManifestError("mounted RSC7 backing-file range overflows".into()))?;
+    let backing_len = reader.seek(SeekFrom::End(0))
+        .map_err(|e| ManifestError(format!("cannot seek to backing file end: {e}")))?;
+    if end > backing_len {
+        return Err(ManifestError("mounted RSC7 resource exceeds backing-file bounds".into()));
+    }
+    crate::decode_rsc7_resource_pages_stream(
+        reader, asset.offset, asset.length, system_output, graphics_output, max_output_bytes,
+    )
+}
+
 #[cfg(test)]
 mod mounted_rsc7_decode_tests {
     use super::*;
