@@ -1697,7 +1697,7 @@ mod rsc7_segment_view_tests {
         let sizes = Rpf7ResourcePageSizes { system_bytes: 16, graphics_bytes: 0 };
         let mut body = vec![0_u8; 16];
         body[0..4].copy_from_slice(&0x5000_000C_u32.to_le_bytes());
-        body[4..8].copy_from_slice(b"DATA");
+        body[12..16].copy_from_slice(b"DATA");
         let decoded = DecodedRsc7Resource { version: 1, page_sizes: sizes, body };
         assert_eq!(decoded.read_pointer(0x5000_000C, 4).unwrap(), Some(&b"DATA"[..]));
         assert_eq!(decoded.read_pointer_array(0x5000_0000, 1, 2, 4).unwrap(), vec![Some(&b"DATA"[..])]);
