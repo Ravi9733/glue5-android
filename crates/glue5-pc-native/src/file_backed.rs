@@ -1247,7 +1247,7 @@ mod mounted_ytd_inspection_tests {
         system[0x38..0x3A].copy_from_slice(&1_u16.to_le_bytes());
         system[0x3A..0x3C].copy_from_slice(&1_u16.to_le_bytes());
         system[0x40..0x44].copy_from_slice(&0x1234_ABCD_u32.to_le_bytes());
-        system[0x48..0x50].copy_from_slice(&0x5000_0080_u64.to_le_bytes());
+        system[0x48..0x50].copy_from_slice(&0x5000_0120_u64.to_le_bytes());
 
         // Texture structure at system offset 0x120 (VA 0x50000120).
         system[0x148..0x150].copy_from_slice(&0x5000_01C0_u64.to_le_bytes());
