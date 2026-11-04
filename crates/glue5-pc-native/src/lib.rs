@@ -494,6 +494,34 @@ pub fn extract_rpf7_rsc7_entry(
     extract_rpf7_rsc7_resource(archive, range, max_output_bytes)
 }
 
+/// Validate an RPF7 TOC entry and stream its RSC7 output to a writer.
+/// The archive is scanned for metadata/range validation, while decompressed
+/// bytes are emitted in fixed-size chunks rather than retained in a Vec.
+pub fn extract_rpf7_rsc7_entry_to_writer<W: Write>(
+    archive: &[u8],
+    entry_index: u32,
+    output: &mut W,
+    max_output_bytes: usize,
+) -> Result<Rsc7StreamReport, ManifestError> {
+    let inventory = inventory_rpf7_open(archive)?;
+    let ranges = validate_rpf7_payload_ranges(archive, &inventory);
+    let range = ranges.iter().find(|range| range.entry_index == entry_index)
+        .ok_or_else(|| ManifestError("TOC entry is not a file payload in this archive".into()))?;
+    if range.resource_page_sizes.is_none() {
+        return Err(ManifestError("TOC entry is not an RSC7 resource payload".into()));
+    }
+    if !range.in_bounds || range.overlaps_metadata || range.offset_is_sentinel {
+        return Err(ManifestError("RPF7 resource range is invalid or overlaps archive metadata".into()));
+    }
+    let size = range.resolved_size
+        .ok_or_else(|| ManifestError("RPF7 resource payload size is unresolved".into()))?;
+    if range.end < range.start || range.end - range.start != size || range.end > archive.len() as u64 {
+        return Err(ManifestError("RPF7 resource range length is inconsistent or out of bounds".into()));
+    }
+    let mut reader = std::io::Cursor::new(archive);
+    decode_rsc7_resource_stream(&mut reader, range.start, size, output, max_output_bytes)
+}
+
 impl DecodedRsc7Resource {
     /// Resolve and borrow a virtual pointer from this decoded resource.
     /// Refuses to read if the body length disagrees with its page metadata.
