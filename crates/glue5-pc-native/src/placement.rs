@@ -33,6 +33,45 @@ pub struct JsonPlacementDocument {
     pub placements: Vec<JsonPlacement>,
 }
 
+/// Adapter implemented by a future world/entity backend. The parser remains
+/// independent of GTA engine APIs; this trait is the controlled hand-off point.
+pub trait PlacementSink {
+    /// Resolve the asset identifier and create one world placement.
+    fn spawn_placement(&mut self, placement: &JsonPlacement) -> Result<(), String>;
+}
+
+/// Error from applying a parsed document. Earlier placements may already have
+/// been created; applied reports how many succeeded before the error.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlacementApplyError {
+    pub failed_index: usize,
+    pub applied: usize,
+    pub asset: String,
+    pub reason: String,
+}
+
+/// Pass validated placements to an engine adapter in document order.
+/// This does not itself load GTA assets or create game entities; the runtime
+/// must provide a PlacementSink backed by its asset and world APIs.
+pub fn apply_json_placements<S: PlacementSink>(
+    document: &JsonPlacementDocument,
+    sink: &mut S,
+) -> Result<usize, PlacementApplyError> {
+    let mut applied = 0;
+    for (index, placement) in document.placements.iter().enumerate() {
+        if let Err(reason) = sink.spawn_placement(placement) {
+            return Err(PlacementApplyError {
+                failed_index: index,
+                applied,
+                asset: placement.asset.clone(),
+                reason,
+            });
+        }
+        applied += 1;
+    }
+    Ok(applied)
+}
+
 /// Parse Glue5's version-1 schema: root {version, placements}; each placement
 /// has asset, position [x,y,z], rotation [x,y,z], and scale [x,y,z].
 /// This is an explicit Glue5 interchange format, not a universal GTA JSON parser.
@@ -120,6 +159,42 @@ mod tests {
         assert_eq!(doc.placements[1].position, [4.0, 0.0, 0.0]);
         assert_eq!(doc.placements[1].rotation, [0.0, 0.0, 90.0]);
         assert_eq!(doc.placements[1].scale, [1.0, 1.0, 1.0]);
+    }
+
+    struct RecordingSink {
+        assets: Vec<String>,
+        fail_on: Option<usize>,
+    }
+    impl PlacementSink for RecordingSink {
+        fn spawn_placement(&mut self, placement: &JsonPlacement) -> Result<(), String> {
+            if self.fail_on == Some(self.assets.len()) {
+                return Err("test asset resolver failure".into());
+            }
+            self.assets.push(placement.asset.clone());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn applies_validated_placements_in_document_order() {
+        let doc = parse_json_placements(VALID).unwrap();
+        let mut sink = RecordingSink { assets: Vec::new(), fail_on: None };
+        assert_eq!(apply_json_placements(&doc, &mut sink).unwrap(), 2);
+        assert_eq!(sink.assets, vec![
+            "props/maze_bank_ramp.ydr".to_string(),
+            "props/maze_bank_barrier.ydr".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn reports_partial_application_when_engine_sink_fails() {
+        let doc = parse_json_placements(VALID).unwrap();
+        let mut sink = RecordingSink { assets: Vec::new(), fail_on: Some(1) };
+        let error = apply_json_placements(&doc, &mut sink).unwrap_err();
+        assert_eq!(error.failed_index, 1);
+        assert_eq!(error.applied, 1);
+        assert_eq!(error.asset, "props/maze_bank_barrier.ydr");
+        assert_eq!(sink.assets.len(), 1);
     }
 
     #[test]
