@@ -148,3 +148,32 @@ where
         decoded_geometries: geometry.geometries.len(),
     })
 }
+
+
+/// Convenience entry point for a standalone, unencrypted OPEN/NONE RPF7 file.
+/// The archive is inspected in-place; no archive copy is made. Encrypted/NG
+/// archives and RPF8 are rejected by the existing inventory parser.
+pub fn prepare_rpf7_archive_json_placement_pipeline<F>(
+    archive_bytes: &[u8],
+    archive_name: &str,
+    virtual_prefix: &str,
+    placements: &JsonPlacementDocument,
+    limits: &PlacementPipelineLimits,
+    resolve_declaration: F,
+) -> Result<PreparedPlacementPipeline, ManifestError>
+where
+    F: FnMut(&InspectedPlacementGeometryBuffers) -> Result<Vec<VertexElement>, ManifestError>,
+{
+    let inventory = inventory_rpf7_open(archive_bytes)?;
+    let mut reader = std::io::Cursor::new(archive_bytes);
+    prepare_rpf7_json_placement_pipeline(
+        &mut reader,
+        archive_name,
+        virtual_prefix,
+        0,
+        &inventory,
+        placements,
+        limits,
+        resolve_declaration,
+    )
+}
