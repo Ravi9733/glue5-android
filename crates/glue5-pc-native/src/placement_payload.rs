@@ -154,9 +154,24 @@ mod tests {
         assert!(read_resolved_json_placement_payloads(&mut reader, &invalid, 8, 32)
             .unwrap_err().0.contains("backing file"));
 
-        // A reader can advertise a longer length than its actual bytes; exact
-        // reads still fail instead of returning a partial payload.
-        let mut short = std::io::Cursor::new(b"xxxxABC".to_vec());
+        // Simulate a seekable backing source whose reported length becomes
+        // stale between metadata lookup and the exact payload read.
+        struct ShortReader(std::io::Cursor<Vec<u8>>);
+        impl std::io::Read for ShortReader {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                std::io::Read::read(&mut self.0, buf)
+            }
+        }
+        impl std::io::Seek for ShortReader {
+            fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+                if matches!(pos, std::io::SeekFrom::End(0)) {
+                    Ok(64)
+                } else {
+                    std::io::Seek::seek(&mut self.0, pos)
+                }
+            }
+        }
+        let mut short = ShortReader(std::io::Cursor::new(b"xxxxABC".to_vec()));
         let mut one = plan();
         one.placements.truncate(1);
         one.placements[0].asset.offset = 4;
