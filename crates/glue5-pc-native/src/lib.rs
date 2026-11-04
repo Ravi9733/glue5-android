@@ -399,6 +399,42 @@ pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -
 }
 
 
+/// A pair of valid payload ranges that overlap in the same archive.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Rpf7PayloadOverlap {
+    pub first_entry_index: u32,
+    pub first_name: String,
+    pub second_entry_index: u32,
+    pub second_name: String,
+    pub overlap_start: u64,
+    pub overlap_end: u64,
+}
+
+/// Report overlapping valid payload ranges without extracting or modifying data.
+/// Invalid, sentinel, metadata-overlapping and out-of-bounds ranges are ignored.
+/// max_reports bounds memory use when inspecting adversarial archives.
+pub fn find_rpf7_payload_overlaps(ranges: &[Rpf7PayloadRange], max_reports: usize) -> Vec<Rpf7PayloadOverlap> {
+    let mut valid: Vec<&Rpf7PayloadRange> = ranges.iter()
+        .filter(|r| r.in_bounds && !r.overlaps_metadata && !r.offset_is_sentinel
+            && r.resolved_size.is_some() && r.start < r.end).collect();
+    valid.sort_by_key(|r| (r.start, r.end, r.entry_index));
+    let mut found = Vec::new();
+    for (i, first) in valid.iter().enumerate() {
+        for second in valid.iter().skip(i + 1) {
+            if second.start >= first.end { break; }
+            if first.entry_index == second.entry_index { continue; }
+            found.push(Rpf7PayloadOverlap {
+                first_entry_index: first.entry_index, first_name: first.name.clone(),
+                second_entry_index: second.entry_index, second_name: second.name.clone(),
+                overlap_start: first.start.max(second.start),
+                overlap_end: first.end.min(second.end),
+            });
+            if found.len() >= max_reports { return found; }
+        }
+    }
+    found
+}
+
 /// Copy one unencrypted, uncompressed RPF7 binary entry into a bounded buffer.
 /// Compressed, encrypted, resource, metadata-overlapping and out-of-range
 /// payloads are rejected; this does not decompress or decode RSC7 resources.
@@ -653,6 +689,28 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn reports_overlapping_payload_ranges_and_respects_report_cap() {
+        let mut a = Rpf7PayloadRange {
+            entry_index: 1, name: "a.bin".into(), start: 512, end: 600,
+            archive_len: 2048, metadata_end: 64, in_bounds: true,
+            overlaps_metadata: false, size_is_sentinel: false,
+            resolved_size: Some(88), offset_is_sentinel: false,
+            resource_page_sizes: None,
+        };
+        let mut b = a.clone();
+        b.entry_index = 2; b.name = "b.bin".into(); b.start = 550; b.end = 620;
+        b.resolved_size = Some(70);
+        let mut c = a.clone();
+        c.entry_index = 3; c.start = 600; c.end = 640; c.resolved_size = Some(40);
+        let found = find_rpf7_payload_overlaps(&[a.clone(), b, c], 10);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].overlap_start, found[0].overlap_end), (550, 600));
+        a.in_bounds = false;
+        assert!(find_rpf7_payload_overlaps(&[a], 10).is_empty());
+        assert!(find_rpf7_payload_overlaps(&[], 0).is_empty());
+    }
+
     fn streams_bounded_binary_entry_to_writer() {
         let mut data = minimal_open_rpf7();
         data[512..516].copy_from_slice(b"DATA");
