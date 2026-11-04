@@ -1480,6 +1480,32 @@ mod tests {
     }
 
 
+    fn wrap_in_open_rpf7(child: &[u8], child_name: &str) -> Vec<u8> {
+        let name = format!("root\\0{child_name}\\0");
+        let names_len = name.len() as u32;
+        let payload_offset = 1024_usize;
+        let mut archive = vec![0_u8; payload_offset + child.len()];
+        archive[0..4].copy_from_slice(&RPF7_MAGIC.to_le_bytes());
+        archive[4..8].copy_from_slice(&2_u32.to_le_bytes());
+        archive[8..12].copy_from_slice(&names_len.to_le_bytes());
+        archive[12..16].copy_from_slice(&RPF_OPEN.to_le_bytes());
+        archive[16..20].copy_from_slice(&0_u32.to_le_bytes());
+        archive[20..24].copy_from_slice(&0x7FFF_FF00_u32.to_le_bytes());
+        archive[24..28].copy_from_slice(&1_u32.to_le_bytes());
+        archive[28..32].copy_from_slice(&1_u32.to_le_bytes());
+        archive[32..34].copy_from_slice(&5_u16.to_le_bytes());
+        let len = child.len() as u32;
+        archive[34] = len as u8;
+        archive[35] = (len >> 8) as u8;
+        archive[36] = (len >> 16) as u8;
+        archive[37] = 2;
+        archive[40..44].copy_from_slice(&len.to_le_bytes());
+        archive[44..48].copy_from_slice(&0_u32.to_le_bytes());
+        archive[48..48 + name.len()].copy_from_slice(name.as_bytes());
+        archive[payload_offset..].copy_from_slice(child);
+        archive
+    }
+
     fn outer_with_nested_open_rpf7() -> Vec<u8> {
         let inner = minimal_open_rpf7();
         let mut outer = vec![0_u8; 1024 + inner.len()];
@@ -1517,6 +1543,28 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn recursively_inventories_three_archive_levels_and_reports_full_paths() {
+        let leaf = minimal_open_rpf7();
+        let middle = wrap_in_open_rpf7(&leaf, "leaf.rpf");
+        let outer = wrap_in_open_rpf7(&middle, "middle.rpf");
+        let inventory = inventory_rpf7_open(&outer).unwrap();
+
+        let nested = scan_nested_rpf7_open_recursive(&outer, &inventory, 2, 8);
+        assert_eq!(nested.len(), 2);
+        assert_eq!(nested[0].name, "middle.rpf");
+        assert_eq!(nested[1].name, "middle.rpf/leaf.rpf");
+        assert!(matches!(nested[0].status, NestedRpfStatus::InventoriedRpf7(_)));
+        match &nested[1].status {
+            NestedRpfStatus::InventoriedRpf7(inner) => assert_eq!(inner.entries.len(), 2),
+            other => panic!("expected third-level RPF7 inventory, got {other:?}"),
+        }
+
+        let one_level = scan_nested_rpf7_open_recursive(&outer, &inventory, 1, 8);
+        assert_eq!(one_level.len(), 1);
+        assert_eq!(one_level[0].name, "middle.rpf");
+    }
+
     fn inventories_direct_nested_open_rpf7_without_extracting() {
         let outer = outer_with_nested_open_rpf7();
         let inventory = inventory_rpf7_open(&outer).unwrap();
