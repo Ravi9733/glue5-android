@@ -202,6 +202,32 @@ pub fn rpf7_resource_page_sizes(system_flags: u32, graphics_flags: u32) -> Resul
     })
 }
 
+/// Minimal, opaque RSC7 resource-header probe.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rsc7Header {
+    pub magic: [u8; 4],
+    /// Preserved verbatim; semantics are intentionally not assumed.
+    pub opaque_word: u32,
+    pub header_bytes: u8,
+}
+
+/// Validate RSC7 magic and the minimum 16-byte header. This does not decode
+/// page tables, decompress, decrypt, or interpret resource payload contents.
+pub fn probe_rsc7_resource_header(payload: &[u8]) -> Result<Rsc7Header, ManifestError> {
+    if payload.len() < 16 {
+        return Err(ManifestError("RSC7 resource header is truncated (need 16 bytes)".into()));
+    }
+    let magic: [u8; 4] = payload[0..4].try_into().unwrap();
+    if &magic != b"RSC7" {
+        return Err(ManifestError("resource payload does not have RSC7 magic".into()));
+    }
+    Ok(Rsc7Header {
+        magic,
+        opaque_word: u32::from_le_bytes(payload[4..8].try_into().unwrap()),
+        header_bytes: 16,
+    })
+}
+
 /// One entry in a safely inventoried, unencrypted GTA V Legacy RPF7 archive.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rpf7Entry { pub index: u32, pub name: String, pub kind: Rpf7EntryKind }
@@ -582,6 +608,19 @@ mod tests {
 
 
     #[test]
+    fn probes_rsc7_header_and_rejects_truncated_or_wrong_magic() {
+        let mut payload = [0_u8; 16];
+        payload[0..4].copy_from_slice(b"RSC7");
+        payload[4..8].copy_from_slice(&0x1234_5678_u32.to_le_bytes());
+        let header = probe_rsc7_resource_header(&payload).unwrap();
+        assert_eq!(header.magic, *b"RSC7");
+        assert_eq!(header.opaque_word, 0x1234_5678);
+        assert_eq!(header.header_bytes, 16);
+        assert!(probe_rsc7_resource_header(b"RSC7").is_err());
+        assert!(probe_rsc7_resource_header(b"NOPE............").is_err());
+    }
+
+    #[test]
     fn probes_rpf7_header_and_masks_name_length_flags() {
         let mut h = [0_u8; 16];
         h[0..4].copy_from_slice(&0x5250_4637_u32.to_le_bytes());
@@ -689,7 +728,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn reports_overlapping_payload_ranges_and_respects_report_cap() {
         let mut a = Rpf7PayloadRange {
             entry_index: 1, name: "a.bin".into(), start: 512, end: 600,
@@ -711,6 +749,7 @@ mod tests {
         assert!(find_rpf7_payload_overlaps(&[], 0).is_empty());
     }
 
+    #[test]
     fn streams_bounded_binary_entry_to_writer() {
         let mut data = minimal_open_rpf7();
         data[512..516].copy_from_slice(b"DATA");
