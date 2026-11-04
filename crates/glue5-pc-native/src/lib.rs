@@ -713,6 +713,84 @@ pub fn read_rsc7_pointer_from_pages<'a>(
         .ok_or_else(|| ManifestError("RSC7 page buffer is shorter than declared bounds".into()))
 }
 
+/// Read a serialized pointer array from separate system/graphics page buffers.
+/// Each non-null target is independently range-checked; no concatenated page image is built.
+pub fn read_rsc7_pointer_array_from_pages<'a>(
+    system: &'a [u8],
+    graphics: &'a [u8],
+    array_pointer: u64,
+    count: u16,
+    max_count: u16,
+    target_length: u32,
+    page_sizes: Rpf7ResourcePageSizes,
+) -> Result<Vec<Option<&'a [u8]>>, ManifestError> {
+    if count > max_count {
+        return Err(ManifestError(format!(
+            "RSC7 pointer-array count {} exceeds configured limit {}", count, max_count
+        )));
+    }
+    if system.len() as u64 != page_sizes.system_bytes
+        || graphics.len() as u64 != page_sizes.graphics_bytes
+    {
+        return Err(ManifestError("RSC7 page buffers do not match declared page sizes".into()));
+    }
+    if count == 0 { return Ok(Vec::new()); }
+    let array_length = u32::from(count).checked_mul(4)
+        .ok_or_else(|| ManifestError("RSC7 pointer-array byte length overflow".into()))?;
+    let array = read_rsc7_pointer_from_pages(
+        system, graphics, array_pointer, array_length, page_sizes
+    )?.ok_or_else(|| ManifestError("RSC7 pointer array has a null address".into()))?;
+    let mut result = Vec::with_capacity(usize::from(count));
+    for (index, raw) in array.chunks_exact(4).enumerate() {
+        let pointer = u64::from(u32::from_le_bytes(raw.try_into().unwrap()));
+        result.push(read_rsc7_pointer_from_pages(
+            system, graphics, pointer, target_length, page_sizes
+        ).map_err(|error| ManifestError(format!("RSC7 pointer-array item {index}: {}", error.0)))?);
+    }
+    Ok(result)
+}
+
+#[cfg(test)]
+mod rsc7_separate_page_array_tests {
+    use super::*;
+
+    #[test]
+    fn reads_array_and_targets_across_separate_pages() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 16, graphics_bytes: 8 };
+        let mut system = vec![0_u8; 16];
+        let graphics = b"GPU-DATA";
+        system[0..4].copy_from_slice(&0x5000_000C_u32.to_le_bytes());
+        system[4..8].copy_from_slice(&0x6000_0004_u32.to_le_bytes());
+        system[12..16].copy_from_slice(b"SYS!");
+        assert_eq!(
+            read_rsc7_pointer_array_from_pages(
+                &system, graphics, 0x5000_0000, 2, 4, 4, sizes
+            ).unwrap(),
+            vec![Some(&b"SYS!"[..]), Some(&b"DATA"[..])]
+        );
+    }
+
+    #[test]
+    fn rejects_null_array_oversized_count_and_invalid_target() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 16, graphics_bytes: 0 };
+        let system = vec![0_u8; 16];
+        assert!(read_rsc7_pointer_array_from_pages(
+            &system, &[], 0, 1, 4, 4, sizes
+        ).is_err());
+        assert!(read_rsc7_pointer_array_from_pages(
+            &system, &[], 0x5000_0000, 2, 1, 4, sizes
+        ).is_err());
+        let mut invalid = system.clone();
+        invalid[0..4].copy_from_slice(&0x5000_0010_u32.to_le_bytes());
+        assert!(read_rsc7_pointer_array_from_pages(
+            &invalid, &[], 0x5000_0000, 1, 1, 4, sizes
+        ).is_err());
+        assert!(read_rsc7_pointer_array_from_pages(
+            &system[..8], &[], 0x5000_0000, 1, 1, 4, sizes
+        ).is_err());
+    }
+}
+
 #[cfg(test)]
 mod rsc7_separate_page_reader_tests {
     use super::*;
