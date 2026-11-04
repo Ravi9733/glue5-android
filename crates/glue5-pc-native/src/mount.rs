@@ -83,12 +83,39 @@ impl AssetMountIndex {
         Ok(self.entries.get(&virtual_path.to_ascii_lowercase()).map(|(_, asset)| asset))
     }
 
+    /// List recognized GTA drawable/texture candidates in stable path order.
+    /// Only RSC7 Resource entries are returned; Binary entries are excluded.
+    /// This is an inventory filter, not a YDR/YDD/YTD decoder.
+    pub fn gta_resource_candidates(&self) -> Vec<MountedGtaResourceCandidate> {
+        let mut candidates = self.entries.values().filter_map(|(path, asset)| {
+            if asset.kind != MountedAssetKind::Resource { return None; }
+            let candidate_kind = crate::classify_gta_resource_candidate(path)?;
+            Some(MountedGtaResourceCandidate {
+                virtual_path: path.clone(),
+                candidate_kind,
+                asset: asset.clone(),
+            })
+        }).collect::<Vec<_>>();
+        candidates.sort_by(|a, b| a.virtual_path.to_ascii_lowercase().cmp(&b.virtual_path.to_ascii_lowercase()));
+        candidates
+    }
+
     /// Return the original registered spelling and its source descriptor.
     pub fn resolve_with_path(&self, virtual_path: &str) -> Result<Option<(&str, &MountedAsset)>, MountError> {
         validate_virtual_path(virtual_path)?;
         Ok(self.entries.get(&virtual_path.to_ascii_lowercase())
             .map(|(path, asset)| (path.as_str(), asset)))
     }
+}
+
+/// A mounted file whose virtual path has a recognized GTA resource extension.
+/// The descriptor is copied from the validated mount index; payload validity is
+/// not implied by the extension or by this inventory result.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MountedGtaResourceCandidate {
+    pub virtual_path: String,
+    pub candidate_kind: crate::GtaResourceCandidateKind,
+    pub asset: MountedAsset,
 }
 
 /// Populate a virtual mount index from an OPEN/NONE RPF7 inventory.
@@ -212,6 +239,25 @@ mod tests {
         assert_eq!(found.offset, 4096);
         assert_eq!(found.length, 128);
         assert_eq!(found.kind, MountedAssetKind::Resource);
+    }
+
+    #[test]
+    fn lists_only_mounted_resource_candidates_in_stable_order() {
+        let mut index = AssetMountIndex::new();
+        index.insert("z/vehicle.YTD", source()).unwrap();
+        let mut binary = source();
+        binary.kind = MountedAssetKind::Binary;
+        index.insert("a/ignored.ydr", binary).unwrap();
+        index.insert("b/ramp.ydr", source()).unwrap();
+        index.insert("c/readme.txt", source()).unwrap();
+
+        let found = index.gta_resource_candidates();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].virtual_path, "b/ramp.ydr");
+        assert_eq!(found[0].candidate_kind, crate::GtaResourceCandidateKind::DrawableYdr);
+        assert_eq!(found[0].asset.entry_index, 7);
+        assert_eq!(found[1].virtual_path, "z/vehicle.YTD");
+        assert_eq!(found[1].candidate_kind, crate::GtaResourceCandidateKind::TextureDictionaryYtd);
     }
 
     #[test]
