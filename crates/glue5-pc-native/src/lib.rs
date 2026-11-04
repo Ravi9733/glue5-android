@@ -527,6 +527,54 @@ pub fn decode_rsc7_resource_pages_stream<R: Read + Seek, WS: Write, WG: Write>(
     Ok(report)
 }
 
+
+#[cfg(test)]
+mod rsc7_split_stream_tests {
+    use super::*;
+    use flate2::{write::DeflateEncoder, Compression};
+    use std::io::Cursor;
+
+    fn fixture() -> Vec<u8> {
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&vec![b'S'; 512]).unwrap();
+        encoder.write_all(&vec![b'G'; 512]).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut payload = b"RSC7".to_vec();
+        payload.extend_from_slice(&1_u32.to_le_bytes());
+        payload.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        payload.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        payload.extend_from_slice(&compressed);
+        payload
+    }
+
+    #[test]
+    fn streams_system_and_graphics_pages_to_separate_writers() {
+        let payload = fixture();
+        let mut reader = Cursor::new(payload.clone());
+        let mut system = Vec::new();
+        let mut graphics = Vec::new();
+        let report = decode_rsc7_resource_pages_stream(
+            &mut reader, 0, payload.len() as u64, &mut system, &mut graphics, 2048,
+        ).unwrap();
+        assert_eq!(report.bytes_written, 1024);
+        assert_eq!(system, vec![b'S'; 512]);
+        assert_eq!(graphics, vec![b'G'; 512]);
+    }
+
+    #[test]
+    fn rejects_page_stream_output_cap_before_writing() {
+        let payload = fixture();
+        let mut reader = Cursor::new(payload.clone());
+        let mut system = Vec::new();
+        let mut graphics = Vec::new();
+        assert!(decode_rsc7_resource_pages_stream(
+            &mut reader, 0, payload.len() as u64, &mut system, &mut graphics, 512,
+        ).unwrap_err().0.contains("exceeds configured limit"));
+        assert!(system.is_empty());
+        assert!(graphics.is_empty());
+    }
+}
+
 /// Outcome for extracting one bounded RSC7 resource payload from an RPF7 archive.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Rsc7ExtractStatus {
