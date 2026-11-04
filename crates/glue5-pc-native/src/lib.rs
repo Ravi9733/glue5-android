@@ -1308,6 +1308,37 @@ pub fn read_rsc7_pointer_list<'a>(
     read_rsc7_pointer(body, u64::from(header.pointer), byte_length, page_sizes)
 }
 
+
+/// Select one fixed-size record from bytes returned by
+/// read_rsc7_pointer_list. The caller supplies the validated element count
+/// and size because GTA resource types are not inferred by this generic layer.
+pub fn rsc7_pointer_list_element<'a>(
+    bytes: &'a [u8],
+    index: u16,
+    count: u16,
+    element_size: u32,
+) -> Result<&'a [u8], ManifestError> {
+    if index >= count {
+        return Err(ManifestError(format!(
+            "RSC7 list index {} is outside count {}",
+            index, count
+        )));
+    }
+    if element_size == 0 {
+        return Err(ManifestError("RSC7 list element size cannot be zero".into()));
+    }
+    let start = u32::from(index).checked_mul(element_size)
+        .ok_or_else(|| ManifestError("RSC7 list element offset overflow".into()))?;
+    let end = start.checked_add(element_size)
+        .ok_or_else(|| ManifestError("RSC7 list element end overflow".into()))?;
+    let start = usize::try_from(start)
+        .map_err(|_| ManifestError("RSC7 list element offset does not fit this platform".into()))?;
+    let end = usize::try_from(end)
+        .map_err(|_| ManifestError("RSC7 list element end does not fit this platform".into()))?;
+    bytes.get(start..end)
+        .ok_or_else(|| ManifestError("RSC7 list bytes are truncated for requested element".into()))
+}
+
 #[cfg(test)]
 mod rsc7_pointer_list_tests {
     use super::*;
@@ -1321,6 +1352,15 @@ mod rsc7_pointer_list_tests {
         let header = parse_rsc7_pointer_list_header(&raw).unwrap();
         let sizes = Rpf7ResourcePageSizes { system_bytes: 16, graphics_bytes: 0 };
         assert_eq!(read_rsc7_pointer_list(b"HEADABCDWXYZ1234", header, 4, 4, sizes).unwrap(), Some(&b"ABCDWXYZ"[..]));
+    }
+
+    #[test]
+    fn selects_only_in_bounds_fixed_size_list_elements() {
+        let bytes = b"AAAABBBBCCCC";
+        assert_eq!(rsc7_pointer_list_element(bytes, 1, 3, 4).unwrap(), b"BBBB");
+        assert!(rsc7_pointer_list_element(bytes, 3, 3, 4).is_err());
+        assert!(rsc7_pointer_list_element(b"short", 1, 2, 4).is_err());
+        assert!(rsc7_pointer_list_element(bytes, 0, 3, 0).is_err());
     }
 
     #[test]
