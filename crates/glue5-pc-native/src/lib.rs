@@ -2489,3 +2489,52 @@ mod rsc7_streaming_decode_tests {
 /// Bounded file-backed archive metadata readers.
 pub mod file_backed;
 pub use file_backed::{copy_mounted_rpf7_asset_from_inventory_at, copy_mounted_rpf7_asset_from_reader, decode_mounted_rsc7_asset_from_reader, decode_mounted_rsc7_asset_pages_from_reader, extract_rpf7_rsc7_entry_from_reader, mount_rpf7_open_reader_tree, scan_nested_rpf7_open_reader_recursive};
+
+
+/// Recognized GTA V resource-file extensions for the next-stage asset loader.
+/// This is filename classification only; it does not prove that a payload is
+/// valid GTA geometry, drawable, dictionary, or texture data.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GtaResourceCandidateKind {
+    DrawableYdr,
+    DrawableDictionaryYdd,
+    TextureDictionaryYtd,
+}
+
+/// Classify a mounted virtual path by its GTA V resource extension.
+/// Matching is ASCII case-insensitive and ignores query-like suffixes only
+/// when absent; virtual mount paths are expected to be plain relative paths.
+pub fn classify_gta_resource_candidate(path: &str) -> Option<GtaResourceCandidateKind> {
+    let extension = path.rsplit_once('.')?.1;
+    if extension.contains('/') || extension.contains('\\') {
+        return None;
+    }
+    if extension.eq_ignore_ascii_case("ydr") {
+        Some(GtaResourceCandidateKind::DrawableYdr)
+    } else if extension.eq_ignore_ascii_case("ydd") {
+        Some(GtaResourceCandidateKind::DrawableDictionaryYdd)
+    } else if extension.eq_ignore_ascii_case("ytd") {
+        Some(GtaResourceCandidateKind::TextureDictionaryYtd)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod gta_resource_candidate_tests {
+    use super::*;
+
+    #[test]
+    fn classifies_supported_gta_resource_extensions_case_insensitively() {
+        assert_eq!(classify_gta_resource_candidate("props/ramp.ydr"), Some(GtaResourceCandidateKind::DrawableYdr));
+        assert_eq!(classify_gta_resource_candidate("CHARACTERS/MP/YDD.YDD"), Some(GtaResourceCandidateKind::DrawableDictionaryYdd));
+        assert_eq!(classify_gta_resource_candidate("vehicles/shared.ytd"), Some(GtaResourceCandidateKind::TextureDictionaryYtd));
+    }
+
+    #[test]
+    fn leaves_unrecognized_and_malformed_extensions_unclassified() {
+        for path in ["readme.txt", "audio.awc", "props/no_extension", "props/a.ydr/extra", ""] {
+            assert_eq!(classify_gta_resource_candidate(path), None, "path={path}");
+        }
+    }
+}
