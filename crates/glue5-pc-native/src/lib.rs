@@ -292,6 +292,67 @@ fn read_rpf7_name(names: &[u8], offset: usize) -> Result<String, &'static str> {
     Ok(name.to_owned())
 }
 
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NestedRpfStatus {
+    InventoriedRpf7(Rpf7Inventory),
+    Rpf8Unsupported,
+    NotAnRpfArchive,
+    SkippedEncryptedPayload,
+    SkippedCompressedPayload,
+    InvalidPayloadRange,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NestedRpfReport {
+    pub parent_entry_index: u32,
+    pub name: String,
+    pub status: NestedRpfStatus,
+}
+
+/// Inspect direct .rpf child files in an already parsed RPF7 archive.
+/// Only unencrypted, byte-for-byte stored payloads are inspected. This is
+/// deliberately one level deep; it does not recurse or extract file contents.
+pub fn scan_nested_rpf7_open(archive: &[u8], inventory: &Rpf7Inventory) -> Vec<NestedRpfReport> {
+    let mut reports = Vec::new();
+    for entry in &inventory.entries {
+        if !entry.name.to_ascii_lowercase().ends_with(".rpf") { continue; }
+        let (file_size, offset_blocks, uncompressed_size, encrypted) = match &entry.kind {
+            Rpf7EntryKind::BinaryFile { file_size, file_offset_blocks, uncompressed_size, encrypted } =>
+                (*file_size as usize, *file_offset_blocks as usize, *uncompressed_size as usize, *encrypted),
+            _ => continue,
+        };
+
+        let status = if encrypted {
+            NestedRpfStatus::SkippedEncryptedPayload
+        } else if file_size != uncompressed_size {
+            NestedRpfStatus::SkippedCompressedPayload
+        } else {
+            let start = offset_blocks.checked_mul(512);
+            let end = start.and_then(|value| value.checked_add(file_size));
+            match (start, end) {
+                (Some(start), Some(end)) if end <= archive.len() => {
+                    match probe_rpf_header(&archive[start..end]) {
+                        Ok(RpfProbe::GtaVLegacy(_)) => match inventory_rpf7_open(&archive[start..end]) {
+                            Ok(nested) => NestedRpfStatus::InventoriedRpf7(nested),
+                            Err(_) => NestedRpfStatus::NotAnRpfArchive,
+                        },
+                        Ok(RpfProbe::GtaVEnhancedOrRdr2 { .. }) => NestedRpfStatus::Rpf8Unsupported,
+                        _ => NestedRpfStatus::NotAnRpfArchive,
+                    }
+                }
+                _ => NestedRpfStatus::InvalidPayloadRange,
+            }
+        };
+        reports.push(NestedRpfReport {
+            parent_entry_index: entry.index,
+            name: entry.name.clone(),
+            status,
+        });
+    }
+    reports
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,6 +489,55 @@ mod tests {
         let mut data = minimal_open_rpf7();
         data[61] = b'x';
         assert!(inventory_rpf7_open(&data).unwrap_err().0.contains("NUL-terminated"));
+    }
+
+
+    fn outer_with_nested_open_rpf7() -> Vec<u8> {
+        let inner = minimal_open_rpf7();
+        let mut outer = vec![0_u8; 1024 + inner.len()];
+        outer[0..4].copy_from_slice(&RPF7_MAGIC.to_le_bytes());
+        outer[4..8].copy_from_slice(&2_u32.to_le_bytes());
+        outer[8..12].copy_from_slice(&16_u32.to_le_bytes());
+        outer[12..16].copy_from_slice(&RPF_OPEN.to_le_bytes());
+        // Root directory has one child.
+        outer[16..20].copy_from_slice(&0_u32.to_le_bytes());
+        outer[20..24].copy_from_slice(&0x7FFF_FF00_u32.to_le_bytes());
+        outer[24..28].copy_from_slice(&1_u32.to_le_bytes());
+        outer[28..32].copy_from_slice(&1_u32.to_le_bytes());
+        // Nested archive binary entry, stored uncompressed at block 2.
+        outer[32..34].copy_from_slice(&5_u16.to_le_bytes());
+        let len = inner.len() as u32;
+        outer[34] = len as u8;
+        outer[35] = (len >> 8) as u8;
+        outer[36] = (len >> 16) as u8;
+        outer[37] = 2;
+        outer[40..44].copy_from_slice(&len.to_le_bytes());
+        outer[44..48].copy_from_slice(&0_u32.to_le_bytes());
+        outer[48..64].copy_from_slice(b"root\0nested.rpf\0");
+        outer[1024..].copy_from_slice(&inner);
+        outer
+    }
+
+    #[test]
+    fn inventories_direct_nested_open_rpf7_without_extracting() {
+        let outer = outer_with_nested_open_rpf7();
+        let inventory = inventory_rpf7_open(&outer).unwrap();
+        let nested = scan_nested_rpf7_open(&outer, &inventory);
+        assert_eq!(nested.len(), 1);
+        assert_eq!(nested[0].name, "nested.rpf");
+        match &nested[0].status {
+            NestedRpfStatus::InventoriedRpf7(inner) => assert_eq!(inner.entries.len(), 2),
+            other => panic!("unexpected nested archive result: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn skips_nested_archive_payload_with_compressed_size_mismatch() {
+        let mut outer = outer_with_nested_open_rpf7();
+        outer[40..44].copy_from_slice(&1_u32.to_le_bytes());
+        let inventory = inventory_rpf7_open(&outer).unwrap();
+        let nested = scan_nested_rpf7_open(&outer, &inventory);
+        assert_eq!(nested[0].status, NestedRpfStatus::SkippedCompressedPayload);
     }
 
 }
