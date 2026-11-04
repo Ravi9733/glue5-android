@@ -2026,6 +2026,52 @@ mod rsc7_streaming_decode_tests {
         assert_eq!(with_reserved_bits, baseline);
     }
 
+    fn payload_with_body(body: &[u8]) -> Vec<u8> {
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(body).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut payload = b"RSC7".to_vec();
+        payload.extend_from_slice(&1_u32.to_le_bytes());
+        payload.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        payload.extend_from_slice(&0_u32.to_le_bytes());
+        payload.extend_from_slice(&compressed);
+        payload
+    }
+
+    #[test]
+    fn rejects_corrupt_headers_empty_flags_and_invalid_deflate() {
+        let mut short_header = fixture();
+        short_header.truncate(15);
+        assert!(decode_rsc7_resource(&short_header, 1024).is_err());
+
+        let mut wrong_magic = fixture();
+        wrong_magic[0..4].copy_from_slice(b"NOPE");
+        assert!(decode_rsc7_resource(&wrong_magic, 1024).unwrap_err().0.contains("magic"));
+
+        let mut empty_flags = fixture();
+        empty_flags[8..12].copy_from_slice(&0_u32.to_le_bytes());
+        assert!(decode_rsc7_resource(&empty_flags, 1024).unwrap_err().0.contains("empty resource"));
+
+        let mut invalid_deflate = fixture();
+        invalid_deflate.truncate(16);
+        assert!(decode_rsc7_resource(&invalid_deflate, 1024).is_err());
+    }
+
+    #[test]
+    fn rejects_short_and_oversized_decompressed_bodies() {
+        let short = payload_with_body(&vec![0x3C; 511]);
+        assert!(decode_rsc7_resource(&short, 1024).unwrap_err().0.contains("size mismatch"));
+
+        let oversized = payload_with_body(&vec![0x3C; 513]);
+        assert!(decode_rsc7_resource(&oversized, 1024).unwrap_err().0.contains("size mismatch"));
+
+        let mut reader = Cursor::new(payload_with_body(&vec![0x3C; 513]));
+        let mut output = Vec::new();
+        assert!(decode_rsc7_resource_stream(
+            &mut reader, 0, reader.get_ref().len() as u64, &mut output, 1024
+        ).is_err());
+    }
+
     #[test]
     fn streaming_decoder_rejects_output_cap_and_truncated_payload() {
         let payload = fixture();
