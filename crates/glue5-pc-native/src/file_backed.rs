@@ -794,7 +794,7 @@ mod tests {
         let added = mount_rpf7_open_reader_tree(
             &mut reader, &root, "mods/root.rpf", "", 2, 8, &mut mounts,
         ).unwrap();
-        assert_eq!(added, 1);
+        assert_eq!(added, 2);
 
         let asset = mounts.resolve("middle/file.bin").unwrap().unwrap().clone();
         assert_eq!(asset.archive, "mods/root.rpf/middle.rpf");
