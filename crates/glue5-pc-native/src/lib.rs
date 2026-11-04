@@ -15,6 +15,8 @@ pub mod drawable_buffers;
 pub mod vertex_decode;
 pub mod mesh_pipeline;
 pub mod cpu_asset;
+pub mod placement_plan;
+pub use placement_plan::{build_resolved_json_placement_plan, ResolvedJsonPlacement, ResolvedJsonPlacementPlan};
 pub use cpu_asset::{assemble_gta_cpu_asset, GtaCpuAsset, GtaCpuTexture};
 pub use mesh_pipeline::{assemble_gta_cpu_mesh, GtaCpuMesh};
 pub use vertex_decode::{decode_drawable_indices, decode_interleaved_vertices, parse_rockstar_vertex_declaration, DecodedVertex, DecodedVertexAttribute, IndexElementFormat, VertexElement, VertexElementFormat};
