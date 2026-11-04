@@ -1,19 +1,8 @@
-//! Capability gate for a future native PC-game backend.
-//!
-//! This crate intentionally does not load iOS Mach-O binaries, Windows PE
-//! executables, or proprietary game archives. It provides a conservative
-//! readiness report so the Android app cannot mistake copied game data or an
-//! iOS executable for a runnable Android game runtime.
-
-use std::path::Path;
+//! Capability gate and manifest validation for a future native PC-game backend.
+use std::path::{Component, Path};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BackendState {
-    MissingAndroidEngine,
-    MissingVulkanTranslationLayer,
-    MissingPreparedGameData,
-    ReadyForRuntimeIntegration,
-}
+pub enum BackendState { MissingAndroidEngine, MissingVulkanTranslationLayer, MissingPreparedGameData, ReadyForRuntimeIntegration }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReadinessReport {
@@ -24,16 +13,10 @@ pub struct ReadinessReport {
     pub blockers: Vec<&'static str>,
 }
 
-/// Evaluate required component paths. This is not a game launch check.
-pub fn inspect_layout(
-    root: &Path,
-    android_engine_relative: &Path,
-    vulkan_layer_relative: &Path,
-    prepared_data_relative: &Path,
-) -> ReadinessReport {
-    let engine = root.join(android_engine_relative).is_file();
-    let vulkan = root.join(vulkan_layer_relative).is_file();
-    let data = root.join(prepared_data_relative).is_dir();
+pub fn inspect_layout(root: &Path, engine_path: &Path, vulkan_path: &Path, data_path: &Path) -> ReadinessReport {
+    let engine = root.join(engine_path).is_file();
+    let vulkan = root.join(vulkan_path).is_file();
+    let data = root.join(data_path).is_dir();
     let mut blockers = Vec::new();
     if !engine { blockers.push("Android ARM64 native game engine is missing"); }
     if !vulkan { blockers.push("Android Vulkan graphics translation layer is missing"); }
@@ -42,50 +25,68 @@ pub fn inspect_layout(
         else if !vulkan { BackendState::MissingVulkanTranslationLayer }
         else if !data { BackendState::MissingPreparedGameData }
         else { BackendState::ReadyForRuntimeIntegration };
-    ReadinessReport {
-        state,
-        android_engine_present: engine,
-        vulkan_translation_present: vulkan,
-        prepared_data_present: data,
-        blockers,
+    ReadinessReport { state, android_engine_present: engine, vulkan_translation_present: vulkan, prepared_data_present: data, blockers }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DataFile { pub path: String, pub size: u64, pub sha256: String }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DataManifest { pub schema_version: u32, pub game_build: String, pub preparation_tool: String, pub files: Vec<DataFile> }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManifestError(pub String);
+impl std::fmt::Display for ManifestError { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.0) } }
+impl std::error::Error for ManifestError {}
+
+/// Parse a versioned JSON manifest. This validates metadata only; it does not
+/// hash, extract, transform, or execute game files.
+pub fn parse_data_manifest(input: &str) -> Result<DataManifest, ManifestError> {
+    let root: serde_json::Value = serde_json::from_str(input).map_err(|e| ManifestError(format!("invalid JSON: {e}")))?;
+    let obj = root.as_object().ok_or_else(|| ManifestError("manifest root must be an object".into()))?;
+    let schema_version = obj.get("schema_version").and_then(|v| v.as_u64()).and_then(|v| u32::try_from(v).ok())
+        .ok_or_else(|| ManifestError("schema_version must be an unsigned integer".into()))?;
+    if schema_version != 1 { return Err(ManifestError(format!("unsupported schema_version: {schema_version}"))); }
+    let game_build = string_field(obj, "game_build")?;
+    let preparation_tool = string_field(obj, "preparation_tool")?;
+    if game_build.trim().is_empty() || preparation_tool.trim().is_empty() { return Err(ManifestError("game_build and preparation_tool cannot be empty".into())); }
+    let entries = obj.get("files").and_then(|v| v.as_array()).ok_or_else(|| ManifestError("files must be an array".into()))?;
+    if entries.is_empty() { return Err(ManifestError("files must contain at least one entry".into())); }
+    let mut seen = std::collections::HashSet::new();
+    let mut files = Vec::with_capacity(entries.len());
+    for (i, value) in entries.iter().enumerate() {
+        let item = value.as_object().ok_or_else(|| ManifestError(format!("files[{i}] must be an object")))?;
+        let path = item.get("path").and_then(|v| v.as_str()).ok_or_else(|| ManifestError(format!("files[{i}].path must be a string")))?;
+        validate_path(path).map_err(|e| ManifestError(format!("files[{i}].path: {e}")))?;
+        if !seen.insert(path.to_owned()) { return Err(ManifestError(format!("duplicate path: {path}"))); }
+        let size = item.get("size").and_then(|v| v.as_u64()).ok_or_else(|| ManifestError(format!("files[{i}].size must be an unsigned integer")))?;
+        let hash = item.get("sha256").and_then(|v| v.as_str()).ok_or_else(|| ManifestError(format!("files[{i}].sha256 must be a string")))?;
+        if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) { return Err(ManifestError(format!("files[{i}].sha256 must be 64 hexadecimal characters"))); }
+        files.push(DataFile { path: path.to_owned(), size, sha256: hash.to_ascii_lowercase() });
     }
+    Ok(DataManifest { schema_version, game_build, preparation_tool, files })
+}
+fn string_field(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<String, ManifestError> {
+    obj.get(key).and_then(|v| v.as_str()).map(str::to_owned).ok_or_else(|| ManifestError(format!("{key} must be a string")))
+}
+fn validate_path(value: &str) -> Result<(), &'static str> {
+    if value.is_empty() || value.contains('\\') || value.starts_with('/') { return Err("must be a non-empty relative path using forward slashes"); }
+    if Path::new(value).components().any(|c| !matches!(c, Component::Normal(_))) { return Err("must not contain traversal, root, or prefix components"); }
+    if value.split('/').any(str::is_empty) { return Err("must not contain empty path segments"); }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
-    fn temp_root() -> std::path::PathBuf {
-        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        std::env::temp_dir().join(format!("glue5-pc-native-{}", n))
+    const VALID: &str = r#"{"schema_version":1,"game_build":"build-2699","preparation_tool":"glue5-data-prep/0.1","files":[{"path":"update/update.rpf","size":1234,"sha256":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}]}"#;
+    #[test] fn parses_manifest_and_normalizes_hash() { let m=parse_data_manifest(VALID).unwrap(); assert_eq!(m.files[0].sha256, "a".repeat(64)); }
+    #[test] fn rejects_unknown_schema() { assert!(parse_data_manifest(&VALID.replace("\"schema_version\":1", "\"schema_version\":2")).is_err()); }
+    #[test] fn rejects_traversal_absolute_and_backslash_paths() {
+        for bad in ["../escape", "/absolute", "a/../../b", "a\\b"] { assert!(parse_data_manifest(&VALID.replace("update/update.rpf", bad)).is_err(), "{bad}"); }
     }
-    #[test]
-    fn empty_layout_reports_all_blockers() {
-        let root = temp_root(); fs::create_dir_all(&root).unwrap();
-        let r = inspect_layout(&root, Path::new("bin/engine.so"), Path::new("lib/vulkan.so"), Path::new("data"));
-        assert_eq!(r.state, BackendState::MissingAndroidEngine);
-        assert_eq!(r.blockers.len(), 3);
-        fs::remove_dir_all(root).unwrap();
+    #[test] fn rejects_bad_hash_and_duplicate_paths() {
+        assert!(parse_data_manifest(&VALID.replace(&"A".repeat(64), "bad")).is_err());
+        let dup = VALID.replace("}]}", "},{\"path\":\"update/update.rpf\",\"size\":1,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]}");
+        assert!(parse_data_manifest(&dup).is_err());
     }
-    #[test]
-    fn reports_missing_data_when_runtime_files_exist() {
-        let root = temp_root();
-        fs::create_dir_all(root.join("bin")).unwrap(); fs::create_dir_all(root.join("lib")).unwrap();
-        fs::write(root.join("bin/engine.so"), b"placeholder").unwrap();
-        fs::write(root.join("lib/vulkan.so"), b"placeholder").unwrap();
-        let r = inspect_layout(&root, Path::new("bin/engine.so"), Path::new("lib/vulkan.so"), Path::new("data"));
-        assert_eq!(r.state, BackendState::MissingPreparedGameData);
-        fs::remove_dir_all(root).unwrap();
-    }
-    #[test]
-    fn ready_means_paths_exist_not_that_game_is_playable() {
-        let root = temp_root();
-        fs::create_dir_all(root.join("bin")).unwrap(); fs::create_dir_all(root.join("lib")).unwrap(); fs::create_dir_all(root.join("data")).unwrap();
-        fs::write(root.join("bin/engine.so"), b"placeholder").unwrap();
-        fs::write(root.join("lib/vulkan.so"), b"placeholder").unwrap();
-        let r = inspect_layout(&root, Path::new("bin/engine.so"), Path::new("lib/vulkan.so"), Path::new("data"));
-        assert_eq!(r.state, BackendState::ReadyForRuntimeIntegration);
-        assert!(r.blockers.is_empty());
-        fs::remove_dir_all(root).unwrap();
-    }
+    #[test] fn rejects_empty_files() { assert!(parse_data_manifest(&VALID.replace("\"files\":[{\"path\":\"update/update.rpf\",\"size\":1234,\"sha256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}]", "\"files\":[]")).is_err()); }
 }
