@@ -852,6 +852,39 @@ pub fn decode_mounted_rsc7_asset_from_reader<R: Read + Seek, W: std::io::Write>(
 }
 
 
+/// Result of validating and streaming a mounted GTA resource candidate.
+/// The report confirms only bounded RSC7 page decompression, not YDR/YDD/YTD parsing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MountedGtaResourceInspection {
+    pub virtual_path: String,
+    pub candidate_kind: crate::GtaResourceCandidateKind,
+    pub rsc7: crate::Rsc7StreamReport,
+}
+
+/// Connect a classified mount-index candidate to the bounded RSC7 page reader.
+/// Reclassifies the path to reject forged/mismatched descriptors before reading.
+pub fn inspect_mounted_gta_resource_candidate<R: Read + Seek, WS: std::io::Write, WG: std::io::Write>(
+    reader: &mut R,
+    candidate: &crate::MountedGtaResourceCandidate,
+    system_output: &mut WS,
+    graphics_output: &mut WG,
+    max_output_bytes: usize,
+) -> Result<MountedGtaResourceInspection, ManifestError> {
+    let actual_kind = crate::classify_gta_resource_candidate(&candidate.virtual_path)
+        .ok_or_else(|| ManifestError("mounted path is not a recognized GTA resource candidate".into()))?;
+    if actual_kind != candidate.candidate_kind {
+        return Err(ManifestError("mounted GTA resource candidate kind does not match its path".into()));
+    }
+    let rsc7 = decode_mounted_rsc7_asset_pages_from_reader(
+        reader, &candidate.asset, system_output, graphics_output, max_output_bytes,
+    )?;
+    Ok(MountedGtaResourceInspection {
+        virtual_path: candidate.virtual_path.clone(),
+        candidate_kind: actual_kind,
+        rsc7,
+    })
+}
+
 /// Decode a mounted RSC7 resource directly into separate system and graphics
 /// page writers. The mounted absolute range is checked against the backing file
 /// before streaming; no combined decompressed page buffer is retained.
