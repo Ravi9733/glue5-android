@@ -335,6 +335,175 @@ pub fn scan_nested_rpf7_open_reader_recursive<R: Read + Seek>(
     Ok(out)
 }
 
+
+/// Discover and register a root RPF7 archive plus eligible nested RPF7 DLC
+/// archives in one case-insensitive virtual mount index.
+///
+/// The root archive is mounted beneath the supplied virtual prefix. Each
+/// nested archive is mounted beneath a directory named after its RPF filename
+/// stem (for example, dlc.rpf contributes assets under dlc/). All payload
+/// offsets are absolute offsets in the same seekable backing file. Only
+/// unencrypted, byte-for-byte stored RPF7 children are traversed; archive
+/// depth and total child count are caller bounded.
+pub fn mount_rpf7_open_reader_tree<R: Read + Seek>(
+    reader: &mut R,
+    root: &Rpf7FileInventory,
+    root_archive_id: &str,
+    virtual_prefix: &str,
+    max_depth: usize,
+    max_archives: usize,
+    mounts: &mut crate::AssetMountIndex,
+) -> Result<usize, ManifestError> {
+    use crate::{add_rpf7_inventory_to_mount_at, Rpf7EntryKind};
+
+    fn join_virtual_prefix(parent: &str, child: &str) -> String {
+        if parent.is_empty() { child.to_owned() }
+        else if child.is_empty() { parent.to_owned() }
+        else { format!("{parent}/{child}") }
+    }
+
+    fn walk<R: Read + Seek>(
+        reader: &mut R,
+        base: u64,
+        archive_len: u64,
+        inventory: &Rpf7Inventory,
+        archive_id: &str,
+        virtual_prefix: &str,
+        depth: usize,
+        max_depth: usize,
+        remaining: &mut usize,
+        mounts: &mut crate::AssetMountIndex,
+        added: &mut usize,
+    ) -> Result<(), ManifestError> {
+        use crate::{add_rpf7_inventory_to_mount_at, Rpf7EntryKind};
+
+        if depth >= max_depth || *remaining == 0 { return Ok(()); }
+        let metadata_end = 16_u64.checked_add(inventory.header.toc_bytes)
+            .and_then(|n| n.checked_add(u64::from(inventory.header.names_length)))
+            .ok_or_else(|| ManifestError("nested RPF7 metadata boundary overflow".into()))?;
+        let archive_end = base.checked_add(archive_len)
+            .ok_or_else(|| ManifestError("nested RPF7 archive end overflow".into()))?;
+
+        for entry in &inventory.entries {
+            if *remaining == 0 { break; }
+            if !entry.name.to_ascii_lowercase().ends_with(".rpf") { continue; }
+
+            let (stored, offset_blocks, unpacked, encrypted) = match &entry.kind {
+                Rpf7EntryKind::BinaryFile {
+                    file_size, file_offset_blocks, uncompressed_size, encrypted,
+                } => (
+                    u64::from(*file_size),
+                    u64::from(*file_offset_blocks),
+                    u64::from(*uncompressed_size),
+                    *encrypted,
+                ),
+                _ => continue,
+            };
+            *remaining -= 1;
+            if encrypted || stored == 0 || stored != unpacked { continue; }
+
+            let relative = offset_blocks.checked_mul(512)
+                .ok_or_else(|| ManifestError("nested RPF7 child offset overflow".into()))?;
+            let child_base = base.checked_add(relative)
+                .ok_or_else(|| ManifestError("nested RPF7 child base overflow".into()))?;
+            let child_end = child_base.checked_add(stored)
+                .ok_or_else(|| ManifestError("nested RPF7 child end overflow".into()))?;
+            if relative < metadata_end || child_end > archive_end || stored < 16 { continue; }
+
+            reader.seek(SeekFrom::Start(child_base))
+                .map_err(|e| ManifestError(format!("cannot seek nested RPF7 header: {e}")))?;
+            let mut header_bytes = [0_u8; 16];
+            reader.read_exact(&mut header_bytes)
+                .map_err(|e| ManifestError(format!("cannot read nested RPF7 header: {e}")))?;
+            let header = match crate::probe_rpf_header(&header_bytes)? {
+                RpfProbe::GtaVLegacy(header) => header,
+                _ => continue,
+            };
+            let metadata_len = 16_u64.checked_add(header.toc_bytes)
+                .and_then(|n| n.checked_add(u64::from(header.names_length)))
+                .ok_or_else(|| ManifestError("nested RPF7 metadata length overflow".into()))?;
+            if metadata_len > stored { continue; }
+            let metadata_size = usize::try_from(metadata_len)
+                .map_err(|_| ManifestError("nested RPF7 metadata does not fit this platform".into()))?;
+            let mut metadata = Vec::new();
+            metadata.try_reserve_exact(metadata_size)
+                .map_err(|e| ManifestError(format!("cannot allocate nested RPF7 metadata: {e}")))?;
+            metadata.resize(metadata_size, 0);
+            reader.seek(SeekFrom::Start(child_base))
+                .map_err(|e| ManifestError(format!("cannot rewind nested RPF7 metadata: {e}")))?;
+            reader.read_exact(&mut metadata)
+                .map_err(|e| ManifestError(format!("cannot read nested RPF7 metadata: {e}")))?;
+            let child_inventory = match crate::inventory_rpf7_open(&metadata) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+
+            let child_id = format!("{archive_id}/{}", entry.name);
+            let stem = entry.name[..entry.name.len() - 4].to_owned();
+            let child_prefix = join_virtual_prefix(virtual_prefix, &stem);
+            *added += add_rpf7_inventory_to_mount_at(
+                mounts,
+                &child_id,
+                &child_prefix,
+                child_base,
+                stored,
+                &child_inventory,
+            ).map_err(|e| ManifestError(format!("cannot mount nested archive {}: {}", entry.name, e)))?;
+
+            if depth + 1 < max_depth && *remaining > 0 {
+                walk(
+                    reader,
+                    child_base,
+                    stored,
+                    &child_inventory,
+                    &child_id,
+                    &child_prefix,
+                    depth + 1,
+                    max_depth,
+                    remaining,
+                    mounts,
+                    added,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    if root_archive_id.is_empty() {
+        return Err(ManifestError("root archive identifier cannot be empty".into()));
+    }
+    let backing_len = reader.seek(SeekFrom::End(0))
+        .map_err(|e| ManifestError(format!("cannot seek to backing file end: {e}")))?;
+    if root.archive_len > backing_len {
+        return Err(ManifestError("root RPF7 archive exceeds backing file bounds".into()));
+    }
+
+    let mut added = add_rpf7_inventory_to_mount_at(
+        mounts,
+        root_archive_id,
+        virtual_prefix,
+        0,
+        root.archive_len,
+        &root.inventory,
+    ).map_err(|e| ManifestError(format!("cannot mount root archive: {e}")))?;
+
+    let mut remaining = max_archives;
+    walk(
+        reader,
+        0,
+        root.archive_len,
+        &root.inventory,
+        root_archive_id,
+        virtual_prefix,
+        0,
+        max_depth,
+        &mut remaining,
+        mounts,
+        &mut added,
+    )?;
+    Ok(added)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
