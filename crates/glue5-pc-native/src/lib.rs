@@ -119,6 +119,56 @@ pub fn verify_data_files(root: &Path, manifest: &DataManifest) -> Result<(), Man
     Ok(())
 }
 
+
+/// GTA V Legacy RPF7 header fields. This is an inventory-only parser:
+/// it does not decrypt the table of contents or extract archive contents.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Rpf7Header {
+    pub entry_count: u32,
+    pub names_length: u32,
+    pub names_flags: u8,
+    pub encryption_tag: u32,
+    pub toc_bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RpfProbe {
+    GtaVLegacy(Rpf7Header),
+    GtaVEnhancedOrRdr2 { magic: u32 },
+    UnsupportedOrUnknown { magic: u32 },
+}
+
+const RPF7_MAGIC: u32 = 0x5250_4637;
+const RPF8_MAGIC: u32 = 0x5250_4638;
+
+/// Probe the first 16 bytes of an archive header using little-endian fields.
+/// RPF7 names length uses the low 28 bits; the upper four bits are preserved
+/// separately instead of being misreported as part of the byte length.
+pub fn probe_rpf_header(header: &[u8]) -> Result<RpfProbe, ManifestError> {
+    if header.len() < 16 {
+        return Err(ManifestError("RPF header is truncated (need 16 bytes)".into()));
+    }
+    let magic = u32::from_le_bytes(header[0..4].try_into().unwrap());
+    if magic == RPF8_MAGIC {
+        return Ok(RpfProbe::GtaVEnhancedOrRdr2 { magic });
+    }
+    if magic != RPF7_MAGIC {
+        return Ok(RpfProbe::UnsupportedOrUnknown { magic });
+    }
+
+    let entry_count = u32::from_le_bytes(header[4..8].try_into().unwrap());
+    let packed_names = u32::from_le_bytes(header[8..12].try_into().unwrap());
+    let encryption_tag = u32::from_le_bytes(header[12..16].try_into().unwrap());
+    let names_length = packed_names & 0x0fff_ffff;
+    let names_flags = (packed_names >> 28) as u8;
+    let toc_bytes = u64::from(entry_count).checked_mul(16)
+        .ok_or_else(|| ManifestError("RPF7 TOC byte count overflow".into()))?;
+
+    Ok(RpfProbe::GtaVLegacy(Rpf7Header {
+        entry_count, names_length, names_flags, encryption_tag, toc_bytes,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,6 +180,33 @@ mod tests {
     fn temp_dir() -> std::path::PathBuf {
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         std::env::temp_dir().join(format!("glue5-pc-native-{}-{nonce}", std::process::id()))
+    }
+
+
+    #[test]
+    fn probes_rpf7_header_and_masks_name_length_flags() {
+        let mut h = [0_u8; 16];
+        h[0..4].copy_from_slice(&0x5250_4637_u32.to_le_bytes());
+        h[4..8].copy_from_slice(&3_u32.to_le_bytes());
+        h[8..12].copy_from_slice(&0xA000_0123_u32.to_le_bytes());
+        h[12..16].copy_from_slice(&0_u32.to_le_bytes());
+        let result = probe_rpf_header(&h).unwrap();
+        assert_eq!(result, RpfProbe::GtaVLegacy(Rpf7Header {
+            entry_count: 3, names_length: 0x123, names_flags: 0xA,
+            encryption_tag: 0, toc_bytes: 48,
+        }));
+    }
+
+    #[test]
+    fn identifies_rpf8_without_treating_it_as_legacy() {
+        let mut h = [0_u8; 16];
+        h[0..4].copy_from_slice(&0x5250_4638_u32.to_le_bytes());
+        assert_eq!(probe_rpf_header(&h).unwrap(), RpfProbe::GtaVEnhancedOrRdr2 { magic: 0x5250_4638 });
+    }
+
+    #[test]
+    fn rejects_short_rpf_header() {
+        assert!(probe_rpf_header(&[0; 15]).is_err());
     }
 
     #[test] fn parses_manifest_and_normalizes_hash() { let m=parse_data_manifest(VALID).unwrap(); assert_eq!(m.files[0].sha256, "a".repeat(64)); }
