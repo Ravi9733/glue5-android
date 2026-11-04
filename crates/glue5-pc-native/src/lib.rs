@@ -1495,4 +1495,16 @@ mod rsc7_pointer_array_reader_tests {
         assert!(read_rsc7_pointer_array(&[0; 16], 0, 1, 4, 4, sizes).is_err());
         assert!(read_rsc7_pointer_array(&[0; 16], 0x5000_0000, 2, 1, 4, sizes).is_err());
     }
+
+    #[test]
+    fn preserves_null_array_items_and_rejects_short_target_body() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 16, graphics_bytes: 0 };
+        let mut body = vec![0_u8; 16];
+        body[0..4].copy_from_slice(&0_u32.to_le_bytes());
+        body[4..8].copy_from_slice(&0x5000_000C_u32.to_le_bytes());
+        body[12..16].copy_from_slice(b"DATA");
+        let items = read_rsc7_pointer_array(&body, 0x5000_0000, 2, 2, 4, sizes).unwrap();
+        assert_eq!(items, vec![None, Some(&b"DATA"[..])]);
+        assert!(read_rsc7_pointer_array(&body[..14], 0x5000_0000, 2, 2, 4, sizes).is_err());
+    }
 }
