@@ -191,7 +191,56 @@ struct Preparing {
     thread: std::thread::JoinHandle<Result<prepare::Prepared>>,
 }
 
+/// GPU buffers uploaded through the active Glue5 renderer device.
+/// When the renderer instance is Vulkan, these allocations use Vulkan (including
+/// the Android Vulkan driver selected by the platform).
+pub struct ExternalMeshBuffers {
+    pub vertex: wgpu::Buffer,
+    pub index: Option<wgpu::Buffer>,
+    pub vertex_count: u32,
+    pub index_count: u32,
+    pub vertex_stride: u32,
+}
+
 impl Screen {
+    /// Upload a position/vertex stream and optional little-endian u32 index stream
+    /// to the same device used by Glue5's active renderer.
+    pub fn upload_external_mesh(
+        &self,
+        vertex_bytes: &[u8],
+        vertex_stride: u32,
+        index_bytes: Option<&[u8]>,
+        max_upload_bytes: u64,
+    ) -> Result<ExternalMeshBuffers> {
+        use wgpu::util::DeviceExt;
+        if vertex_stride == 0 || vertex_bytes.is_empty() || vertex_bytes.len() % vertex_stride as usize != 0 {
+            anyhow::bail!("external mesh vertex bytes/stride are invalid");
+        }
+        if let Some(indices) = index_bytes {
+            if indices.is_empty() || indices.len() % 4 != 0 {
+                anyhow::bail!("external mesh index bytes must contain u32 indices");
+            }
+        }
+        let total = (vertex_bytes.len() as u64).checked_add(index_bytes.map_or(0, |b| b.len() as u64))
+            .ok_or_else(|| anyhow::anyhow!("external mesh upload size overflow"))?;
+        if total > max_upload_bytes || total > self.gpu.device.limits().max_buffer_size {
+            anyhow::bail!("external mesh upload exceeds configured/device byte limit");
+        }
+        let vertex_count = u32::try_from(vertex_bytes.len() / vertex_stride as usize)
+            .map_err(|_| anyhow::anyhow!("external mesh vertex count exceeds u32"))?;
+        let index_count = index_bytes.map_or(Ok(0), |b| u32::try_from(b.len() / 4))
+            .map_err(|_| anyhow::anyhow!("external mesh index count exceeds u32"))?;
+        let vertex = self.gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("glue5-external-mod-vertices"), contents: vertex_bytes,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+        let index = index_bytes.map(|bytes| self.gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("glue5-external-mod-indices"), contents: bytes,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+        }));
+        Ok(ExternalMeshBuffers { vertex, index, vertex_count, index_count, vertex_stride })
+    }
+
     pub fn open(window: Window) -> Result<Screen> {
         let gpu = Device::open(&window.instance, Some(&window.surface))?;
         let output = present::Output::new(gpu.adapter.clone(), &gpu.device, window);
