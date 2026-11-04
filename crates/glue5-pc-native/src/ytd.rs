@@ -552,3 +552,56 @@ mod tests {
         assert!(parse_ytd_resource_pages(&system, &vec![0; 8], sizes).is_err());
     }
 }
+
+
+#[cfg(test)]
+mod bc_texture_tests {
+    use super::*;
+
+    fn red_bc1_block() -> [u8; 8] {
+        [0x00, 0xF8, 0x00, 0x00, 0, 0, 0, 0]
+    }
+
+    #[test]
+    fn decodes_bc1_bc2_and_bc3_blocks_to_rgba() {
+        let bc1 = red_bc1_block();
+        let decoded = decode_ytd_bc_rgba(4, 4, 8, 0x3154_5844, &bc1, 64).unwrap();
+        assert_eq!(&decoded[0..4], &[255, 0, 0, 255]);
+        assert_eq!(decoded.len(), 64);
+
+        let mut bc2 = [0_u8; 16];
+        bc2[..8].fill(0xFF);
+        bc2[8..].copy_from_slice(&red_bc1_block());
+        let decoded = decode_ytd_bc_rgba(4, 4, 16, 0x3354_5844, &bc2, 64).unwrap();
+        assert_eq!(&decoded[0..4], &[255, 0, 0, 255]);
+
+        let mut bc3 = [0_u8; 16];
+        bc3[0] = 255;
+        bc3[1] = 0;
+        bc3[8..].copy_from_slice(&red_bc1_block());
+        let decoded = decode_ytd_bc_rgba(4, 4, 16, 0x3554_5844, &bc3, 64).unwrap();
+        assert_eq!(&decoded[0..4], &[255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn decodes_partial_edge_blocks_and_checks_stride_input_and_output_caps() {
+        let block = red_bc1_block();
+        assert_eq!(
+            decode_ytd_bc_rgba(1, 1, 8, 0x3154_5844, &block, 4).unwrap(),
+            vec![255, 0, 0, 255]
+        );
+        assert!(decode_ytd_bc_rgba(5, 4, 8, 0x3154_5844, &[0; 16], 80).is_err());
+        assert!(decode_ytd_bc_rgba(4, 4, 7, 0x3154_5844, &block, 64).is_err());
+        assert!(decode_ytd_bc_rgba(4, 4, 8, 0x3154_5844, &[0; 7], 64).is_err());
+        assert!(decode_ytd_bc_rgba(4, 4, 8, 0x3154_5844, &block, 32).is_err());
+        assert!(decode_ytd_bc_rgba(4, 4, 8, 21, &block, 64).is_err());
+    }
+
+    #[test]
+    fn preserves_bc1_one_bit_transparency() {
+        let block = [0x00, 0x00, 0x01, 0x00, 0xFF, 0xFF, 0xFF, 0xFF];
+        let decoded = decode_ytd_bc_rgba(4, 4, 8, 0x3154_5844, &block, 64).unwrap();
+        assert_eq!(&decoded[0..4], &[0, 0, 0, 0]);
+        assert_ne!(&decoded[4..8], &[0, 0, 0, 0]);
+    }
+}
