@@ -171,7 +171,9 @@ mod tests {
         assert!(decode_interleaved_vertices(&[0; 4], 1, 4, &[
             VertexElement { semantic: "POSITION".into(), offset: 0, format: VertexElementFormat::Float32x3 },
         ], 4, 64).is_err());
-        assert!(decode_interleaved_vertices(&f32::NAN.to_le_bytes(), 1, 4, &[
+        let mut non_finite = f32::NAN.to_le_bytes().to_vec();
+        non_finite.extend_from_slice(&0.0_f32.to_le_bytes());
+        assert!(decode_interleaved_vertices(&non_finite, 1, 8, &[
             VertexElement { semantic: "VALUE".into(), offset: 0, format: VertexElementFormat::Float32x2 },
         ], 4, 64).is_err());
         assert!(decode_drawable_indices(&[2, 0], IndexElementFormat::U16, 1, 2, 8).is_err());
