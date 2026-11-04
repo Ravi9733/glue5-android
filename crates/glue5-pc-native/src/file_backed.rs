@@ -172,7 +172,8 @@ mod tests {
         assert_eq!(result.archive_len, bytes.len() as u64);
         assert_eq!(result.inventory.entries.len(), 2);
         assert_eq!(result.inventory.entries[1].name, "file.bin");
-        assert_eq!(reader.position(), 0);
+        // The reader is left immediately after the metadata region; payload bytes remain unread.
+        assert_eq!(reader.position(), 16 + 32 + 14);
     }
 
     #[test]
