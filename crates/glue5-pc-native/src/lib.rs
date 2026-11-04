@@ -815,7 +815,7 @@ mod tests {
         let mut c = a.clone();
         c.entry_index = 3; c.start = 600; c.end = 640; c.resolved_size = Some(40);
         let found = find_rpf7_payload_overlaps(&[a.clone(), b, c], 10);
-        assert_eq!(found.len(), 1);
+        assert_eq!(found.len(), 2);
         assert_eq!((found[0].overlap_start, found[0].overlap_end), (550, 600));
         assert_eq!((found[1].overlap_start, found[1].overlap_end), (600, 620));
         a.in_bounds = false;
