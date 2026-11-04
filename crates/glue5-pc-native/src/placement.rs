@@ -106,7 +106,7 @@ fn validate_asset_path(asset: &str) -> Result<(), PlacementError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const VALID: &[u8] = br#"{"version":1,"placements":[{"asset":"props/maze_bank_ramp.ydr","position":[1,2,3],"rotation":[0,0,90],"scale":[1,1,1]}]}"#;
+    const VALID: &[u8] = include_bytes!("../examples/maze_bank_ramp.placements.json");
 
     #[test]
     fn parses_versioned_placement_and_transform() {
