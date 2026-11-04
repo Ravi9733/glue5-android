@@ -13,6 +13,8 @@ pub mod drawable;
 pub mod drawable_structure;
 pub mod drawable_buffers;
 pub mod vertex_decode;
+pub mod mesh_pipeline;
+pub use mesh_pipeline::{assemble_gta_cpu_mesh, GtaCpuMesh};
 pub use vertex_decode::{decode_drawable_indices, decode_interleaved_vertices, parse_rockstar_vertex_declaration, DecodedVertex, DecodedVertexAttribute, IndexElementFormat, VertexElement, VertexElementFormat};
 pub use drawable_structure::{inspect_gta_drawable_structure, GtaDrawableResourceSummary, GtaDrawableSummary, GtaGeometrySummary, GtaModelSummary};
 pub use drawable_buffers::{read_gta_drawable_buffer_at, read_gta_geometry_buffers, GtaBufferPage, GtaDrawableBufferData, GtaGeometryBufferData, GtaIndexBufferLayout, GtaVertexBufferLayout};
