@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(texture.name, "test");
         assert_eq!(texture.name_hash, 0x1234_ABCD);
         assert_eq!((texture.width, texture.height, texture.format_code), (4, 4, 0x3154_5844));
-        assert_eq!(texture.pixel_data_bytes, 4);
+        assert_eq!(texture.pixel_data_bytes, 16);
         assert_eq!(texture.pixel_data.unwrap().segment, crate::Rsc7Segment::Graphics);
     }
 
