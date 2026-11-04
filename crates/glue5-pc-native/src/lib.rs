@@ -347,6 +347,9 @@ pub fn resolve_rsc7_pointer(
     page_sizes: Rpf7ResourcePageSizes,
 ) -> Result<Option<Rsc7ResolvedPointer>, ManifestError> {
     if pointer == 0 { return Ok(None); }
+    if pointer >> 32 != 0 {
+        return Err(ManifestError(format!("RSC7 virtual pointer has non-zero upper bits: {pointer:#018x}")));
+    }
     let address = pointer as u32;
     let segment = match address & 0xF000_0000 {
         0x5000_0000 => Rsc7Segment::System,
@@ -913,6 +916,7 @@ mod tests {
         assert_eq!(graphics, Rsc7ResolvedPointer { segment: Rsc7Segment::Graphics, offset: 0x10, length: 16 });
         assert!(resolve_rsc7_pointer(0x5000_0400, 1, sizes).is_err());
         assert!(resolve_rsc7_pointer(0x7000_0000, 1, sizes).is_err());
+        assert!(resolve_rsc7_pointer(0x1_5000_0000, 1, sizes).unwrap_err().0.contains("upper bits"));
     }
 
     #[test]
