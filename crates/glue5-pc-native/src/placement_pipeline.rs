@@ -177,3 +177,39 @@ where
         resolve_declaration,
     )
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_limits_are_nonzero_and_bound_each_stage() {
+        let limits = PlacementPipelineLimits::default();
+        assert!(limits.max_placements > 0);
+        assert!(limits.max_asset_bytes > 0);
+        assert!(limits.max_total_source_bytes >= limits.max_asset_bytes);
+        assert!(limits.max_resource_output_bytes > 0);
+        assert!(limits.max_total_decoded_bytes > 0);
+        assert!(limits.max_vertices_per_geometry > 0);
+        assert!(limits.max_indices_per_geometry > 0);
+        assert!(limits.max_total_geometry_bytes >= limits.max_geometry_bytes);
+        assert!(limits.max_total_scene_vertices > 0);
+        assert!(limits.max_total_scene_bytes > 0);
+        assert!(limits.max_gpu_meshes > 0);
+        assert!(limits.max_gpu_upload_bytes > 0);
+    }
+
+    #[test]
+    fn standalone_entry_rejects_truncated_archive_before_processing_placements() {
+        let result = prepare_rpf7_archive_json_placement_pipeline(
+            &[],
+            "test.rpf",
+            "dlc/test",
+            &JsonPlacementDocument { placements: Vec::new() },
+            &PlacementPipelineLimits::default(),
+            |_| Ok(Vec::new()),
+        );
+        assert!(result.is_err());
+    }
+}
