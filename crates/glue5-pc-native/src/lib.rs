@@ -20,6 +20,8 @@ pub mod placement_payload;
 pub mod placement_decode;
 pub mod placement_assets;
 pub mod placement_geometry;
+pub mod gpu_upload;
+pub use gpu_upload::{upload_gta_cpu_mesh, GpuMeshBuffers};
 pub use placement_plan::{build_resolved_json_placement_plan, ResolvedJsonPlacement, ResolvedJsonPlacementPlan};
 pub use placement_payload::{read_resolved_json_placement_payloads, ResolvedPlacementPayload, ResolvedPlacementPayloadBatch};
 pub use placement_decode::{decode_resolved_placement_payloads, DecodedPlacementAsset, DecodedPlacementAssetBatch, DecodedPlacementContent};
