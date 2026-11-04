@@ -5,6 +5,10 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path};
 
+/// Versioned JSON placement-mod parser for the experimental PC content layer.
+pub mod placement;
+pub use placement::{parse_json_placements, JsonPlacement, JsonPlacementDocument, PlacementError};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendState { MissingAndroidEngine, MissingVulkanTranslationLayer, MissingPreparedGameData, ReadyForRuntimeIntegration }
 
