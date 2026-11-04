@@ -43,3 +43,7 @@ The iOS executable and its Apple-platform dynamic libraries cannot be reused as 
 ## Safety and compatibility
 
 Keep this work on the experimental `android-pc-runtime-foundation` branch. The normal Glue 5 build and WASM runtime remain separate and unchanged. Do not describe this crate or its CI tests as proof that GTA V currently runs on Android.
+
+## Experimental texture decode handoff
+
+The YTD experiment now has a bounded page-to-pixel handoff: after a candidate has been mounted and its RSC7 pages decoded, callers can pass a parsed texture plus its system/graphics page buffers to `decode_ytd_texture_top_mip_rgba`. The helper checks the stored segment range before decoding the supported uncompressed top mip. BC1/BC2/BC3 block decoding is also available as a separate bounded primitive. These paths are covered by synthetic fixtures only; the presumed YTD structure and pixel-format metadata still require validation against legally obtained retail assets, and this does not create GPU textures or render them in-game.
