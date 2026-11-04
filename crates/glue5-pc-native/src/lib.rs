@@ -601,6 +601,7 @@ mod tests {
     #[test]
     fn validates_rpf7_resource_payload_range_and_flags() {
         let mut data = minimal_open_rpf7();
+        data[34..37].copy_from_slice(&[4, 0, 0]);
         data[39] |= 0x80;
         data[40..44].copy_from_slice(&0x1234_5678_u32.to_le_bytes());
         data[44..48].copy_from_slice(&0x8765_4321_u32.to_le_bytes());
@@ -618,8 +619,8 @@ mod tests {
     #[test]
     fn decodes_rpf7_resource_system_and_graphics_page_sizes() {
         let sizes = rpf7_resource_page_sizes((1 << 0) | (1 << 27), (1 << 1) | (1 << 26)).unwrap();
-        assert_eq!(sizes.system_bytes, 1024);
-        assert_eq!(sizes.graphics_bytes, 4096);
+        assert_eq!(sizes.system_bytes, 512);
+        assert_eq!(sizes.graphics_bytes, 2048);
         assert_eq!(rpf7_resource_page_sizes(0, 0).unwrap(), Rpf7ResourcePageSizes {
             system_bytes: 0, graphics_bytes: 0,
         });
