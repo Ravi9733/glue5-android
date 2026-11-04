@@ -1191,3 +1191,126 @@ mod mounted_index_to_gta_inspection_tests {
         assert_eq!(graphics, graphics_expected);
     }
 }
+
+
+/// Result of parsing a mounted GTA V Legacy YTD texture dictionary.
+/// Pixel bytes are range-validated but are not GPU-uploaded or rendered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MountedYtdInspection {
+    pub virtual_path: String,
+    pub rsc7: crate::Rsc7StreamReport,
+    pub dictionary: crate::YtdDictionary,
+}
+
+/// Connect a mounted .ytd candidate to bounded RSC7 page decoding and the
+/// GTA V Legacy texture-dictionary parser.
+pub fn inspect_mounted_ytd_candidate<R: Read + Seek>(
+    reader: &mut R,
+    candidate: &crate::MountedGtaResourceCandidate,
+    max_output_bytes: usize,
+) -> Result<MountedYtdInspection, ManifestError> {
+    let actual_kind = crate::classify_gta_resource_candidate(&candidate.virtual_path)
+        .ok_or_else(|| ManifestError("mounted path is not a recognized GTA resource candidate".into()))?;
+    if actual_kind != crate::GtaResourceCandidateKind::TextureDictionaryYtd
+        || actual_kind != candidate.candidate_kind
+    {
+        return Err(ManifestError("mounted candidate is not a matching YTD texture dictionary".into()));
+    }
+
+    let mut system = Vec::new();
+    let mut graphics = Vec::new();
+    let rsc7 = decode_mounted_rsc7_asset_pages_from_reader(
+        reader, &candidate.asset, &mut system, &mut graphics, max_output_bytes,
+    )?;
+    let dictionary = crate::parse_ytd_resource_pages(
+        &system, &graphics, rsc7.page_sizes,
+    )?;
+    Ok(MountedYtdInspection {
+        virtual_path: candidate.virtual_path.clone(),
+        rsc7,
+        dictionary,
+    })
+}
+
+#[cfg(test)]
+mod mounted_ytd_inspection_tests {
+    use super::*;
+    use flate2::{write::DeflateEncoder, Compression};
+    use std::io::{Cursor, Write};
+
+    fn ytd_payload() -> Vec<u8> {
+        let mut system = vec![0_u8; 512];
+        let graphics = vec![0xAB; 512];
+        system[0x20..0x28].copy_from_slice(&0x5000_0040_u64.to_le_bytes());
+        system[0x28..0x2A].copy_from_slice(&1_u16.to_le_bytes());
+        system[0x30..0x38].copy_from_slice(&0x5000_0048_u64.to_le_bytes());
+        system[0x38..0x3A].copy_from_slice(&1_u16.to_le_bytes());
+        system[0x3A..0x3C].copy_from_slice(&1_u16.to_le_bytes());
+        system[0x40..0x44].copy_from_slice(&0x1234_ABCD_u32.to_le_bytes());
+        system[0x48..0x50].copy_from_slice(&0x5000_0080_u64.to_le_bytes());
+        system[0xA8..0xB0].copy_from_slice(&0x5000_0120_u64.to_le_bytes());
+        system[0xD0..0xD2].copy_from_slice(&4_u16.to_le_bytes());
+        system[0xD2..0xD4].copy_from_slice(&4_u16.to_le_bytes());
+        system[0xD4..0xD6].copy_from_slice(&1_u16.to_le_bytes());
+        system[0xD6..0xD8].copy_from_slice(&4_u16.to_le_bytes());
+        system[0xD8..0xDC].copy_from_slice(&0x3154_5844_u32.to_le_bytes());
+        system[0xDD] = 1;
+        system[0xF0..0xF8].copy_from_slice(&0x6000_0000_u64.to_le_bytes());
+        system[0x120..0x125].copy_from_slice(b"test\0");
+
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&system).unwrap();
+        encoder.write_all(&graphics).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut payload = b"RSC7".to_vec();
+        payload.extend_from_slice(&1_u32.to_le_bytes());
+        payload.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        payload.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        payload.extend_from_slice(&compressed);
+        payload
+    }
+
+    #[test]
+    fn parses_mounted_ytd_candidate_from_absolute_backing_offset() {
+        let payload = ytd_payload();
+        let mut backing = vec![0xCC; 64];
+        backing.extend_from_slice(&payload);
+        let mut reader = Cursor::new(backing);
+        let candidate = crate::MountedGtaResourceCandidate {
+            virtual_path: "stream/textures.ytd".into(),
+            candidate_kind: crate::GtaResourceCandidateKind::TextureDictionaryYtd,
+            asset: crate::MountedAsset {
+                archive: "mods/textures.rpf".into(),
+                entry_index: 3,
+                offset: 64,
+                length: payload.len() as u64,
+                kind: crate::MountedAssetKind::Resource,
+            },
+        };
+        let parsed = inspect_mounted_ytd_candidate(&mut reader, &candidate, 2048).unwrap();
+        assert_eq!(parsed.virtual_path, "stream/textures.ytd");
+        assert_eq!(parsed.rsc7.bytes_written, 1024);
+        assert_eq!(parsed.dictionary.textures.len(), 1);
+        assert_eq!(parsed.dictionary.textures[0].name, "test");
+        assert_eq!(parsed.dictionary.textures[0].pixel_data_bytes, 16);
+    }
+
+    #[test]
+    fn rejects_non_ytd_candidates_before_reading() {
+        let mut reader = Cursor::new(vec![0_u8; 128]);
+        let candidate = crate::MountedGtaResourceCandidate {
+            virtual_path: "stream/model.ydr".into(),
+            candidate_kind: crate::GtaResourceCandidateKind::DrawableYdr,
+            asset: crate::MountedAsset {
+                archive: "mods/model.rpf".into(),
+                entry_index: 1,
+                offset: 0,
+                length: 64,
+                kind: crate::MountedAssetKind::Resource,
+            },
+        };
+        assert!(inspect_mounted_ytd_candidate(&mut reader, &candidate, 2048)
+            .unwrap_err().0.contains("not a matching YTD"));
+        assert_eq!(reader.position(), 0);
+    }
+}
