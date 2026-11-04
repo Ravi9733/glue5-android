@@ -211,6 +211,54 @@ pub struct Rsc7Header {
     pub header_bytes: u8,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Rsc7ResourceStatus { Valid, InvalidRange, HeaderTruncated, WrongMagic }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Rsc7ResourceReport {
+    pub entry_index: u32,
+    pub name: String,
+    pub status: Rsc7ResourceStatus,
+    pub header: Option<Rsc7Header>,
+}
+
+/// Inspect only the first 16 bytes of bounded RPF7 resource entries.
+/// This is diagnostic metadata: it does not decode page maps or asset data.
+pub fn inspect_rpf7_rsc7_headers(
+    archive: &[u8],
+    ranges: &[Rpf7PayloadRange],
+) -> Vec<Rsc7ResourceReport> {
+    ranges.iter().filter(|range| range.resource_page_sizes.is_some()).map(|range| {
+        let mut report = Rsc7ResourceReport {
+            entry_index: range.entry_index,
+            name: range.name.clone(),
+            status: Rsc7ResourceStatus::InvalidRange,
+            header: None,
+        };
+        if !range.in_bounds || range.overlaps_metadata || range.offset_is_sentinel {
+            return report;
+        }
+        let Some(size) = range.resolved_size else { return report; };
+        if size < 16 || range.end.checked_sub(range.start).is_none_or(|length| length < 16) {
+            report.status = Rsc7ResourceStatus::HeaderTruncated;
+            return report;
+        }
+        let Ok(start) = usize::try_from(range.start) else { return report; };
+        let Some(end_u64) = range.start.checked_add(16) else { return report; };
+        let Ok(end) = usize::try_from(end_u64) else { return report; };
+        let Some(payload) = archive.get(start..end) else { return report; };
+        match probe_rsc7_resource_header(payload) {
+            Ok(header) => {
+                report.status = Rsc7ResourceStatus::Valid;
+                report.header = Some(header);
+            }
+            Err(error) if error.0.contains("truncated") => report.status = Rsc7ResourceStatus::HeaderTruncated,
+            Err(_) => report.status = Rsc7ResourceStatus::WrongMagic,
+        }
+        report
+    }).collect()
+}
+
 /// Validate RSC7 magic and the minimum 16-byte header. This does not decode
 /// page tables, decompress, decrypt, or interpret resource payload contents.
 pub fn probe_rsc7_resource_header(payload: &[u8]) -> Result<Rsc7Header, ManifestError> {
@@ -621,6 +669,31 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn inspects_rpf7_resource_headers_only_inside_validated_ranges() {
+        let mut archive = vec![0_u8; 528];
+        archive[512..516].copy_from_slice(b"RSC7");
+        archive[516..520].copy_from_slice(&0xAABB_CCDD_u32.to_le_bytes());
+        let range = Rpf7PayloadRange {
+            entry_index: 7, name: "sample.rsc".into(), start: 512, end: 528,
+            archive_len: 528, metadata_end: 64, in_bounds: true,
+            overlaps_metadata: false, size_is_sentinel: false,
+            resolved_size: Some(16), offset_is_sentinel: false,
+            resource_page_sizes: Some(Rpf7ResourcePageSizes { system_bytes: 512, graphics_bytes: 512 }),
+        };
+        let report = inspect_rpf7_rsc7_headers(&archive, &[range.clone()]);
+        assert_eq!(report[0].status, Rsc7ResourceStatus::Valid);
+        assert_eq!(report[0].header.as_ref().unwrap().opaque_word, 0xAABB_CCDD);
+        archive[512..516].copy_from_slice(b"NOPE");
+        assert_eq!(inspect_rpf7_rsc7_headers(&archive, &[range.clone()])[0].status, Rsc7ResourceStatus::WrongMagic);
+        let mut truncated = range.clone();
+        truncated.resolved_size = Some(8);
+        assert_eq!(inspect_rpf7_rsc7_headers(&archive, &[truncated])[0].status, Rsc7ResourceStatus::HeaderTruncated);
+        let mut invalid = range;
+        invalid.in_bounds = false;
+        assert_eq!(inspect_rpf7_rsc7_headers(&archive, &[invalid])[0].status, Rsc7ResourceStatus::InvalidRange);
+    }
+
     fn probes_rpf7_header_and_masks_name_length_flags() {
         let mut h = [0_u8; 16];
         h[0..4].copy_from_slice(&0x5250_4637_u32.to_le_bytes());
