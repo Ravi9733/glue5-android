@@ -1248,3 +1248,92 @@ mod tests {
     }
 
 }
+
+
+/// Candidate compact RAGE pointer-list descriptor (32-bit virtual pointer,
+/// 16-bit item count, 16-bit capacity). This is a generic bounded primitive,
+/// not a claim that every GTA V collection uses this layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rsc7PointerListHeader {
+    pub pointer: u32,
+    pub count: u16,
+    pub capacity: u16,
+}
+
+/// Parse an 8-byte pointer-list descriptor without dereferencing its contents.
+pub fn parse_rsc7_pointer_list_header(bytes: &[u8]) -> Result<Rsc7PointerListHeader, ManifestError> {
+    if bytes.len() < 8 {
+        return Err(ManifestError("RSC7 pointer-list header is truncated (need 8 bytes)".into()));
+    }
+    let header = Rsc7PointerListHeader {
+        pointer: u32::from_le_bytes(bytes[0..4].try_into().unwrap()),
+        count: u16::from_le_bytes(bytes[4..6].try_into().unwrap()),
+        capacity: u16::from_le_bytes(bytes[6..8].try_into().unwrap()),
+    };
+    if header.count > header.capacity {
+        return Err(ManifestError(format!(
+            "RSC7 pointer-list count {} exceeds capacity {}",
+            header.count, header.capacity
+        )));
+    }
+    Ok(header)
+}
+
+/// Resolve a candidate pointer-list's contiguous element bytes with explicit
+/// element-size and count caps. Returns None for an empty/null list.
+pub fn read_rsc7_pointer_list<'a>(
+    body: &'a [u8],
+    header: Rsc7PointerListHeader,
+    element_size: u32,
+    max_elements: u16,
+    page_sizes: Rpf7ResourcePageSizes,
+) -> Result<Option<&'a [u8]>, ManifestError> {
+    if header.count > max_elements {
+        return Err(ManifestError(format!(
+            "RSC7 pointer-list count {} exceeds configured limit {}",
+            header.count, max_elements
+        )));
+    }
+    if header.count == 0 {
+        return Ok(None);
+    }
+    if element_size == 0 {
+        return Err(ManifestError("RSC7 pointer-list element size cannot be zero".into()));
+    }
+    let byte_length = u32::from(header.count).checked_mul(element_size)
+        .ok_or_else(|| ManifestError("RSC7 pointer-list byte length overflow".into()))?;
+    read_rsc7_pointer(body, u64::from(header.pointer), byte_length, page_sizes)
+}
+
+#[cfg(test)]
+mod rsc7_pointer_list_tests {
+    use super::*;
+
+    #[test]
+    fn parses_and_reads_bounded_candidate_pointer_list() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&0x5000_0004_u32.to_le_bytes());
+        raw.extend_from_slice(&2_u16.to_le_bytes());
+        raw.extend_from_slice(&3_u16.to_le_bytes());
+        let header = parse_rsc7_pointer_list_header(&raw).unwrap();
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 16, graphics_bytes: 0 };
+        assert_eq!(read_rsc7_pointer_list(b"HEADABCDWXYZ1234", header, 4, 4, sizes).unwrap(), Some(&b"ABCDWXYZ"[..]));
+    }
+
+    #[test]
+    fn rejects_malformed_or_oversized_candidate_pointer_lists() {
+        assert!(parse_rsc7_pointer_list_header(&[0; 7]).is_err());
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&0x5000_0000_u32.to_le_bytes());
+        raw.extend_from_slice(&4_u16.to_le_bytes());
+        raw.extend_from_slice(&3_u16.to_le_bytes());
+        assert!(parse_rsc7_pointer_list_header(&raw).unwrap_err().0.contains("exceeds capacity"));
+        let header = Rsc7PointerListHeader { pointer: 0x5000_0000, count: 5, capacity: 5 };
+        assert!(read_rsc7_pointer_list(&[0; 64], header, 4, 4,
+            Rpf7ResourcePageSizes { system_bytes: 64, graphics_bytes: 0 })
+            .unwrap_err().0.contains("configured limit"));
+        assert!(read_rsc7_pointer_list(&[0; 64],
+            Rsc7PointerListHeader { pointer: 0x5000_0000, count: 1, capacity: 1 }, 0, 4,
+            Rpf7ResourcePageSizes { system_bytes: 64, graphics_bytes: 0 }).is_err());
+    }
+}
