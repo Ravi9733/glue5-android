@@ -106,9 +106,8 @@ pub fn copy_rpf7_open_binary_entry_from_reader<R: Read + Seek, W: std::io::Write
     Ok(size)
 }
 
-/// Decode one explicitly-sized RSC7 resource directly from a file-backed
-/// archive. The legacy 0xFFFFFF size sentinel is rejected until its packed
-/// resource-header size can be resolved safely by the file-backed path.
+/// Decode one RSC7 resource directly from a file-backed archive. The legacy
+/// 0xFFFFFF size sentinel is resolved from its bounded 16-byte resource header.
 pub fn extract_rpf7_rsc7_entry_from_reader<R: Read + Seek, W: std::io::Write>(
     reader: &mut R,
     entry_index: u32,
@@ -218,7 +217,8 @@ mod tests {
         let mut output = Vec::new();
         let error = extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 64).unwrap_err();
         assert!(!error.0.contains("sentinel is not supported"));
-        assert!(error.0.contains("RSC7") || error.0.contains("DEFLATE") || error.0.contains("decompress"));
+        assert!(!error.0.contains("sentinel is not supported"), "sentinel was not resolved: {}", error.0);
+        assert!(!error.0.contains("outside archive payload bounds"), "resolved range was rejected: {}", error.0);
     }
 
     #[test]
