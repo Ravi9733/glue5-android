@@ -9,7 +9,7 @@ use crate::{
     build_resolved_json_placement_plan, decode_resolved_placement_payloads,
     inspect_decoded_placement_gta_assets, read_decoded_placement_geometry_buffers,
     read_resolved_json_placement_payloads, AssetMountIndex, InspectedPlacementGeometryBuffers,
-    DecodedPlacementAssetBatch, DecodedPlacementContent, JsonPlacementDocument,
+    DecodedPlacementAssetBatch, JsonPlacementDocument,
     inventory_rpf7_open, ManifestError, PlacementGpuPayloadBatch, VertexElement,
 };
 use std::io::{Read, Seek, SeekFrom};
@@ -206,7 +206,7 @@ mod tests {
             &[],
             "test.rpf",
             "dlc/test",
-            &JsonPlacementDocument { placements: Vec::new() },
+            &JsonPlacementDocument { version: 1, placements: Vec::new() },
             &PlacementPipelineLimits::default(),
             |_| Ok(Vec::new()),
         );
