@@ -70,6 +70,7 @@ pub struct PreparedPlacementPipeline {
 pub fn prepare_rpf7_json_placement_pipeline<R, F>(
     reader: &mut R,
     archive_name: &str,
+    virtual_prefix: &str,
     inventory: &crate::Rpf7Inventory,
     placements: &JsonPlacementDocument,
     limits: &PlacementPipelineLimits,
@@ -82,7 +83,7 @@ where
     let archive_len = reader.seek(SeekFrom::End(0))
         .map_err(|e| ManifestError(format!("cannot seek to RPF7 archive end: {e}")))?;
     let mut mount_index = AssetMountIndex::new();
-    add_rpf7_inventory_to_mount(&mut mount_index, archive_name, "", archive_len, inventory)
+    add_rpf7_inventory_to_mount(&mut mount_index, archive_name, virtual_prefix, archive_len, inventory)
         .map_err(|e| ManifestError(format!("RPF7 mount indexing failed: {}", e.0)))?;
 
     let plan = build_resolved_json_placement_plan(
