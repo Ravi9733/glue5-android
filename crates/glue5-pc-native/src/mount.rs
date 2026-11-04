@@ -104,11 +104,27 @@ pub fn add_rpf7_inventory_to_mount(
     archive_len: u64,
     inventory: &crate::Rpf7Inventory,
 ) -> Result<usize, MountError> {
+    add_rpf7_inventory_to_mount_at(index, archive_id, virtual_prefix, 0, archive_len, inventory)
+}
+
+/// Populate the virtual index from an RPF7 archive embedded inside another
+/// archive or container. archive_base is the child's absolute byte offset in
+/// the backing file; registered payload offsets become absolute file offsets.
+pub fn add_rpf7_inventory_to_mount_at(
+    index: &mut AssetMountIndex,
+    archive_id: &str,
+    virtual_prefix: &str,
+    archive_base: u64,
+    archive_len: u64,
+    inventory: &crate::Rpf7Inventory,
+) -> Result<usize, MountError> {
     use crate::Rpf7EntryKind;
 
     if archive_id.is_empty() {
         return Err(MountError("archive identifier cannot be empty".into()));
     }
+    let archive_end = archive_base.checked_add(archive_len)
+        .ok_or_else(|| MountError("RPF7 archive backing-file range overflows".into()))?;
     let metadata_end = 16_u64
         .checked_add(inventory.header.toc_bytes)
         .and_then(|n| n.checked_add(u64::from(inventory.header.names_length)))
@@ -118,20 +134,14 @@ pub fn add_rpf7_inventory_to_mount(
     }
 
     let prefix = virtual_prefix.trim_matches('/');
-    if !prefix.is_empty() {
-        validate_virtual_path(prefix)?;
-    }
+    if !prefix.is_empty() { validate_virtual_path(prefix)?; }
 
     let mut added = 0usize;
     for entry in &inventory.entries {
         let (size, offset_blocks, kind) = match &entry.kind {
             Rpf7EntryKind::Directory { .. } => continue,
-            Rpf7EntryKind::BinaryFile {
-                file_size, file_offset_blocks, uncompressed_size, encrypted,
-            } => {
-                if *encrypted || (*file_size != 0 && file_size != uncompressed_size) {
-                    continue;
-                }
+            Rpf7EntryKind::BinaryFile { file_size, file_offset_blocks, uncompressed_size, encrypted } => {
+                if *encrypted || (*file_size != 0 && file_size != uncompressed_size) { continue; }
                 (if *file_size == 0 { u64::from(*uncompressed_size) } else { u64::from(*file_size) },
                  u64::from(*file_offset_blocks), MountedAssetKind::Binary)
             }
@@ -141,23 +151,21 @@ pub fn add_rpf7_inventory_to_mount(
             }
         };
         if size == 0 { continue; }
-        let start = offset_blocks.checked_mul(512)
+        let relative_start = offset_blocks.checked_mul(512)
             .ok_or_else(|| MountError(format!("RPF7 entry {} offset overflows", entry.index)))?;
-        let end = start.checked_add(size)
+        let relative_end = relative_start.checked_add(size)
             .ok_or_else(|| MountError(format!("RPF7 entry {} range overflows", entry.index)))?;
-        if start < metadata_end || end > archive_len { continue; }
+        if relative_start < metadata_end || relative_end > archive_len { continue; }
+        let absolute_start = archive_base.checked_add(relative_start)
+            .ok_or_else(|| MountError(format!("RPF7 entry {} absolute offset overflows", entry.index)))?;
+        let absolute_end = absolute_start.checked_add(size)
+            .ok_or_else(|| MountError(format!("RPF7 entry {} absolute range overflows", entry.index)))?;
+        if absolute_end > archive_end { continue; }
 
-        let path = if prefix.is_empty() {
-            entry.name.clone()
-        } else {
-            format!("{prefix}/{}", entry.name)
-        };
+        let path = if prefix.is_empty() { entry.name.clone() } else { format!("{prefix}/{}", entry.name) };
         index.insert(&path, MountedAsset {
-            archive: archive_id.to_owned(),
-            entry_index: entry.index,
-            offset: start,
-            length: size,
-            kind,
+            archive: archive_id.to_owned(), entry_index: entry.index,
+            offset: absolute_start, length: size, kind,
         })?;
         added += 1;
     }
@@ -309,6 +317,30 @@ mod tests {
         assert!(index.resolve("maze/compressed.ydr").unwrap().is_none());
         assert!(index.resolve("maze/encrypted.ydr").unwrap().is_none());
         assert!(index.resolve("maze/sentinel.ydr").unwrap().is_none());
+    }
+
+    #[test]
+    fn mounts_nested_rpf7_entries_at_absolute_backing_file_offsets() {
+        let mut index = AssetMountIndex::new();
+        let added = add_rpf7_inventory_to_mount_at(
+            &mut index, "mods/update.rpf", "update/dlc", 8192, 4096, &sample_inventory(),
+        ).unwrap();
+        assert_eq!(added, 2);
+        let ramp = index.resolve("update/dlc/ramp.ydr").unwrap().unwrap();
+        assert_eq!(ramp.offset, 8192 + 512);
+        assert_eq!(ramp.archive, "mods/update.rpf");
+        let barrier = index.resolve("update/dlc/barrier.ydr").unwrap().unwrap();
+        assert_eq!(barrier.offset, 8192 + 2048);
+    }
+
+    #[test]
+    fn rejects_nested_archive_backing_range_overflow() {
+        let mut index = AssetMountIndex::new();
+        let error = add_rpf7_inventory_to_mount_at(
+            &mut index, "mods/update.rpf", "update/dlc", u64::MAX - 8, 4096, &sample_inventory(),
+        ).unwrap_err();
+        assert!(error.0.contains("backing-file range overflows"));
+        assert!(index.is_empty());
     }
 
     #[test]
