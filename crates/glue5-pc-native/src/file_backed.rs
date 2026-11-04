@@ -825,3 +825,95 @@ mod tests {
         assert!(inventory_rpf7_open_reader(&mut unknown).unwrap_err().0.contains("unsupported archive magic"));
     }
 }
+
+
+/// Decode a mounted RSC7 resource using its absolute backing-file range.
+/// The descriptor's critical range and kind are rechecked before reading.
+pub fn decode_mounted_rsc7_asset_from_reader<R: Read + Seek, W: std::io::Write>(
+    reader: &mut R,
+    asset: &crate::MountedAsset,
+    output: &mut W,
+    max_output_bytes: usize,
+) -> Result<crate::Rsc7StreamReport, ManifestError> {
+    if asset.kind != crate::MountedAssetKind::Resource {
+        return Err(ManifestError("mounted asset is not an RSC7 resource".into()));
+    }
+    if asset.length < 16 {
+        return Err(ManifestError("mounted RSC7 resource is shorter than its header".into()));
+    }
+    let end = asset.offset.checked_add(asset.length)
+        .ok_or_else(|| ManifestError("mounted RSC7 backing-file range overflows".into()))?;
+    let backing_len = reader.seek(SeekFrom::End(0))
+        .map_err(|e| ManifestError(format!("cannot seek to backing file end: {e}")))?;
+    if end > backing_len {
+        return Err(ManifestError("mounted RSC7 resource exceeds backing-file bounds".into()));
+    }
+    crate::decode_rsc7_resource_stream(reader, asset.offset, asset.length, output, max_output_bytes)
+}
+
+#[cfg(test)]
+mod mounted_rsc7_decode_tests {
+    use super::*;
+    use flate2::{write::DeflateEncoder, Compression};
+    use std::io::Cursor;
+
+    fn payload(body: &[u8]) -> Vec<u8> {
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(body).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut bytes = b"RSC7".to_vec();
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&compressed);
+        bytes
+    }
+
+    fn descriptor(offset: u64, length: u64, kind: crate::MountedAssetKind) -> crate::MountedAsset {
+        crate::MountedAsset { archive: "mods/test.rpf".into(), entry_index: 7, offset, length, kind }
+    }
+
+    #[test]
+    fn decodes_mounted_resource_at_absolute_backing_offset() {
+        let body = vec![0x5A; 512];
+        let payload = payload(&body);
+        let mut backing = vec![0xCC; 1024];
+        backing[384..384 + payload.len()].copy_from_slice(&payload);
+        let mut reader = Cursor::new(backing);
+        let mut output = Vec::new();
+        let report = decode_mounted_rsc7_asset_from_reader(
+            &mut reader,
+            &descriptor(384, payload.len() as u64, crate::MountedAssetKind::Resource),
+            &mut output,
+            1024,
+        ).unwrap();
+        assert_eq!(report.version, 1);
+        assert_eq!(report.bytes_written, 512);
+        assert_eq!(output, body);
+    }
+
+    #[test]
+    fn rejects_non_resource_and_out_of_bounds_descriptors() {
+        let mut reader = Cursor::new(vec![0_u8; 64]);
+        let mut output = Vec::new();
+        assert!(decode_mounted_rsc7_asset_from_reader(
+            &mut reader, &descriptor(0, 32, crate::MountedAssetKind::Binary), &mut output, 1024,
+        ).unwrap_err().0.contains("not an RSC7 resource"));
+        assert!(decode_mounted_rsc7_asset_from_reader(
+            &mut reader, &descriptor(48, 32, crate::MountedAssetKind::Resource), &mut output, 1024,
+        ).unwrap_err().0.contains("backing-file bounds"));
+    }
+
+    #[test]
+    fn enforces_decompressed_output_cap_for_mounted_resources() {
+        let payload = payload(&vec![0x5A; 512]);
+        let mut reader = Cursor::new(payload.clone());
+        let mut output = Vec::new();
+        assert!(decode_mounted_rsc7_asset_from_reader(
+            &mut reader,
+            &descriptor(0, payload.len() as u64, crate::MountedAssetKind::Resource),
+            &mut output,
+            128,
+        ).unwrap_err().0.contains("exceeds configured limit"));
+    }
+}
