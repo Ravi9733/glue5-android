@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "placements": [
+    {
+      "asset": "props/maze_bank_ramp.ydr",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0]
+    },
+    {
+      "asset": "props/maze_bank_barrier.ydr",
+      "position": [4.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 90.0],
+      "scale": [1.0, 1.0, 1.0]
+    }
+  ]
+}
