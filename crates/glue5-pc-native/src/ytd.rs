@@ -217,7 +217,7 @@ mod tests {
         system[0x48..0x50].copy_from_slice(&0x5000_0080_u64.to_le_bytes());
 
         // Texture descriptor and its name.
-        system[0xA8..0xB0].copy_from_slice(&0x5000_00F0_u64.to_le_bytes());
+        system[0xA8..0xB0].copy_from_slice(&0x5000_0100_u64.to_le_bytes());
         system[0xD0..0xD2].copy_from_slice(&4_u16.to_le_bytes());
         system[0xD2..0xD4].copy_from_slice(&4_u16.to_le_bytes());
         system[0xD4..0xD6].copy_from_slice(&1_u16.to_le_bytes());
