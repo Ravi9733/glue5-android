@@ -305,12 +305,13 @@ pub struct Rpf7PayloadRange {
     pub in_bounds: bool,
     pub overlaps_metadata: bool,
     pub size_is_sentinel: bool,
+    pub resolved_size: Option<u64>,
     pub offset_is_sentinel: bool,
 }
 
-/// Validate binary and resource payload ranges without reading or extracting them.
-/// Directory entries are omitted. A range is valid only when its checked end
-/// does not exceed the supplied archive length.
+/// Validate binary and resource payload ranges without extracting payloads.
+/// Resource size sentinels are resolved from their bounded 16-byte RSC header.
+/// Directory entries are omitted.
 pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -> Vec<Rpf7PayloadRange> {
     let archive_len = archive.len() as u64;
     let metadata_end = 16_u64
@@ -327,9 +328,22 @@ pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -
             Rpf7EntryKind::Directory { .. } => return None,
         };
         let offset_is_sentinel = offset_blocks == 0x007F_FFFF;
-        let start = if offset_is_sentinel { None } else { offset_blocks.checked_mul(512) };
-        let end = if size_is_sentinel { start } else { start.and_then(|value| value.checked_add(file_size)) };
-        let (start, end, in_bounds) = match (start, end) {
+        let start_opt = if offset_is_sentinel { None } else { offset_blocks.checked_mul(512) };
+        let resolved_size = if size_is_sentinel {
+            start_opt.and_then(|start| {
+                let header_end = start.checked_add(16)?;
+                if start < metadata_end || header_end > archive_len { return None; }
+                let header = archive.get(start as usize..header_end as usize)?;
+                Some(u64::from(header[7])
+                    | (u64::from(header[14]) << 8)
+                    | (u64::from(header[5]) << 16)
+                    | (u64::from(header[2]) << 24))
+            })
+        } else {
+            Some(file_size)
+        };
+        let end_opt = start_opt.and_then(|start| resolved_size.and_then(|size| start.checked_add(size)));
+        let (start, end, in_bounds) = match (start_opt, end_opt) {
             (Some(start), Some(end)) => (start, end, end <= archive_len),
             _ => (u64::MAX, u64::MAX, false),
         };
@@ -343,6 +357,7 @@ pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -
             in_bounds,
             overlaps_metadata: start < metadata_end,
             size_is_sentinel,
+            resolved_size,
             offset_is_sentinel,
         })
     }).collect()
@@ -547,6 +562,7 @@ mod tests {
         assert_eq!(ranges[0].end, 516);
         assert!(ranges[0].in_bounds);
         assert!(!ranges[0].size_is_sentinel);
+        assert_eq!(ranges[0].resolved_size, Some(4));
         assert!(!ranges[0].offset_is_sentinel);
     }
 
@@ -568,16 +584,32 @@ mod tests {
     }
 
     #[test]
-    fn marks_resource_size_sentinel_as_unresolved() {
+    fn resolves_resource_size_sentinel_from_bounded_rsc_header() {
+        let mut data = minimal_open_rpf7();
+        data.resize(528, 0);
+        data[34..37].copy_from_slice(&[0xFF, 0xFF, 0xFF]);
+        data[39] |= 0x80;
+        // RSC7 size bytes are stored in a scrambled four-byte order.
+        data[512 + 7] = 16;
+        let inventory = inventory_rpf7_open(&data).unwrap();
+        let ranges = validate_rpf7_payload_ranges(&data, &inventory);
+        assert!(ranges[0].size_is_sentinel);
+        assert_eq!(ranges[0].resolved_size, Some(16));
+        assert_eq!(ranges[0].start, 512);
+        assert_eq!(ranges[0].end, 528);
+        assert!(ranges[0].in_bounds);
+    }
+
+    #[test]
+    fn leaves_resource_size_sentinel_unresolved_when_header_is_truncated() {
         let mut data = minimal_open_rpf7();
         data[34..37].copy_from_slice(&[0xFF, 0xFF, 0xFF]);
         data[39] |= 0x80;
         let inventory = inventory_rpf7_open(&data).unwrap();
         let ranges = validate_rpf7_payload_ranges(&data, &inventory);
         assert!(ranges[0].size_is_sentinel);
-        assert!(!ranges[0].offset_is_sentinel);
-        assert_eq!(ranges[0].start, 512);
-        assert_eq!(ranges[0].end, 512);
+        assert_eq!(ranges[0].resolved_size, None);
+        assert!(!ranges[0].in_bounds);
     }
 
     #[test]
