@@ -783,6 +783,41 @@ mod tests {
     }
 
     #[test]
+    fn automatically_mounts_nested_rpf7_assets_with_absolute_backing_offsets() {
+        let mut child = fixture();
+        child[512..516].copy_from_slice(b"CHLD");
+        let outer = archive_with_nested("middle.rpf", &child);
+        let mut reader = Cursor::new(outer);
+        let root = inventory_rpf7_open_reader(&mut reader).unwrap();
+        let mut mounts = crate::AssetMountIndex::new();
+
+        let added = mount_rpf7_open_reader_tree(
+            &mut reader, &root, "mods/root.rpf", "", 2, 8, &mut mounts,
+        ).unwrap();
+        assert_eq!(added, 1);
+
+        let asset = mounts.resolve("middle/file.bin").unwrap().unwrap().clone();
+        assert_eq!(asset.archive, "mods/root.rpf/middle.rpf");
+        assert_eq!(asset.offset, 1024);
+        assert_eq!(asset.length, 4);
+
+        let child_inventory = inventory_rpf7_open_reader(&mut Cursor::new(child.clone())).unwrap();
+        let mut output = Vec::new();
+        let copied = copy_mounted_rpf7_asset_from_inventory_at(
+            &mut reader,
+            &asset.archive,
+            512,
+            child.len() as u64,
+            &child_inventory.inventory,
+            &asset,
+            &mut output,
+            16,
+        ).unwrap();
+        assert_eq!(copied, 4);
+        assert_eq!(output, b"CHLD");
+    }
+
+    #[test]
     fn rejects_truncated_metadata_and_non_rpf7_archives() {
         let mut truncated = Cursor::new(fixture()[..48].to_vec());
         assert!(inventory_rpf7_open_reader(&mut truncated).unwrap_err().0.contains("truncated"));
