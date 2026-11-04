@@ -9,7 +9,8 @@ use crate::{
     build_resolved_json_placement_plan, decode_resolved_placement_payloads,
     inspect_decoded_placement_gta_assets, read_decoded_placement_geometry_buffers,
     read_resolved_json_placement_payloads, AssetMountIndex, InspectedPlacementGeometryBuffers,
-    JsonPlacementDocument, ManifestError, PlacementGpuPayloadBatch, VertexElement,
+    DecodedPlacementAssetBatch, DecodedPlacementContent, JsonPlacementDocument,
+    ManifestError, PlacementGpuPayloadBatch, VertexElement,
 };
 use std::io::{Read, Seek, SeekFrom};
 
@@ -98,9 +99,20 @@ where
     let decoded = decode_resolved_placement_payloads(
         &source, limits.max_resource_output_bytes, limits.max_total_decoded_bytes,
     )?;
-    let inspected = inspect_decoded_placement_gta_assets(&decoded)?;
+    // Drawable geometry preparation is independent of the experimental YTD
+    // parser. Keep texture dictionaries out of this geometry-only preflight so
+    // an unsupported texture layout cannot prevent JSON mesh preparation.
+    let drawable_assets = decoded.assets.iter().filter(|asset| {
+        let path = asset.virtual_path.to_ascii_lowercase();
+        path.ends_with(".ydr") || path.ends_with(".ydd")
+    }).cloned().collect::<Vec<_>>();
+    let drawable_batch = DecodedPlacementAssetBatch {
+        assets: drawable_assets,
+        total_decoded_bytes: decoded.total_decoded_bytes,
+    };
+    let inspected = inspect_decoded_placement_gta_assets(&drawable_batch)?;
     let geometry = read_decoded_placement_geometry_buffers(
-        &decoded,
+        &drawable_batch,
         limits.max_vertices_per_geometry,
         limits.max_indices_per_geometry,
         limits.max_geometry_bytes,
