@@ -750,6 +750,85 @@ pub fn read_rsc7_pointer_array_from_pages<'a>(
     Ok(result)
 }
 
+/// Read a candidate 8-byte pointer-list descriptor and its bounded element
+/// storage from separate RSC7 page buffers. Element layout remains caller-defined.
+pub fn read_rsc7_pointer_list_from_pages<'a>(
+    system: &'a [u8],
+    graphics: &'a [u8],
+    header_pointer: u64,
+    element_size: u32,
+    max_elements: u16,
+    page_sizes: Rpf7ResourcePageSizes,
+) -> Result<Option<&'a [u8]>, ManifestError> {
+    if system.len() as u64 != page_sizes.system_bytes
+        || graphics.len() as u64 != page_sizes.graphics_bytes
+    {
+        return Err(ManifestError("RSC7 page buffers do not match declared page sizes".into()));
+    }
+    let raw = read_rsc7_pointer_from_pages(
+        system, graphics, header_pointer, 8, page_sizes
+    )?.ok_or_else(|| ManifestError("RSC7 pointer-list header has a null address".into()))?;
+    let header = parse_rsc7_pointer_list_header(raw)?;
+    if header.count > max_elements {
+        return Err(ManifestError(format!(
+            "RSC7 pointer-list count {} exceeds configured limit {}",
+            header.count, max_elements
+        )));
+    }
+    if header.count == 0 { return Ok(None); }
+    if header.pointer == 0 {
+        return Err(ManifestError("RSC7 pointer-list has items but a null data pointer".into()));
+    }
+    if element_size == 0 {
+        return Err(ManifestError("RSC7 pointer-list element size cannot be zero".into()));
+    }
+    let byte_length = u32::from(header.count).checked_mul(element_size)
+        .ok_or_else(|| ManifestError("RSC7 pointer-list byte length overflow".into()))?;
+    read_rsc7_pointer_from_pages(
+        system, graphics, u64::from(header.pointer), byte_length, page_sizes
+    )?.map(Some).ok_or_else(|| ManifestError("RSC7 pointer-list data pointer is null".into()))
+}
+
+#[cfg(test)]
+mod rsc7_separate_page_list_tests {
+    use super::*;
+
+    #[test]
+    fn reads_candidate_list_descriptor_and_elements_from_pages() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 32, graphics_bytes: 0 };
+        let mut system = vec![0_u8; 32];
+        system[0..4].copy_from_slice(&0x5000_0010_u32.to_le_bytes());
+        system[4..6].copy_from_slice(&2_u16.to_le_bytes());
+        system[6..8].copy_from_slice(&3_u16.to_le_bytes());
+        system[16..24].copy_from_slice(b"AAAABBBB");
+        assert_eq!(read_rsc7_pointer_list_from_pages(
+            &system, &[], 0x5000_0000, 4, 4, sizes
+        ).unwrap(), Some(&b"AAAABBBB"[..]));
+    }
+
+    #[test]
+    fn rejects_invalid_candidate_list_descriptors_and_bounds() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 32, graphics_bytes: 0 };
+        let mut system = vec![0_u8; 32];
+        system[0..4].copy_from_slice(&0x5000_0010_u32.to_le_bytes());
+        system[4..6].copy_from_slice(&2_u16.to_le_bytes());
+        system[6..8].copy_from_slice(&1_u16.to_le_bytes());
+        assert!(read_rsc7_pointer_list_from_pages(
+            &system, &[], 0x5000_0000, 4, 4, sizes
+        ).is_err());
+        system[4..6].copy_from_slice(&1_u16.to_le_bytes());
+        system[6..8].copy_from_slice(&1_u16.to_le_bytes());
+        system[0..4].copy_from_slice(&0x5000_001F_u32.to_le_bytes());
+        assert!(read_rsc7_pointer_list_from_pages(
+            &system, &[], 0x5000_0000, 4, 4, sizes
+        ).is_err());
+        system[0..4].copy_from_slice(&0_u32.to_le_bytes());
+        assert!(read_rsc7_pointer_list_from_pages(
+            &system, &[], 0x5000_0000, 4, 4, sizes
+        ).is_err());
+    }
+}
+
 #[cfg(test)]
 mod rsc7_separate_page_array_tests {
     use super::*;
