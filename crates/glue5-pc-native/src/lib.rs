@@ -30,7 +30,7 @@ pub use placement_pipeline::{prepare_rpf7_archive_json_placement_pipeline, prepa
 pub use placement_cpu_mesh::{assemble_decoded_placement_cpu_meshes, InspectedPlacementCpuMesh, PlacementCpuMeshBatch};
 pub use placement_scene::{build_placement_scene_meshes, PlacedCpuMesh, PlacementSceneBatch};
 pub use placement_gpu_payload::{build_placement_gpu_payloads, PlacementGpuMeshPayload, PlacementGpuPayloadBatch};
-pub use gpu_upload::{upload_gta_cpu_mesh, GpuMeshBuffers};
+pub use gpu_upload::{upload_gta_cpu_mesh, upload_placement_gpu_payloads, GpuMeshBuffers};
 pub use texture_upload::{upload_gta_cpu_texture, GpuTexture};
 pub use placement_plan::{build_resolved_json_placement_plan, ResolvedJsonPlacement, ResolvedJsonPlacementPlan};
 pub use placement_payload::{read_resolved_json_placement_payloads, ResolvedPlacementPayload, ResolvedPlacementPayloadBatch};
