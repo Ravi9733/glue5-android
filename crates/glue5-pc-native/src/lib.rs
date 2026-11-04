@@ -339,6 +339,7 @@ pub struct Rpf7PayloadRange {
     pub size_is_sentinel: bool,
     pub resolved_size: Option<u64>,
     pub offset_is_sentinel: bool,
+    pub resource_page_sizes: Option<Rpf7ResourcePageSizes>,
 }
 
 /// Validate binary and resource payload ranges without extracting payloads.
@@ -351,12 +352,13 @@ pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -
         .and_then(|value| value.checked_add(u64::from(inventory.header.names_length)))
         .unwrap_or(u64::MAX);
     inventory.entries.iter().filter_map(|entry| {
-        let (file_size, offset_blocks, size_is_sentinel) = match &entry.kind {
+        let (file_size, offset_blocks, size_is_sentinel, resource_page_sizes) = match &entry.kind {
             Rpf7EntryKind::BinaryFile { file_size, file_offset_blocks, uncompressed_size, .. } =>
                 (if *file_size == 0 { *uncompressed_size as u64 } else { *file_size as u64 },
-                 *file_offset_blocks as u64, false),
-            Rpf7EntryKind::ResourceFile { file_size, file_offset_blocks, .. } =>
-                (*file_size as u64, *file_offset_blocks as u64, *file_size == 0x00FF_FFFF),
+                 *file_offset_blocks as u64, false, None),
+            Rpf7EntryKind::ResourceFile { file_size, file_offset_blocks, system_flags, graphics_flags } =>
+                (*file_size as u64, *file_offset_blocks as u64, *file_size == 0x00FF_FFFF,
+                 rpf7_resource_page_sizes(*system_flags, *graphics_flags).ok()),
             Rpf7EntryKind::Directory { .. } => return None,
         };
         let offset_is_sentinel = offset_blocks == 0x007F_FFFF;
@@ -391,6 +393,7 @@ pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -
             size_is_sentinel,
             resolved_size,
             offset_is_sentinel,
+            resource_page_sizes,
         })
     }).collect()
 }
@@ -624,6 +627,18 @@ mod tests {
         assert_eq!(rpf7_resource_page_sizes(0, 0).unwrap(), Rpf7ResourcePageSizes {
             system_bytes: 0, graphics_bytes: 0,
         });
+    }
+
+    #[test]
+    fn attaches_decoded_page_sizes_to_resource_payload_range() {
+        let mut data = minimal_open_rpf7();
+        data[34..37].copy_from_slice(&[4, 0, 0]);
+        data[39] |= 0x80;
+        data[40..44].copy_from_slice(&1_u32.to_le_bytes());
+        data[44..48].copy_from_slice(&2_u32.to_le_bytes());
+        let inventory = inventory_rpf7_open(&data).unwrap();
+        let ranges = validate_rpf7_payload_ranges(&data, &inventory);
+        assert_eq!(ranges[0].resource_page_sizes, Some(rpf7_resource_page_sizes(1, 2).unwrap()));
     }
 
     #[test]
