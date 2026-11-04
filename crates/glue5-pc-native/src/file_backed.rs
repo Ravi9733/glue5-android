@@ -119,22 +119,32 @@ pub fn extract_rpf7_rsc7_entry_from_reader<R: Read + Seek, W: std::io::Write>(
     let inventory = inventory_rpf7_open_reader(reader)?;
     let entry = inventory.inventory.entries.iter().find(|e| e.index == entry_index)
         .ok_or_else(|| ManifestError(format!("RPF7 entry {entry_index} does not exist")))?;
-    let (size, offset_blocks) = match &entry.kind {
-        Rpf7EntryKind::ResourceFile { file_size, file_offset_blocks, .. } => {
-            if *file_size == 0x00FF_FFFF {
-                return Err(ManifestError("RPF7 resource size sentinel is not supported by file-backed extraction yet".into()));
-            }
-            (u64::from(*file_size), u64::from(*file_offset_blocks))
-        }
+    let (stored_size, offset_blocks) = match &entry.kind {
+        Rpf7EntryKind::ResourceFile { file_size, file_offset_blocks, .. } =>
+            (u64::from(*file_size), u64::from(*file_offset_blocks)),
         Rpf7EntryKind::BinaryFile { .. } => return Err(ManifestError("TOC entry is not an RSC7 resource".into())),
         Rpf7EntryKind::Directory { .. } => return Err(ManifestError("RPF7 directory has no payload".into())),
     };
     let start = offset_blocks.checked_mul(512)
         .ok_or_else(|| ManifestError("RPF7 resource offset overflow".into()))?;
-    let end = start.checked_add(size)
-        .ok_or_else(|| ManifestError("RPF7 resource end overflow".into()))?;
     let metadata_end = 16_u64 + inventory.inventory.header.toc_bytes
         + u64::from(inventory.inventory.header.names_length);
+    let size = if stored_size == 0x00FF_FFFF {
+        let header_end = start.checked_add(16)
+            .ok_or_else(|| ManifestError("RPF7 resource header end overflow".into()))?;
+        if start < metadata_end || header_end > inventory.archive_len {
+            return Err(ManifestError("RPF7 resource size sentinel header is outside archive payload bounds".into()));
+        }
+        reader.seek(SeekFrom::Start(start))
+            .map_err(|e| ManifestError(format!("cannot seek to RPF7 resource header: {e}")))?;
+        let mut header = [0_u8; 16];
+        reader.read_exact(&mut header)
+            .map_err(|e| ManifestError(format!("cannot read RPF7 resource size header: {e}")))?;
+        u64::from(header[7]) | (u64::from(header[14]) << 8)
+            | (u64::from(header[5]) << 16) | (u64::from(header[2]) << 24)
+    } else { stored_size };
+    let end = start.checked_add(size)
+        .ok_or_else(|| ManifestError("RPF7 resource end overflow".into()))?;
     if size < 16 || start < metadata_end || end > inventory.archive_len {
         return Err(ManifestError("RPF7 resource range is truncated, overlaps metadata, or exceeds archive bounds".into()));
     }
@@ -195,6 +205,20 @@ mod tests {
         let mut output = Vec::new();
         assert!(copy_rpf7_open_binary_entry_from_reader(&mut reader, 1, &mut output, 3).is_err());
         assert!(output.is_empty());
+    }
+
+    #[test]
+    fn resolves_file_backed_resource_size_sentinel_before_decode() {
+        let mut bytes = fixture();
+        bytes[34..37].copy_from_slice(&[0xFF, 0xFF, 0xFF]);
+        bytes[39] |= 0x80;
+        bytes[512 + 7] = 16;
+        bytes[512..516].copy_from_slice(b"RSC7");
+        let mut reader = Cursor::new(bytes);
+        let mut output = Vec::new();
+        let error = extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 64).unwrap_err();
+        assert!(!error.0.contains("sentinel is not supported"));
+        assert!(error.0.contains("RSC7") || error.0.contains("DEFLATE") || error.0.contains("decompress"));
     }
 
     #[test]
