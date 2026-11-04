@@ -399,6 +399,52 @@ pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -
 }
 
 
+/// Copy one unencrypted, uncompressed RPF7 binary entry into a bounded buffer.
+/// Compressed, encrypted, resource, metadata-overlapping and out-of-range
+/// payloads are rejected; this does not decompress or decode RSC7 resources.
+pub fn extract_rpf7_open_binary_entry(
+    archive: &[u8],
+    inventory: &Rpf7Inventory,
+    entry_index: u32,
+    max_output_bytes: usize,
+) -> Result<Vec<u8>, ManifestError> {
+    let entry = inventory.entries.iter().find(|entry| entry.index == entry_index)
+        .ok_or_else(|| ManifestError(format!("RPF7 entry {entry_index} does not exist")))?;
+    let (file_size, uncompressed_size, encrypted) = match &entry.kind {
+        Rpf7EntryKind::BinaryFile { file_size, uncompressed_size, encrypted, .. } =>
+            (*file_size, *uncompressed_size, *encrypted),
+        Rpf7EntryKind::ResourceFile { .. } =>
+            return Err(ManifestError("RPF7 resource payload extraction is not supported".into())),
+        Rpf7EntryKind::Directory { .. } =>
+            return Err(ManifestError("RPF7 directory has no payload".into())),
+    };
+    if encrypted {
+        return Err(ManifestError("RPF7 binary payload is encrypted".into()));
+    }
+    if file_size != 0 && file_size != uncompressed_size {
+        return Err(ManifestError("RPF7 binary payload is compressed; decompression is not supported".into()));
+    }
+    let range = validate_rpf7_payload_ranges(archive, inventory).into_iter()
+        .find(|range| range.entry_index == entry_index)
+        .ok_or_else(|| ManifestError("RPF7 binary payload range is unavailable".into()))?;
+    if range.offset_is_sentinel || !range.in_bounds || range.overlaps_metadata {
+        return Err(ManifestError("RPF7 binary payload range is invalid".into()));
+    }
+    let size = usize::try_from(range.resolved_size.unwrap_or(0))
+        .map_err(|_| ManifestError("RPF7 binary payload size does not fit this platform".into()))?;
+    if size > max_output_bytes {
+        return Err(ManifestError(format!("RPF7 binary payload exceeds extraction limit ({size} > {max_output_bytes})")));
+    }
+    let start = usize::try_from(range.start)
+        .map_err(|_| ManifestError("RPF7 binary payload offset does not fit this platform".into()))?;
+    let end = usize::try_from(range.end)
+        .map_err(|_| ManifestError("RPF7 binary payload end does not fit this platform".into()))?;
+    Ok(archive.get(start..end)
+        .ok_or_else(|| ManifestError("RPF7 binary payload slice is unavailable".into()))?
+        .to_vec())
+}
+
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NestedRpfStatus {
     InventoriedRpf7(Rpf7Inventory),
@@ -584,6 +630,34 @@ mod tests {
         assert_eq!(inventory.entries[1].kind, Rpf7EntryKind::BinaryFile {
             file_size: 0, file_offset_blocks: 1, uncompressed_size: 4, encrypted: false,
         });
+    }
+
+    #[test]
+    fn extracts_bounded_unencrypted_open_binary_entry() {
+        let mut data = minimal_open_rpf7();
+        data[512..516].copy_from_slice(b"DATA");
+        let inventory = inventory_rpf7_open(&data).unwrap();
+        assert_eq!(extract_rpf7_open_binary_entry(&data, &inventory, 1, 4).unwrap(), b"DATA");
+        assert!(extract_rpf7_open_binary_entry(&data, &inventory, 1, 3).is_err());
+    }
+
+    #[test]
+    fn refuses_encrypted_compressed_and_resource_payload_extraction() {
+        let mut encrypted = minimal_open_rpf7();
+        encrypted[60..64].copy_from_slice(&1_u32.to_le_bytes());
+        let inventory = inventory_rpf7_open(&encrypted).unwrap();
+        assert!(extract_rpf7_open_binary_entry(&encrypted, &inventory, 1, 64).is_err());
+
+        let mut compressed = minimal_open_rpf7();
+        compressed[40..44].copy_from_slice(&8_u32.to_le_bytes());
+        let inventory = inventory_rpf7_open(&compressed).unwrap();
+        assert!(extract_rpf7_open_binary_entry(&compressed, &inventory, 1, 64).is_err());
+
+        let mut resource = minimal_open_rpf7();
+        resource[34..37].copy_from_slice(&[4, 0, 0]);
+        resource[39] |= 0x80;
+        let inventory = inventory_rpf7_open(&resource).unwrap();
+        assert!(extract_rpf7_open_binary_entry(&resource, &inventory, 1, 64).is_err());
     }
 
     #[test]
