@@ -11,7 +11,7 @@ use crate::{
     read_resolved_json_placement_payloads, AssetMountIndex, InspectedPlacementGeometryBuffers,
     JsonPlacementDocument, ManifestError, PlacementGpuPayloadBatch, VertexElement,
 };
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, SeekFrom};
 
 #[derive(Clone, Debug)]
 pub struct PlacementPipelineLimits {
@@ -79,8 +79,10 @@ where
     R: Read + Seek,
     F: FnMut(&InspectedPlacementGeometryBuffers) -> Result<Vec<VertexElement>, ManifestError>,
 {
+    let archive_len = reader.seek(SeekFrom::End(0))
+        .map_err(|e| ManifestError(format!("cannot seek to RPF7 archive end: {e}")))?;
     let mut mount_index = AssetMountIndex::new();
-    add_rpf7_inventory_to_mount(&mut mount_index, archive_name, inventory)
+    add_rpf7_inventory_to_mount(&mut mount_index, archive_name, "", archive_len, inventory)
         .map_err(|e| ManifestError(format!("RPF7 mount indexing failed: {}", e.0)))?;
 
     let plan = build_resolved_json_placement_plan(
