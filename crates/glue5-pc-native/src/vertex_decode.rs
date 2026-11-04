@@ -8,10 +8,12 @@ use crate::ManifestError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VertexElementFormat {
+    Float32x1,
     Float32x2,
     Float32x3,
     Float32x4,
     Unorm8x4,
+    Uint8x4,
     Snorm8x4,
     Uint16x2,
     Uint16x4,
@@ -20,10 +22,11 @@ pub enum VertexElementFormat {
 impl VertexElementFormat {
     fn byte_len(self) -> usize {
         match self {
+            Self::Float32x1 => 4,
             Self::Float32x2 => 8,
             Self::Float32x3 => 12,
             Self::Float32x4 => 16,
-            Self::Unorm8x4 | Self::Snorm8x4 => 4,
+            Self::Unorm8x4 | Self::Uint8x4 | Self::Snorm8x4 => 4,
             Self::Uint16x2 => 4,
             Self::Uint16x4 => 8,
         }
@@ -31,9 +34,10 @@ impl VertexElementFormat {
 
     fn component_count(self) -> usize {
         match self {
+            Self::Float32x1 => 1,
             Self::Float32x2 | Self::Uint16x2 => 2,
             Self::Float32x3 => 3,
-            Self::Float32x4 | Self::Unorm8x4 | Self::Snorm8x4 | Self::Uint16x4 => 4,
+            Self::Float32x4 | Self::Unorm8x4 | Self::Uint8x4 | Self::Snorm8x4 | Self::Uint16x4 => 4,
         }
     }
 }
@@ -60,6 +64,46 @@ pub struct DecodedVertex {
 pub enum IndexElementFormat {
     U16,
     U32,
+}
+
+
+/// Rockstar legacy VertexDeclaration semantics and component nibbles.
+/// This intentionally rejects half-float and unknown encodings until their
+/// conversion rules are implemented rather than silently mis-decoding them.
+pub fn parse_rockstar_vertex_declaration(
+    flags: u32,
+    stride: u16,
+    types: u64,
+) -> Result<Vec<VertexElement>, ManifestError> {
+    const SEMANTICS: [&str; 16] = [
+        "Position", "BlendWeights", "BlendIndices", "Normal", "Colour0", "Colour1",
+        "TexCoord0", "TexCoord1", "TexCoord2", "TexCoord3", "TexCoord4", "TexCoord5",
+        "TexCoord6", "TexCoord7", "Tangent", "Binormal",
+    ];
+    let mut elements = Vec::new();
+    let mut offset = 0usize;
+    for (bit, semantic) in SEMANTICS.iter().enumerate() {
+        if flags & (1u32 << bit) == 0 { continue; }
+        let nibble = ((types >> (bit * 4)) & 0xF) as u8;
+        let format = match nibble {
+            2 => VertexElementFormat::Float32x1,
+            5 => VertexElementFormat::Float32x2,
+            6 => VertexElementFormat::Float32x3,
+            7 => VertexElementFormat::Float32x4,
+            8 | 9 => VertexElementFormat::Uint8x4,
+            10 => VertexElementFormat::Snorm8x4,
+            0 => return Err(ManifestError(format!("Rockstar semantic {semantic} has no component data"))),
+            1 | 3 => return Err(ManifestError(format!("Rockstar half-float semantic {semantic} is not supported yet"))),
+            other => return Err(ManifestError(format!("unsupported Rockstar vertex component nibble {other} for {semantic}"))),
+        };
+        elements.push(VertexElement { semantic: (*semantic).into(), offset: offset as u16, format });
+        offset = offset.checked_add(format.byte_len())
+            .ok_or_else(|| ManifestError("Rockstar vertex stride overflow".into()))?;
+    }
+    if elements.is_empty() || offset != usize::from(stride) {
+        return Err(ManifestError("Rockstar vertex declaration stride does not match its component layout".into()));
+    }
+    Ok(elements)
 }
 
 /// Decode interleaved vertex bytes using an explicit, pre-validated element
@@ -95,9 +139,10 @@ pub fn decode_interleaved_vertices(
             let start = usize::from(element.offset);
             let raw = &vertex_bytes[start..start + element.format.byte_len()];
             let components: Vec<f32> = match element.format {
-                VertexElementFormat::Float32x2 | VertexElementFormat::Float32x3 | VertexElementFormat::Float32x4 => {
+                VertexElementFormat::Float32x1 | VertexElementFormat::Float32x2 | VertexElementFormat::Float32x3 | VertexElementFormat::Float32x4 => {
                     raw.chunks_exact(4).map(|v| f32::from_le_bytes(v.try_into().unwrap())).collect()
                 }
+                VertexElementFormat::Uint8x4 => raw.iter().map(|v| f32::from(*v)).collect(),
                 VertexElementFormat::Unorm8x4 => raw.iter().map(|v| f32::from(*v) / 255.0).collect(),
                 VertexElementFormat::Snorm8x4 => raw.iter().map(|v| ( (*v as i8) as f32 / 127.0).max(-1.0)).collect(),
                 VertexElementFormat::Uint16x2 | VertexElementFormat::Uint16x4 => {
