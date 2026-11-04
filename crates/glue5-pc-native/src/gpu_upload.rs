@@ -96,6 +96,17 @@ pub fn upload_placement_gpu_payloads(
     if batch.total_upload_bytes > max_total_upload_bytes {
         return Err(ManifestError("placement GPU upload exceeds configured byte budget".into()));
     }
+    let declared_total = batch.meshes.iter().try_fold(0usize, |total, mesh| {
+        let bytes = mesh.vertex_bytes.len()
+            .checked_add(mesh.index_bytes.as_ref().map_or(0, Vec::len))?;
+        total.checked_add(bytes)
+    }).ok_or_else(|| ManifestError("placement GPU aggregate byte count overflows".into()))?;
+    if declared_total != batch.total_upload_bytes {
+        return Err(ManifestError("placement GPU batch byte total does not match its payloads".into()));
+    }
+    if declared_total > max_total_upload_bytes {
+        return Err(ManifestError("placement GPU upload exceeds configured byte budget".into()));
+    }
     let mut actual_total = 0usize;
     let mut buffers = Vec::new();
     buffers.try_reserve_exact(batch.meshes.len())
@@ -147,8 +158,6 @@ pub fn upload_placement_gpu_payloads(
             vertex_stride: u64::from(mesh.vertex_stride),
         });
     }
-    if actual_total != batch.total_upload_bytes {
-        return Err(ManifestError("placement GPU batch byte total does not match its payloads".into()));
-    }
+    debug_assert_eq!(actual_total, declared_total);
     Ok(buffers)
 }
