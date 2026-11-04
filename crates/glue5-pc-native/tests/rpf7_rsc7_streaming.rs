@@ -97,6 +97,26 @@ fn file_backed_streaming_rejects_output_limit_before_writing() {
 }
 
 #[test]
+fn file_backed_streaming_rejects_resource_range_outside_archive() {
+    let (mut archive, _) = rpf7_resource_fixture();
+    archive.truncate(520); // retain only eight bytes of the resource header
+    let mut reader = Cursor::new(archive);
+    let mut output = Vec::new();
+    assert!(extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 1024).is_err());
+    assert!(output.is_empty());
+}
+
+#[test]
+fn file_backed_streaming_rejects_wrong_resource_magic() {
+    let (mut archive, _) = rpf7_resource_fixture();
+    archive[512..516].copy_from_slice(b"NOPE");
+    let mut reader = Cursor::new(archive);
+    let mut output = Vec::new();
+    assert!(extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 1024).is_err());
+    assert!(output.is_empty());
+}
+
+#[test]
 fn file_backed_streaming_rejects_corrupt_deflate_stream() {
     let (mut archive, _) = rpf7_resource_fixture();
     archive[528..].fill(0xFF);
