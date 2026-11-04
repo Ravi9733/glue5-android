@@ -1,5 +1,6 @@
 //! Capability gate and manifest validation for a future native PC-game backend.
 use sha2::{Digest, Sha256};
+use flate2::read::DeflateDecoder;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Component, Path};
@@ -274,6 +275,54 @@ pub fn probe_rsc7_resource_header(payload: &[u8]) -> Result<Rsc7Header, Manifest
         opaque_word: u32::from_le_bytes(payload[4..8].try_into().unwrap()),
         header_bytes: 16,
     })
+}
+
+/// A fully inflated RSC7 resource body, split into system and graphics segments.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DecodedRsc7Resource {
+    pub version: u32,
+    pub page_sizes: Rpf7ResourcePageSizes,
+    /// Raw-DEFLATE output: system segment followed by graphics segment.
+    pub body: Vec<u8>,
+}
+
+/// Inflate an RSC7 resource with strict output bounds derived from its page flags.
+/// The caller supplies a hard cap to prevent malicious compressed-size expansion.
+/// This returns the packed page image; it does not relocate virtual pointers or
+/// decode GTA object structures.
+pub fn decode_rsc7_resource(
+    payload: &[u8],
+    max_output_bytes: usize,
+) -> Result<DecodedRsc7Resource, ManifestError> {
+    if payload.len() < 16 {
+        return Err(ManifestError("RSC7 resource header is truncated (need 16 bytes)".into()));
+    }
+    if &payload[0..4] != b"RSC7" {
+        return Err(ManifestError("resource payload does not have RSC7 magic".into()));
+    }
+    let version = u32::from_le_bytes(payload[4..8].try_into().unwrap());
+    let system_flags = u32::from_le_bytes(payload[8..12].try_into().unwrap());
+    let graphics_flags = u32::from_le_bytes(payload[12..16].try_into().unwrap());
+    let page_sizes = rpf7_resource_page_sizes(system_flags, graphics_flags)?;
+    let expected = page_sizes.system_bytes.checked_add(page_sizes.graphics_bytes)
+        .ok_or_else(|| ManifestError("RSC7 decompressed size overflow".into()))?;
+    let expected = usize::try_from(expected)
+        .map_err(|_| ManifestError("RSC7 decompressed size does not fit this platform".into()))?;
+    if expected == 0 {
+        return Err(ManifestError("RSC7 page flags describe an empty resource".into()));
+    }
+    if expected > max_output_bytes {
+        return Err(ManifestError(format!("RSC7 output size {expected} exceeds configured limit {max_output_bytes}")));
+    }
+    let decoder = DeflateDecoder::new(&payload[16..]);
+    let mut bounded = decoder.take((expected as u64).saturating_add(1));
+    let mut body = Vec::with_capacity(expected);
+    bounded.read_to_end(&mut body)
+        .map_err(|error| ManifestError(format!("RSC7 raw-DEFLATE stream is invalid: {error}")))?;
+    if body.len() != expected {
+        return Err(ManifestError(format!("RSC7 decompressed size mismatch: expected {expected}, got {}", body.len())));
+    }
+    Ok(DecodedRsc7Resource { version, page_sizes, body })
 }
 
 /// One entry in a safely inventoried, unencrypted GTA V Legacy RPF7 archive.
@@ -786,6 +835,39 @@ mod tests {
         data[44..48].copy_from_slice(&0_u32.to_le_bytes());
         data[48..62].copy_from_slice(b"root\0file.bin\0");
         data
+    }
+
+    #[test]
+    fn decodes_bounded_rsc7_raw_deflate_body() {
+        use flate2::write::DeflateEncoder;
+        use flate2::Compression;
+        let original = vec![0xA5; 512];
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&original).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut resource = Vec::from(*b"RSC7");
+        resource.extend_from_slice(&13_u32.to_le_bytes());
+        resource.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        resource.extend_from_slice(&0_u32.to_le_bytes());
+        resource.extend_from_slice(&compressed);
+        let decoded = decode_rsc7_resource(&resource, 512).unwrap();
+        assert_eq!(decoded.version, 13);
+        assert_eq!(decoded.page_sizes.system_bytes, 512);
+        assert_eq!(decoded.page_sizes.graphics_bytes, 0);
+        assert_eq!(decoded.body, original);
+        assert!(decode_rsc7_resource(&resource, 511).unwrap_err().0.contains("exceeds configured limit"));
+    }
+
+    #[test]
+    fn rejects_rsc7_decompression_size_mismatch_and_bad_magic() {
+        let mut short = Vec::from(*b"RSC7");
+        short.extend_from_slice(&13_u32.to_le_bytes());
+        short.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        short.extend_from_slice(&0_u32.to_le_bytes());
+        short.extend_from_slice(&[3, 0]);
+        assert!(decode_rsc7_resource(&short, 512).is_err());
+        short[0] = b'X';
+        assert!(decode_rsc7_resource(&short, 512).unwrap_err().0.contains("magic"));
     }
 
     #[test]
