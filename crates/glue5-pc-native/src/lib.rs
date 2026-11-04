@@ -8,8 +8,8 @@ use std::path::{Component, Path};
 /// Versioned JSON placement-mod parser for the experimental PC content layer.
 pub mod placement;
 pub mod mount;
-pub use placement::{apply_json_placements, parse_json_placements, JsonPlacement, JsonPlacementDocument, PlacementApplyError, PlacementError, PlacementSink};
-pub use mount::{add_rpf7_inventory_to_mount, AssetMountIndex, MountError, MountedAsset, MountedAssetKind};
+pub use placement::{apply_json_placements, parse_json_placements, validate_json_placement_assets, JsonPlacement, JsonPlacementDocument, PlacementApplyError, PlacementAssetError, PlacementError, PlacementSink};
+pub use mount::{add_rpf7_inventory_to_mount, add_rpf7_inventory_to_mount_at, AssetMountIndex, MountError, MountedAsset, MountedAssetKind};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendState { MissingAndroidEngine, MissingVulkanTranslationLayer, MissingPreparedGameData, ReadyForRuntimeIntegration }
