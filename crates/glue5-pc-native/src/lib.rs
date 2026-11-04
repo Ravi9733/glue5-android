@@ -326,6 +326,27 @@ pub fn decode_rsc7_resource(
 }
 
 impl DecodedRsc7Resource {
+    /// Resolve and borrow a virtual pointer from this decoded resource.
+    /// Refuses to read if the body length disagrees with its page metadata.
+    pub fn read_pointer(&self, pointer: u64, length: u32) -> Result<Option<&[u8]>, ManifestError> {
+        let _ = self.segments()?;
+        read_rsc7_pointer(&self.body, pointer, length, self.page_sizes)
+    }
+
+    /// Read a pointer array and its target ranges from this decoded resource.
+    pub fn read_pointer_array(
+        &self,
+        array_pointer: u64,
+        count: u16,
+        max_count: u16,
+        target_length: u32,
+    ) -> Result<Vec<Option<&[u8]>>, ManifestError> {
+        let _ = self.segments()?;
+        read_rsc7_pointer_array(
+            &self.body, array_pointer, count, max_count, target_length, self.page_sizes,
+        )
+    }
+
     /// Borrow the decompressed body as separate [system, graphics] segments.
     /// The body length must exactly match the page allocation metadata.
     pub fn segments(&self) -> Result<(&[u8], &[u8]), ManifestError> {
@@ -1544,6 +1565,27 @@ mod rsc7_segment_view_tests {
         let (system, graphics) = decoded.segments().unwrap();
         assert_eq!(system, b"SYS!");
         assert_eq!(graphics, b"GPU");
+    }
+
+    #[test]
+    fn decoded_resource_reads_virtual_pointers_and_pointer_arrays() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 16, graphics_bytes: 0 };
+        let mut body = vec![0_u8; 16];
+        body[0..4].copy_from_slice(&0x5000_000C_u32.to_le_bytes());
+        body[4..8].copy_from_slice(b"DATA");
+        let decoded = DecodedRsc7Resource { version: 1, page_sizes: sizes, body };
+        assert_eq!(decoded.read_pointer(0x5000_000C, 4).unwrap(), Some(&b"DATA"[..]));
+        assert_eq!(decoded.read_pointer_array(0x5000_0000, 1, 2, 4).unwrap(), vec![Some(&b"DATA"[..])]);
+    }
+
+    #[test]
+    fn decoded_resource_pointer_reads_reject_inconsistent_body() {
+        let decoded = DecodedRsc7Resource {
+            version: 1,
+            page_sizes: Rpf7ResourcePageSizes { system_bytes: 16, graphics_bytes: 0 },
+            body: vec![0; 8],
+        };
+        assert!(decoded.read_pointer(0x5000_0000, 4).unwrap_err().0.contains("body length mismatch"));
     }
 
     #[test]
