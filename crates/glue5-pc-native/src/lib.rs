@@ -1309,6 +1309,41 @@ pub fn read_rsc7_pointer_list<'a>(
 }
 
 
+
+/// Decode a bounded array of serialized 32-bit RSC7 virtual pointers.
+/// Each non-null pointer is range-checked for target_length bytes against
+/// the resource's system/graphics page allocations.
+pub fn decode_rsc7_pointer_array(
+    bytes: &[u8],
+    count: u16,
+    max_count: u16,
+    target_length: u32,
+    page_sizes: Rpf7ResourcePageSizes,
+) -> Result<Vec<Option<Rsc7ResolvedPointer>>, ManifestError> {
+    if count > max_count {
+        return Err(ManifestError(format!(
+            "RSC7 pointer-array count {} exceeds configured limit {}",
+            count, max_count
+        )));
+    }
+    let byte_length = usize::from(count).checked_mul(4)
+        .ok_or_else(|| ManifestError("RSC7 pointer-array byte length overflow".into()))?;
+    if bytes.len() < byte_length {
+        return Err(ManifestError(format!(
+            "RSC7 pointer-array data is truncated: need {} bytes, got {}",
+            byte_length, bytes.len()
+        )));
+    }
+    let mut resolved = Vec::with_capacity(usize::from(count));
+    for (index, chunk) in bytes[..byte_length].chunks_exact(4).enumerate() {
+        let pointer = u32::from_le_bytes(chunk.try_into().unwrap());
+        let item = resolve_rsc7_pointer(u64::from(pointer), target_length, page_sizes)
+            .map_err(|e| ManifestError(format!("RSC7 pointer-array item {index}: {}", e.0)))?;
+        resolved.push(item);
+    }
+    Ok(resolved)
+}
+
 /// Select one fixed-size record from bytes returned by
 /// read_rsc7_pointer_list. The caller supplies the validated element count
 /// and size because GTA resource types are not inferred by this generic layer.
@@ -1352,6 +1387,24 @@ mod rsc7_pointer_list_tests {
         let header = parse_rsc7_pointer_list_header(&raw).unwrap();
         let sizes = Rpf7ResourcePageSizes { system_bytes: 16, graphics_bytes: 0 };
         assert_eq!(read_rsc7_pointer_list(b"HEADABCDWXYZ1234", header, 4, 4, sizes).unwrap(), Some(&b"ABCDWXYZ"[..]));
+    }
+
+    #[test]
+    fn decodes_bounded_system_graphics_and_null_pointer_arrays() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&0x5000_0004_u32.to_le_bytes());
+        raw.extend_from_slice(&0x6000_0008_u32.to_le_bytes());
+        raw.extend_from_slice(&0_u32.to_le_bytes());
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 32, graphics_bytes: 32 };
+        let result = decode_rsc7_pointer_array(&raw, 3, 4, 4, sizes).unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].unwrap().segment, Rsc7Segment::System);
+        assert_eq!(result[1].unwrap().segment, Rsc7Segment::Graphics);
+        assert_eq!(result[2], None);
+        assert!(decode_rsc7_pointer_array(&raw, 3, 2, 4, sizes).is_err());
+        assert!(decode_rsc7_pointer_array(&raw[..7], 2, 4, 4, sizes).is_err());
+        let invalid = 0x5000_0020_u32.to_le_bytes();
+        assert!(decode_rsc7_pointer_array(&invalid, 1, 4, 4, sizes).is_err());
     }
 
     #[test]
