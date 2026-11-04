@@ -442,6 +442,91 @@ pub fn decode_rsc7_resource_stream<R: Read + Seek, W: Write>(
     Ok(Rsc7StreamReport { version, page_sizes, bytes_written: written })
 }
 
+
+/// Writer adapter that routes the decoded RSC7 stream into distinct page buffers.
+struct Rsc7PageWriters<'a, WS: Write, WG: Write> {
+    system: &'a mut WS,
+    graphics: &'a mut WG,
+    system_remaining: u64,
+    system_written: u64,
+    graphics_written: u64,
+}
+
+impl<WS: Write, WG: Write> Write for Rsc7PageWriters<'_, WS, WG> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.is_empty() { return Ok(0); }
+        if self.system_remaining > 0 {
+            let count = bytes.len().min(usize::try_from(self.system_remaining).unwrap_or(usize::MAX));
+            self.system.write_all(&bytes[..count])?;
+            self.system_remaining -= count as u64;
+            self.system_written += count as u64;
+            if count < bytes.len() {
+                self.graphics.write_all(&bytes[count..])?;
+                self.graphics_written += (bytes.len() - count) as u64;
+            }
+        } else {
+            self.graphics.write_all(bytes)?;
+            self.graphics_written += bytes.len() as u64;
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.system.flush()?;
+        self.graphics.flush()
+    }
+}
+
+/// Stream an RSC7 resource into separate system and graphics page writers.
+/// The page boundary comes only from the resource header; no GTA object layout
+/// or GPU allocation is inferred. Both outputs may contain partial data on error.
+pub fn decode_rsc7_resource_pages_stream<R: Read + Seek, WS: Write, WG: Write>(
+    reader: &mut R,
+    payload_offset: u64,
+    payload_size: u64,
+    system_output: &mut WS,
+    graphics_output: &mut WG,
+    max_output_bytes: usize,
+) -> Result<Rsc7StreamReport, ManifestError> {
+    if payload_size < 16 {
+        return Err(ManifestError("RSC7 resource header is truncated (need 16 bytes)".into()));
+    }
+    reader.seek(SeekFrom::Start(payload_offset))
+        .map_err(|e| ManifestError(format!("cannot seek to RSC7 payload: {e}")))?;
+    let mut header = [0_u8; 16];
+    reader.read_exact(&mut header)
+        .map_err(|e| ManifestError(format!("cannot read RSC7 header: {e}")))?;
+    if &header[..4] != b"RSC7" {
+        return Err(ManifestError("resource payload does not have RSC7 magic".into()));
+    }
+    let page_sizes = rpf7_resource_page_sizes(
+        u32::from_le_bytes(header[8..12].try_into().unwrap()),
+        u32::from_le_bytes(header[12..16].try_into().unwrap()),
+    )?;
+    let expected = page_sizes.system_bytes.checked_add(page_sizes.graphics_bytes)
+        .ok_or_else(|| ManifestError("RSC7 decompressed size overflow".into()))?;
+    if expected > max_output_bytes as u64 {
+        return Err(ManifestError(format!("RSC7 output size {expected} exceeds configured limit {max_output_bytes}")));
+    }
+    let mut pages = Rsc7PageWriters {
+        system: system_output,
+        graphics: graphics_output,
+        system_remaining: page_sizes.system_bytes,
+        system_written: 0,
+        graphics_written: 0,
+    };
+    let report = decode_rsc7_resource_stream(
+        reader, payload_offset, payload_size, &mut pages, max_output_bytes,
+    )?;
+    if pages.system_remaining != 0
+        || pages.system_written != page_sizes.system_bytes
+        || pages.graphics_written != page_sizes.graphics_bytes
+    {
+        return Err(ManifestError("RSC7 page writer byte counts do not match declared allocations".into()));
+    }
+    Ok(report)
+}
+
 /// Outcome for extracting one bounded RSC7 resource payload from an RPF7 archive.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Rsc7ExtractStatus {
