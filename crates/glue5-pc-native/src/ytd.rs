@@ -634,3 +634,55 @@ mod bc_texture_tests {
         assert_ne!(&decoded[4..8], &[0, 0, 0, 0]);
     }
 }
+
+#[cfg(test)]
+mod mounted_texture_decode_tests {
+    use super::*;
+
+    #[test]
+    fn decodes_texture_pixels_from_validated_graphics_page_range() {
+        let texture = YtdTextureInfo {
+            name: "fixture".into(),
+            name_hash: 0,
+            width: 1,
+            height: 1,
+            depth: 1,
+            stride: 4,
+            format_code: 21,
+            mip_levels: 1,
+            pixel_data: Some(Rsc7ResolvedPointer {
+                segment: crate::Rsc7Segment::Graphics,
+                offset: 4,
+                length: 4,
+            }),
+            pixel_data_bytes: 4,
+        };
+        let system = [0_u8; 8];
+        let graphics = [0_u8, 0, 0, 0, 0x11, 0x22, 0x33, 0x44];
+        assert_eq!(
+            decode_ytd_texture_top_mip_rgba(&system, &graphics, &texture, 4).unwrap(),
+            vec![0x33, 0x22, 0x11, 0x44]
+        );
+    }
+
+    #[test]
+    fn rejects_texture_pixel_ranges_outside_their_page_segment() {
+        let texture = YtdTextureInfo {
+            name: "bad".into(),
+            name_hash: 0,
+            width: 1,
+            height: 1,
+            depth: 1,
+            stride: 4,
+            format_code: 21,
+            mip_levels: 1,
+            pixel_data: Some(Rsc7ResolvedPointer {
+                segment: crate::Rsc7Segment::System,
+                offset: 7,
+                length: 4,
+            }),
+            pixel_data_bytes: 4,
+        };
+        assert!(decode_ytd_texture_top_mip_rgba(&[0; 8], &[0; 8], &texture, 4).is_err());
+    }
+}
