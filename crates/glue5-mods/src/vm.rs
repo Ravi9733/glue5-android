@@ -1,0 +1,670 @@
+//! A mod's Luau VM: sandboxed, with the natives as namespace tables, `wait`
+//! and `require` (the mod's own files); its main chunk runs as a coroutine
+//! the engine resumes once per wait. The REPL's VM (`eval`) is the same
+//! with a loop that runs the snippets it is given.
+
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, VecDeque};
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::mpsc::Sender;
+use std::time::{Duration, Instant};
+
+use mlua::{Function, Lua, LuaOptions, MultiValue, StdLib, Table, Thread, Value, VmState};
+
+use crate::world::Pool;
+use crate::storage::Storage;
+use crate::{EvalResult, json, menus, natives};
+
+/// How long a mod may run before it yields to the game for this frame.
+const SLICE: Duration = Duration::from_millis(2);
+/// How long a mod may run without calling `wait` before it is stopped.
+const RUNAWAY: Duration = Duration::from_secs(2);
+/// Memory a mod's VM may use.
+const MEMORY: usize = 64 << 20;
+
+/// Snippets for the REPL: code, and where its result goes.
+pub type Jobs = Rc<RefCell<VecDeque<(String, Sender<EvalResult>)>>>;
+
+pub struct Vm {
+    lua: Lua,
+    module: String,
+    /// The main chunk, until it ends, and when it is due (game time, ms).
+    main: Option<Thread>,
+    main_wake: u64,
+    main_busy: Duration,
+    /// Tasks: `task.spawn`/`task.delay`, menus' callbacks.
+    sched: Sched,
+    deadline: Rc<Cell<Instant>>,
+    /// The mod's `storage` (none for the REPL).
+    storage: Option<Rc<Storage>>,
+}
+
+/// What `task.*` and the menus share with the VM.
+#[derive(Clone, Default)]
+struct Sched {
+    tasks: Rc<RefCell<Vec<Task>>>,
+    /// The game time of the current turn, ms.
+    now: Rc<Cell<u64>>,
+    handlers: menus::Handlers,
+}
+
+struct Task {
+    thread: Thread,
+    wake: u64,
+    /// What it starts with (a callback's arguments), the first time.
+    args: Option<MultiValue>,
+    busy: Duration,
+}
+
+/// What a turn of a mod came to.
+pub enum Step {
+    /// The next thing it does is this many milliseconds away (0: the next
+    /// frame).
+    Wait(u32),
+    Finished,
+    Failed(String),
+}
+
+/// What a coroutine's run came to.
+enum Outcome {
+    Wait(u32),
+    Preempted,
+    Finished,
+    Failed(String),
+}
+
+impl Vm {
+    /// Loads mod `name`'s `main.luau` from `dir`; `log` gets what it prints.
+    pub fn new(name: &str, dir: &Path, log: Rc<dyn Fn(&str)>) -> mlua::Result<Vm> {
+        let sched = Sched::default();
+        let (lua, deadline) = base(name, log, &sched)?;
+        lua.globals().set("require", require(&lua, name, dir)?)?;
+        let storage = Storage::open(name);
+        storage.install(&lua)?;
+        // The mod's code starts once the player is in the game (not on
+        // the loading screens, where the player's ped is a stand-in).
+        let ready: Function = lua
+            .load(
+                "local yield = coroutine.yield\n\
+                 return function(main) return function(...)\n\
+                 while dlc.getIsLoadingScreenActive() or not camera.isScreenFadedIn() \
+                 or not player.isPlayerPlaying(player.playerId()) do yield(0) end\n\
+                 return main(...)\n\
+                 end end",
+            )
+            .set_name("=ready")
+            .eval()?;
+        lua.sandbox(true)?;
+        // Prefer Glue 5's native entrypoint, but also accept source-based Lua
+        // mods. This is not a Windows .asi/.dll or ScriptHookV compatibility layer.
+        let path = [dir.join("main.luau"), dir.join("main.lua")].into_iter()
+            .find(|candidate| candidate.is_file())
+            .ok_or_else(|| mlua::Error::runtime(format!("{name}: expected main.luau or main.lua")))?;
+        let source = std::fs::read_to_string(&path)
+            .map_err(|e| mlua::Error::runtime(format!("reading {}: {e}", path.display())))?;
+        let entrypoint = path.file_name().unwrap_or_default().to_string_lossy();
+        let chunk = lua.load(source).set_name(format!("@{name}/{entrypoint}")).into_function()?;
+        let main = lua.create_thread(ready.call::<Function>(chunk)?)?;
+        Ok(Vm {
+            lua,
+            module: name.to_string(),
+            main: Some(main),
+            main_wake: 0,
+            main_busy: Duration::ZERO,
+            sched,
+            deadline,
+            storage: Some(storage),
+        })
+    }
+
+    /// The REPL: runs `jobs`' snippets, as expressions when they are.
+    pub fn repl(jobs: Jobs, log: Rc<dyn Fn(&str)>) -> mlua::Result<Vm> {
+        let sched = Sched::default();
+        let (lua, deadline) = base("eval", log, &sched)?;
+        let waiting: Rc<RefCell<HashMap<i64, Sender<EvalResult>>>> = Rc::default();
+        let next = Cell::new(0i64);
+        let pending = waiting.clone();
+        let take = lua.create_function(move |lua, ()| {
+            let Some((code, reply)) = jobs.borrow_mut().pop_front() else { return Ok(MultiValue::new()) };
+            let id = next.get() + 1;
+            next.set(id);
+            let compiled = lua
+                .load(format!("return {code}"))
+                .set_name("=eval")
+                .into_function()
+                .or_else(|_| lua.load(code.as_str()).set_name("=eval").into_function());
+            Ok(match compiled {
+                Ok(f) => {
+                    pending.borrow_mut().insert(id, reply);
+                    MultiValue::from_vec(vec![Value::Integer(id), Value::Function(f)])
+                }
+                Err(e) => {
+                    let _ = reply.send(Err(error_text(&e)));
+                    MultiValue::new()
+                }
+            })
+        })?;
+        let reply = lua.create_function(move |_, args: MultiValue| {
+            let mut args = args.into_iter();
+            let id = match args.next() {
+                Some(Value::Integer(id)) => id,
+                _ => return Ok(()),
+            };
+            let ok = matches!(args.next(), Some(Value::Boolean(true)));
+            let values: Vec<Value> = args.collect();
+            if let Some(sender) = waiting.borrow_mut().remove(&id) {
+                let _ = sender.send(if ok {
+                    Ok(values.iter().map(describe).collect::<Vec<_>>().join(", "))
+                } else {
+                    Err(values.first().map_or_else(|| "error".into(), describe_plain))
+                });
+            }
+            Ok(())
+        })?;
+        let main: Function = lua
+            .load(
+                "local take, reply = ...\n\
+                 return function()\n\
+                 while true do\n\
+                 local id, f = take()\n\
+                 if id then reply(id, pcall(f)) else wait() end\n\
+                 end end",
+            )
+            .set_name("=repl")
+            .call((take, reply))?;
+        lua.sandbox(true)?;
+        let main = lua.create_thread(main)?;
+        Ok(Vm { lua, module: "~eval".into(), main: Some(main), main_wake: 0, main_busy: Duration::ZERO, sched, deadline, storage: None })
+    }
+
+    /// A turn at game time `now` (ms): what the player did with the menus
+    /// becomes tasks; the tasks and the main chunk that are due run, until
+    /// they wait, end, fail or run out of time.
+    pub fn step(&mut self, now: u64) -> Step {
+        self.sched.now.set(now);
+        if let Some(storage) = &self.storage {
+            storage.flush(false);
+        }
+        for (item, input) in menus::take_inputs(&self.module) {
+            match menus::apply(&self.lua, &self.sched.handlers, item, input) {
+                Ok(Some((f, args))) => match self.lua.create_thread(f) {
+                    Ok(thread) => self.sched.tasks.borrow_mut().push(Task { thread, wake: now, args: Some(args), busy: Duration::ZERO }),
+                    Err(e) => crate::log_line(&self.module, crate::LogLevel::Error, &error_text(&e)),
+                },
+                Ok(None) => {}
+                Err(e) => crate::log_line(&self.module, crate::LogLevel::Error, &error_text(&e)),
+            }
+        }
+        // The tasks that are due; others may be added while they run.
+        let due: Vec<Task> = {
+            let mut tasks = self.sched.tasks.borrow_mut();
+            let (due, later): (Vec<Task>, Vec<Task>) = tasks.drain(..).partition(|t| t.wake <= now);
+            *tasks = later;
+            due
+        };
+        for mut task in due {
+            let args = task.args.take().unwrap_or_default();
+            let (outcome, spent) = self.run(&task.thread, args);
+            task.busy += spent;
+            match outcome {
+                Outcome::Wait(ms) => {
+                    task.wake = now + u64::from(ms);
+                    task.busy = Duration::ZERO;
+                }
+                Outcome::Preempted if task.busy >= RUNAWAY => {
+                    crate::log_line(&self.module, crate::LogLevel::Error, &runaway());
+                    continue;
+                }
+                Outcome::Preempted => task.wake = now,
+                Outcome::Finished => continue,
+                Outcome::Failed(e) => {
+                    // A task's error is logged; the mod goes on.
+                    crate::log_line(&self.module, crate::LogLevel::Error, &e);
+                    continue;
+                }
+            }
+            self.sched.tasks.borrow_mut().push(task);
+        }
+        if let Some(main) = self.main.clone()
+            && self.main_wake <= now
+        {
+            let (outcome, spent) = self.run(&main, MultiValue::new());
+            self.main_busy += spent;
+            match outcome {
+                Outcome::Wait(ms) => {
+                    self.main_wake = now + u64::from(ms);
+                    self.main_busy = Duration::ZERO;
+                }
+                Outcome::Preempted if self.main_busy >= RUNAWAY => return Step::Failed(runaway()),
+                Outcome::Preempted => self.main_wake = now,
+                Outcome::Finished => self.main = None,
+                Outcome::Failed(e) => return Step::Failed(e),
+            }
+        }
+        let menus = menus::has_menus(&self.module);
+        let tasks = self.sched.tasks.borrow();
+        if self.main.is_none() && tasks.is_empty() && !menus {
+            return Step::Finished;
+        }
+        // A menu may be used any time: every frame then.
+        if menus {
+            return Step::Wait(0);
+        }
+        let next = tasks.iter().map(|t| t.wake).chain(self.main.as_ref().map(|_| self.main_wake)).min().unwrap_or(now);
+        Step::Wait(next.saturating_sub(now).min(u64::from(u32::MAX)) as u32)
+    }
+
+    /// Runs a coroutine until it yields, ends or fails; and how long it ran.
+    fn run(&self, thread: &Thread, args: MultiValue) -> (Outcome, Duration) {
+        if !thread.is_resumable() {
+            return (Outcome::Finished, Duration::ZERO);
+        }
+        let start = Instant::now();
+        self.deadline.set(start + SLICE);
+        let result = thread.resume::<MultiValue>(args);
+        let spent = start.elapsed();
+        let outcome = match result {
+            Err(e) => Outcome::Failed(error_text(&e)),
+            Ok(_) if !thread.is_resumable() => Outcome::Finished,
+            // `wait(ms)`.
+            Ok(values) => match values.into_iter().next() {
+                Some(v) => Outcome::Wait(match v {
+                    Value::Integer(i) => i.clamp(0, i32::MAX.into()) as u32,
+                    Value::Number(n) if n.is_finite() => n.clamp(0.0, i32::MAX as f64) as u32,
+                    _ => 0,
+                }),
+                // The interrupt: out of time.
+                None => Outcome::Preempted,
+            },
+        };
+        (outcome, spent)
+    }
+
+    /// Memory the VM uses, in bytes.
+    pub fn memory(&self) -> usize {
+        self.lua.used_memory()
+    }
+}
+
+fn runaway() -> String {
+    format!("ran for {} s without calling wait(): a loop needs wait() to let the game go on", RUNAWAY.as_secs())
+}
+
+/// A VM with the libraries, the natives and the mods' globals (`print`,
+/// `wait`, `task`, `ui`, `joaat`, `mod`), and the interrupt that keeps a
+/// slice short; not sandboxed yet.
+fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, Rc<Cell<Instant>>)> {
+    let lua = Lua::new_with(
+        StdLib::COROUTINE
+            | StdLib::TABLE
+            | StdLib::STRING
+            | StdLib::UTF8
+            | StdLib::MATH
+            | StdLib::BIT
+            | StdLib::VECTOR
+            | StdLib::BUFFER
+            | StdLib::OS,
+        LuaOptions::default(),
+    )?;
+    lua.set_memory_limit(MEMORY)?;
+    let g = lua.globals();
+    g.set(
+        "print",
+        lua.create_function(move |_, args: MultiValue| {
+            log(&args.iter().map(describe_plain).collect::<Vec<_>>().join(" "));
+            Ok(())
+        })?,
+    )?;
+    // `wait(ms)`: back to the game until then; plain Lua, so it yields from
+    // the running coroutine.
+    let wait: Function = lua
+        .load("local yield = coroutine.yield\nreturn function(ms) yield(ms or 0) end")
+        .set_name("=wait")
+        .eval()?;
+    g.set("wait", wait.clone())?;
+    // Common ScriptHook-style trainers call Wait(ms) rather than wait(ms).
+    g.set("Wait", wait.clone())?;
+    // `task.spawn(f, ...)`, `task.delay(ms, f, ...)`, `task.wait(ms)`.
+    let task = lua.create_table()?;
+    task.set("wait", wait)?;
+    let s = sched.clone();
+    task.set(
+        "spawn",
+        lua.create_function(move |lua, (f, args): (Function, MultiValue)| {
+            let thread = lua.create_thread(f)?;
+            s.tasks.borrow_mut().push(Task { thread, wake: s.now.get(), args: Some(args), busy: Duration::ZERO });
+            Ok(())
+        })?,
+    )?;
+    let s = sched.clone();
+    task.set(
+        "delay",
+        lua.create_function(move |lua, (ms, f, args): (f64, Function, MultiValue)| {
+            let thread = lua.create_thread(f)?;
+            let wake = s.now.get() + ms.clamp(0.0, 1e9) as u64;
+            s.tasks.borrow_mut().push(Task { thread, wake, args: Some(args), busy: Duration::ZERO });
+            Ok(())
+        })?,
+    )?;
+    // Source-level aliases for common ScriptHook-style Lua trainers.
+    // This adapts Lua scheduling conventions only; it does not load Windows
+    // .asi/.dll binaries or implement ScriptHookV's native API.
+    let citizen = lua.create_table()?;
+    citizen.set("Wait", wait.clone())?;
+    citizen.set("wait", wait.clone())?;
+    let spawn = lua.load("return function(task, f, ...) return task.spawn(f, ...) end")
+        .set_name("=pc-trainer-create-thread")
+        .eval::<Function>()?;
+    g.set("CreateThread", spawn.call::<Function>(task.clone())?)?;
+    citizen.set("CreateThread", spawn.call::<Function>(task.clone())?)?;
+    citizen.set("SetTimeout", task.get::<Function>("delay")?)?;
+    g.set("SetTimeout", task.get::<Function>("delay")?)?;
+    // ScriptHook-style InvokeNative compatibility for hashes present in
+    // Glue5's generated native database for this exact game build. Unknown
+    // hashes fail clearly instead of being guessed or called unsafely.
+    let invoke_native = lua.create_function(|lua, mut args: MultiValue| {
+        let hash_value = args.pop_front().ok_or_else(|| mlua::Error::runtime("Citizen.InvokeNative: missing native hash"))?;
+        let hash = match hash_value {
+            Value::Integer(i) => i as u64,
+            Value::Number(n) if n.is_finite() && n >= 0.0 && n <= u64::MAX as f64 => n as u64,
+            Value::String(s) => parse_native_hash_string(&s.to_str()?)?
+            _ => return Err(mlua::Error::runtime("Citizen.InvokeNative: hash must be an integer or string")),
+        };
+        let index = natives::find_hash(hash).ok_or_else(|| mlua::Error::runtime(format!(
+            "Citizen.InvokeNative: native hash 0x{hash:016X} is not present in this Glue5 build's native database"
+        )))?;
+        natives::call(lua, index, args)
+    })?;
+    citizen.set("InvokeNative", invoke_native.clone())?;
+    g.set("InvokeNative", invoke_native)?;
+    g.set("Citizen", citizen)?;
+    g.set("task", task.clone())?;
+    menus::install(&lua, name, sched.handlers.clone())?;
+    json::install(&lua)?;
+    // `world.vehicles()`..., the catalog's lists.
+    let world = lua.create_table()?;
+    for (key, pool) in [("vehicles", Pool::Vehicles), ("peds", Pool::Peds), ("objects", Pool::Objects)] {
+        world.set(
+            key,
+            lua.create_function(move |_, max: Option<usize>| {
+                let env = natives::env().ok_or_else(|| mlua::Error::runtime(format!("world.{key}: only in a mod's script")))?;
+                Ok(unsafe { crate::world::handles(env, pool, max.unwrap_or(1024).min(4096)) })
+            })?,
+        )?;
+    }
+    world.set("vehicleModels", lua.create_function(|_, ()| Ok(crate::world::catalog().map(|c| c.vehicles).unwrap_or_default()))?)?;
+    world.set("pedModels", lua.create_function(|_, ()| Ok(crate::world::catalog().map(|c| c.peds).unwrap_or_default()))?)?;
+    world.set("weapons", lua.create_function(|_, ()| Ok(crate::world::catalog().map(|c| c.weapons).unwrap_or_default()))?)?;
+    g.set("world", world)?;
+    // ScriptHook-style pool enumeration used by many trainers.
+    // The supported pool names are intentionally explicit; this does not expose
+    // arbitrary game memory or Windows process structures.
+    g.set("GetGamePool", lua.create_function(|lua, pool_name: String| {
+        let pool = match pool_name.as_str() {
+            "CVehicle" => Pool::Vehicles,
+            "CPed" => Pool::Peds,
+            "CObject" => Pool::Objects,
+            _ => return Err(mlua::Error::runtime(format!(
+                "GetGamePool: unsupported pool '{pool_name}' (use CVehicle, CPed, or CObject)"
+            ))),
+        };
+        let env = natives::env().ok_or_else(|| mlua::Error::runtime("GetGamePool: only available in a mod's script"))?;
+        let handles = unsafe { crate::world::handles(env, pool, 4096) };
+        let result = lua.create_table()?;
+        for (i, handle) in handles.into_iter().enumerate() {
+            result.raw_set(i + 1, handle)?;
+        }
+        Ok(result)
+    })?)?;
+    let get_hash_key = lua.create_function(|_, s: mlua::LuaString| Ok(natives::joaat(&s.to_str()?)))?;
+    g.set("joaat", get_hash_key.clone())?;
+    g.set("GetHashKey", get_hash_key)?;
+    let m = lua.create_table()?;
+    m.set("name", name)?;
+    g.set("mod", m)?;
+
+    // A table per namespace; a native's function is made the first time it
+    // is looked up.
+    for (ns, space) in natives::NAMESPACES.iter().enumerate() {
+        let cache: RefCell<HashMap<String, Function>> = RefCell::default();
+        let table = lua.create_table()?;
+        let meta = lua.create_table()?;
+        meta.set(
+            "__index",
+            lua.create_function(move |lua, (_, key): (Table, String)| {
+                if let Some(f) = cache.borrow().get(&key) {
+                    return Ok(Value::Function(f.clone()));
+                }
+                let Some(index) = natives::find(ns, &key) else { return Ok(Value::Nil) };
+                let f = lua.create_function(move |lua, args: MultiValue| natives::call(lua, index, args))?;
+                cache.borrow_mut().insert(key, f.clone());
+                Ok(Value::Function(f))
+            })?,
+        )?;
+        table.set_metatable(Some(meta))?;
+        if *space == "task" {
+            // The scheduler shares the table with the TASK_ natives.
+            for pair in task.pairs::<Value, Value>() {
+                let (k, v) = pair?;
+                table.raw_set(k, v)?;
+            }
+        }
+        g.set(*space, table)?;
+    }
+
+    install_pc_trainer_native_aliases(&lua)?;
+
+    let deadline = Rc::new(Cell::new(Instant::now() + SLICE));
+    let interrupt_deadline = deadline.clone();
+    lua.set_interrupt(move |_| {
+        Ok(if Instant::now() >= interrupt_deadline.get() { VmState::Yield } else { VmState::Continue })
+    });
+    Ok((lua, deadline))
+}
+
+
+/// Expose a conservative set of common GTA native names as global functions,
+/// as expected by many ScriptHook-style Lua trainers. Glue5 still supplies the
+/// actual WASM-native metadata and validates every argument; this is not a PE
+/// loader or a complete ScriptHookV API.
+fn install_pc_trainer_native_aliases(lua: &Lua) -> mlua::Result<()> {
+    const COMMON: &[&str] = &[
+        "PLAYER_ID", "PLAYER_PED_ID", "GET_PLAYER_PED", "GET_PLAYER_NAME",
+        "GET_ENTITY_COORDS", "SET_ENTITY_COORDS", "SET_ENTITY_COORDS_NO_OFFSET",
+        "GET_ENTITY_HEADING", "SET_ENTITY_HEADING", "GET_ENTITY_HEALTH",
+        "SET_ENTITY_HEALTH", "GET_ENTITY_MAX_HEALTH", "SET_ENTITY_MAX_HEALTH",
+        "DOES_ENTITY_EXIST", "IS_ENTITY_DEAD", "IS_ENTITY_A_PED",
+        "IS_ENTITY_A_VEHICLE", "IS_ENTITY_IN_A_VEHICLE", "GET_ENTITY_MODEL",
+        "GET_ENTITY_SPEED", "GET_ENTITY_FORWARD_VECTOR", "GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS",
+        "GET_VEHICLE_PED_IS_IN", "GET_VEHICLE_ENGINE_HEALTH", "SET_VEHICLE_ENGINE_HEALTH",
+        "SET_VEHICLE_ENGINE_ON", "SET_VEHICLE_FIXED", "SET_VEHICLE_DIRT_LEVEL",
+        "SET_VEHICLE_MOD", "GET_VEHICLE_MOD", "GET_NUM_VEHICLE_MODS",
+        "CREATE_VEHICLE", "DELETE_VEHICLE", "SET_VEHICLE_ON_GROUND_PROPERLY",
+        "CREATE_PED", "DELETE_PED", "SET_PED_INTO_VEHICLE", "GET_PED_IN_VEHICLE_SEAT",
+        "IS_PED_IN_ANY_VEHICLE", "SET_PED_ARMOUR", "GET_PED_ARMOUR",
+        "GIVE_WEAPON_TO_PED", "REMOVE_WEAPON_FROM_PED", "HAS_PED_GOT_WEAPON",
+        "GET_SELECTED_PED_WEAPON", "SET_CURRENT_PED_WEAPON",
+        "REQUEST_MODEL", "HAS_MODEL_LOADED", "IS_MODEL_VALID",
+        "IS_MODEL_IN_CDIMAGE", "SET_MODEL_AS_NO_LONGER_NEEDED",
+        "CREATE_OBJECT", "DELETE_OBJECT", "PLACE_OBJECT_ON_GROUND_PROPERLY",
+        "GET_GAME_TIMER", "GET_FRAME_TIME", "GET_FRAME_COUNT",
+        "GET_GROUND_Z_FOR_3D_COORD", "GET_WATER_HEIGHT",
+        "SET_WEATHER_TYPE_NOW", "SET_WEATHER_TYPE_NOW_PERSIST",
+        "SET_OVERRIDE_WEATHER", "CLEAR_OVERRIDE_WEATHER", "GET_PREV_WEATHER_TYPE_HASH_NAME",
+        "SET_CLOCK_TIME", "GET_CLOCK_HOURS", "GET_CLOCK_MINUTES", "GET_CLOCK_SECONDS",
+        "IS_CONTROL_PRESSED", "IS_CONTROL_JUST_PRESSED", "IS_CONTROL_JUST_RELEASED",
+        "DISABLE_CONTROL_ACTION", "ENABLE_CONTROL_ACTION",
+        "DRAW_MARKER", "DRAW_LINE", "DRAW_RECT", "DRAW_TEXT",
+        "SET_TEXT_SCALE", "SET_TEXT_COLOUR", "SET_TEXT_CENTRE",
+        "BEGIN_TEXT_COMMAND_DISPLAY_TEXT", "ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME",
+        "END_TEXT_COMMAND_DISPLAY_TEXT", "SET_NEW_WAYPOINT", "GET_FIRST_BLIP_INFO_ID",
+        "GET_BLIP_INFO_ID_COORD", "ADD_BLIP_FOR_COORD", "ADD_BLIP_FOR_ENTITY",
+        "SET_BLIP_SPRITE", "SET_BLIP_COLOUR", "SET_BLIP_ROUTE", "REMOVE_BLIP",
+        "GET_ENTITY_ALPHA", "SET_ENTITY_ALPHA", "RESET_ENTITY_ALPHA",
+        "SET_ENTITY_VISIBLE", "SET_ENTITY_INVINCIBLE", "SET_ENTITY_COLLISION",
+        "FREEZE_ENTITY_POSITION", "APPLY_FORCE_TO_ENTITY", "SET_ENTITY_VELOCITY",
+        "GET_ENTITY_VELOCITY", "GET_ENTITY_ROTATION", "SET_ENTITY_ROTATION",
+        "GET_PLAYER_WANTED_LEVEL", "SET_PLAYER_WANTED_LEVEL",
+        "IS_PLAYER_PLAYING", "IS_PLAYER_FREE_AIMING", "GET_PLAYER_GROUP",
+        "GET_HASH_KEY",
+    ];
+    let globals = lua.globals();
+    for name in COMMON {
+        let Some(index) = natives::find_game_name(name) else { continue };
+        let native = &natives::NATIVES[index];
+        let mut pascal = String::new();
+        for part in native.name.split('_').filter(|part| !part.is_empty()) {
+            let mut chars = part.chars();
+            if let Some(first) = chars.next() {
+                pascal.push(first.to_ascii_uppercase());
+                pascal.extend(chars.map(|ch| ch.to_ascii_lowercase()));
+            }
+        }
+        let function = lua.create_function(move |lua, args: MultiValue| natives::call(lua, index, args))?;
+        for alias in [name.to_string(), pascal] {
+            if globals.get::<Value>(alias.as_str())?.is_nil() {
+                globals.set(alias, function.clone())?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `require("./menu")`: the mod's `menu.luau`, run once.
+
+/// Parse decimal strings as decimal; hexadecimal strings require a 0x prefix.
+fn parse_native_hash_string(raw: &str) -> mlua::Result<u64> {
+    let value = raw.trim();
+    let parsed = if let Some(hex) = value.strip_prefix("0x").or_else(|| value.strip_prefix("0X")) {
+        u64::from_str_radix(hex, 16)
+    } else {
+        value.parse::<u64>()
+    };
+    parsed.map_err(|_| mlua::Error::runtime("Citizen.InvokeNative: hash string must be decimal or 0x-prefixed hexadecimal"))
+}
+
+#[cfg(test)]
+mod invoke_native_hash_tests {
+    use super::parse_native_hash_string;
+
+    #[test]
+    fn parses_decimal_string_as_decimal() {
+        assert_eq!(parse_native_hash_string("123").unwrap(), 123);
+    }
+
+    #[test]
+    fn parses_prefixed_hex_string() {
+        assert_eq!(parse_native_hash_string("0x1A").unwrap(), 26);
+        assert_eq!(parse_native_hash_string("0X1a").unwrap(), 26);
+    }
+
+    #[test]
+    fn rejects_unprefixed_hex_and_invalid_values() {
+        assert!(parse_native_hash_string("1A").is_err());
+        assert!(parse_native_hash_string("").is_err());
+    }
+}
+
+fn require(lua: &Lua, name: &str, dir: &Path) -> mlua::Result<Function> {
+    let loaded: RefCell<HashMap<PathBuf, Value>> = RefCell::default();
+    let (name, dir) = (name.to_string(), dir.to_path_buf());
+    lua.create_function(move |lua, path: String| {
+        let rel = path
+            .strip_prefix("./")
+            .filter(|r| !r.split('/').any(|p| p.is_empty() || p.starts_with('.')))
+            .ok_or_else(|| mlua::Error::runtime(format!("require(\"{path}\"): a file of the mod, as \"./name\"")))?;
+        let file = [dir.join(format!("{rel}.luau")), dir.join(format!("{rel}.lua"))]
+            .into_iter().find(|candidate| candidate.is_file())
+            .ok_or_else(|| mlua::Error::runtime(format!("require(\"{path}\"): module .luau/.lua file not found")))?;
+        if let Some(v) = loaded.borrow().get(&file) {
+            return Ok(v.clone());
+        }
+        let source = std::fs::read_to_string(&file)
+            .map_err(|e| mlua::Error::runtime(format!("require(\"{path}\"): {e}")))?;
+        let entrypoint = file.file_name().unwrap_or_default().to_string_lossy();
+        let value: Value = lua.load(source).set_name(format!("@{name}/{entrypoint}")).call(())?;
+        let value = if value.is_nil() { Value::Boolean(true) } else { value };
+        loaded.borrow_mut().insert(file, value.clone());
+        Ok(value)
+    })
+}
+
+/// An error as people read it: its message, and where in the mod's files it
+/// happened when the message does not say (natives' errors).
+pub fn error_text(e: &mlua::Error) -> String {
+    let (message, traceback) = match e {
+        mlua::Error::CallbackError { traceback, cause } => (error_text(cause), Some(traceback.as_str())),
+        // Without the traceback the message carries (its `file:line` is enough).
+        mlua::Error::RuntimeError(m) => (m.split("\nstack traceback:").next().unwrap_or(m).to_string(), None),
+        mlua::Error::SyntaxError { message, .. } => (message.clone(), None),
+        mlua::Error::MemoryError(_) => ("out of memory (a mod may use 64 MB)".into(), None),
+        other => (other.to_string(), None),
+    };
+    // `trainer/main.luau:12: in function ...`: the first frame in a mod's file.
+    let at = traceback.and_then(|t| {
+        t.lines().map(str::trim).find(|l| l.contains(".luau:")).and_then(|l| {
+            let end = l.find(".luau:")? + 6;
+            let digits = l[end..].chars().take_while(char::is_ascii_digit).count();
+            Some(l[..end + digits].trim_start_matches('@').to_string())
+        })
+    });
+    match at {
+        Some(at) if !message.contains(".luau:") => format!("{at}: {message}"),
+        _ => message,
+    }
+}
+
+/// A value as the REPL shows it.
+pub fn describe(v: &Value) -> String {
+    match v {
+        Value::String(s) => format!("{:?}", s.to_string_lossy()),
+        other => describe_plain(other),
+    }
+}
+
+/// A value as `print` shows it: strings as they are.
+fn describe_plain(v: &Value) -> String {
+    match v {
+        Value::Nil => "nil".into(),
+        Value::Boolean(b) => b.to_string(),
+        Value::Integer(i) => i.to_string(),
+        Value::Number(n) if n.fract() == 0.0 && n.abs() < 1e15 => format!("{n:.0}"),
+        Value::Number(n) => format!("{n}"),
+        Value::Vector(v) => format!("vector({}, {}, {})", short(v.x()), short(v.y()), short(v.z())),
+        Value::String(s) => s.to_string_lossy(),
+        Value::Table(t) => {
+            let mut parts = Vec::new();
+            for (i, pair) in t.pairs::<Value, Value>().enumerate() {
+                if i == 16 {
+                    parts.push("…".to_string());
+                    break;
+                }
+                if let Ok((k, v)) = pair {
+                    parts.push(match k {
+                        Value::Integer(_) => describe(&v),
+                        k => format!("{} = {}", describe_plain(&k), describe(&v)),
+                    });
+                }
+            }
+            format!("{{{}}}", parts.join(", "))
+        }
+        Value::Function(_) => "function".into(),
+        Value::Error(e) => error_text(e),
+        other => other.type_name().into(),
+    }
+}
+
+fn short(x: f32) -> String {
+    let s = format!("{x:.2}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+impl Drop for Vm {
+    /// The mod stops: its storage is written now.
+    fn drop(&mut self) {
+        if let Some(storage) = &self.storage {
+            storage.flush(true);
+        }
+    }
+}

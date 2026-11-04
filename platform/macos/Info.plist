@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIconName</key>
+    <string>Glue5</string>
+    <key>LSSupportsGameMode</key>
+    <true/>
+    <key>GCSupportsGameMode</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <!-- GTA Online: players on the same network find each other there; the
+         game's files stream from (or are shared with) other devices, found by Bonjour. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Glue 5 finds GTA Online players and devices sharing the game on your network, and lets browsers there open GLUE 5 Studio.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_glue5._tcp</string>
+    </array>
+</dict>
+</plist>
