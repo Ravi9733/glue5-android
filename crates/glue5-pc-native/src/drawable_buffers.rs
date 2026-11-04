@@ -213,11 +213,17 @@ pub fn read_gta_geometry_buffers(
     }
     if out.vertex_data.is_none() && geometry.inline_data_pointer != 0 && geometry.vertices_count > 0 {
         let count = u32::from(geometry.vertices_count);
-        let len = checked_buffer_len(count, geometry.vertex_stride, max_vertices, max_buffer_bytes)?;
-        out.vertex_data = Some(read_gta_drawable_buffer_at(pages, geometry.inline_data_pointer, len, max_buffer_bytes)?);
-        out.vertex_layout = Some(GtaVertexBufferLayout::GeometryInline);
-        out.vertex_count = count;
-        out.vertex_stride = geometry.vertex_stride;
+        // An over-limit inline buffer is skipped, not treated as a fatal parse
+        // error. This keeps the API's bounded-reader contract consistent with
+        // the optional external vertex-buffer paths above.
+        if let Ok(len) = checked_buffer_len(count, geometry.vertex_stride, max_vertices, max_buffer_bytes) {
+            if let Ok(data) = read_gta_drawable_buffer_at(pages, geometry.inline_data_pointer, len, max_buffer_bytes) {
+                out.vertex_data = Some(data);
+                out.vertex_layout = Some(GtaVertexBufferLayout::GeometryInline);
+                out.vertex_count = count;
+                out.vertex_stride = geometry.vertex_stride;
+            }
+        }
     }
 
     let ib = geometry.index_buffer_pointer;
