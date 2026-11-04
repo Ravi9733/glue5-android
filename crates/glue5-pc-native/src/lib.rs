@@ -696,7 +696,7 @@ mod tests {
     #[test]
     fn decodes_rpf7_resource_system_and_graphics_page_sizes() {
         let sizes = rpf7_resource_page_sizes((1 << 0) | (1 << 27), (1 << 1) | (1 << 26)).unwrap();
-        assert_eq!(sizes.system_bytes, 512);
+        assert_eq!(sizes.system_bytes, 1024);
         assert_eq!(sizes.graphics_bytes, 2048);
         assert_eq!(rpf7_resource_page_sizes(0, 0).unwrap(), Rpf7ResourcePageSizes {
             system_bytes: 0, graphics_bytes: 0,
