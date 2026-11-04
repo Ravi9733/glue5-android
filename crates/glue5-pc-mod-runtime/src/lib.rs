@@ -101,8 +101,8 @@ fn detect(bytes: &[u8]) -> (BinaryFormat, Architecture) {
 fn mach_o_architecture(bytes: &[u8]) -> Option<Architecture> {
     if bytes.len() < 8 { return None; }
     let little_endian = match &bytes[..4] {
-        b"\\xce\\xfa\\xed\\xfe" | b"\\xcf\\xfa\\xed\\xfe" => true,
-        b"\\xfe\\xed\\xfa\\xce" | b"\\xfe\\xed\\xfa\\xcf" => false,
+        b"\xce\xfa\xed\xfe" | b"\xcf\xfa\xed\xfe" => true,
+        b"\xfe\xed\xfa\xce" | b"\xfe\xed\xfa\xcf" => false,
         _ => return None,
     };
     let cpu_type = if little_endian {
@@ -138,7 +138,7 @@ mod tests {
     fn identifies_arm64_macho_by_cpu_type_not_magic() {
         // MH_MAGIC_64, little-endian, CPU_TYPE_ARM64.
         let mut bytes = vec![0u8; 32];
-        bytes[..4].copy_from_slice(b"\\xcf\\xfa\\xed\\xfe");
+        bytes[..4].copy_from_slice(b"\xcf\xfa\xed\xfe");
         bytes[4..8].copy_from_slice(&0x0100_000cu32.to_le_bytes());
         let got = inspect(&bytes);
         assert_eq!(got.format, BinaryFormat::MachO);
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn identifies_x86_64_macho_by_cpu_type() {
         let mut bytes = vec![0u8; 32];
-        bytes[..4].copy_from_slice(b"\\xcf\\xfa\\xed\\xfe");
+        bytes[..4].copy_from_slice(b"\xcf\xfa\xed\xfe");
         bytes[4..8].copy_from_slice(&0x0100_0007u32.to_le_bytes());
         let got = inspect(&bytes);
         assert_eq!(got.format, BinaryFormat::MachO);
