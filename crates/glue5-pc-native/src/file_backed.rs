@@ -106,6 +106,93 @@ pub fn copy_rpf7_open_binary_entry_from_reader<R: Read + Seek, W: std::io::Write
     Ok(size)
 }
 
+
+/// Copy the raw stored bytes for a previously mounted RPF7 asset.
+///
+/// The descriptor is revalidated against the archive's current TOC before any
+/// bytes are copied. This prevents stale or caller-forged offsets from being
+/// used as arbitrary file reads. Only unencrypted/uncompressed binary entries
+/// and fixed-size resource entries are supported; resource bytes remain in
+/// their stored RSC7 form and require the separate decoder.
+pub fn copy_mounted_rpf7_asset_from_reader<R: Read + Seek, W: std::io::Write>(
+    reader: &mut R,
+    archive_id: &str,
+    asset: &crate::MountedAsset,
+    output: &mut W,
+    max_output_bytes: u64,
+) -> Result<u64, ManifestError> {
+    use crate::{MountedAssetKind, Rpf7EntryKind};
+
+    if asset.archive != archive_id {
+        return Err(ManifestError("mounted asset archive identifier does not match source archive".into()));
+    }
+    if asset.length == 0 || asset.length > max_output_bytes {
+        return Err(ManifestError(format!(
+            "mounted asset length is empty or exceeds extraction limit ({} > {})",
+            asset.length, max_output_bytes
+        )));
+    }
+
+    let inventory = inventory_rpf7_open_reader(reader)?;
+    let entry = inventory.inventory.entries.iter()
+        .find(|entry| entry.index == asset.entry_index)
+        .ok_or_else(|| ManifestError(format!("mounted RPF7 entry {} does not exist", asset.entry_index)))?;
+
+    let (expected_kind, size, offset_blocks) = match &entry.kind {
+        Rpf7EntryKind::BinaryFile {
+            file_size, file_offset_blocks, uncompressed_size, encrypted,
+        } => {
+            if *encrypted {
+                return Err(ManifestError("mounted RPF7 binary entry is encrypted".into()));
+            }
+            if *file_size != 0 && file_size != uncompressed_size {
+                return Err(ManifestError("mounted RPF7 binary entry is compressed".into()));
+            }
+            (MountedAssetKind::Binary,
+             if *file_size == 0 { u64::from(*uncompressed_size) } else { u64::from(*file_size) },
+             u64::from(*file_offset_blocks))
+        }
+        Rpf7EntryKind::ResourceFile { file_size, file_offset_blocks, .. } => {
+            if *file_size == 0x00FF_FFFF {
+                return Err(ManifestError("mounted RPF7 resource size sentinel must be resolved before reading".into()));
+            }
+            (MountedAssetKind::Resource, u64::from(*file_size), u64::from(*file_offset_blocks))
+        }
+        Rpf7EntryKind::Directory { .. } => {
+            return Err(ManifestError("mounted RPF7 entry is a directory".into()));
+        }
+    };
+
+    let expected_offset = offset_blocks.checked_mul(512)
+        .ok_or_else(|| ManifestError("mounted RPF7 payload offset overflows".into()))?;
+    if asset.kind != expected_kind || asset.offset != expected_offset || asset.length != size {
+        return Err(ManifestError("mounted asset descriptor does not match the RPF7 TOC entry".into()));
+    }
+    let end = expected_offset.checked_add(size)
+        .ok_or_else(|| ManifestError("mounted RPF7 payload end overflows".into()))?;
+    let metadata_end = 16_u64
+        .checked_add(inventory.inventory.header.toc_bytes)
+        .and_then(|n| n.checked_add(u64::from(inventory.inventory.header.names_length)))
+        .ok_or_else(|| ManifestError("RPF7 metadata boundary overflows".into()))?;
+    if expected_offset < metadata_end || end > inventory.archive_len {
+        return Err(ManifestError("mounted RPF7 payload range is outside archive payload bounds".into()));
+    }
+
+    reader.seek(SeekFrom::Start(expected_offset))
+        .map_err(|e| ManifestError(format!("cannot seek to mounted RPF7 payload: {e}")))?;
+    let mut remaining = size;
+    let mut buffer = [0_u8; 64 * 1024];
+    while remaining > 0 {
+        let count = usize::try_from(remaining.min(buffer.len() as u64)).unwrap();
+        reader.read_exact(&mut buffer[..count])
+            .map_err(|e| ManifestError(format!("cannot read mounted RPF7 payload: {e}")))?;
+        output.write_all(&buffer[..count])
+            .map_err(|e| ManifestError(format!("cannot write mounted RPF7 payload: {e}")))?;
+        remaining -= count as u64;
+    }
+    Ok(size)
+}
+
 /// Decode one RSC7 resource directly from a file-backed archive. The legacy
 /// 0xFFFFFF size sentinel is resolved from its bounded 16-byte resource header.
 pub fn extract_rpf7_rsc7_entry_from_reader<R: Read + Seek, W: std::io::Write>(
@@ -319,6 +406,69 @@ mod tests {
         let mut reader = Cursor::new(bytes);
         let mut output = Vec::new();
         assert!(copy_rpf7_open_binary_entry_from_reader(&mut reader, 1, &mut output, 3).is_err());
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn reads_mounted_asset_after_revalidating_its_toc_descriptor() {
+        let mut bytes = fixture();
+        bytes[512..516].copy_from_slice(b"DATA");
+        let asset = crate::MountedAsset {
+            archive: "mods/test.rpf".into(),
+            entry_index: 1,
+            offset: 512,
+            length: 4,
+            kind: crate::MountedAssetKind::Binary,
+        };
+        let mut reader = Cursor::new(bytes.clone());
+        let mut output = Vec::new();
+        let copied = copy_mounted_rpf7_asset_from_reader(
+            &mut reader, "mods/test.rpf", &asset, &mut output, 16,
+        ).unwrap();
+        assert_eq!(copied, 4);
+        assert_eq!(output, b"DATA");
+    }
+
+    #[test]
+    fn rejects_forged_mounted_asset_range_and_wrong_archive() {
+        let bytes = fixture();
+        let mut asset = crate::MountedAsset {
+            archive: "mods/test.rpf".into(),
+            entry_index: 1,
+            offset: 1024,
+            length: 4,
+            kind: crate::MountedAssetKind::Binary,
+        };
+        let mut reader = Cursor::new(bytes.clone());
+        let mut output = Vec::new();
+        assert!(copy_mounted_rpf7_asset_from_reader(
+            &mut reader, "mods/test.rpf", &asset, &mut output, 16,
+        ).unwrap_err().0.contains("does not match"));
+        assert!(output.is_empty());
+
+        asset.offset = 512;
+        let mut reader = Cursor::new(bytes);
+        assert!(copy_mounted_rpf7_asset_from_reader(
+            &mut reader, "mods/other.rpf", &asset, &mut output, 16,
+        ).unwrap_err().0.contains("identifier"));
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn enforces_mounted_asset_copy_limit_before_writing() {
+        let bytes = fixture();
+        let asset = crate::MountedAsset {
+            archive: "mods/test.rpf".into(),
+            entry_index: 1,
+            offset: 512,
+            length: 4,
+            kind: crate::MountedAssetKind::Binary,
+        };
+        let mut reader = Cursor::new(bytes);
+        let mut output = Vec::new();
+        assert!(copy_mounted_rpf7_asset_from_reader(
+            &mut reader, "mods/test.rpf", &asset, &mut output, 3,
+        ).unwrap_err().0.contains("exceeds extraction limit"));
         assert!(output.is_empty());
     }
 
