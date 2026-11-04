@@ -2020,3 +2020,4 @@ mod rsc7_streaming_decode_tests {
 
 /// Bounded file-backed archive metadata readers.
 pub mod file_backed;
+pub use file_backed::extract_rpf7_rsc7_entry_from_reader;
