@@ -1,0 +1,132 @@
+//! End-to-end preparation pipeline for mounted JSON placement content.
+//!
+//! This joins the existing archive/placement/resource/geometry stages into one
+//! bounded operation. It prepares GPU mesh payloads, but deliberately does not
+//! issue draw calls, resolve game materials, or spawn engine entities.
+use crate::{
+    add_rpf7_inventory_to_mount, assemble_decoded_placement_cpu_meshes,
+    build_placement_gpu_payloads, build_placement_scene_meshes,
+    build_resolved_json_placement_plan, decode_resolved_placement_payloads,
+    inspect_decoded_placement_gta_assets, read_decoded_placement_geometry_buffers,
+    read_resolved_json_placement_payloads, AssetMountIndex, InspectedPlacementGeometryBuffers,
+    JsonPlacementDocument, ManifestError, PlacementGpuPayloadBatch, VertexElement,
+};
+use std::io::{Read, Seek};
+
+#[derive(Clone, Debug)]
+pub struct PlacementPipelineLimits {
+    pub max_placements: usize,
+    pub max_asset_bytes: u64,
+    pub max_total_source_bytes: u64,
+    pub max_resource_output_bytes: usize,
+    pub max_total_decoded_bytes: u64,
+    pub max_vertices_per_geometry: u32,
+    pub max_indices_per_geometry: u32,
+    pub max_geometry_bytes: usize,
+    pub max_total_geometry_bytes: usize,
+    pub max_total_scene_vertices: usize,
+    pub max_total_scene_bytes: usize,
+    pub max_gpu_meshes: usize,
+    pub max_gpu_vertices: usize,
+    pub max_gpu_indices: usize,
+    pub max_gpu_upload_bytes: usize,
+}
+
+impl Default for PlacementPipelineLimits {
+    fn default() -> Self {
+        Self {
+            max_placements: 4096,
+            max_asset_bytes: 64 * 1024 * 1024,
+            max_total_source_bytes: 512 * 1024 * 1024,
+            max_resource_output_bytes: 128 * 1024 * 1024,
+            max_total_decoded_bytes: 1024 * 1024 * 1024,
+            max_vertices_per_geometry: 2_000_000,
+            max_indices_per_geometry: 6_000_000,
+            max_geometry_bytes: 128 * 1024 * 1024,
+            max_total_geometry_bytes: 512 * 1024 * 1024,
+            max_total_scene_vertices: 8_000_000,
+            max_total_scene_bytes: 1024 * 1024 * 1024,
+            max_gpu_meshes: 16384,
+            max_gpu_vertices: 8_000_000,
+            max_gpu_indices: 24_000_000,
+            max_gpu_upload_bytes: 1024 * 1024 * 1024,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreparedPlacementPipeline {
+    pub mount_index: AssetMountIndex,
+    pub gpu_payloads: PlacementGpuPayloadBatch,
+    pub placement_count: usize,
+    pub inspected_gta_assets: usize,
+    pub decoded_geometries: usize,
+}
+
+/// Build a mount index from an RPF7 inventory, then resolve, read, decode,
+/// inspect, assemble, transform and pack JSON placement assets.
+/// The declaration resolver must return a verified retail vertex layout for
+/// each geometry; this function never guesses a layout from stride alone.
+pub fn prepare_rpf7_json_placement_pipeline<R, F>(
+    reader: &mut R,
+    archive_name: &str,
+    inventory: &crate::Rpf7Inventory,
+    placements: &JsonPlacementDocument,
+    limits: &PlacementPipelineLimits,
+    mut resolve_declaration: F,
+) -> Result<PreparedPlacementPipeline, ManifestError>
+where
+    R: Read + Seek,
+    F: FnMut(&InspectedPlacementGeometryBuffers) -> Result<Vec<VertexElement>, ManifestError>,
+{
+    let mut mount_index = AssetMountIndex::new();
+    add_rpf7_inventory_to_mount(&mut mount_index, archive_name, inventory)
+        .map_err(|e| ManifestError(format!("RPF7 mount indexing failed: {}", e.0)))?;
+
+    let plan = build_resolved_json_placement_plan(
+        placements, &mount_index, limits.max_placements,
+    )?;
+    let source = read_resolved_json_placement_payloads(
+        reader, &plan, limits.max_asset_bytes, limits.max_total_source_bytes,
+    )?;
+    let decoded = decode_resolved_placement_payloads(
+        &source, limits.max_resource_output_bytes, limits.max_total_decoded_bytes,
+    )?;
+    let inspected = inspect_decoded_placement_gta_assets(&decoded)?;
+    let geometry = read_decoded_placement_geometry_buffers(
+        &decoded,
+        limits.max_vertices_per_geometry,
+        limits.max_indices_per_geometry,
+        limits.max_geometry_bytes,
+        limits.max_total_geometry_bytes,
+    )?;
+    let cpu_meshes = assemble_decoded_placement_cpu_meshes(
+        &geometry,
+        |item| resolve_declaration(item),
+        limits.max_vertices_per_geometry,
+        limits.max_indices_per_geometry,
+        limits.max_geometry_bytes,
+    )?;
+    let scene = build_placement_scene_meshes(
+        &plan,
+        &cpu_meshes,
+        limits.max_placements,
+        limits.max_total_scene_vertices,
+        limits.max_total_scene_bytes,
+    )?;
+    let gpu_payloads = build_placement_gpu_payloads(
+        &scene,
+        limits.max_gpu_meshes,
+        limits.max_gpu_vertices,
+        limits.max_gpu_indices,
+        limits.max_gpu_upload_bytes,
+    )?;
+
+    Ok(PreparedPlacementPipeline {
+        mount_index,
+        gpu_payloads,
+        placement_count: plan.placements.len(),
+        inspected_gta_assets: inspected.assets.len(),
+        decoded_geometries: geometry.geometries.len(),
+    })
+}
