@@ -599,7 +599,7 @@ mod bc_texture_tests {
 
     #[test]
     fn preserves_bc1_one_bit_transparency() {
-        let block = [0x00, 0x00, 0x01, 0x00, 0xFF, 0xFF, 0xFF, 0xFF];
+        let block = [0x00, 0x00, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00];
         let decoded = decode_ytd_bc_rgba(4, 4, 8, 0x3154_5844, &block, 64).unwrap();
         assert_eq!(&decoded[0..4], &[0, 0, 0, 0]);
         assert_ne!(&decoded[4..8], &[0, 0, 0, 0]);
