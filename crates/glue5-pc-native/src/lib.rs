@@ -1344,6 +1344,38 @@ pub fn decode_rsc7_pointer_array(
     Ok(resolved)
 }
 
+/// Read a serialized pointer array from a resource and resolve each target range.
+/// This composes bounded array access with per-pointer segment validation; it does
+/// not infer the target structure's semantic layout.
+pub fn read_rsc7_pointer_array<'a>(
+    body: &'a [u8],
+    array_pointer: u64,
+    count: u16,
+    max_count: u16,
+    target_length: u32,
+    page_sizes: Rpf7ResourcePageSizes,
+) -> Result<Vec<Option<&'a [u8]>>, ManifestError> {
+    if count > max_count {
+        return Err(ManifestError(format!(
+            "RSC7 pointer-array count {} exceeds configured limit {}",
+            count, max_count
+        )));
+    }
+    let array_bytes = u32::from(count).checked_mul(4)
+        .ok_or_else(|| ManifestError("RSC7 pointer-array byte length overflow".into()))?;
+    let bytes = read_rsc7_pointer(body, array_pointer, array_bytes, page_sizes)?
+        .ok_or_else(|| ManifestError("RSC7 pointer array has a null address".into()))?;
+    let resolved = decode_rsc7_pointer_array(bytes, count, max_count, target_length, page_sizes)?;
+    resolved.into_iter().map(|item| {
+        let Some(item) = item else { return Ok(None); };
+        let pointer = match item.segment {
+            Rsc7Segment::System => 0x5000_0000_u64 | u64::from(item.offset),
+            Rsc7Segment::Graphics => 0x6000_0000_u64 | u64::from(item.offset),
+        };
+        read_rsc7_pointer(body, pointer, item.length, page_sizes)
+    }).collect()
+}
+
 /// Select one fixed-size record from bytes returned by
 /// read_rsc7_pointer_list. The caller supplies the validated element count
 /// and size because GTA resource types are not inferred by this generic layer.
