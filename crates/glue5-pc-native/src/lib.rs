@@ -733,7 +733,7 @@ mod tests {
     #[test]
     fn refuses_encrypted_compressed_and_resource_payload_extraction() {
         let mut encrypted = minimal_open_rpf7();
-        encrypted[60..64].copy_from_slice(&1_u32.to_le_bytes());
+        encrypted[44..48].copy_from_slice(&1_u32.to_le_bytes());
         let inventory = inventory_rpf7_open(&encrypted).unwrap();
         assert!(extract_rpf7_open_binary_entry(&encrypted, &inventory, 1, 64).is_err());
 
