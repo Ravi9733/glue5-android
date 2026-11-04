@@ -1,7 +1,7 @@
 //! Capability gate and manifest validation for a future native PC-game backend.
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Component, Path};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -402,12 +402,15 @@ pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -
 /// Copy one unencrypted, uncompressed RPF7 binary entry into a bounded buffer.
 /// Compressed, encrypted, resource, metadata-overlapping and out-of-range
 /// payloads are rejected; this does not decompress or decode RSC7 resources.
-pub fn extract_rpf7_open_binary_entry(
+/// Stream one unencrypted, uncompressed RPF7 binary entry to a caller-owned
+/// writer in bounded chunks. No output-sized intermediate buffer is allocated.
+pub fn copy_rpf7_open_binary_entry<W: Write>(
     archive: &[u8],
     inventory: &Rpf7Inventory,
     entry_index: u32,
     max_output_bytes: usize,
-) -> Result<Vec<u8>, ManifestError> {
+    writer: &mut W,
+) -> Result<u64, ManifestError> {
     let entry = inventory.entries.iter().find(|entry| entry.index == entry_index)
         .ok_or_else(|| ManifestError(format!("RPF7 entry {entry_index} does not exist")))?;
     let (file_size, uncompressed_size, encrypted) = match &entry.kind {
@@ -439,9 +442,26 @@ pub fn extract_rpf7_open_binary_entry(
         .map_err(|_| ManifestError("RPF7 binary payload offset does not fit this platform".into()))?;
     let end = usize::try_from(range.end)
         .map_err(|_| ManifestError("RPF7 binary payload end does not fit this platform".into()))?;
-    Ok(archive.get(start..end)
-        .ok_or_else(|| ManifestError("RPF7 binary payload slice is unavailable".into()))?
-        .to_vec())
+    let payload = archive.get(start..end)
+        .ok_or_else(|| ManifestError("RPF7 binary payload slice is unavailable".into()))?;
+    for chunk in payload.chunks(64 * 1024) {
+        writer.write_all(chunk)
+            .map_err(|error| ManifestError(format!("writing RPF7 payload failed: {error}")))?;
+    }
+    Ok(size as u64)
+}
+
+/// Convenience wrapper for small payloads. Prefer the streaming copy API for
+/// larger entries to avoid allocating an output-sized intermediate buffer.
+pub fn extract_rpf7_open_binary_entry(
+    archive: &[u8],
+    inventory: &Rpf7Inventory,
+    entry_index: u32,
+    max_output_bytes: usize,
+) -> Result<Vec<u8>, ManifestError> {
+    let mut output = Vec::new();
+    copy_rpf7_open_binary_entry(archive, inventory, entry_index, max_output_bytes, &mut output)?;
+    Ok(output)
 }
 
 
@@ -630,6 +650,17 @@ mod tests {
         assert_eq!(inventory.entries[1].kind, Rpf7EntryKind::BinaryFile {
             file_size: 0, file_offset_blocks: 1, uncompressed_size: 4, encrypted: false,
         });
+    }
+
+    #[test]
+    fn streams_bounded_binary_entry_to_writer() {
+        let mut data = minimal_open_rpf7();
+        data[512..516].copy_from_slice(b"DATA");
+        let inventory = inventory_rpf7_open(&data).unwrap();
+        let mut output = Vec::new();
+        let copied = copy_rpf7_open_binary_entry(&data, &inventory, 1, 4, &mut output).unwrap();
+        assert_eq!(copied, 4);
+        assert_eq!(output, b"DATA");
     }
 
     #[test]
