@@ -263,7 +263,7 @@ mod tests {
     }
 
     fn archive_with_nested(name: &str, nested: &[u8]) -> Vec<u8> {
-        let mut names = b"root\\0".to_vec();
+        let mut names = b"root\0".to_vec();
         names.extend_from_slice(name.as_bytes());
         names.push(0);
         let metadata_len = 16 + 32 + names.len();
