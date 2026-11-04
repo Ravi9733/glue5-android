@@ -6,6 +6,7 @@ on:
     branches: [android-pc-runtime-foundation]
     paths:
       - "crates/glue5-pc-native/**"
+      - "crates/glue5-gpu/**"
       - "docs/ANDROID_PC_NATIVE_BACKEND.md"
       - ".github/workflows/android-pc-native-check.yml"
       - "Cargo.toml"
@@ -31,3 +32,5 @@ jobs:
         run: mise run setup
       - name: Test native PC backend foundation
         run: cargo test -p glue5-pc-native
+      - name: Compile Glue5 Vulkan renderer integration
+        run: cargo check -p glue5-gpu
