@@ -17,7 +17,7 @@ pub use vertex_decode::{decode_drawable_indices, decode_interleaved_vertices, pa
 pub use drawable_structure::{inspect_gta_drawable_structure, GtaDrawableResourceSummary, GtaDrawableSummary, GtaGeometrySummary, GtaModelSummary};
 pub use drawable_buffers::{read_gta_drawable_buffer_at, read_gta_geometry_buffers, GtaBufferPage, GtaDrawableBufferData, GtaGeometryBufferData, GtaIndexBufferLayout, GtaVertexBufferLayout};
 pub use drawable::{inspect_mounted_gta_drawable_pages, MountedGtaDrawablePages};
-pub use ytd::{decode_ytd_uncompressed_rgba, parse_ytd_resource_pages, YtdDictionary, YtdPixelFormat, YtdTextureInfo};
+pub use ytd::{decode_ytd_bc_rgba, decode_ytd_uncompressed_rgba, parse_ytd_resource_pages, YtdDictionary, YtdPixelFormat, YtdTextureInfo};
 pub use placement::{apply_json_placements, apply_resolved_json_placements, parse_json_placements, validate_json_placement_assets, JsonPlacement, JsonPlacementDocument, PlacementApplyError, PlacementAssetError, PlacementError, PlacementSink, ResolvedPlacementSink};
 pub use mount::{add_rpf7_inventory_to_mount, add_rpf7_inventory_to_mount_at, AssetMountIndex, MountError, MountedAsset, MountedAssetKind, MountedGtaResourceCandidate};
 
