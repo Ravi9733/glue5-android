@@ -998,6 +998,70 @@ pub fn scan_nested_rpf7_open(archive: &[u8], inventory: &Rpf7Inventory) -> Vec<N
     reports
 }
 
+/// Recursively inspect nested, unencrypted, stored RPF7 archives.
+///
+/// max_depth counts nested levels below the supplied root (1 preserves the
+/// legacy one-level behavior). max_archives caps total child archives reported.
+/// Payloads are borrowed as bounded slices; no archive contents are extracted.
+pub fn scan_nested_rpf7_open_recursive(
+    archive: &[u8],
+    inventory: &Rpf7Inventory,
+    max_depth: usize,
+    max_archives: usize,
+) -> Vec<NestedRpfReport> {
+    fn walk(
+        archive: &[u8],
+        inventory: &Rpf7Inventory,
+        depth: usize,
+        max_depth: usize,
+        remaining: &mut usize,
+        prefix: &str,
+        output: &mut Vec<NestedRpfReport>,
+    ) {
+        if depth >= max_depth || *remaining == 0 { return; }
+        let reports = scan_nested_rpf7_open(archive, inventory);
+        for mut report in reports {
+            if *remaining == 0 { break; }
+            *remaining -= 1;
+            let local_name = report.name.clone();
+            report.name = if prefix.is_empty() {
+                local_name.clone()
+            } else {
+                format!("{prefix}/{local_name}")
+            };
+            let nested_inventory = match &report.status {
+                NestedRpfStatus::InventoriedRpf7(value) => Some(value.clone()),
+                _ => None,
+            };
+            output.push(report.clone());
+
+            let Some(nested_inventory) = nested_inventory else { continue; };
+            if depth + 1 >= max_depth || *remaining == 0 { continue; }
+            let Some(entry) = inventory.entries.iter().find(|entry| entry.index == report.parent_entry_index) else { continue; };
+            let (size, offset_blocks) = match &entry.kind {
+                Rpf7EntryKind::BinaryFile { file_size, file_offset_blocks, uncompressed_size, encrypted }
+                    if !*encrypted && file_size == uncompressed_size =>
+                    (*file_size as usize, *file_offset_blocks as usize),
+                _ => continue,
+            };
+            let Some(start) = offset_blocks.checked_mul(512) else { continue; };
+            let Some(end) = start.checked_add(size) else { continue; };
+            let metadata_end = 16_usize
+                .checked_add(inventory.header.toc_bytes as usize)
+                .and_then(|value| value.checked_add(inventory.header.names_length as usize));
+            if metadata_end.map_or(true, |boundary| start < boundary) || end > archive.len() { continue; }
+            let child = &archive[start..end];
+            walk(child, &nested_inventory, depth + 1, max_depth, remaining,
+                &report.name, output);
+        }
+    }
+
+    let mut output = Vec::new();
+    let mut remaining = max_archives;
+    walk(archive, inventory, 0, max_depth, &mut remaining, "", &mut output);
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1440,6 +1504,16 @@ mod tests {
         outer[48..64].copy_from_slice(b"root\0nested.rpf\0");
         outer[1024..].copy_from_slice(&inner);
         outer
+    }
+
+    #[test]
+    fn recursive_nested_scan_respects_depth_and_archive_limits() {
+        let outer = outer_with_nested_open_rpf7();
+        let inventory = inventory_rpf7_open(&outer).unwrap();
+        assert!(scan_nested_rpf7_open_recursive(&outer, &inventory, 0, 8).is_empty());
+        let limited = scan_nested_rpf7_open_recursive(&outer, &inventory, 8, 1);
+        assert_eq!(limited.len(), 1);
+        assert_eq!(limited[0].name, "nested.rpf");
     }
 
     #[test]
