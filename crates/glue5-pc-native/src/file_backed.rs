@@ -1315,3 +1315,129 @@ mod mounted_ytd_inspection_tests {
         assert_eq!(reader.position(), 0);
     }
 }
+
+
+/// Raw, bounded RSC7 bytes for a mounted drawable resource. This is the
+/// hand-off format for a full YDR/YDD decoder; it is not decoded geometry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MountedGtaDrawablePayload {
+    pub virtual_path: String,
+    pub candidate_kind: crate::GtaResourceCandidateKind,
+    pub rsc7_bytes: Vec<u8>,
+}
+
+/// Read a mounted YDR/YDD resource from its original RPF7 archive. The mount
+/// descriptor is revalidated against the supplied inventory and backing-file
+/// bounds before copying. Only drawable candidates are accepted.
+pub fn read_mounted_gta_drawable_rsc7_from_inventory_at<R: Read + Seek>(
+    reader: &mut R,
+    archive_id: &str,
+    archive_base: u64,
+    archive_len: u64,
+    inventory: &crate::Rpf7Inventory,
+    candidate: &crate::MountedGtaResourceCandidate,
+    max_output_bytes: u64,
+) -> Result<MountedGtaDrawablePayload, ManifestError> {
+    let actual_kind = crate::classify_gta_resource_candidate(&candidate.virtual_path)
+        .ok_or_else(|| ManifestError("mounted path is not a recognized GTA resource candidate".into()))?;
+    if actual_kind != candidate.candidate_kind {
+        return Err(ManifestError("mounted drawable candidate kind does not match its path".into()));
+    }
+    if !matches!(
+        actual_kind,
+        crate::GtaResourceCandidateKind::DrawableYdr
+            | crate::GtaResourceCandidateKind::DrawableDictionaryYdd
+    ) {
+        return Err(ManifestError("mounted candidate is not a YDR or YDD drawable resource".into()));
+    }
+    if candidate.asset.kind != crate::MountedAssetKind::Resource {
+        return Err(ManifestError("mounted drawable candidate is not an RPF7 resource entry".into()));
+    }
+
+    let capacity = usize::try_from(candidate.asset.length)
+        .map_err(|_| ManifestError("mounted drawable length does not fit memory address space".into()))?;
+    if candidate.asset.length > max_output_bytes {
+        return Err(ManifestError(format!(
+            "mounted drawable exceeds configured byte limit ({} > {})",
+            candidate.asset.length, max_output_bytes
+        )));
+    }
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(capacity)
+        .map_err(|e| ManifestError(format!("cannot allocate bounded drawable buffer: {e}")))?;
+    copy_mounted_rpf7_asset_from_inventory_at(
+        reader, archive_id, archive_base, archive_len, inventory,
+        &candidate.asset, &mut bytes, max_output_bytes,
+    )?;
+    if bytes.len() < 16 || &bytes[..4] != b"RSC7" {
+        return Err(ManifestError("mounted drawable payload has no valid RSC7 header".into()));
+    }
+
+    Ok(MountedGtaDrawablePayload {
+        virtual_path: candidate.virtual_path.clone(),
+        candidate_kind: actual_kind,
+        rsc7_bytes: bytes,
+    })
+}
+
+#[cfg(test)]
+mod mounted_gta_drawable_payload_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn candidate(path: &str, kind: crate::GtaResourceCandidateKind) -> crate::MountedGtaResourceCandidate {
+        crate::MountedGtaResourceCandidate {
+            virtual_path: path.into(),
+            candidate_kind: kind,
+            asset: crate::MountedAsset {
+                archive: "mods/drawables.rpf".into(),
+                entry_index: 2,
+                offset: 64,
+                length: 32,
+                kind: crate::MountedAssetKind::Resource,
+            },
+        }
+    }
+
+    #[test]
+    fn rejects_ytd_before_touching_backing_reader() {
+        let mut reader = Cursor::new(vec![0_u8; 256]);
+        let candidate = candidate(
+            "stream/shared.ytd",
+            crate::GtaResourceCandidateKind::TextureDictionaryYtd,
+        );
+        let inventory = crate::Rpf7Inventory {
+            header: crate::Rpf7Header {
+                entry_count: 0, names_length: 0, names_flags: 0,
+                encryption_tag: 0, toc_bytes: 0,
+            },
+            entries: Vec::new(),
+        };
+        let error = read_mounted_gta_drawable_rsc7_from_inventory_at(
+            &mut reader, "mods/drawables.rpf", 0, 256, &inventory, &candidate, 1024,
+        ).unwrap_err();
+        assert!(error.0.contains("not a YDR or YDD"));
+        assert_eq!(reader.position(), 0);
+    }
+
+    #[test]
+    fn rejects_path_and_candidate_kind_mismatch_before_reading() {
+        let mut reader = Cursor::new(vec![0_u8; 256]);
+        let candidate = candidate(
+            "stream/model.ydr",
+            crate::GtaResourceCandidateKind::DrawableDictionaryYdd,
+        );
+        let inventory = crate::Rpf7Inventory {
+            header: crate::Rpf7Header {
+                entry_count: 0, names_length: 0, names_flags: 0,
+                encryption_tag: 0, toc_bytes: 0,
+            },
+            entries: Vec::new(),
+        };
+        let error = read_mounted_gta_drawable_rsc7_from_inventory_at(
+            &mut reader, "mods/drawables.rpf", 0, 256, &inventory, &candidate, 1024,
+        ).unwrap_err();
+        assert!(error.0.contains("kind does not match"));
+        assert_eq!(reader.position(), 0);
+    }
+}
