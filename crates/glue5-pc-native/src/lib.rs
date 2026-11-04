@@ -2490,7 +2490,7 @@ mod rsc7_streaming_decode_tests {
 
 /// Bounded file-backed archive metadata readers.
 pub mod file_backed;
-pub use file_backed::{copy_mounted_rpf7_asset_from_inventory_at, copy_mounted_rpf7_asset_from_reader, decode_mounted_rsc7_asset_from_reader, decode_mounted_rsc7_asset_pages_from_reader, extract_rpf7_rsc7_entry_from_reader, inspect_mounted_gta_resource_candidate, mount_rpf7_open_reader_tree, scan_nested_rpf7_open_reader_recursive, MountedGtaResourceInspection};
+pub use file_backed::{copy_mounted_rpf7_asset_from_inventory_at, copy_mounted_rpf7_asset_from_reader, decode_mounted_rsc7_asset_from_reader, decode_mounted_rsc7_asset_pages_from_reader, extract_rpf7_rsc7_entry_from_reader, inspect_mounted_gta_resource_candidate, inspect_mounted_ytd_candidate, mount_rpf7_open_reader_tree, scan_nested_rpf7_open_reader_recursive, MountedGtaResourceInspection, MountedYtdInspection};
 
 
 /// Recognized GTA V resource-file extensions for the next-stage asset loader.
