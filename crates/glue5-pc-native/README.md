@@ -4,6 +4,8 @@ This crate is an isolated engineering foundation for investigating whether PC-fo
 
 ## Current capabilities
 
+- Parse a bounded, versioned Glue5 JSON placement document (schema version 1) containing relative asset identifiers and position/rotation/scale vectors. The parser rejects traversal/absolute asset paths, malformed or non-finite transforms, invalid scales, oversized documents, and excessive placement counts. This is a Glue5-defined interchange schema, not a promise to accept every third-party GTA placement JSON dialect.
+
 - Inspect a candidate data directory and report whether the Android engine, Vulkan translation layer, and prepared game data are present.
 - Parse a versioned data manifest and verify listed files by size and streaming SHA-256. Paths are constrained to the data root; missing files, mismatches, and paths escaping the root are rejected.
 - Probe RPF7/RPF8 archive headers. Inventory metadata for RPF7 archives whose TOC uses the OPEN/NONE (unencrypted) mode. A seekable file-backed reader inventories only the bounded header/TOC/name-table region and records the full archive length without loading the large payload into RAM. File-backed APIs now stream eligible uncompressed binary entries from the archive into a caller-owned writer in fixed 64 KiB chunks; a file-backed RSC7 extraction entry point is also present; it resolves the legacy 0xFFFFFF resource-size sentinel from the bounded 16-byte resource header before streaming decode.
