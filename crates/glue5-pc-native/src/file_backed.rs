@@ -354,7 +354,7 @@ pub fn mount_rpf7_open_reader_tree<R: Read + Seek>(
     max_archives: usize,
     mounts: &mut crate::AssetMountIndex,
 ) -> Result<usize, ManifestError> {
-    use crate::{add_rpf7_inventory_to_mount_at, Rpf7EntryKind};
+    use crate::add_rpf7_inventory_to_mount_at;
 
     fn join_virtual_prefix(parent: &str, child: &str) -> String {
         if parent.is_empty() { child.to_owned() }
@@ -855,7 +855,7 @@ pub fn decode_mounted_rsc7_asset_from_reader<R: Read + Seek, W: std::io::Write>(
 mod mounted_rsc7_decode_tests {
     use super::*;
     use flate2::{write::DeflateEncoder, Compression};
-    use std::io::Cursor;
+    use std::io::{Cursor, Write};
 
     fn payload(body: &[u8]) -> Vec<u8> {
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
