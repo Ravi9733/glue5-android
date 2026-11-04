@@ -2100,4 +2100,4 @@ mod rsc7_streaming_decode_tests {
 
 /// Bounded file-backed archive metadata readers.
 pub mod file_backed;
-pub use file_backed::{copy_mounted_rpf7_asset_from_inventory_at, copy_mounted_rpf7_asset_from_reader, extract_rpf7_rsc7_entry_from_reader};
+pub use file_backed::{copy_mounted_rpf7_asset_from_inventory_at, copy_mounted_rpf7_asset_from_reader, extract_rpf7_rsc7_entry_from_reader, mount_rpf7_open_reader_tree, scan_nested_rpf7_open_reader_recursive};
