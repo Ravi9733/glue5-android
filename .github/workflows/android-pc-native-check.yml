@@ -30,4 +30,4 @@ jobs:
       - name: Prepare workspace-patched dependencies
         run: mise run setup
       - name: Test native PC backend foundation
-        run: cargo test -p glue5-pc-native --locked
+        run: cargo test -p glue5-pc-native
