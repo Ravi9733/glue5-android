@@ -327,7 +327,7 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
     g.set("Wait", wait.clone())?;
     // `task.spawn(f, ...)`, `task.delay(ms, f, ...)`, `task.wait(ms)`.
     let task = lua.create_table()?;
-    task.set("wait", wait)?;
+    task.set("wait", wait.clone())?;
     let s = sched.clone();
     task.set(
         "spawn",
@@ -368,7 +368,7 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
         let hash = match hash_value {
             Value::Integer(i) => i as u64,
             Value::Number(n) if n.is_finite() && n >= 0.0 && n <= u64::MAX as f64 => n as u64,
-            Value::String(s) => parse_native_hash_string(&s.to_str()?)?
+            Value::String(s) => parse_native_hash_string(&s.to_str()?)?,
             _ => return Err(mlua::Error::runtime("Citizen.InvokeNative: hash must be an integer or string")),
         };
         let index = natives::find_hash(hash).ok_or_else(|| mlua::Error::runtime(format!(
