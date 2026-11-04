@@ -2001,6 +2001,32 @@ mod rsc7_streaming_decode_tests {
     }
 
     #[test]
+    fn resource_page_size_decoder_covers_each_bitfield_and_ignores_reserved_top_bits() {
+        let cases = [
+            (1_u32 << 27, 512_u64),
+            (1_u32 << 26, 1024),
+            (1_u32 << 25, 2048),
+            (1_u32 << 24, 4096),
+            (1_u32 << 17, 8192),
+            (1_u32 << 11, 16384),
+            (1_u32 << 7, 32768),
+            (1_u32 << 5, 65536),
+            (1_u32 << 4, 131072),
+        ];
+        for (flags, expected) in cases {
+            let sizes = rpf7_resource_page_sizes(flags, 0).unwrap();
+            assert_eq!(sizes.system_bytes, expected, "flags={flags:#010x}");
+            assert_eq!(sizes.graphics_bytes, 0);
+        }
+
+        let all_fields = 0x0FFF_FFF0_u32;
+        let baseline = rpf7_resource_page_sizes(all_fields, 0).unwrap();
+        assert_eq!(baseline.system_bytes, 512 * 5663);
+        let with_reserved_bits = rpf7_resource_page_sizes(all_fields | 0xF000_0000, 0).unwrap();
+        assert_eq!(with_reserved_bits, baseline);
+    }
+
+    #[test]
     fn streaming_decoder_rejects_output_cap_and_truncated_payload() {
         let payload = fixture();
         let mut reader = Cursor::new(payload.clone());
