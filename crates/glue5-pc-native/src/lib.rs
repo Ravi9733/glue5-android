@@ -9,7 +9,7 @@ use std::path::{Component, Path};
 pub mod placement;
 pub mod mount;
 pub use placement::{apply_json_placements, parse_json_placements, JsonPlacement, JsonPlacementDocument, PlacementApplyError, PlacementError, PlacementSink};
-pub use mount::{AssetMountIndex, MountError, MountedAsset, MountedAssetKind};
+pub use mount::{add_rpf7_inventory_to_mount, AssetMountIndex, MountError, MountedAsset, MountedAssetKind};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendState { MissingAndroidEngine, MissingVulkanTranslationLayer, MissingPreparedGameData, ReadyForRuntimeIntegration }
