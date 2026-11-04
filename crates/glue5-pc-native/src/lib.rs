@@ -325,6 +325,72 @@ pub fn decode_rsc7_resource(
     Ok(DecodedRsc7Resource { version, page_sizes, body })
 }
 
+/// Which RSC7 segment a virtual pointer addresses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rsc7Segment { System, Graphics }
+
+/// A validated byte range inside one decompressed RSC7 segment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rsc7ResolvedPointer {
+    pub segment: Rsc7Segment,
+    pub offset: u32,
+    pub length: u32,
+}
+
+/// Resolve a RAGE virtual pointer (0x5xxxxxxx system, 0x6xxxxxxx graphics).
+/// The pointer is a u64 in serialized structures but its address is encoded
+/// in the low u32. Zero is a null pointer. The requested range must fit wholly
+/// inside the selected decompressed segment.
+pub fn resolve_rsc7_pointer(
+    pointer: u64,
+    length: u32,
+    page_sizes: Rpf7ResourcePageSizes,
+) -> Result<Option<Rsc7ResolvedPointer>, ManifestError> {
+    if pointer == 0 { return Ok(None); }
+    let address = pointer as u32;
+    let segment = match address & 0xF000_0000 {
+        0x5000_0000 => Rsc7Segment::System,
+        0x6000_0000 => Rsc7Segment::Graphics,
+        _ => return Err(ManifestError(format!("unsupported RSC7 virtual pointer {address:#010x}"))),
+    };
+    let offset = address & 0x0FFF_FFFF;
+    let segment_size = match segment {
+        Rsc7Segment::System => page_sizes.system_bytes,
+        Rsc7Segment::Graphics => page_sizes.graphics_bytes,
+    };
+    let end = u64::from(offset).checked_add(u64::from(length))
+        .ok_or_else(|| ManifestError("RSC7 pointer range overflow".into()))?;
+    if end > segment_size {
+        return Err(ManifestError(format!(
+            "RSC7 pointer range {offset:#x}..{end:#x} exceeds {:?} segment size {segment_size:#x}",
+            segment
+        )));
+    }
+    Ok(Some(Rsc7ResolvedPointer { segment, offset, length }))
+}
+
+/// Read a resolved pointer range from the concatenated [system | graphics] body.
+pub fn read_rsc7_pointer<'a>(
+    body: &'a [u8],
+    pointer: u64,
+    length: u32,
+    page_sizes: Rpf7ResourcePageSizes,
+) -> Result<Option<&'a [u8]>, ManifestError> {
+    let Some(resolved) = resolve_rsc7_pointer(pointer, length, page_sizes)? else { return Ok(None); };
+    let segment_base = match resolved.segment {
+        Rsc7Segment::System => 0_u64,
+        Rsc7Segment::Graphics => page_sizes.system_bytes,
+    };
+    let start = segment_base.checked_add(u64::from(resolved.offset))
+        .ok_or_else(|| ManifestError("RSC7 body offset overflow".into()))?;
+    let end = start.checked_add(u64::from(resolved.length))
+        .ok_or_else(|| ManifestError("RSC7 body range overflow".into()))?;
+    let start = usize::try_from(start).map_err(|_| ManifestError("RSC7 body offset does not fit this platform".into()))?;
+    let end = usize::try_from(end).map_err(|_| ManifestError("RSC7 body end does not fit this platform".into()))?;
+    body.get(start..end).map(Some)
+        .ok_or_else(|| ManifestError("RSC7 decompressed body is shorter than its page flags".into()))
+}
+
 /// One entry in a safely inventoried, unencrypted GTA V Legacy RPF7 archive.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rpf7Entry { pub index: u32, pub name: String, pub kind: Rpf7EntryKind }
@@ -835,6 +901,28 @@ mod tests {
         data[44..48].copy_from_slice(&0_u32.to_le_bytes());
         data[48..62].copy_from_slice(b"root\0file.bin\0");
         data
+    }
+
+    #[test]
+    fn resolves_system_and_graphics_virtual_pointers() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 1024, graphics_bytes: 512 };
+        assert_eq!(resolve_rsc7_pointer(0, 4, sizes).unwrap(), None);
+        let system = resolve_rsc7_pointer(0x5000_0020, 8, sizes).unwrap().unwrap();
+        assert_eq!(system, Rsc7ResolvedPointer { segment: Rsc7Segment::System, offset: 0x20, length: 8 });
+        let graphics = resolve_rsc7_pointer(0x6000_0010, 16, sizes).unwrap().unwrap();
+        assert_eq!(graphics, Rsc7ResolvedPointer { segment: Rsc7Segment::Graphics, offset: 0x10, length: 16 });
+        assert!(resolve_rsc7_pointer(0x5000_0400, 1, sizes).is_err());
+        assert!(resolve_rsc7_pointer(0x7000_0000, 1, sizes).is_err());
+    }
+
+    #[test]
+    fn reads_pointer_from_concatenated_rsc7_body() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 4, graphics_bytes: 4 };
+        let body = b"SYS!GPU!";
+        assert_eq!(read_rsc7_pointer(body, 0x5000_0001, 2, sizes).unwrap(), Some(&b"YS"[..]));
+        assert_eq!(read_rsc7_pointer(body, 0x6000_0001, 3, sizes).unwrap(), Some(&b"PU!"[..]));
+        assert_eq!(read_rsc7_pointer(body, 0, 3, sizes).unwrap(), None);
+        assert!(read_rsc7_pointer(body, 0x6000_0003, 2, sizes).is_err());
     }
 
     #[test]

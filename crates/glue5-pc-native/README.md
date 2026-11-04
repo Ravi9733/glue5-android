@@ -10,6 +10,8 @@ This crate is an isolated engineering foundation for investigating whether PC-fo
 - Validate RPF7 binary/resource payload ranges, identify metadata overlap and payload overlap, and report resource page allocation sizes.
 - Resolve the documented RPF7 resource-size sentinel from a bounded 16-byte resource header when enough bytes are available.
 - Inspect the first 16 bytes of bounded RPF7 resource payloads for an RSC7 signature and report whether the header is valid, truncated, out of range, or has the wrong magic.
+- Decompress bounded RSC7 raw-DEFLATE bodies into system and graphics segments, validating output size against page flags.
+- Resolve and read bounded 64-bit serialized virtual pointers in the `0x5xxxxxxx` system and `0x6xxxxxxx` graphics address spaces.
 - Extract/copy only bounded, unencrypted, uncompressed RPF7 binary entries. Scan one level of direct nested RPF7 archives when their payloads are eligible.
 
 ## Deliberate limitations
@@ -20,8 +22,9 @@ This is metadata inspection and a narrow binary-entry extraction path, not a gen
 - RPF8 archives are identified but not inventoried.
 - Compressed or encrypted payloads are not extracted. Resource payloads are not extracted or decompressed.
 - The nested archive scan is one level deep, not recursive.
-- The RSC7 probe checks only the 16-byte header length and magic. It does not decode the RSC7 page map, decompress resource pages, or reconstruct engine objects.
-- Resource page-size values are inventory metadata only; they are not a resource loader.
+- The RSC7 reader currently handles the loose-resource header + raw-DEFLATE body. RPF resource-entry extraction still needs its archive-specific resource-header reconstruction path.
+- Pointer resolution validates the two segment address spaces and bounds only; it does not interpret GTA structure layouts, relocate pointers, or reconstruct engine objects.
+- Resource page sizes are used to bound decompression and pointer access, not to create GPU allocations.
 - Current tests use synthetic fixtures. The parser's assumptions must be checked against legally obtained, real GTA V archives before relying on it for production data.
 
 ## Not implemented yet
