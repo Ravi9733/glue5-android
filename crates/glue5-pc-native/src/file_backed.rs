@@ -121,6 +121,26 @@ pub fn copy_mounted_rpf7_asset_from_reader<R: Read + Seek, W: std::io::Write>(
     output: &mut W,
     max_output_bytes: u64,
 ) -> Result<u64, ManifestError> {
+    let root = inventory_rpf7_open_reader(reader)?;
+    copy_mounted_rpf7_asset_from_inventory_at(
+        reader, archive_id, 0, root.archive_len, &root.inventory, asset, output, max_output_bytes,
+    )
+}
+
+/// Read a mounted entry from an RPF7 archive at a known absolute base offset
+/// inside a larger backing file. The supplied inventory must have been
+/// produced from this exact child archive; its entry descriptor and child
+/// bounds are rechecked before the backing-file read.
+pub fn copy_mounted_rpf7_asset_from_inventory_at<R: Read + Seek, W: std::io::Write>(
+    reader: &mut R,
+    archive_id: &str,
+    archive_base: u64,
+    archive_len: u64,
+    inventory: &crate::Rpf7Inventory,
+    asset: &crate::MountedAsset,
+    output: &mut W,
+    max_output_bytes: u64,
+) -> Result<u64, ManifestError> {
     use crate::{MountedAssetKind, Rpf7EntryKind};
 
     if asset.archive != archive_id {
@@ -132,19 +152,19 @@ pub fn copy_mounted_rpf7_asset_from_reader<R: Read + Seek, W: std::io::Write>(
             asset.length, max_output_bytes
         )));
     }
-
-    let inventory = inventory_rpf7_open_reader(reader)?;
-    let entry = inventory.inventory.entries.iter()
+    let archive_end = archive_base.checked_add(archive_len)
+        .ok_or_else(|| ManifestError("mounted archive backing-file range overflows".into()))?;
+    let backing_len = reader.seek(SeekFrom::End(0))
+        .map_err(|e| ManifestError(format!("cannot seek to backing file end: {e}")))?;
+    if archive_end > backing_len {
+        return Err(ManifestError("mounted child archive exceeds backing file bounds".into()));
+    }
+    let entry = inventory.entries.iter()
         .find(|entry| entry.index == asset.entry_index)
         .ok_or_else(|| ManifestError(format!("mounted RPF7 entry {} does not exist", asset.entry_index)))?;
-
     let (expected_kind, size, offset_blocks) = match &entry.kind {
-        Rpf7EntryKind::BinaryFile {
-            file_size, file_offset_blocks, uncompressed_size, encrypted,
-        } => {
-            if *encrypted {
-                return Err(ManifestError("mounted RPF7 binary entry is encrypted".into()));
-            }
+        Rpf7EntryKind::BinaryFile { file_size, file_offset_blocks, uncompressed_size, encrypted } => {
+            if *encrypted { return Err(ManifestError("mounted RPF7 binary entry is encrypted".into())); }
             if *file_size != 0 && file_size != uncompressed_size {
                 return Err(ManifestError("mounted RPF7 binary entry is compressed".into()));
             }
@@ -158,24 +178,22 @@ pub fn copy_mounted_rpf7_asset_from_reader<R: Read + Seek, W: std::io::Write>(
             }
             (MountedAssetKind::Resource, u64::from(*file_size), u64::from(*file_offset_blocks))
         }
-        Rpf7EntryKind::Directory { .. } => {
-            return Err(ManifestError("mounted RPF7 entry is a directory".into()));
-        }
+        Rpf7EntryKind::Directory { .. } => return Err(ManifestError("mounted RPF7 entry is a directory".into())),
     };
-
-    let expected_offset = offset_blocks.checked_mul(512)
+    let relative_offset = offset_blocks.checked_mul(512)
         .ok_or_else(|| ManifestError("mounted RPF7 payload offset overflows".into()))?;
+    let relative_end = relative_offset.checked_add(size)
+        .ok_or_else(|| ManifestError("mounted RPF7 payload end overflows".into()))?;
+    let metadata_end = 16_u64.checked_add(inventory.header.toc_bytes)
+        .and_then(|n| n.checked_add(u64::from(inventory.header.names_length)))
+        .ok_or_else(|| ManifestError("RPF7 metadata boundary overflows".into()))?;
+    if relative_offset < metadata_end || relative_end > archive_len {
+        return Err(ManifestError("mounted RPF7 payload range is outside child archive bounds".into()));
+    }
+    let expected_offset = archive_base.checked_add(relative_offset)
+        .ok_or_else(|| ManifestError("mounted RPF7 absolute payload offset overflows".into()))?;
     if asset.kind != expected_kind || asset.offset != expected_offset || asset.length != size {
         return Err(ManifestError("mounted asset descriptor does not match the RPF7 TOC entry".into()));
-    }
-    let end = expected_offset.checked_add(size)
-        .ok_or_else(|| ManifestError("mounted RPF7 payload end overflows".into()))?;
-    let metadata_end = 16_u64
-        .checked_add(inventory.inventory.header.toc_bytes)
-        .and_then(|n| n.checked_add(u64::from(inventory.inventory.header.names_length)))
-        .ok_or_else(|| ManifestError("RPF7 metadata boundary overflows".into()))?;
-    if expected_offset < metadata_end || end > inventory.archive_len {
-        return Err(ManifestError("mounted RPF7 payload range is outside archive payload bounds".into()));
     }
 
     reader.seek(SeekFrom::Start(expected_offset))
@@ -427,6 +445,28 @@ mod tests {
         ).unwrap();
         assert_eq!(copied, 4);
         assert_eq!(output, b"DATA");
+    }
+
+    #[test]
+    fn reads_mounted_asset_from_nested_archive_at_absolute_offset() {
+        let child = fixture();
+        let mut backing = vec![0_u8; 1024];
+        backing.extend_from_slice(&child);
+        backing[1024 + 512..1024 + 516].copy_from_slice(b"CHLD");
+        let mut child_reader = Cursor::new(child.clone());
+        let child_inventory = inventory_rpf7_open_reader(&mut child_reader).unwrap();
+        let asset = crate::MountedAsset {
+            archive: "mods/update.rpf".into(), entry_index: 1,
+            offset: 1024 + 512, length: 4, kind: crate::MountedAssetKind::Binary,
+        };
+        let mut reader = Cursor::new(backing);
+        let mut output = Vec::new();
+        let copied = copy_mounted_rpf7_asset_from_inventory_at(
+            &mut reader, "mods/update.rpf", 1024, child.len() as u64,
+            &child_inventory.inventory, &asset, &mut output, 16,
+        ).unwrap();
+        assert_eq!(copied, 4);
+        assert_eq!(output, b"CHLD");
     }
 
     #[test]
