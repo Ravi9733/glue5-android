@@ -9,7 +9,7 @@ use std::path::{Component, Path};
 pub mod placement;
 pub mod mount;
 pub use placement::{apply_json_placements, apply_resolved_json_placements, parse_json_placements, validate_json_placement_assets, JsonPlacement, JsonPlacementDocument, PlacementApplyError, PlacementAssetError, PlacementError, PlacementSink, ResolvedPlacementSink};
-pub use mount::{add_rpf7_inventory_to_mount, add_rpf7_inventory_to_mount_at, AssetMountIndex, MountError, MountedAsset, MountedAssetKind};
+pub use mount::{add_rpf7_inventory_to_mount, add_rpf7_inventory_to_mount_at, AssetMountIndex, MountError, MountedAsset, MountedAssetKind, MountedGtaResourceCandidate};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendState { MissingAndroidEngine, MissingVulkanTranslationLayer, MissingPreparedGameData, ReadyForRuntimeIntegration }
