@@ -70,8 +70,18 @@ pub fn build_placement_scene_meshes(
             matched += 1;
             let next_vertices = total_vertices.checked_add(source.mesh.vertices.len())
                 .ok_or_else(|| ManifestError("placement scene vertex count overflow".into()))?;
-            let next_bytes = source.mesh.vertices.len().checked_mul(12)
-                .and_then(|n| output_bytes.checked_add(n))
+            let mesh_attribute_bytes = source.mesh.vertices.iter().try_fold(0usize, |total, vertex| {
+                vertex.attributes.iter().try_fold(total, |bytes, attribute| {
+                    attribute.components.len().checked_mul(std::mem::size_of::<f32>())
+                        .and_then(|size| bytes.checked_add(size))
+                })
+            }).ok_or_else(|| ManifestError("placement scene attribute byte count overflow".into()))?;
+            let mesh_index_bytes = source.mesh.indices.as_ref().map_or(Some(0usize), |indices| {
+                indices.len().checked_mul(std::mem::size_of::<u32>())
+            }).ok_or_else(|| ManifestError("placement scene index byte count overflow".into()))?;
+            let mesh_bytes = mesh_attribute_bytes.checked_add(mesh_index_bytes)
+                .ok_or_else(|| ManifestError("placement scene mesh byte count overflow".into()))?;
+            let next_bytes = output_bytes.checked_add(mesh_bytes)
                 .ok_or_else(|| ManifestError("placement scene output byte count overflow".into()))?;
             if next_vertices > max_vertices || next_bytes > max_output_bytes {
                 return Err(ManifestError("placement scene exceeds configured geometry limits".into()));
