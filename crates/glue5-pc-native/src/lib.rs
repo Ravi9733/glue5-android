@@ -325,6 +325,27 @@ pub fn decode_rsc7_resource(
     Ok(DecodedRsc7Resource { version, page_sizes, body })
 }
 
+impl DecodedRsc7Resource {
+    /// Borrow the decompressed body as separate [system, graphics] segments.
+    /// The body length must exactly match the page allocation metadata.
+    pub fn segments(&self) -> Result<(&[u8], &[u8]), ManifestError> {
+        let system_len = usize::try_from(self.page_sizes.system_bytes)
+            .map_err(|_| ManifestError("RSC7 system segment size does not fit this platform".into()))?;
+        let graphics_len = usize::try_from(self.page_sizes.graphics_bytes)
+            .map_err(|_| ManifestError("RSC7 graphics segment size does not fit this platform".into()))?;
+        let expected = system_len.checked_add(graphics_len)
+            .ok_or_else(|| ManifestError("RSC7 segment length overflow".into()))?;
+        if self.body.len() != expected {
+            return Err(ManifestError(format!(
+                "RSC7 body length mismatch: page metadata requires {expected}, got {}",
+                self.body.len()
+            )));
+        }
+        let (system, graphics) = self.body.split_at(system_len);
+        Ok((system, graphics))
+    }
+}
+
 /// Which RSC7 segment a virtual pointer addresses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Rsc7Segment { System, Graphics }
@@ -1508,3 +1529,31 @@ mod rsc7_pointer_array_reader_tests {
         assert!(read_rsc7_pointer_array(&body[..14], 0x5000_0000, 2, 2, 4, sizes).is_err());
     }
 }
+
+#[cfg(test)]
+mod rsc7_segment_view_tests {
+    use super::*;
+
+    #[test]
+    fn exposes_system_and_graphics_segments_without_copying() {
+        let decoded = DecodedRsc7Resource {
+            version: 1,
+            page_sizes: Rpf7ResourcePageSizes { system_bytes: 4, graphics_bytes: 3 },
+            body: b"SYS!GPU".to_vec(),
+        };
+        let (system, graphics) = decoded.segments().unwrap();
+        assert_eq!(system, b"SYS!");
+        assert_eq!(graphics, b"GPU");
+    }
+
+    #[test]
+    fn rejects_body_that_disagrees_with_page_metadata() {
+        let decoded = DecodedRsc7Resource {
+            version: 1,
+            page_sizes: Rpf7ResourcePageSizes { system_bytes: 4, graphics_bytes: 4 },
+            body: b"short".to_vec(),
+        };
+        assert!(decoded.segments().unwrap_err().0.contains("body length mismatch"));
+    }
+}
+
