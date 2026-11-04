@@ -744,6 +744,7 @@ mod tests {
         let found = find_rpf7_payload_overlaps(&[a.clone(), b, c], 10);
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].overlap_start, found[0].overlap_end), (550, 600));
+        assert_eq!((found[1].overlap_start, found[1].overlap_end), (600, 620));
         a.in_bounds = false;
         assert!(find_rpf7_payload_overlaps(&[a], 10).is_empty());
         assert!(find_rpf7_payload_overlaps(&[], 0).is_empty());
@@ -825,7 +826,7 @@ mod tests {
     fn decodes_rpf7_resource_system_and_graphics_page_sizes() {
         let sizes = rpf7_resource_page_sizes((1 << 0) | (1 << 27), (1 << 1) | (1 << 26)).unwrap();
         assert_eq!(sizes.system_bytes, 1024);
-        assert_eq!(sizes.graphics_bytes, 2048);
+        assert_eq!(sizes.graphics_bytes, 4096);
         assert_eq!(rpf7_resource_page_sizes(0, 0).unwrap(), Rpf7ResourcePageSizes {
             system_bytes: 0, graphics_bytes: 0,
         });
