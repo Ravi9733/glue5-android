@@ -238,9 +238,80 @@ fn read_u64(bytes: &[u8], offset: usize) -> Result<u64, ManifestError> {
     Ok(u64::from_le_bytes(slice.try_into().unwrap()))
 }
 
+
+/// Decode the top mip of supported uncompressed legacy YTD pixels to RGBA8.
+/// Pixel bytes and metadata must come from a separately validated source.
+pub fn decode_ytd_uncompressed_rgba(
+    width: u16, height: u16, stride: u16, format_code: u32,
+    pixel_data: &[u8], max_output_bytes: usize,
+) -> Result<Vec<u8>, ManifestError> {
+    let (width, height, stride) = (usize::from(width), usize::from(height), usize::from(stride));
+    if width == 0 || height == 0 || stride == 0 {
+        return Err(ManifestError("YTD dimensions and stride must be non-zero".into()));
+    }
+    let output_len = width.checked_mul(height).and_then(|n| n.checked_mul(4))
+        .ok_or_else(|| ManifestError("YTD RGBA output size overflow".into()))?;
+    if output_len > max_output_bytes {
+        return Err(ManifestError("YTD RGBA output exceeds configured limit".into()));
+    }
+    let format = YtdPixelFormat::from_code(format_code);
+    let bpp = match format {
+        YtdPixelFormat::A8R8G8B8 | YtdPixelFormat::X8R8G8B8 | YtdPixelFormat::A8B8G8R8 => 4,
+        YtdPixelFormat::A1R5G5B5 => 2,
+        YtdPixelFormat::A8 | YtdPixelFormat::L8 => 1,
+        _ => return Err(ManifestError("YTD format is compressed or unsupported by this decoder".into())),
+    };
+    let row_bytes = width.checked_mul(bpp)
+        .ok_or_else(|| ManifestError("YTD row size overflow".into()))?;
+    if stride < row_bytes {
+        return Err(ManifestError("YTD stride is smaller than its pixel row".into()));
+    }
+    let input_len = stride.checked_mul(height)
+        .ok_or_else(|| ManifestError("YTD input size overflow".into()))?;
+    if pixel_data.len() < input_len {
+        return Err(ManifestError("YTD top mip pixel data is truncated".into()));
+    }
+    let mut rgba = Vec::with_capacity(output_len);
+    for y in 0..height {
+        let row = &pixel_data[y * stride..y * stride + row_bytes];
+        match format {
+            YtdPixelFormat::A8R8G8B8 => for p in row.chunks_exact(4) { rgba.extend_from_slice(&[p[2], p[1], p[0], p[3]]); },
+            YtdPixelFormat::X8R8G8B8 => for p in row.chunks_exact(4) { rgba.extend_from_slice(&[p[2], p[1], p[0], 255]); },
+            YtdPixelFormat::A8B8G8R8 => rgba.extend_from_slice(row),
+            YtdPixelFormat::L8 => for &v in row { rgba.extend_from_slice(&[v, v, v, 255]); },
+            YtdPixelFormat::A8 => for &v in row { rgba.extend_from_slice(&[255, 255, 255, v]); },
+            YtdPixelFormat::A1R5G5B5 => for p in row.chunks_exact(2) {
+                let value = u16::from_le_bytes([p[0], p[1]]);
+                let expand = |v: u16| ((v << 3) | (v >> 2)) as u8;
+                rgba.extend_from_slice(&[expand((value >> 10) & 31), expand((value >> 5) & 31), expand(value & 31), if value & 0x8000 != 0 { 255 } else { 0 }]);
+            },
+            _ => unreachable!("format was validated above"),
+        }
+    }
+    if rgba.len() != output_len {
+        return Err(ManifestError("YTD decoder produced inconsistent RGBA length".into()));
+    }
+    Ok(rgba)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decodes_uncompressed_ytd_top_mip_to_rgba() {
+        assert_eq!(decode_ytd_uncompressed_rgba(1, 1, 4, 21, &[0x11, 0x22, 0x33, 0x44], 4).unwrap(), vec![0x33, 0x22, 0x11, 0x44]);
+        assert_eq!(decode_ytd_uncompressed_rgba(1, 1, 1, 50, &[0x7A], 4).unwrap(), vec![0x7A, 0x7A, 0x7A, 255]);
+        assert_eq!(decode_ytd_uncompressed_rgba(1, 1, 1, 28, &[0x55], 4).unwrap(), vec![255, 255, 255, 0x55]);
+    }
+
+    #[test]
+    fn rejects_unsupported_truncated_and_oversized_ytd_pixels() {
+        assert!(decode_ytd_uncompressed_rgba(4, 4, 8, 21, &[0; 128], 256).is_err());
+        assert!(decode_ytd_uncompressed_rgba(4, 4, 16, 21, &[0; 16], 256).is_err());
+        assert!(decode_ytd_uncompressed_rgba(4, 4, 8, 0x3154_5844, &[0; 128], 256).is_err());
+        assert!(decode_ytd_uncompressed_rgba(4, 4, 16, 21, &[0; 256], 32).is_err());
+    }
 
     #[test]
     fn maps_known_pixel_formats_and_preserves_unknown_codes() {
