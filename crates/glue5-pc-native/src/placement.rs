@@ -72,6 +72,33 @@ pub fn apply_json_placements<S: PlacementSink>(
     Ok(applied)
 }
 
+
+/// Error returned when a placement references an asset absent from the mount index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlacementAssetError {
+    pub failed_index: usize,
+    pub asset: String,
+}
+
+/// Resolve every placement asset before a world adapter is allowed to spawn
+/// anything. This preflight prevents avoidable partial world updates caused by
+/// a missing model later in the document.
+pub fn validate_json_placement_assets(
+    document: &JsonPlacementDocument,
+    mounts: &crate::AssetMountIndex,
+) -> Result<usize, PlacementAssetError> {
+    for (index, placement) in document.placements.iter().enumerate() {
+        match mounts.resolve(&placement.asset) {
+            Ok(Some(_)) => {}
+            Ok(None) | Err(_) => return Err(PlacementAssetError {
+                failed_index: index,
+                asset: placement.asset.clone(),
+            }),
+        }
+    }
+    Ok(document.placements.len())
+}
+
 /// Parse Glue5's version-1 schema: root {version, placements}; each placement
 /// has asset, position [x,y,z], rotation [x,y,z], and scale [x,y,z].
 /// This is an explicit Glue5 interchange format, not a universal GTA JSON parser.
@@ -195,6 +222,41 @@ mod tests {
         assert_eq!(error.applied, 1);
         assert_eq!(error.asset, "props/maze_bank_barrier.ydr");
         assert_eq!(sink.assets.len(), 1);
+    }
+
+    #[test]
+    fn preflights_all_placement_assets_against_mount_index() {
+        let doc = parse_json_placements(VALID).unwrap();
+        let mut mounts = crate::AssetMountIndex::new();
+        for (path, entry_index) in [
+            ("props/maze_bank_ramp.ydr", 1),
+            ("props/maze_bank_barrier.ydr", 2),
+        ] {
+            mounts.insert(path, crate::MountedAsset {
+                archive: "mods/maze.rpf".into(),
+                entry_index,
+                offset: u64::from(entry_index) * 512,
+                length: 128,
+                kind: crate::MountedAssetKind::Binary,
+            }).unwrap();
+        }
+        assert_eq!(validate_json_placement_assets(&doc, &mounts).unwrap(), 2);
+    }
+
+    #[test]
+    fn missing_placement_asset_is_reported_before_any_spawn() {
+        let doc = parse_json_placements(VALID).unwrap();
+        let mut mounts = crate::AssetMountIndex::new();
+        mounts.insert("props/maze_bank_ramp.ydr", crate::MountedAsset {
+            archive: "mods/maze.rpf".into(),
+            entry_index: 1,
+            offset: 512,
+            length: 128,
+            kind: crate::MountedAssetKind::Binary,
+        }).unwrap();
+        let error = validate_json_placement_assets(&doc, &mounts).unwrap_err();
+        assert_eq!(error.failed_index, 1);
+        assert_eq!(error.asset, "props/maze_bank_barrier.ydr");
     }
 
     #[test]
