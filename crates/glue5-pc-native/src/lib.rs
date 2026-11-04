@@ -1896,3 +1896,7 @@ mod rsc7_streaming_decode_tests {
         ).is_err());
     }
 }
+
+
+/// Bounded file-backed archive metadata readers.
+pub mod file_backed;

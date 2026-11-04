@@ -6,7 +6,7 @@ This crate is an isolated engineering foundation for investigating whether PC-fo
 
 - Inspect a candidate data directory and report whether the Android engine, Vulkan translation layer, and prepared game data are present.
 - Parse a versioned data manifest and verify listed files by size and streaming SHA-256. Paths are constrained to the data root; missing files, mismatches, and paths escaping the root are rejected.
-- Probe RPF7/RPF8 archive headers. Inventory metadata for RPF7 archives whose TOC uses the OPEN/NONE (unencrypted) mode.
+- Probe RPF7/RPF8 archive headers. Inventory metadata for RPF7 archives whose TOC uses the OPEN/NONE (unencrypted) mode. A seekable file-backed reader inventories only the bounded header/TOC/name-table region and records the full archive length without loading the large payload into RAM.
 - Validate RPF7 binary/resource payload ranges, identify metadata overlap and payload overlap, and report resource page allocation sizes.
 - Resolve the documented RPF7 resource-size sentinel from a bounded 16-byte resource header when enough bytes are available.
 - Inspect the first 16 bytes of bounded RPF7 resource payloads for an RSC7 signature and report whether the header is valid, truncated, out of range, or has the wrong magic.
