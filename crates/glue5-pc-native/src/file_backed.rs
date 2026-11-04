@@ -153,6 +153,83 @@ pub fn extract_rpf7_rsc7_entry_from_reader<R: Read + Seek, W: std::io::Write>(
     decode_rsc7_resource_stream(reader, start, size, output, max_output_bytes)
 }
 
+
+/// Recursively inventory nested archives from a seekable file without loading
+/// the parent archive payload into memory. Child TOC/name metadata is bounded.
+pub fn scan_nested_rpf7_open_reader_recursive<R: Read + Seek>(
+    reader: &mut R, root: &Rpf7FileInventory, max_depth: usize, max_archives: usize,
+) -> Result<Vec<crate::NestedRpfReport>, ManifestError> {
+    use crate::{NestedRpfReport, NestedRpfStatus, Rpf7EntryKind};
+    fn walk<R: Read + Seek>(
+        reader: &mut R, base: u64, archive_len: u64, inventory: &Rpf7Inventory,
+        depth: usize, max_depth: usize, remaining: &mut usize, prefix: &str,
+        out: &mut Vec<NestedRpfReport>,
+    ) -> Result<(), ManifestError> {
+        if depth >= max_depth || *remaining == 0 { return Ok(()); }
+        let metadata_end = 16_u64.checked_add(inventory.header.toc_bytes)
+            .and_then(|n| n.checked_add(u64::from(inventory.header.names_length)))
+            .ok_or_else(|| ManifestError("nested RPF7 metadata boundary overflow".into()))?;
+        for entry in &inventory.entries {
+            if *remaining == 0 { break; }
+            if !entry.name.to_ascii_lowercase().ends_with(".rpf") { continue; }
+            let (stored, offset, unpacked, encrypted) = match &entry.kind {
+                Rpf7EntryKind::BinaryFile { file_size, file_offset_blocks, uncompressed_size, encrypted } =>
+                    (u64::from(*file_size), u64::from(*file_offset_blocks), u64::from(*uncompressed_size), *encrypted),
+                _ => continue,
+            };
+            let path = if prefix.is_empty() { entry.name.clone() } else { format!("{prefix}/{}", entry.name) };
+            *remaining -= 1;
+            let mut status = if encrypted { NestedRpfStatus::SkippedEncryptedPayload }
+                else if stored != unpacked { NestedRpfStatus::SkippedCompressedPayload }
+                else { NestedRpfStatus::InvalidPayloadRange };
+            let relative = offset.checked_mul(512);
+            let start = relative.and_then(|v| base.checked_add(v));
+            let end = start.and_then(|v| v.checked_add(stored));
+            let mut child_inventory = None;
+            if !encrypted && stored == unpacked {
+                if let (Some(relative), Some(start), Some(end)) = (relative, start, end) {
+                    if relative >= metadata_end && end <= base.saturating_add(archive_len) && stored >= 16 {
+                        reader.seek(SeekFrom::Start(start)).map_err(|e| ManifestError(format!("cannot seek nested RPF7: {e}")))?;
+                        let mut h = [0_u8; 16];
+                        reader.read_exact(&mut h).map_err(|e| ManifestError(format!("cannot read nested RPF7 header: {e}")))?;
+                        match crate::probe_rpf_header(&h)? {
+                            RpfProbe::GtaVLegacy(header) => {
+                                let metadata_len = 16_u64.checked_add(header.toc_bytes)
+                                    .and_then(|v| v.checked_add(u64::from(header.names_length)))
+                                    .ok_or_else(|| ManifestError("nested RPF7 metadata length overflow".into()))?;
+                                if metadata_len <= stored {
+                                    let len = usize::try_from(metadata_len).map_err(|_| ManifestError("nested RPF7 metadata too large".into()))?;
+                                    let mut metadata = vec![0_u8; len];
+                                    reader.seek(SeekFrom::Start(start)).map_err(|e| ManifestError(format!("cannot rewind nested RPF7: {e}")))?;
+                                    reader.read_exact(&mut metadata).map_err(|e| ManifestError(format!("cannot read nested RPF7 metadata: {e}")))?;
+                                    match crate::inventory_rpf7_open(&metadata) {
+                                        Ok(value) => { status = NestedRpfStatus::InventoriedRpf7(value.clone()); child_inventory = Some(value); }
+                                        Err(e) if e.0.contains("AES/NG keys are required") => status = NestedRpfStatus::EncryptedTocUnsupported,
+                                        Err(_) => status = NestedRpfStatus::InvalidRpf7Toc,
+                                    }
+                                }
+                            }
+                            RpfProbe::GtaVEnhancedOrRdr2 { .. } => status = NestedRpfStatus::Rpf8Unsupported,
+                            RpfProbe::UnsupportedOrUnknown { .. } => status = NestedRpfStatus::NotAnRpfArchive,
+                        }
+                    }
+                }
+            }
+            out.push(NestedRpfReport { parent_entry_index: entry.index, name: path.clone(), status });
+            if let (Some(child), Some(start)) = (child_inventory, start) {
+                if depth + 1 < max_depth && *remaining > 0 {
+                    walk(reader, start, stored, &child, depth + 1, max_depth, remaining, &path, out)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    let mut out = Vec::new();
+    let mut remaining = max_archives;
+    walk(reader, 0, root.archive_len, &root.inventory, 0, max_depth, &mut remaining, "", &mut out)?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
