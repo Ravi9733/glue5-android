@@ -1819,3 +1819,52 @@ mod rsc7_segment_view_tests {
     }
 }
 
+
+#[cfg(test)]
+mod rsc7_streaming_decode_tests {
+    use super::*;
+    use flate2::{write::DeflateEncoder, Compression};
+    use std::io::Cursor;
+
+    fn fixture() -> Vec<u8> {
+        let body = vec![0x3C; 512];
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&body).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut payload = b"RSC7".to_vec();
+        payload.extend_from_slice(&1_u32.to_le_bytes());
+        payload.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        payload.extend_from_slice(&0_u32.to_le_bytes());
+        payload.extend_from_slice(&compressed);
+        payload
+    }
+
+    #[test]
+    fn streams_decoded_resource_into_writer_with_bounded_memory() {
+        let payload = fixture();
+        let mut reader = Cursor::new(payload.clone());
+        let mut output = Vec::new();
+        let report = decode_rsc7_resource_stream(
+            &mut reader, 0, payload.len() as u64, &mut output, 1024
+        ).unwrap();
+        assert_eq!(report.version, 1);
+        assert_eq!(report.bytes_written, 512);
+        assert_eq!(output, vec![0x3C; 512]);
+    }
+
+    #[test]
+    fn streaming_decoder_rejects_output_cap_and_truncated_payload() {
+        let payload = fixture();
+        let mut reader = Cursor::new(payload.clone());
+        let mut output = Vec::new();
+        assert!(decode_rsc7_resource_stream(
+            &mut reader, 0, payload.len() as u64, &mut output, 128
+        ).unwrap_err().0.contains("exceeds configured limit"));
+
+        let mut reader = Cursor::new(payload.clone());
+        let mut output = Vec::new();
+        assert!(decode_rsc7_resource_stream(
+            &mut reader, 0, 12, &mut output, 1024
+        ).is_err());
+    }
+}
