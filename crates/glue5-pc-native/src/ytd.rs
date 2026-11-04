@@ -294,6 +294,159 @@ pub fn decode_ytd_uncompressed_rgba(
     Ok(rgba)
 }
 
+
+/// Decode BC1/DXT1, BC2/DXT3, or BC3/DXT5 top-mip blocks to RGBA8.
+/// block_row_stride is the byte distance between compressed block rows.
+pub fn decode_ytd_bc_rgba(
+    width: u16,
+    height: u16,
+    block_row_stride: u32,
+    format_code: u32,
+    pixel_data: &[u8],
+    max_output_bytes: usize,
+) -> Result<Vec<u8>, ManifestError> {
+    let width = usize::from(width);
+    let height = usize::from(height);
+    if width == 0 || height == 0 {
+        return Err(ManifestError("YTD dimensions must be non-zero".into()));
+    }
+    let output_len = width.checked_mul(height).and_then(|n| n.checked_mul(4))
+        .ok_or_else(|| ManifestError("YTD BC output size overflow".into()))?;
+    if output_len > max_output_bytes {
+        return Err(ManifestError("YTD BC output exceeds configured limit".into()));
+    }
+    let format = YtdPixelFormat::from_code(format_code);
+    let block_bytes = match format {
+        YtdPixelFormat::Dxt1 => 8,
+        YtdPixelFormat::Dxt3 | YtdPixelFormat::Dxt5 => 16,
+        _ => return Err(ManifestError("YTD format is not a supported BC1/BC2/BC3 format".into())),
+    };
+    let blocks_x = width.checked_add(3).ok_or_else(|| ManifestError("YTD block width overflow".into()))? / 4;
+    let blocks_y = height.checked_add(3).ok_or_else(|| ManifestError("YTD block height overflow".into()))? / 4;
+    let minimum_stride = blocks_x.checked_mul(block_bytes)
+        .ok_or_else(|| ManifestError("YTD compressed row size overflow".into()))?;
+    let stride = usize::try_from(block_row_stride)
+        .map_err(|_| ManifestError("YTD block row stride is too large".into()))?;
+    if stride < minimum_stride {
+        return Err(ManifestError("YTD block row stride is too small".into()));
+    }
+    let input_len = stride.checked_mul(blocks_y)
+        .ok_or_else(|| ManifestError("YTD compressed input size overflow".into()))?;
+    if pixel_data.len() < input_len {
+        return Err(ManifestError("YTD BC pixel data is truncated".into()));
+    }
+
+    let mut rgba = vec![0_u8; output_len];
+    for by in 0..blocks_y {
+        for bx in 0..blocks_x {
+            let start = by * stride + bx * block_bytes;
+            let block = &pixel_data[start..start + block_bytes];
+            let (colors, indices) = match format {
+                YtdPixelFormat::Dxt1 => decode_bc_color_block(&block[0..8], true)?,
+                YtdPixelFormat::Dxt3 | YtdPixelFormat::Dxt5 => decode_bc_color_block(&block[8..16], false)?,
+                _ => unreachable!(),
+            };
+            let alphas = match format {
+                YtdPixelFormat::Dxt1 => [255_u8; 16],
+                YtdPixelFormat::Dxt3 => {
+                    let mut a = [0_u8; 16];
+                    for i in 0..16 {
+                        let nibble = (block[i / 2] >> ((i % 2) * 4)) & 0x0F;
+                        a[i] = nibble * 17;
+                    }
+                    a
+                }
+                YtdPixelFormat::Dxt5 => decode_bc_alpha_block(&block[0..8])?,
+                _ => unreachable!(),
+            };
+            for py in 0..4 {
+                for px in 0..4 {
+                    let x = bx * 4 + px;
+                    let y = by * 4 + py;
+                    if x >= width || y >= height { continue; }
+                    let i = py * 4 + px;
+                    let mut color = colors[((indices >> (i * 2)) & 3) as usize];
+                    if format != YtdPixelFormat::Dxt1 || color[3] != 0 {
+                        color[3] = alphas[i];
+                    }
+                    let out = (y * width + x) * 4;
+                    rgba[out..out + 4].copy_from_slice(&color);
+                }
+            }
+        }
+    }
+    Ok(rgba)
+}
+
+fn decode_bc_color_block(
+    block: &[u8],
+    allow_transparency: bool,
+) -> Result<([[u8; 4]; 4], u32), ManifestError> {
+    if block.len() != 8 {
+        return Err(ManifestError("BC color block is truncated".into()));
+    }
+    let c0 = u16::from_le_bytes([block[0], block[1]]);
+    let c1 = u16::from_le_bytes([block[2], block[3]]);
+    let rgb = [decode_rgb565(c0), decode_rgb565(c1)];
+    let mut colors = [[0_u8; 4]; 4];
+    colors[0] = [rgb[0][0], rgb[0][1], rgb[0][2], 255];
+    colors[1] = [rgb[1][0], rgb[1][1], rgb[1][2], 255];
+    if allow_transparency && c0 <= c1 {
+        for channel in 0..3 {
+            colors[2][channel] = ((u16::from(rgb[0][channel]) + u16::from(rgb[1][channel])) / 2) as u8;
+        }
+        colors[2][3] = 255;
+        colors[3] = [0, 0, 0, 0];
+    } else {
+        for channel in 0..3 {
+            colors[2][channel] = ((2 * u16::from(rgb[0][channel]) + u16::from(rgb[1][channel])) / 3) as u8;
+            colors[3][channel] = ((u16::from(rgb[0][channel]) + 2 * u16::from(rgb[1][channel])) / 3) as u8;
+        }
+        colors[2][3] = 255;
+        colors[3][3] = 255;
+    }
+    let indices = u32::from_le_bytes(block[4..8].try_into().unwrap());
+    Ok((colors, indices))
+}
+
+fn decode_rgb565(value: u16) -> [u8; 3] {
+    let r = ((value >> 11) & 31) as u8;
+    let g = ((value >> 5) & 63) as u8;
+    let b = (value & 31) as u8;
+    [(r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2)]
+}
+
+fn decode_bc_alpha_block(block: &[u8]) -> Result<[u8; 16], ManifestError> {
+    if block.len() != 8 {
+        return Err(ManifestError("BC alpha block is truncated".into()));
+    }
+    let a0 = block[0];
+    let a1 = block[1];
+    let mut palette = [0_u8; 8];
+    palette[0] = a0;
+    palette[1] = a1;
+    if a0 > a1 {
+        for i in 1..7 {
+            palette[i + 1] = (((7 - i) as u16 * u16::from(a0) + i as u16 * u16::from(a1)) / 7) as u8;
+        }
+    } else {
+        for i in 1..5 {
+            palette[i + 1] = (((5 - i) as u16 * u16::from(a0) + i as u16 * u16::from(a1)) / 5) as u8;
+        }
+        palette[6] = 0;
+        palette[7] = 255;
+    }
+    let mut packed = 0_u64;
+    for (i, byte) in block[2..8].iter().enumerate() {
+        packed |= u64::from(*byte) << (i * 8);
+    }
+    let mut result = [0_u8; 16];
+    for (i, alpha) in result.iter_mut().enumerate() {
+        *alpha = palette[((packed >> (i * 3)) & 7) as usize];
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
