@@ -7,7 +7,7 @@ use std::path::{Component, Path};
 
 /// Versioned JSON placement-mod parser for the experimental PC content layer.
 pub mod placement;
-pub use placement::{parse_json_placements, JsonPlacement, JsonPlacementDocument, PlacementError};
+pub use placement::{apply_json_placements, parse_json_placements, JsonPlacement, JsonPlacementDocument, PlacementApplyError, PlacementError, PlacementSink};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendState { MissingAndroidEngine, MissingVulkanTranslationLayer, MissingPreparedGameData, ReadyForRuntimeIntegration }
