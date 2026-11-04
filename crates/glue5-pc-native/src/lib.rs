@@ -399,6 +399,34 @@ pub fn extract_rpf7_rsc7_resource(
     }
 }
 
+/// Safely select an RSC7 resource by its TOC entry index. The archive is
+/// inventoried from its own bytes inside this API, so callers cannot supply a
+/// forged payload range or mismatched inventory.
+pub fn extract_rpf7_rsc7_entry(
+    archive: &[u8],
+    entry_index: u32,
+    max_output_bytes: usize,
+) -> Rsc7ExtractReport {
+    let invalid = |name: String, message: String| Rsc7ExtractReport {
+        entry_index,
+        name,
+        status: Rsc7ExtractStatus::InvalidRange,
+        resource: None,
+        error: Some(message),
+    };
+    let inventory = match inventory_rpf7_open(archive) {
+        Ok(inventory) => inventory,
+        Err(error) => return invalid(String::new(), error.0),
+    };
+    let ranges = validate_rpf7_payload_ranges(archive, &inventory);
+    let Some(range) = ranges.iter().find(|range| range.entry_index == entry_index) else {
+        let name = inventory.entries.iter().find(|entry| entry.index == entry_index)
+            .map(|entry| entry.name.clone()).unwrap_or_default();
+        return invalid(name, "TOC entry is not a file payload in this archive".into());
+    };
+    extract_rpf7_rsc7_resource(archive, range, max_output_bytes)
+}
+
 impl DecodedRsc7Resource {
     /// Resolve and borrow a virtual pointer from this decoded resource.
     /// Refuses to read if the body length disagrees with its page metadata.
