@@ -1136,3 +1136,58 @@ mod mounted_gta_candidate_inspection_tests {
         assert!(system.is_empty() && graphics.is_empty());
     }
 }
+
+
+#[cfg(test)]
+mod mounted_index_to_gta_inspection_tests {
+    use super::*;
+    use flate2::{write::DeflateEncoder, Compression};
+    use std::io::{Cursor, Write};
+
+    #[test]
+    fn mount_index_candidate_flows_into_bounded_rsc7_page_inspection() {
+        let system_expected = vec![0x31; 512];
+        let graphics_expected = vec![0x42; 512];
+        let body = [system_expected.as_slice(), graphics_expected.as_slice()].concat();
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&body).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut resource = b"RSC7".to_vec();
+        resource.extend_from_slice(&1_u32.to_le_bytes());
+        resource.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        resource.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        resource.extend_from_slice(&compressed);
+
+        let absolute_offset = 96_u64;
+        let mut backing = vec![0xCC; absolute_offset as usize];
+        backing.extend_from_slice(&resource);
+        let mut mounts = crate::AssetMountIndex::new();
+        mounts.insert(
+            "dlcpacks/maze/props/ramp.ydr",
+            crate::MountedAsset {
+                archive: "mods/maze.rpf".into(),
+                entry_index: 12,
+                offset: absolute_offset,
+                length: resource.len() as u64,
+                kind: crate::MountedAssetKind::Resource,
+            },
+        ).unwrap();
+
+        let candidates = mounts.gta_resource_candidates();
+        assert_eq!(candidates.len(), 1);
+        let candidate = &candidates[0];
+        assert_eq!(candidate.candidate_kind, crate::GtaResourceCandidateKind::DrawableYdr);
+
+        let mut reader = Cursor::new(backing);
+        let mut system = Vec::new();
+        let mut graphics = Vec::new();
+        let inspection = inspect_mounted_gta_resource_candidate(
+            &mut reader, candidate, &mut system, &mut graphics, 2048,
+        ).unwrap();
+
+        assert_eq!(inspection.virtual_path, "dlcpacks/maze/props/ramp.ydr");
+        assert_eq!(inspection.rsc7.bytes_written, 1024);
+        assert_eq!(system, system_expected);
+        assert_eq!(graphics, graphics_expected);
+    }
+}
