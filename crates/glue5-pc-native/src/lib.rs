@@ -683,6 +683,60 @@ pub fn read_rsc7_pointer<'a>(
         .ok_or_else(|| ManifestError("RSC7 decompressed body is shorter than its page flags".into()))
 }
 
+/// Read an RSC7 virtual pointer directly from separately held page buffers.
+/// This avoids requiring callers to concatenate system and graphics pages.
+pub fn read_rsc7_pointer_from_pages<'a>(
+    system: &'a [u8],
+    graphics: &'a [u8],
+    pointer: u64,
+    length: u32,
+    page_sizes: Rpf7ResourcePageSizes,
+) -> Result<Option<&'a [u8]>, ManifestError> {
+    if system.len() as u64 != page_sizes.system_bytes
+        || graphics.len() as u64 != page_sizes.graphics_bytes
+    {
+        return Err(ManifestError("RSC7 page buffers do not match declared page sizes".into()));
+    }
+    let Some(resolved) = resolve_rsc7_pointer(pointer, length, page_sizes)? else {
+        return Ok(None);
+    };
+    let pages = match resolved.segment {
+        Rsc7Segment::System => system,
+        Rsc7Segment::Graphics => graphics,
+    };
+    let start = usize::try_from(resolved.offset)
+        .map_err(|_| ManifestError("RSC7 page offset does not fit this platform".into()))?;
+    let end = start.checked_add(usize::try_from(resolved.length)
+        .map_err(|_| ManifestError("RSC7 page range does not fit this platform".into()))?)
+        .ok_or_else(|| ManifestError("RSC7 page range overflow".into()))?;
+    pages.get(start..end).map(Some)
+        .ok_or_else(|| ManifestError("RSC7 page buffer is shorter than declared bounds".into()))
+}
+
+#[cfg(test)]
+mod rsc7_separate_page_reader_tests {
+    use super::*;
+
+    #[test]
+    fn reads_system_and_graphics_pointers_without_concatenation() {
+        let system = b"SYS-DATA";
+        let graphics = b"GPU-DATA";
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 8, graphics_bytes: 8 };
+        assert_eq!(read_rsc7_pointer_from_pages(system, graphics, 0x5000_0004, 4, sizes).unwrap(), Some(&b"DATA"[..]));
+        assert_eq!(read_rsc7_pointer_from_pages(system, graphics, 0x6000_0004, 4, sizes).unwrap(), Some(&b"DATA"[..]));
+        assert_eq!(read_rsc7_pointer_from_pages(system, graphics, 0, 4, sizes).unwrap(), None);
+    }
+
+    #[test]
+    fn rejects_mismatched_page_buffers_and_out_of_range_pointers() {
+        let system = b"SYSTEM!!";
+        let graphics = b"GPU-DATA";
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 8, graphics_bytes: 8 };
+        assert!(read_rsc7_pointer_from_pages(system, graphics, 0x5000_0007, 2, sizes).is_err());
+        assert!(read_rsc7_pointer_from_pages(system, b"short", 0x6000_0000, 1, sizes).is_err());
+    }
+}
+
 /// One entry in a safely inventoried, unencrypted GTA V Legacy RPF7 archive.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rpf7Entry { pub index: u32, pub name: String, pub kind: Rpf7EntryKind }
