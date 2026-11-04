@@ -6,6 +6,7 @@ This crate is an isolated engineering foundation for investigating whether PC-fo
 
 - Parse a bounded, versioned Glue5 JSON placement document (schema version 1) containing relative asset identifiers and position/rotation/scale vectors. The parser rejects traversal/absolute asset paths, malformed or non-finite transforms, invalid scales, oversized documents, and excessive placement counts. This is a Glue5-defined interchange schema, not a promise to accept every third-party GTA placement JSON dialect.
 - Pass parsed placements, in order, through a `PlacementSink` adapter contract. The API reports partial progress and the failing placement if the runtime adapter rejects an asset/entity. No GTA engine-backed sink exists yet, so this is an integration seam and test harness, not in-game object spawning.
+- Maintain a case-insensitive virtual asset mount index. It rejects traversal paths, empty/overflowing source ranges, and case-only duplicate names; successful lookups return the archive identifier, entry index, and validated source byte range. This is the registry contract only: an RPF-to-mount population adapter and payload reader are still required.
 
 - Inspect a candidate data directory and report whether the Android engine, Vulkan translation layer, and prepared game data are present.
 - Parse a versioned data manifest and verify listed files by size and streaming SHA-256. Paths are constrained to the data root; missing files, mismatches, and paths escaping the root are rejected.
