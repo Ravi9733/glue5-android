@@ -1,0 +1,54 @@
+name: PC native placement checks
+
+on:
+  push:
+    branches: [android-pc-runtime-foundation]
+    paths:
+      - "crates/glue5-pc-native/**"
+      - "crates/glue5-gpu/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "patches/**"
+      - ".mise/**"
+      - ".github/workflows/pc-native-check.yml"
+  pull_request:
+    paths:
+      - "crates/glue5-pc-native/**"
+      - "crates/glue5-gpu/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "patches/**"
+      - ".mise/**"
+      - ".github/workflows/pc-native-check.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pc-native-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: jdx/mise-action@v2
+        with:
+          version: 2026.7.5
+          install: true
+          install_args: rust cmake
+          cache_key_prefix: pc-native
+
+      - name: Prepare pinned and patched third-party sources
+        run: mise run setup
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test PC native parser and placement pipeline
+        run: cargo test -p glue5-pc-native
