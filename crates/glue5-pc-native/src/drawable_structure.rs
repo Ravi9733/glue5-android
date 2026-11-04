@@ -13,6 +13,10 @@ const MAX_GEOMETRIES_PER_MODEL: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GtaGeometrySummary {
+    pub virtual_address: u64,
+    pub vertex_buffer_pointer: u64,
+    pub index_buffer_pointer: u64,
+    pub inline_data_pointer: u64,
     pub indices_count: u32,
     pub triangles_count: u32,
     pub vertices_count: u16,
@@ -120,6 +124,10 @@ fn parse_drawable(reader: &PageReader<'_>, va: u64) -> Result<GtaDrawableSummary
                     if ptr == 0 { continue; }
                     reader.bytes(ptr, 0x98)?;
                     geometries.push(GtaGeometrySummary {
+                        virtual_address: ptr,
+                        vertex_buffer_pointer: reader.u64(ptr, 0x18)?,
+                        index_buffer_pointer: reader.u64(ptr, 0x38)?,
+                        inline_data_pointer: reader.u64(ptr, 0x78)?,
                         indices_count: reader.u32(ptr, 0x58)?,
                         triangles_count: reader.u32(ptr, 0x5C)?,
                         vertices_count: reader.u16(ptr, 0x60)?,
