@@ -295,6 +295,35 @@ pub fn decode_ytd_uncompressed_rgba(
 }
 
 
+/// Decode a parsed YTD texture's top mip directly from its validated RSC7 page range.
+/// This first integration path intentionally supports uncompressed formats only;
+/// compressed formats must use the block decoder with retail-validated layout metadata.
+pub fn decode_ytd_texture_top_mip_rgba(
+    system: &[u8],
+    graphics: &[u8],
+    texture: &YtdTextureInfo,
+    max_output_bytes: usize,
+) -> Result<Vec<u8>, ManifestError> {
+    let pointer = texture.pixel_data
+        .ok_or_else(|| ManifestError("YTD texture has no pixel-data range".into()))?;
+    let segment = match pointer.segment {
+        crate::Rsc7Segment::System => system,
+        crate::Rsc7Segment::Graphics => graphics,
+    };
+    let start = usize::try_from(pointer.offset)
+        .map_err(|_| ManifestError("YTD pixel offset does not fit this platform".into()))?;
+    let length = usize::try_from(pointer.length)
+        .map_err(|_| ManifestError("YTD pixel length does not fit this platform".into()))?;
+    let end = start.checked_add(length)
+        .ok_or_else(|| ManifestError("YTD pixel range overflow".into()))?;
+    let pixels = segment.get(start..end)
+        .ok_or_else(|| ManifestError("YTD pixel range exceeds its RSC7 page segment".into()))?;
+    decode_ytd_uncompressed_rgba(
+        texture.width, texture.height, texture.stride, texture.format_code,
+        pixels, max_output_bytes,
+    )
+}
+
 /// Decode BC1/DXT1, BC2/DXT3, or BC3/DXT5 top-mip blocks to RGBA8.
 /// block_row_stride is the byte distance between compressed block rows.
 pub fn decode_ytd_bc_rgba(
