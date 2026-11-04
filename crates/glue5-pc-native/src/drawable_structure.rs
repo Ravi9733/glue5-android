@@ -179,7 +179,7 @@ mod tests {
     fn put_u64(b: &mut [u8], at: usize, v: u64) { b[at..at+8].copy_from_slice(&v.to_le_bytes()); }
 
     fn fixture(kind: GtaResourceCandidateKind) -> MountedGtaDrawablePages {
-        let mut s = vec![0u8; 512];
+        let mut s = vec![0u8; 1024];
         let (drawable_at, lod_at, model_array, model_at, geom_array, geom_at) =
             if kind == GtaResourceCandidateKind::DrawableYdr {
                 (0usize, 0x100usize, 0x120usize, 0x140usize, 0x180usize, 0x1A0usize)
@@ -205,7 +205,7 @@ mod tests {
         MountedGtaDrawablePages {
             virtual_path: if kind == GtaResourceCandidateKind::DrawableYdr { "test.ydr" } else { "test.ydd" }.into(),
             candidate_kind: kind, resource_version: 165,
-            page_sizes: crate::Rpf7ResourcePageSizes { system_bytes: 512, graphics_bytes: 0 },
+            page_sizes: crate::Rpf7ResourcePageSizes { system_bytes: 1024, graphics_bytes: 0 },
             system_page: s, graphics_page: Vec::new(),
         }
     }
