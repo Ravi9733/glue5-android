@@ -137,27 +137,6 @@ pub struct GtaGeometryBufferData {
     pub index_data: Option<GtaDrawableBufferData>,
 }
 
-fn read_u16_at(pages: &MountedGtaDrawablePages, va: u64, offset: usize) -> Result<u16, ManifestError> {
-    let address = va.checked_add(offset as u64)
-        .ok_or_else(|| ManifestError("drawable buffer structure pointer overflow".into()))?;
-    let data = read_gta_drawable_buffer_at(pages, address, 2, 2)?;
-    Ok(u16::from_le_bytes(data.bytes.try_into().unwrap()))
-}
-
-fn read_u32_at(pages: &MountedGtaDrawablePages, va: u64, offset: usize) -> Result<u32, ManifestError> {
-    let address = va.checked_add(offset as u64)
-        .ok_or_else(|| ManifestError("drawable buffer structure pointer overflow".into()))?;
-    let data = read_gta_drawable_buffer_at(pages, address, 4, 4)?;
-    Ok(u32::from_le_bytes(data.bytes.try_into().unwrap()))
-}
-
-fn read_u64_at(pages: &MountedGtaDrawablePages, va: u64, offset: usize) -> Result<u64, ManifestError> {
-    let address = va.checked_add(offset as u64)
-        .ok_or_else(|| ManifestError("drawable buffer structure pointer overflow".into()))?;
-    let data = read_gta_drawable_buffer_at(pages, address, 8, 8)?;
-    Ok(u64::from_le_bytes(data.bytes.try_into().unwrap()))
-}
-
 fn checked_buffer_len(count: u32, stride: u16, max_count: u32, max_bytes: usize) -> Result<usize, ManifestError> {
     if count == 0 || count > max_count || stride == 0 {
         return Err(ManifestError("drawable buffer count or stride is invalid".into()));
@@ -278,4 +257,99 @@ pub fn read_gta_geometry_buffers(
     }
 
     Ok(out)
+}
+
+
+#[cfg(test)]
+mod geometry_buffer_tests {
+    use super::*;
+    use crate::{GtaGeometrySummary, GtaResourceCandidateKind, Rpf7ResourcePageSizes};
+
+    fn put_u16(bytes: &mut [u8], at: usize, value: u16) {
+        bytes[at..at + 2].copy_from_slice(&value.to_le_bytes());
+    }
+    fn put_u32(bytes: &mut [u8], at: usize, value: u32) {
+        bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    fn put_u64(bytes: &mut [u8], at: usize, value: u64) {
+        bytes[at..at + 8].copy_from_slice(&value.to_le_bytes());
+    }
+
+    #[test]
+    fn reads_legacy_vertex_and_index_streams_from_graphics_page() {
+        let mut system = vec![0u8; 0x300];
+        let mut graphics = vec![0u8; 0x80];
+        let vb = SYSTEM_BASE + 0x100;
+        let ib = SYSTEM_BASE + 0x200;
+        let vertex_data = GRAPHICS_BASE + 0x20;
+        let index_data = GRAPHICS_BASE + 0x10;
+
+        put_u16(&mut system, 0x108, 4);
+        put_u64(&mut system, 0x110, vertex_data);
+        put_u32(&mut system, 0x118, 2);
+
+        put_u32(&mut system, 0x208, 3);
+        put_u64(&mut system, 0x210, index_data);
+
+        graphics[0x20..0x28].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        graphics[0x10..0x16].copy_from_slice(&[0, 0, 1, 0, 2, 0]);
+
+        let pages = MountedGtaDrawablePages {
+            virtual_path: "fixture.ydr".into(),
+            candidate_kind: GtaResourceCandidateKind::DrawableYdr,
+            resource_version: 165,
+            page_sizes: Rpf7ResourcePageSizes { system_bytes: 0x300, graphics_bytes: 0x80 },
+            system_page: system,
+            graphics_page: graphics,
+        };
+        let geometry = GtaGeometrySummary {
+            virtual_address: SYSTEM_BASE,
+            vertex_buffer_pointer: vb,
+            index_buffer_pointer: ib,
+            inline_data_pointer: 0,
+            indices_count: 3,
+            triangles_count: 1,
+            vertices_count: 2,
+            vertex_stride: 4,
+        };
+
+        let out = read_gta_geometry_buffers(&pages, &geometry, 100, 100, 1024).unwrap();
+        assert_eq!(out.vertex_layout, Some(GtaVertexBufferLayout::LegacyData1));
+        assert_eq!(out.vertex_count, 2);
+        assert_eq!(out.vertex_stride, 4);
+        assert_eq!(out.vertex_data.unwrap().bytes, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(out.index_layout, Some(GtaIndexBufferLayout::Legacy16));
+        assert_eq!(out.index_count, 3);
+        assert_eq!(out.index_element_size, 2);
+        assert_eq!(out.index_data.unwrap().bytes, vec![0, 0, 1, 0, 2, 0]);
+    }
+
+    #[test]
+    fn reads_geometry_inline_vertices_and_rejects_count_caps() {
+        let mut system = vec![0u8; 64];
+        system[0x20..0x28].copy_from_slice(&[9, 8, 7, 6, 5, 4, 3, 2]);
+        let pages = MountedGtaDrawablePages {
+            virtual_path: "inline.ydr".into(),
+            candidate_kind: GtaResourceCandidateKind::DrawableYdr,
+            resource_version: 165,
+            page_sizes: Rpf7ResourcePageSizes { system_bytes: 64, graphics_bytes: 0 },
+            system_page: system,
+            graphics_page: Vec::new(),
+        };
+        let geometry = GtaGeometrySummary {
+            virtual_address: SYSTEM_BASE,
+            vertex_buffer_pointer: 0,
+            index_buffer_pointer: 0,
+            inline_data_pointer: SYSTEM_BASE + 0x20,
+            indices_count: 0,
+            triangles_count: 0,
+            vertices_count: 2,
+            vertex_stride: 4,
+        };
+        let out = read_gta_geometry_buffers(&pages, &geometry, 2, 10, 64).unwrap();
+        assert_eq!(out.vertex_layout, Some(GtaVertexBufferLayout::GeometryInline));
+        assert_eq!(out.vertex_data.unwrap().bytes, vec![9, 8, 7, 6, 5, 4, 3, 2]);
+        let capped = read_gta_geometry_buffers(&pages, &geometry, 1, 10, 64).unwrap();
+        assert!(capped.vertex_data.is_none());
+    }
 }
