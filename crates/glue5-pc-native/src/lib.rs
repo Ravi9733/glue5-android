@@ -293,6 +293,47 @@ fn read_rpf7_name(names: &[u8], offset: usize) -> Result<String, &'static str> {
 }
 
 
+/// Result of checking a file payload's 512-byte-block range against its archive.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Rpf7PayloadRange {
+    pub entry_index: u32,
+    pub name: String,
+    pub start: u64,
+    pub end: u64,
+    pub archive_len: u64,
+    pub in_bounds: bool,
+}
+
+/// Validate binary and resource payload ranges without reading or extracting them.
+/// Directory entries are omitted. A range is valid only when its checked end
+/// does not exceed the supplied archive length.
+pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -> Vec<Rpf7PayloadRange> {
+    let archive_len = archive.len() as u64;
+    inventory.entries.iter().filter_map(|entry| {
+        let (file_size, offset_blocks) = match &entry.kind {
+            Rpf7EntryKind::BinaryFile { file_size, file_offset_blocks, .. }
+            | Rpf7EntryKind::ResourceFile { file_size, file_offset_blocks, .. } =>
+                (*file_size as u64, *file_offset_blocks as u64),
+            Rpf7EntryKind::Directory { .. } => return None,
+        };
+        let start = offset_blocks.checked_mul(512);
+        let end = start.and_then(|value| value.checked_add(file_size));
+        let (start, end, in_bounds) = match (start, end) {
+            (Some(start), Some(end)) => (start, end, end <= archive_len),
+            _ => (u64::MAX, u64::MAX, false),
+        };
+        Some(Rpf7PayloadRange {
+            entry_index: entry.index,
+            name: entry.name.clone(),
+            start,
+            end,
+            archive_len,
+            in_bounds,
+        })
+    }).collect()
+}
+
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NestedRpfStatus {
     InventoriedRpf7(Rpf7Inventory),
@@ -476,6 +517,30 @@ mod tests {
         assert_eq!(inventory.entries[1].kind, Rpf7EntryKind::BinaryFile {
             file_size: 0, file_offset_blocks: 1, uncompressed_size: 4, encrypted: false,
         });
+    }
+
+    #[test]
+    fn validates_binary_payload_range_against_archive_length() {
+        let data = minimal_open_rpf7();
+        let inventory = inventory_rpf7_open(&data).unwrap();
+        let ranges = validate_rpf7_payload_ranges(&data, &inventory);
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].name, "file.bin");
+        assert_eq!(ranges[0].start, 512);
+        assert_eq!(ranges[0].end, 512);
+        assert!(ranges[0].in_bounds);
+    }
+
+    #[test]
+    fn reports_out_of_bounds_binary_payload_without_extracting() {
+        let mut data = minimal_open_rpf7();
+        // Point the binary entry at block 2, beyond this 516-byte archive.
+        data[37] = 2;
+        let inventory = inventory_rpf7_open(&data).unwrap();
+        let ranges = validate_rpf7_payload_ranges(&data, &inventory);
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].start, 1024);
+        assert!(!ranges[0].in_bounds);
     }
 
     #[test]
