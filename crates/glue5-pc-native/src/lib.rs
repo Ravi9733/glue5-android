@@ -341,6 +341,50 @@ pub struct Rsc7StreamReport {
 
 /// Decode one RSC7 payload directly from a seekable archive without retaining
 /// the decompressed resource in memory. The output writer may contain partial
+/// Borrow the decompressed RSC7 system and graphics page regions.
+/// The body must exactly match the sizes declared by the RSC7 header; this
+/// adapter does not infer GTA object layouts or relocate pointers.
+pub fn split_rsc7_resource_pages<'a>(
+    body: &'a [u8],
+    page_sizes: Rpf7ResourcePageSizes,
+) -> Result<(&'a [u8], &'a [u8]), ManifestError> {
+    let system_len = usize::try_from(page_sizes.system_bytes)
+        .map_err(|_| ManifestError("RSC7 system page size does not fit this platform".into()))?;
+    let graphics_len = usize::try_from(page_sizes.graphics_bytes)
+        .map_err(|_| ManifestError("RSC7 graphics page size does not fit this platform".into()))?;
+    let expected = system_len.checked_add(graphics_len)
+        .ok_or_else(|| ManifestError("RSC7 page region length overflow".into()))?;
+    if body.len() != expected {
+        return Err(ManifestError(format!(
+            "RSC7 body length {} does not match declared page regions {}", body.len(), expected
+        )));
+    }
+    let (system, graphics) = body.split_at(system_len);
+    Ok((system, graphics))
+}
+
+#[cfg(test)]
+mod rsc7_page_split_tests {
+    use super::*;
+
+    #[test]
+    fn splits_system_and_graphics_pages_at_declared_boundary() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 6, graphics_bytes: 4 };
+        let (system, graphics) = split_rsc7_resource_pages(b"SYSTEMGPU!", sizes).unwrap();
+        assert_eq!(system, b"SYSTEM");
+        assert_eq!(graphics, b"GPU!");
+    }
+
+    #[test]
+    fn rejects_short_long_and_overflowing_page_regions() {
+        let sizes = Rpf7ResourcePageSizes { system_bytes: 6, graphics_bytes: 4 };
+        assert!(split_rsc7_resource_pages(b"short", sizes).is_err());
+        assert!(split_rsc7_resource_pages(b"SYSTEMGPU!!", sizes).is_err());
+        let overflow = Rpf7ResourcePageSizes { system_bytes: u64::MAX, graphics_bytes: 1 };
+        assert!(split_rsc7_resource_pages(b"", overflow).is_err());
+    }
+}
+
 /// bytes if the compressed stream is corrupt or has an incorrect final size.
 pub fn decode_rsc7_resource_stream<R: Read + Seek, W: Write>(
     reader: &mut R,
