@@ -1504,7 +1504,7 @@ mod rsc7_pointer_array_reader_tests {
         body[0..4].copy_from_slice(&0x5000_0010_u32.to_le_bytes());
         body[4..8].copy_from_slice(&0x6000_0004_u32.to_le_bytes());
         body[16..20].copy_from_slice(b"SYS!");
-        body[32..36].copy_from_slice(b"GPU!");
+        body[36..40].copy_from_slice(b"GPU!");
         let result = read_rsc7_pointer_array(&body, 0x5000_0000, 2, 4, 4, sizes).unwrap();
         assert_eq!(result, vec![Some(&b"SYS!"[..]), Some(&b"GPU!"[..])]);
     }
