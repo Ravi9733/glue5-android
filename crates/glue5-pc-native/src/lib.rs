@@ -325,6 +325,80 @@ pub fn decode_rsc7_resource(
     Ok(DecodedRsc7Resource { version, page_sizes, body })
 }
 
+/// Outcome for extracting one bounded RSC7 resource payload from an RPF7 archive.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Rsc7ExtractStatus {
+    Decoded,
+    InvalidRange,
+    OutputLimitExceeded,
+    DecodeFailed,
+}
+
+/// Per-entry result. A failed entry is reported without aborting other archive work.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Rsc7ExtractReport {
+    pub entry_index: u32,
+    pub name: String,
+    pub status: Rsc7ExtractStatus,
+    pub resource: Option<DecodedRsc7Resource>,
+    pub error: Option<String>,
+}
+
+/// Extract and decode one previously validated resource range.
+/// The caller controls the maximum decompressed size; no archive-wide allocation
+/// or batch retention is performed by this function.
+pub fn extract_rpf7_rsc7_resource(
+    archive: &[u8],
+    range: &Rpf7PayloadRange,
+    max_output_bytes: usize,
+) -> Rsc7ExtractReport {
+    let mut report = Rsc7ExtractReport {
+        entry_index: range.entry_index,
+        name: range.name.clone(),
+        status: Rsc7ExtractStatus::InvalidRange,
+        resource: None,
+        error: None,
+    };
+    let fail = |mut report: Rsc7ExtractReport, status, message: String| {
+        report.status = status;
+        report.error = Some(message);
+        report
+    };
+    if range.resource_page_sizes.is_none() {
+        return fail(report, Rsc7ExtractStatus::InvalidRange, "RPF7 entry is not a resource payload".into());
+    }
+    if !range.in_bounds || range.overlaps_metadata || range.offset_is_sentinel {
+        return fail(report, Rsc7ExtractStatus::InvalidRange, "RPF7 resource range is invalid or overlaps archive metadata".into());
+    }
+    let Some(size) = range.resolved_size else {
+        return fail(report, Rsc7ExtractStatus::InvalidRange, "RPF7 resource payload size is unresolved".into());
+    };
+    if range.end < range.start || range.end - range.start != size {
+        return fail(report, Rsc7ExtractStatus::InvalidRange, "RPF7 resource range length is inconsistent".into());
+    }
+    let (Ok(start), Ok(end)) = (usize::try_from(range.start), usize::try_from(range.end)) else {
+        return fail(report, Rsc7ExtractStatus::InvalidRange, "RPF7 resource range does not fit this platform".into());
+    };
+    let Some(payload) = archive.get(start..end) else {
+        return fail(report, Rsc7ExtractStatus::InvalidRange, "RPF7 resource range exceeds archive bytes".into());
+    };
+    match decode_rsc7_resource(payload, max_output_bytes) {
+        Ok(resource) => {
+            report.status = Rsc7ExtractStatus::Decoded;
+            report.resource = Some(resource);
+            report
+        }
+        Err(error) => {
+            let status = if error.0.contains("exceeds configured limit") {
+                Rsc7ExtractStatus::OutputLimitExceeded
+            } else {
+                Rsc7ExtractStatus::DecodeFailed
+            };
+            fail(report, status, error.0)
+        }
+    }
+}
+
 impl DecodedRsc7Resource {
     /// Resolve and borrow a virtual pointer from this decoded resource.
     /// Refuses to read if the body length disagrees with its page metadata.
@@ -1548,6 +1622,57 @@ mod rsc7_pointer_array_reader_tests {
         let items = read_rsc7_pointer_array(&body, 0x5000_0000, 2, 2, 4, sizes).unwrap();
         assert_eq!(items, vec![None, Some(&b"DATA"[..])]);
         assert!(read_rsc7_pointer_array(&body[..14], 0x5000_0000, 2, 2, 4, sizes).is_err());
+    }
+}
+
+#[cfg(test)]
+mod rpf7_rsc7_extraction_tests {
+    use super::*;
+    use flate2::{write::DeflateEncoder, Compression};
+    use std::io::Write;
+
+    fn fixture() -> (Vec<u8>, Rpf7PayloadRange) {
+        let body = vec![0x5A; 512];
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&body).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut archive = b"RSC7".to_vec();
+        archive.extend_from_slice(&1_u32.to_le_bytes());
+        archive.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        archive.extend_from_slice(&0_u32.to_le_bytes());
+        archive.extend_from_slice(&compressed);
+        let size = archive.len() as u64;
+        let range = Rpf7PayloadRange {
+            entry_index: 7, name: "fixture.ydd".into(), start: 0, end: size,
+            archive_len: size, metadata_end: 0, in_bounds: true,
+            overlaps_metadata: false, size_is_sentinel: false,
+            resolved_size: Some(size), offset_is_sentinel: false,
+            resource_page_sizes: Some(Rpf7ResourcePageSizes { system_bytes: 512, graphics_bytes: 0 }),
+        };
+        (archive, range)
+    }
+
+    #[test]
+    fn extracts_one_bounded_rsc7_resource_from_archive_range() {
+        let (archive, range) = fixture();
+        let report = extract_rpf7_rsc7_resource(&archive, &range, 1024);
+        assert_eq!(report.status, Rsc7ExtractStatus::Decoded);
+        assert_eq!(report.entry_index, 7);
+        assert_eq!(report.resource.unwrap().body, vec![0x5A; 512]);
+    }
+
+    #[test]
+    fn extraction_reports_invalid_ranges_and_output_caps() {
+        let (archive, mut range) = fixture();
+        assert_eq!(
+            extract_rpf7_rsc7_resource(&archive, &range, 128).status,
+            Rsc7ExtractStatus::OutputLimitExceeded
+        );
+        range.overlaps_metadata = true;
+        assert_eq!(
+            extract_rpf7_rsc7_resource(&archive, &range, 1024).status,
+            Rsc7ExtractStatus::InvalidRange
+        );
     }
 }
 
