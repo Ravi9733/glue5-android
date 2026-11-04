@@ -2,7 +2,7 @@
 use sha2::{Digest, Sha256};
 use flate2::read::DeflateDecoder;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -323,6 +323,73 @@ pub fn decode_rsc7_resource(
         return Err(ManifestError(format!("RSC7 decompressed size mismatch: expected {expected}, got {}", body.len())));
     }
     Ok(DecodedRsc7Resource { version, page_sizes, body })
+}
+
+/// Metadata returned after streaming an RSC7 resource into a caller-owned writer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rsc7StreamReport {
+    pub version: u32,
+    pub page_sizes: Rpf7ResourcePageSizes,
+    pub bytes_written: u64,
+}
+
+/// Decode one RSC7 payload directly from a seekable archive without retaining
+/// the decompressed resource in memory. The output writer may contain partial
+/// bytes if the compressed stream is corrupt or has an incorrect final size.
+pub fn decode_rsc7_resource_stream<R: Read + Seek, W: Write>(
+    reader: &mut R,
+    payload_offset: u64,
+    payload_size: u64,
+    output: &mut W,
+    max_output_bytes: usize,
+) -> Result<Rsc7StreamReport, ManifestError> {
+    if payload_size < 16 {
+        return Err(ManifestError("RSC7 resource header is truncated (need 16 bytes)".into()));
+    }
+    reader.seek(SeekFrom::Start(payload_offset))
+        .map_err(|e| ManifestError(format!("cannot seek to RSC7 payload: {e}")))?;
+    let mut header = [0_u8; 16];
+    reader.read_exact(&mut header)
+        .map_err(|e| ManifestError(format!("cannot read RSC7 header: {e}")))?;
+    if &header[0..4] != b"RSC7" {
+        return Err(ManifestError("resource payload does not have RSC7 magic".into()));
+    }
+    let version = u32::from_le_bytes(header[4..8].try_into().unwrap());
+    let page_sizes = rpf7_resource_page_sizes(
+        u32::from_le_bytes(header[8..12].try_into().unwrap()),
+        u32::from_le_bytes(header[12..16].try_into().unwrap()),
+    )?;
+    let expected = page_sizes.system_bytes.checked_add(page_sizes.graphics_bytes)
+        .ok_or_else(|| ManifestError("RSC7 decompressed size overflow".into()))?;
+    let expected = usize::try_from(expected)
+        .map_err(|_| ManifestError("RSC7 decompressed size does not fit this platform".into()))?;
+    if expected == 0 {
+        return Err(ManifestError("RSC7 page flags describe an empty resource".into()));
+    }
+    if expected > max_output_bytes {
+        return Err(ManifestError(format!("RSC7 output size {expected} exceeds configured limit {max_output_bytes}")));
+    }
+    let compressed_size = payload_size - 16;
+    let limited = (&mut *reader).take(compressed_size);
+    let mut decoder = DeflateDecoder::new(limited);
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut written = 0_u64;
+    loop {
+        let count = decoder.read(&mut buffer)
+            .map_err(|e| ManifestError(format!("RSC7 raw-DEFLATE stream is invalid: {e}")))?;
+        if count == 0 { break; }
+        written = written.checked_add(count as u64)
+            .ok_or_else(|| ManifestError("RSC7 output byte count overflow".into()))?;
+        if written > expected as u64 {
+            return Err(ManifestError("RSC7 decompressed size exceeds page allocation metadata".into()));
+        }
+        output.write_all(&buffer[..count])
+            .map_err(|e| ManifestError(format!("cannot write decoded RSC7 bytes: {e}")))?;
+    }
+    if written != expected as u64 {
+        return Err(ManifestError(format!("RSC7 decompressed size mismatch: expected {expected}, got {written}")));
+    }
+    Ok(Rsc7StreamReport { version, page_sizes, bytes_written: written })
 }
 
 /// Outcome for extracting one bounded RSC7 resource payload from an RPF7 archive.
