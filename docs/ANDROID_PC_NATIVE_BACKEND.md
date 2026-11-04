@@ -22,6 +22,8 @@ The glue5-pc-native crate provides a conservative component-presence readiness g
 
 The verify_data_files function checks each listed file's real size and SHA-256 using a bounded 1 MiB streaming buffer. It rejects missing files, non-regular files, size/hash mismatches, and resolved paths that escape the selected data root through symlinks. This verifies integrity only; it does not establish that PC archives are compatible with an Android game engine.
 
+The crate also has an inventory-only RPF header probe. For GTA V Legacy it recognizes the RPF7 magic (0x52504637), reads the entry count and encryption tag, computes the 16-byte-per-entry TOC size with checked arithmetic, and separates the low 28-bit name-table length from the upper four header flags. It labels RPF8 separately and rejects truncated headers. It deliberately does not decrypt TOC data, parse filenames, or extract assets; those steps require version-specific crypto and archive handling.
+
 The readiness gate is intentionally conservative: even when configured component paths exist, its ReadyForRuntimeIntegration state means only that the three expected paths are present. It does not load or execute a game engine and does not mean the game is playable.
 
 ## Version-1 data manifest
