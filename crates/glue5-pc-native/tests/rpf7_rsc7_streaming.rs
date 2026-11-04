@@ -1,5 +1,6 @@
 use flate2::{write::DeflateEncoder, Compression};
-use glue5_pc_native::extract_rpf7_rsc7_entry_to_writer;
+use glue5_pc_native::{extract_rpf7_rsc7_entry_to_writer, extract_rpf7_rsc7_entry_from_reader};
+use std::io::Cursor;
 use std::io::Write;
 
 fn rpf7_resource_fixture() -> (Vec<u8>, Vec<u8>) {
@@ -73,4 +74,33 @@ fn toc_indexed_streaming_rejects_metadata_overlap_and_output_cap() {
     let mut overlapping = archive;
     overlapping[37..40].copy_from_slice(&[0, 0, 0]);
     assert!(extract_rpf7_rsc7_entry_to_writer(&overlapping, 1, &mut output, 1024).is_err());
+}
+
+
+#[test]
+fn file_backed_streaming_decodes_valid_rsc7_resource() {
+    let (archive, expected) = rpf7_resource_fixture();
+    let mut reader = Cursor::new(archive);
+    let mut output = Vec::new();
+    let report = extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 1024).unwrap();
+    assert_eq!(report.bytes_written, expected.len() as u64);
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn file_backed_streaming_rejects_output_limit_before_writing() {
+    let (archive, _) = rpf7_resource_fixture();
+    let mut reader = Cursor::new(archive);
+    let mut output = Vec::new();
+    assert!(extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 128).is_err());
+    assert!(output.is_empty());
+}
+
+#[test]
+fn file_backed_streaming_rejects_corrupt_deflate_stream() {
+    let (mut archive, _) = rpf7_resource_fixture();
+    archive[528..].fill(0xFF);
+    let mut reader = Cursor::new(archive);
+    let mut output = Vec::new();
+    assert!(extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 1024).is_err());
 }
