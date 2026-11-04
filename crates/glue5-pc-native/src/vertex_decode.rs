@@ -80,6 +80,9 @@ pub fn parse_rockstar_vertex_declaration(
         "TexCoord0", "TexCoord1", "TexCoord2", "TexCoord3", "TexCoord4", "TexCoord5",
         "TexCoord6", "TexCoord7", "Tangent", "Binormal",
     ];
+    if flags & !0xFFFF != 0 {
+        return Err(ManifestError("Rockstar vertex declaration contains unknown semantic flag bits".into()));
+    }
     let mut elements = Vec::new();
     let mut offset = 0usize;
     for (bit, semantic) in SEMANTICS.iter().enumerate() {
@@ -90,13 +93,16 @@ pub fn parse_rockstar_vertex_declaration(
             5 => VertexElementFormat::Float32x2,
             6 => VertexElementFormat::Float32x3,
             7 => VertexElementFormat::Float32x4,
-            8 | 9 => VertexElementFormat::Uint8x4,
+            8 => VertexElementFormat::Uint8x4,
+            9 => VertexElementFormat::Unorm8x4,
             10 => VertexElementFormat::Snorm8x4,
             0 => return Err(ManifestError(format!("Rockstar semantic {semantic} has no component data"))),
             1 | 3 => return Err(ManifestError(format!("Rockstar half-float semantic {semantic} is not supported yet"))),
             other => return Err(ManifestError(format!("unsupported Rockstar vertex component nibble {other} for {semantic}"))),
         };
-        elements.push(VertexElement { semantic: (*semantic).into(), offset: offset as u16, format });
+        let element_offset = u16::try_from(offset)
+            .map_err(|_| ManifestError("Rockstar vertex element offset exceeds u16".into()))?;
+        elements.push(VertexElement { semantic: (*semantic).into(), offset: element_offset, format });
         offset = offset.checked_add(format.byte_len())
             .ok_or_else(|| ManifestError("Rockstar vertex stride overflow".into()))?;
     }
