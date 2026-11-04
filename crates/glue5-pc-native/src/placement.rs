@@ -342,3 +342,83 @@ mod tests {
         assert!(parse_json_placements(many.as_bytes()).unwrap_err().0.contains("placement count"));
     }
 }
+
+
+#[cfg(test)]
+mod resolved_placement_tests {
+    use super::*;
+
+    const VALID: &[u8] = include_bytes!("../examples/maze_bank_ramp.placements.json");
+
+    struct ResolvedRecorder {
+        entries: Vec<(String, u32, crate::MountedAssetKind)>,
+        fail_on: Option<usize>,
+    }
+
+    impl ResolvedPlacementSink for ResolvedRecorder {
+        fn spawn_resolved_placement(
+            &mut self,
+            placement: &JsonPlacement,
+            asset: &crate::MountedAsset,
+        ) -> Result<(), String> {
+            if self.fail_on == Some(self.entries.len()) {
+                return Err("synthetic world backend failure".into());
+            }
+            self.entries.push((placement.asset.clone(), asset.entry_index, asset.kind));
+            Ok(())
+        }
+    }
+
+    fn mounts() -> crate::AssetMountIndex {
+        let mut index = crate::AssetMountIndex::new();
+        for (path, entry_index, kind) in [
+            ("props/maze_bank_ramp.ydr", 17, crate::MountedAssetKind::Resource),
+            ("props/maze_bank_barrier.ydr", 23, crate::MountedAssetKind::Binary),
+        ] {
+            index.insert(path, crate::MountedAsset {
+                archive: "mods/maze.rpf".into(),
+                entry_index,
+                offset: u64::from(entry_index) * 512,
+                length: 256,
+                kind,
+            }).unwrap();
+        }
+        index
+    }
+
+    #[test]
+    fn resolves_mount_descriptors_before_ordered_world_handoff() {
+        let document = parse_json_placements(VALID).unwrap();
+        let mut sink = ResolvedRecorder { entries: Vec::new(), fail_on: None };
+        assert_eq!(apply_resolved_json_placements(&document, &mounts(), &mut sink).unwrap(), 2);
+        assert_eq!(sink.entries, vec![
+            ("props/maze_bank_ramp.ydr".into(), 17, crate::MountedAssetKind::Resource),
+            ("props/maze_bank_barrier.ydr".into(), 23, crate::MountedAssetKind::Binary),
+        ]);
+    }
+
+    #[test]
+    fn missing_later_asset_fails_before_any_world_handoff() {
+        let document = parse_json_placements(VALID).unwrap();
+        let mut index = crate::AssetMountIndex::new();
+        index.insert("props/maze_bank_ramp.ydr", crate::MountedAsset {
+            archive: "mods/maze.rpf".into(), entry_index: 17, offset: 8704,
+            length: 256, kind: crate::MountedAssetKind::Resource,
+        }).unwrap();
+        let mut sink = ResolvedRecorder { entries: Vec::new(), fail_on: None };
+        let error = apply_resolved_json_placements(&document, &index, &mut sink).unwrap_err();
+        assert_eq!(error.failed_index, 1);
+        assert_eq!(error.applied, 0);
+        assert_eq!(sink.entries.len(), 0);
+    }
+
+    #[test]
+    fn reports_backend_failure_after_prior_successful_handoffs() {
+        let document = parse_json_placements(VALID).unwrap();
+        let mut sink = ResolvedRecorder { entries: Vec::new(), fail_on: Some(1) };
+        let error = apply_resolved_json_placements(&document, &mounts(), &mut sink).unwrap_err();
+        assert_eq!(error.failed_index, 1);
+        assert_eq!(error.applied, 1);
+        assert_eq!(sink.entries.len(), 1);
+    }
+}
