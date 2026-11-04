@@ -84,34 +84,15 @@ pub fn upload_gta_cpu_mesh(
 /// device. On Android this must be the device owned by the Vulkan renderer.
 /// This creates GPU buffers only; the game renderer still needs to bind them
 /// in a compatible render pass and issue indexed/non-indexed draws.
-pub fn upload_placement_gpu_payloads(
-    device: &wgpu::Device,
+fn validate_placement_gpu_payload_batch(
     batch: &PlacementGpuPayloadBatch,
     max_meshes: usize,
     max_total_upload_bytes: usize,
-) -> Result<Vec<GpuMeshBuffers>, ManifestError> {
+) -> Result<usize, ManifestError> {
     if batch.meshes.len() > max_meshes {
         return Err(ManifestError("placement GPU upload exceeds mesh count limit".into()));
     }
-    if batch.total_upload_bytes > max_total_upload_bytes {
-        return Err(ManifestError("placement GPU upload exceeds configured byte budget".into()));
-    }
-    let declared_total = batch.meshes.iter().try_fold(0usize, |total, mesh| {
-        let bytes = mesh.vertex_bytes.len()
-            .checked_add(mesh.index_bytes.as_ref().map_or(0, Vec::len))?;
-        total.checked_add(bytes)
-    }).ok_or_else(|| ManifestError("placement GPU aggregate byte count overflows".into()))?;
-    if declared_total != batch.total_upload_bytes {
-        return Err(ManifestError("placement GPU batch byte total does not match its payloads".into()));
-    }
-    if declared_total > max_total_upload_bytes {
-        return Err(ManifestError("placement GPU upload exceeds configured byte budget".into()));
-    }
-    let mut actual_total = 0usize;
-    let mut buffers = Vec::new();
-    buffers.try_reserve_exact(batch.meshes.len())
-        .map_err(|e| ManifestError(format!("cannot reserve placement GPU buffer list: {e}")))?;
-
+    let mut total = 0usize;
     for mesh in &batch.meshes {
         let expected_vertices = usize::try_from(mesh.vertex_count)
             .ok().and_then(|count| count.checked_mul(mesh.vertex_stride as usize))
@@ -125,18 +106,50 @@ pub fn upload_placement_gpu_payloads(
             .and_then(|count| count.checked_mul(std::mem::size_of::<u32>()))
             .ok_or_else(|| ManifestError("placement index buffer size overflows".into()))?;
         match (&mesh.index_bytes, mesh.index_count) {
-            (Some(bytes), count) if count > 0 && bytes.len() == expected_indices => {}
+            (Some(bytes), count) if count > 0 && bytes.len() == expected_indices => {
+                for raw in bytes.chunks_exact(4) {
+                    let index = u32::from_le_bytes(raw.try_into().unwrap());
+                    if index >= mesh.vertex_count {
+                        return Err(ManifestError("placement index references a missing vertex".into()));
+                    }
+                }
+            }
             (None, 0) => {}
             _ => return Err(ManifestError("placement index payload has inconsistent count or byte length".into())),
         }
+        let bytes = mesh.vertex_bytes.len()
+            .checked_add(mesh.index_bytes.as_ref().map_or(0, Vec::len))
+            .ok_or_else(|| ManifestError("placement upload byte count overflows".into()))?;
+        total = total.checked_add(bytes)
+            .ok_or_else(|| ManifestError("placement aggregate upload byte count overflows".into()))?;
+        if total > max_total_upload_bytes {
+            return Err(ManifestError("placement GPU upload exceeds configured byte budget".into()));
+        }
+    }
+    if total != batch.total_upload_bytes {
+        return Err(ManifestError("placement GPU batch byte total does not match its payloads".into()));
+    }
+    Ok(total)
+}
+
+pub fn upload_placement_gpu_payloads(
+    device: &wgpu::Device,
+    batch: &PlacementGpuPayloadBatch,
+    max_meshes: usize,
+    max_total_upload_bytes: usize,
+) -> Result<Vec<GpuMeshBuffers>, ManifestError> {
+    let declared_total = validate_placement_gpu_payload_batch(batch, max_meshes, max_total_upload_bytes)?;
+    let mut actual_total = 0usize;
+    let mut buffers = Vec::new();
+    buffers.try_reserve_exact(batch.meshes.len())
+        .map_err(|e| ManifestError(format!("cannot reserve placement GPU buffer list: {e}")))?;
+
+    for mesh in &batch.meshes {
         let upload_bytes = mesh.vertex_bytes.len()
             .checked_add(mesh.index_bytes.as_ref().map_or(0, Vec::len))
             .ok_or_else(|| ManifestError("placement upload byte count overflows".into()))?;
         actual_total = actual_total.checked_add(upload_bytes)
             .ok_or_else(|| ManifestError("placement aggregate upload byte count overflows".into()))?;
-        if actual_total > max_total_upload_bytes {
-            return Err(ManifestError("placement GPU upload exceeds configured byte budget".into()));
-        }
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("glue5-pc-placement-positions"),
@@ -160,4 +173,54 @@ pub fn upload_placement_gpu_payloads(
     }
     debug_assert_eq!(actual_total, declared_total);
     Ok(buffers)
+}
+
+
+#[cfg(test)]
+mod placement_upload_validation_tests {
+    use super::*;
+    use crate::PlacementGpuMeshPayload;
+
+    fn batch(vertex_count: u32, index_bytes: Option<Vec<u8>>, index_count: u32) -> PlacementGpuPayloadBatch {
+        let vertex_bytes = vec![0; vertex_count as usize * 12];
+        let total_upload_bytes = vertex_bytes.len() + index_bytes.as_ref().map_or(0, Vec::len);
+        PlacementGpuPayloadBatch {
+            meshes: vec![PlacementGpuMeshPayload {
+                placement_index: 0,
+                virtual_path: "props/test.ydr".into(),
+                geometry_index: 0,
+                vertex_bytes,
+                index_bytes,
+                vertex_count,
+                index_count,
+                vertex_stride: 12,
+            }],
+            total_upload_bytes,
+        }
+    }
+
+    #[test]
+    fn accepts_well_formed_position_and_index_payload() {
+        let indices = [0u32, 1, 2].into_iter()
+            .flat_map(u32::to_le_bytes).collect();
+        let value = batch(3, Some(indices), 3);
+        assert_eq!(validate_placement_gpu_payload_batch(&value, 4, 1024).unwrap(), 48);
+    }
+
+    #[test]
+    fn rejects_index_outside_vertex_range() {
+        let indices = [0u32, 1, 3].into_iter()
+            .flat_map(u32::to_le_bytes).collect();
+        let value = batch(3, Some(indices), 3);
+        assert!(validate_placement_gpu_payload_batch(&value, 4, 1024).is_err());
+    }
+
+    #[test]
+    fn rejects_inconsistent_batch_byte_total_and_budget() {
+        let mut value = batch(3, None, 0);
+        value.total_upload_bytes += 1;
+        assert!(validate_placement_gpu_payload_batch(&value, 4, 1024).is_err());
+        let value = batch(3, None, 0);
+        assert!(validate_placement_gpu_payload_batch(&value, 4, 35).is_err());
+    }
 }
