@@ -22,7 +22,11 @@ The glue5-pc-native crate provides a conservative component-presence readiness g
 
 The verify_data_files function checks each listed file's real size and SHA-256 using a bounded 1 MiB streaming buffer. It rejects missing files, non-regular files, size/hash mismatches, and resolved paths that escape the selected data root through symlinks. This verifies integrity only; it does not establish that PC archives are compatible with an Android game engine.
 
-The crate also has an inventory-only RPF header probe. For GTA V Legacy it recognizes the RPF7 magic (0x52504637), reads the entry count and encryption tag, computes the 16-byte-per-entry TOC size with checked arithmetic, and separates the low 28-bit name-table length from the upper four header flags. It labels RPF8 separately and rejects truncated headers. It deliberately does not decrypt TOC data, parse filenames, or extract assets; those steps require version-specific crypto and archive handling.
+The crate also has an inventory-only RPF header probe. For GTA V Legacy it recognizes the RPF7 magic (0x52504637), reads the entry count and encryption tag, computes the 16-byte-per-entry TOC size with checked arithmetic, and separates the low 28-bit name-table length from the upper four header flags. It labels RPF8 separately and rejects truncated headers.
+
+The next layer, inventory_rpf7_open, parses the table of contents and entry names for RPF7 archives marked NONE or OPEN. It identifies directory, binary-file, and resource-file records; validates the TOC/name-table bounds, entry-count and name-table safety limits, NUL-terminated UTF-8 names, binary encryption flags, and directory child ranges. It returns metadata only: no file payload is extracted, decompressed, decrypted, modified, or executed. AES/NG encrypted TOCs are explicitly rejected until a separately reviewed key/decryption implementation is available. This is important because a parser must never silently interpret encrypted bytes as filenames.
+
+The RPF7 inventory path is Legacy-only. RPF8/Enhanced archives are rejected rather than treated as RPF7. Resource-size sentinel resolution, nested archive traversal, asset decoding, and data conversion remain future work.
 
 The readiness gate is intentionally conservative: even when configured component paths exist, its ReadyForRuntimeIntegration state means only that the three expected paths are present. It does not load or execute a game engine and does not mean the game is playable.
 
@@ -49,6 +53,8 @@ Paths are relative to the data root and use forward slashes. The manifest is a c
 
 ## Next engineering gates
 
+- Verify the new parser against real user-owned OPEN test archives and fuzz malformed inputs.
+- Add bounded nested-RPF inventory without extracting payloads.
 - Obtain rebuildable native engine source/build scripts and confirm licensing permission.
 - Define and verify the exact Android ABI and Vulkan interface.
 - Implement a separate offline data-preparation tool only after the source format and target runtime format are known.

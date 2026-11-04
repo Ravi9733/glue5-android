@@ -169,6 +169,129 @@ pub fn probe_rpf_header(header: &[u8]) -> Result<RpfProbe, ManifestError> {
     }))
 }
 
+
+/// One entry in a safely inventoried, unencrypted GTA V Legacy RPF7 archive.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Rpf7Entry { pub index: u32, pub name: String, pub kind: Rpf7EntryKind }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Rpf7EntryKind {
+    Directory { entries_index: u32, entries_count: u32 },
+    BinaryFile { file_size: u32, file_offset_blocks: u32, uncompressed_size: u32, encrypted: bool },
+    ResourceFile { file_size: u32, file_offset_blocks: u32, system_flags: u32, graphics_flags: u32 },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Rpf7Inventory { pub header: Rpf7Header, pub entries: Vec<Rpf7Entry> }
+
+const RPF_NONE: u32 = 0;
+const RPF_OPEN: u32 = 0x4E45_504F;
+const MAX_RPF7_ENTRIES: u32 = 1_000_000;
+const MAX_RPF7_NAMES: u32 = 64 * 1024 * 1024;
+
+/// Parse only NONE/OPEN RPF7 tables of contents. AES/NG archives are rejected
+/// until a separately reviewed key/decryption path exists. Metadata only.
+pub fn inventory_rpf7_open(archive: &[u8]) -> Result<Rpf7Inventory, ManifestError> {
+    let header = match probe_rpf_header(archive)? {
+        RpfProbe::GtaVLegacy(header) => header,
+        RpfProbe::GtaVEnhancedOrRdr2 { .. } =>
+            return Err(ManifestError("RPF8 is not a GTA V Legacy RPF7 archive".into())),
+        RpfProbe::UnsupportedOrUnknown { magic } =>
+            return Err(ManifestError(format!("unsupported archive magic: {magic:#010x}"))),
+    };
+    if header.entry_count > MAX_RPF7_ENTRIES {
+        return Err(ManifestError("RPF7 entry count exceeds safety limit".into()));
+    }
+    if header.names_length > MAX_RPF7_NAMES {
+        return Err(ManifestError("RPF7 name table exceeds safety limit".into()));
+    }
+    if !matches!(header.encryption_tag, RPF_NONE | RPF_OPEN) {
+        return Err(ManifestError(format!(
+            "RPF7 TOC encryption {:#010x} is unsupported; AES/NG keys are required",
+            header.encryption_tag
+        )));
+    }
+
+    let entries_len = usize::try_from(header.toc_bytes)
+        .map_err(|_| ManifestError("RPF7 TOC length does not fit this platform".into()))?;
+    let names_start = 16_usize.checked_add(entries_len)
+        .ok_or_else(|| ManifestError("RPF7 TOC offset overflow".into()))?;
+    let names_len = usize::try_from(header.names_length)
+        .map_err(|_| ManifestError("RPF7 name table length does not fit this platform".into()))?;
+    let end = names_start.checked_add(names_len)
+        .ok_or_else(|| ManifestError("RPF7 name table offset overflow".into()))?;
+    if end > archive.len() {
+        return Err(ManifestError("RPF7 TOC or name table is truncated".into()));
+    }
+    let toc = &archive[16..names_start];
+    let names = &archive[names_start..end];
+    let mut entries = Vec::with_capacity(header.entry_count as usize);
+
+    for index in 0..header.entry_count as usize {
+        let start = index.checked_mul(16)
+            .ok_or_else(|| ManifestError("RPF7 entry offset overflow".into()))?;
+        let record = toc.get(start..start + 16)
+            .ok_or_else(|| ManifestError(format!("RPF7 entry {index} is truncated")))?;
+        let second = read_u32_le(record, 4)?;
+        let (name_offset, kind) = if second == 0x7FFF_FF00 {
+            let name_offset = read_u32_le(record, 0)? as usize;
+            let entries_index = read_u32_le(record, 8)?;
+            let entries_count = read_u32_le(record, 12)?;
+            let child_end = entries_index.checked_add(entries_count)
+                .ok_or_else(|| ManifestError(format!("RPF7 directory {index} child range overflows")))?;
+            if child_end > header.entry_count {
+                return Err(ManifestError(format!("RPF7 directory {index} child range is out of bounds")));
+            }
+            (name_offset, Rpf7EntryKind::Directory { entries_index, entries_count })
+        } else {
+            let name_offset = u16::from_le_bytes([record[0], record[1]]) as usize;
+            let file_size = u32::from(record[2]) | (u32::from(record[3]) << 8) | (u32::from(record[4]) << 16);
+            let raw_offset = u32::from(record[5]) | (u32::from(record[6]) << 8) | (u32::from(record[7]) << 16);
+            if second & 0x8000_0000 == 0 {
+                let uncompressed_size = read_u32_le(record, 8)?;
+                let encryption_type = read_u32_le(record, 12)?;
+                if encryption_type > 1 {
+                    return Err(ManifestError(format!("RPF7 binary entry {index} has invalid encryption flag")));
+                }
+                (name_offset, Rpf7EntryKind::BinaryFile {
+                    file_size, file_offset_blocks: raw_offset, uncompressed_size,
+                    encrypted: encryption_type == 1,
+                })
+            } else {
+                let system_flags = read_u32_le(record, 8)?;
+                let graphics_flags = read_u32_le(record, 12)?;
+                (name_offset, Rpf7EntryKind::ResourceFile {
+                    file_size, file_offset_blocks: raw_offset & 0x7F_FFFF, system_flags, graphics_flags,
+                })
+            }
+        };
+        let name = read_rpf7_name(names, name_offset)
+            .map_err(|e| ManifestError(format!("RPF7 entry {index} name: {e}")))?;
+        entries.push(Rpf7Entry { index: index as u32, name, kind });
+    }
+    Ok(Rpf7Inventory { header, entries })
+}
+
+fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32, ManifestError> {
+    let end = offset.checked_add(4)
+        .ok_or_else(|| ManifestError("integer field offset overflow".into()))?;
+    let field = bytes.get(offset..end)
+        .ok_or_else(|| ManifestError("truncated RPF7 integer field".into()))?;
+    Ok(u32::from_le_bytes(field.try_into().unwrap()))
+}
+
+fn read_rpf7_name(names: &[u8], offset: usize) -> Result<String, &'static str> {
+    let tail = names.get(offset..).ok_or("name offset is outside the name table")?;
+    let terminator = tail.iter().position(|byte| *byte == 0)
+        .ok_or("name is not NUL-terminated inside the name table")?;
+    if terminator == 0 { return Err("name is empty"); }
+    let name = std::str::from_utf8(&tail[..terminator]).map_err(|_| "name is not valid UTF-8")?;
+    if name.contains('/') || name.contains('\\') || name == "." || name == ".." {
+        return Err("entry name contains a path separator or traversal component");
+    }
+    Ok(name.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,4 +378,56 @@ mod tests {
         assert!(verify_data_files(&dir, &manifest).unwrap_err().0.contains("SHA-256 mismatch"));
         fs::remove_dir_all(dir).unwrap();
     }
+
+    fn minimal_open_rpf7() -> Vec<u8> {
+        let mut data = vec![0_u8; 516];
+        data[0..4].copy_from_slice(&RPF7_MAGIC.to_le_bytes());
+        data[4..8].copy_from_slice(&2_u32.to_le_bytes());
+        data[8..12].copy_from_slice(&14_u32.to_le_bytes());
+        data[12..16].copy_from_slice(&RPF_OPEN.to_le_bytes());
+        data[16..20].copy_from_slice(&0_u32.to_le_bytes());
+        data[20..24].copy_from_slice(&0x7FFF_FF00_u32.to_le_bytes());
+        data[24..28].copy_from_slice(&1_u32.to_le_bytes());
+        data[28..32].copy_from_slice(&1_u32.to_le_bytes());
+        data[32..34].copy_from_slice(&5_u16.to_le_bytes());
+        data[37] = 1;
+        data[40..44].copy_from_slice(&4_u32.to_le_bytes());
+        data[44..48].copy_from_slice(&0_u32.to_le_bytes());
+        data[48..62].copy_from_slice(b"root\0file.bin\0");
+        data
+    }
+
+    #[test]
+    fn inventories_open_rpf7_directory_and_binary_entry() {
+        let inventory = inventory_rpf7_open(&minimal_open_rpf7()).unwrap();
+        assert_eq!(inventory.entries.len(), 2);
+        assert_eq!(inventory.entries[0].name, "root");
+        assert_eq!(inventory.entries[0].kind, Rpf7EntryKind::Directory { entries_index: 1, entries_count: 1 });
+        assert_eq!(inventory.entries[1].name, "file.bin");
+        assert_eq!(inventory.entries[1].kind, Rpf7EntryKind::BinaryFile {
+            file_size: 0, file_offset_blocks: 1, uncompressed_size: 4, encrypted: false,
+        });
+    }
+
+    #[test]
+    fn refuses_encrypted_rpf7_toc_without_keys() {
+        let mut data = minimal_open_rpf7();
+        data[12..16].copy_from_slice(&0x0FFF_FFF9_u32.to_le_bytes());
+        assert!(inventory_rpf7_open(&data).unwrap_err().0.contains("AES/NG keys are required"));
+    }
+
+    #[test]
+    fn rejects_rpf7_directory_ranges_outside_entry_table() {
+        let mut data = minimal_open_rpf7();
+        data[28..32].copy_from_slice(&9_u32.to_le_bytes());
+        assert!(inventory_rpf7_open(&data).unwrap_err().0.contains("child range is out of bounds"));
+    }
+
+    #[test]
+    fn rejects_unterminated_rpf7_names() {
+        let mut data = minimal_open_rpf7();
+        data[61] = b'x';
+        assert!(inventory_rpf7_open(&data).unwrap_err().0.contains("NUL-terminated"));
+    }
+
 }
