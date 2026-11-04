@@ -306,6 +306,26 @@ mod tests {
     }
 
     #[test]
+    fn decodes_ytd_rgb565_style_and_respects_row_padding() {
+        // A1R5G5B5: opaque red (1 | 31 << 10), followed by 2 padding bytes.
+        let red = (0x8000_u16 | (31 << 10)).to_le_bytes();
+        let mut data = red.to_vec();
+        data.extend_from_slice(&[0xEE, 0xEE]);
+        assert_eq!(
+            decode_ytd_uncompressed_rgba(1, 1, 4, 25, &data, 4).unwrap(),
+            vec![255, 0, 0, 255]
+        );
+        assert_eq!(
+            decode_ytd_uncompressed_rgba(1, 1, 4, 22, &[0x10, 0x20, 0x30, 0x00], 4).unwrap(),
+            vec![0x30, 0x20, 0x10, 255]
+        );
+        assert_eq!(
+            decode_ytd_uncompressed_rgba(1, 1, 4, 32, &[0x10, 0x20, 0x30, 0x40], 4).unwrap(),
+            vec![0x10, 0x20, 0x30, 0x40]
+        );
+    }
+
+    #[test]
     fn rejects_unsupported_truncated_and_oversized_ytd_pixels() {
         assert!(decode_ytd_uncompressed_rgba(4, 4, 8, 21, &[0; 128], 256).is_err());
         assert!(decode_ytd_uncompressed_rgba(4, 4, 16, 21, &[0; 16], 256).is_err());
