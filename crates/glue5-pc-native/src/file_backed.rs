@@ -1258,7 +1258,7 @@ mod mounted_ytd_inspection_tests {
         system[0x178..0x17C].copy_from_slice(&0x3154_5844_u32.to_le_bytes());
         system[0x17D] = 1;
         system[0x190..0x198].copy_from_slice(&0x6000_0000_u64.to_le_bytes());
-        system[0x1C0..0x1C5].copy_from_slice(b"test\\0");
+        system[0x1C0..0x1C5].copy_from_slice(b"test\0");
 
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(&system).unwrap();
