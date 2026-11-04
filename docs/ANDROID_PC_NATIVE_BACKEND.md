@@ -18,13 +18,15 @@ The PC game archives are data, not executable game code. A data directory alone 
 
 ## Current code
 
-The `glue5-pc-native` crate provides a conservative component-presence readiness gate and a version-1 JSON manifest parser. The parser validates required metadata, non-empty file lists, relative normalized paths, duplicate paths, unsigned file sizes, and 64-character SHA-256 hex strings.
+The glue5-pc-native crate provides a conservative component-presence readiness gate, a version-1 JSON manifest parser, and an on-disk integrity verifier. The parser validates required metadata, non-empty file lists, relative normalized paths, duplicate paths, unsigned file sizes, and 64-character SHA-256 hex strings.
 
-Manifest validation is metadata-only. It does not hash files on disk, extract archives, transform textures/audio, load an engine, or make the game playable. A ready layout means only that the configured component paths exist.
+The verify_data_files function checks each listed file's real size and SHA-256 using a bounded 1 MiB streaming buffer. It rejects missing files, non-regular files, size/hash mismatches, and resolved paths that escape the selected data root through symlinks. This verifies integrity only; it does not establish that PC archives are compatible with an Android game engine.
+
+The readiness gate is intentionally conservative: even when configured component paths exist, its ReadyForRuntimeIntegration state means only that the three expected paths are present. It does not load or execute a game engine and does not mean the game is playable.
 
 ## Version-1 data manifest
 
-Store `glue5-pc-data.json` at the root of a prepared, user-owned data directory:
+Store glue5-pc-data.json at the root of a prepared, user-owned data directory:
 
 ```json
 {
