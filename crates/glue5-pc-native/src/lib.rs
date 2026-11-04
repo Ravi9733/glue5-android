@@ -402,7 +402,7 @@ mod tests {
     #[test] fn rejects_traversal_absolute_and_backslash_paths() {
         for bad in ["../escape", "/absolute", "a/../../b", "a\\b"] {
             let json_path = serde_json::to_string(bad).unwrap();
-            let input = VALID.replace("\\"update/update.rpf\\"", &json_path);
+            let input = VALID.replace("\"update/update.rpf\"", &json_path);
             assert!(parse_data_manifest(&input).is_err(), "{bad}");
         }
     }
