@@ -1068,3 +1068,71 @@ mod mounted_rsc7_page_decode_tests {
         ).unwrap_err().0.contains("exceeds configured limit"));
     }
 }
+
+
+#[cfg(test)]
+mod mounted_gta_candidate_inspection_tests {
+    use super::*;
+    use flate2::{write::DeflateEncoder, Compression};
+    use std::io::{Cursor, Write};
+
+    fn payload() -> Vec<u8> {
+        let body = [vec![0x51; 512], vec![0x62; 512]].concat();
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&body).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut bytes = b"RSC7".to_vec();
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        bytes.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        bytes.extend_from_slice(&compressed);
+        bytes
+    }
+
+    fn candidate(path: &str, kind: crate::GtaResourceCandidateKind) -> crate::MountedGtaResourceCandidate {
+        let bytes = payload();
+        crate::MountedGtaResourceCandidate {
+            virtual_path: path.into(),
+            candidate_kind: kind,
+            asset: crate::MountedAsset {
+                archive: "mods/test.rpf".into(),
+                entry_index: 4,
+                offset: 128,
+                length: bytes.len() as u64,
+                kind: crate::MountedAssetKind::Resource,
+            },
+        }
+    }
+
+    #[test]
+    fn inspects_classified_candidate_and_streams_both_page_regions() {
+        let bytes = payload();
+        let mut backing = vec![0xCC; 128];
+        backing.extend_from_slice(&bytes);
+        let mut reader = Cursor::new(backing);
+        let candidate = candidate("props/ramp.ydr", crate::GtaResourceCandidateKind::DrawableYdr);
+        let mut system = Vec::new();
+        let mut graphics = Vec::new();
+        let report = inspect_mounted_gta_resource_candidate(
+            &mut reader, &candidate, &mut system, &mut graphics, 2048,
+        ).unwrap();
+        assert_eq!(report.virtual_path, "props/ramp.ydr");
+        assert_eq!(report.candidate_kind, crate::GtaResourceCandidateKind::DrawableYdr);
+        assert_eq!(report.rsc7.bytes_written, 1024);
+        assert_eq!(system, vec![0x51; 512]);
+        assert_eq!(graphics, vec![0x62; 512]);
+    }
+
+    #[test]
+    fn rejects_candidate_kind_mismatch_before_reading() {
+        let mut reader = Cursor::new(vec![0_u8; 1024]);
+        let candidate = candidate("props/ramp.ydr", crate::GtaResourceCandidateKind::TextureDictionaryYtd);
+        let mut system = Vec::new();
+        let mut graphics = Vec::new();
+        let error = inspect_mounted_gta_resource_candidate(
+            &mut reader, &candidate, &mut system, &mut graphics, 2048,
+        ).unwrap_err();
+        assert!(error.0.contains("does not match"));
+        assert!(system.is_empty() && graphics.is_empty());
+    }
+}
