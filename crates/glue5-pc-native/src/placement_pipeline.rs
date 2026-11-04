@@ -10,7 +10,7 @@ use crate::{
     inspect_decoded_placement_gta_assets, read_decoded_placement_geometry_buffers,
     read_resolved_json_placement_payloads, AssetMountIndex, InspectedPlacementGeometryBuffers,
     DecodedPlacementAssetBatch, DecodedPlacementContent, JsonPlacementDocument,
-    ManifestError, PlacementGpuPayloadBatch, VertexElement,
+    inventory_rpf7_open, ManifestError, PlacementGpuPayloadBatch, VertexElement,
 };
 use std::io::{Read, Seek, SeekFrom};
 
