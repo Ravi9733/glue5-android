@@ -25,6 +25,8 @@ pub mod texture_upload;
 pub mod placement_cpu_mesh;
 pub mod placement_scene;
 pub mod placement_gpu_payload;
+pub mod placement_pipeline;
+pub use placement_pipeline::{prepare_rpf7_json_placement_pipeline, PlacementPipelineLimits, PreparedPlacementPipeline};
 pub use placement_cpu_mesh::{assemble_decoded_placement_cpu_meshes, InspectedPlacementCpuMesh, PlacementCpuMeshBatch};
 pub use placement_scene::{build_placement_scene_meshes, PlacedCpuMesh, PlacementSceneBatch};
 pub use placement_gpu_payload::{build_placement_gpu_payloads, PlacementGpuMeshPayload, PlacementGpuPayloadBatch};
