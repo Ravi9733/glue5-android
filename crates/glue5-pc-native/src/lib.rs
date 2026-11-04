@@ -1297,6 +1297,9 @@ pub fn read_rsc7_pointer_list<'a>(
     if header.count == 0 {
         return Ok(None);
     }
+    if header.pointer == 0 {
+        return Err(ManifestError("RSC7 pointer-list has items but a null data pointer".into()));
+    }
     if element_size == 0 {
         return Err(ManifestError("RSC7 pointer-list element size cannot be zero".into()));
     }
@@ -1329,6 +1332,10 @@ mod rsc7_pointer_list_tests {
         raw.extend_from_slice(&3_u16.to_le_bytes());
         assert!(parse_rsc7_pointer_list_header(&raw).unwrap_err().0.contains("exceeds capacity"));
         let header = Rsc7PointerListHeader { pointer: 0x5000_0000, count: 5, capacity: 5 };
+        assert!(read_rsc7_pointer_list(&[0; 64],
+            Rsc7PointerListHeader { pointer: 0, count: 1, capacity: 1 }, 4, 4,
+            Rpf7ResourcePageSizes { system_bytes: 64, graphics_bytes: 0 })
+            .unwrap_err().0.contains("null data pointer"));
         assert!(read_rsc7_pointer_list(&[0; 64], header, 4, 4,
             Rpf7ResourcePageSizes { system_bytes: 64, graphics_bytes: 0 })
             .unwrap_err().0.contains("configured limit"));
