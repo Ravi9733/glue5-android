@@ -304,6 +304,8 @@ pub struct Rpf7PayloadRange {
     pub metadata_end: u64,
     pub in_bounds: bool,
     pub overlaps_metadata: bool,
+    pub size_is_sentinel: bool,
+    pub offset_is_sentinel: bool,
 }
 
 /// Validate binary and resource payload ranges without reading or extracting them.
@@ -316,14 +318,17 @@ pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -
         .and_then(|value| value.checked_add(u64::from(inventory.header.names_length)))
         .unwrap_or(u64::MAX);
     inventory.entries.iter().filter_map(|entry| {
-        let (file_size, offset_blocks) = match &entry.kind {
-            Rpf7EntryKind::BinaryFile { file_size, file_offset_blocks, .. }
-            | Rpf7EntryKind::ResourceFile { file_size, file_offset_blocks, .. } =>
-                (*file_size as u64, *file_offset_blocks as u64),
+        let (file_size, offset_blocks, size_is_sentinel) = match &entry.kind {
+            Rpf7EntryKind::BinaryFile { file_size, file_offset_blocks, uncompressed_size, .. } =>
+                (if *file_size == 0 { *uncompressed_size as u64 } else { *file_size as u64 },
+                 *file_offset_blocks as u64, false),
+            Rpf7EntryKind::ResourceFile { file_size, file_offset_blocks, .. } =>
+                (*file_size as u64, *file_offset_blocks as u64, *file_size == 0x00FF_FFFF),
             Rpf7EntryKind::Directory { .. } => return None,
         };
-        let start = offset_blocks.checked_mul(512);
-        let end = start.and_then(|value| value.checked_add(file_size));
+        let offset_is_sentinel = offset_blocks == 0x007F_FFFF;
+        let start = if offset_is_sentinel { None } else { offset_blocks.checked_mul(512) };
+        let end = if size_is_sentinel { start } else { start.and_then(|value| value.checked_add(file_size)) };
         let (start, end, in_bounds) = match (start, end) {
             (Some(start), Some(end)) => (start, end, end <= archive_len),
             _ => (u64::MAX, u64::MAX, false),
@@ -337,6 +342,8 @@ pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -
             metadata_end,
             in_bounds,
             overlaps_metadata: start < metadata_end,
+            size_is_sentinel,
+            offset_is_sentinel,
         })
     }).collect()
 }
@@ -537,8 +544,50 @@ mod tests {
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0].name, "file.bin");
         assert_eq!(ranges[0].start, 512);
-        assert_eq!(ranges[0].end, 512);
+        assert_eq!(ranges[0].end, 516);
         assert!(ranges[0].in_bounds);
+        assert!(!ranges[0].size_is_sentinel);
+        assert!(!ranges[0].offset_is_sentinel);
+    }
+
+    #[test]
+    fn validates_rpf7_resource_payload_range_and_flags() {
+        let mut data = minimal_open_rpf7();
+        data[39] |= 0x80;
+        data[40..44].copy_from_slice(&0x1234_5678_u32.to_le_bytes());
+        data[44..48].copy_from_slice(&0x8765_4321_u32.to_le_bytes());
+        let inventory = inventory_rpf7_open(&data).unwrap();
+        assert_eq!(inventory.entries[1].kind, Rpf7EntryKind::ResourceFile {
+            file_size: 4, file_offset_blocks: 1,
+            system_flags: 0x1234_5678, graphics_flags: 0x8765_4321,
+        });
+        let ranges = validate_rpf7_payload_ranges(&data, &inventory);
+        assert_eq!(ranges[0].start, 512);
+        assert_eq!(ranges[0].end, 516);
+        assert!(ranges[0].in_bounds);
+    }
+
+    #[test]
+    fn marks_resource_size_sentinel_as_unresolved() {
+        let mut data = minimal_open_rpf7();
+        data[34..37].copy_from_slice(&[0xFF, 0xFF, 0xFF]);
+        data[39] |= 0x80;
+        let inventory = inventory_rpf7_open(&data).unwrap();
+        let ranges = validate_rpf7_payload_ranges(&data, &inventory);
+        assert!(ranges[0].size_is_sentinel);
+        assert!(!ranges[0].offset_is_sentinel);
+        assert_eq!(ranges[0].start, 512);
+        assert_eq!(ranges[0].end, 512);
+    }
+
+    #[test]
+    fn rejects_rpf7_all_ones_payload_offset_sentinel() {
+        let mut data = minimal_open_rpf7();
+        data[37..40].copy_from_slice(&[0xFF, 0xFF, 0xFF]);
+        let inventory = inventory_rpf7_open(&data).unwrap();
+        let ranges = validate_rpf7_payload_ranges(&data, &inventory);
+        assert!(ranges[0].offset_is_sentinel);
+        assert!(!ranges[0].in_bounds);
     }
 
     #[test]

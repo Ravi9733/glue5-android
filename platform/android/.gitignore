@@ -1,5 +1,0 @@
-# Gradle's and Android Studio's state (the tasks keep Gradle's in target/android)
-/.gradle
-/.kotlin
-/.idea
-/local.properties
