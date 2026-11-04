@@ -2065,10 +2065,12 @@ mod rsc7_streaming_decode_tests {
         let oversized = payload_with_body(&vec![0x3C; 513]);
         assert!(decode_rsc7_resource(&oversized, 1024).unwrap_err().0.contains("size mismatch"));
 
-        let mut reader = Cursor::new(payload_with_body(&vec![0x3C; 513]));
+        let oversized_stream = payload_with_body(&vec![0x3C; 513]);
+        let oversized_len = oversized_stream.len() as u64;
+        let mut reader = Cursor::new(oversized_stream);
         let mut output = Vec::new();
         assert!(decode_rsc7_resource_stream(
-            &mut reader, 0, reader.get_ref().len() as u64, &mut output, 1024
+            &mut reader, 0, oversized_len, &mut output, 1024
         ).is_err());
     }
 
