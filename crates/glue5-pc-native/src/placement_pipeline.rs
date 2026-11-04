@@ -4,7 +4,7 @@
 //! bounded operation. It prepares GPU mesh payloads, but deliberately does not
 //! issue draw calls, resolve game materials, or spawn engine entities.
 use crate::{
-    add_rpf7_inventory_to_mount, assemble_decoded_placement_cpu_meshes,
+    add_rpf7_inventory_to_mount_at, assemble_decoded_placement_cpu_meshes,
     build_placement_gpu_payloads, build_placement_scene_meshes,
     build_resolved_json_placement_plan, decode_resolved_placement_payloads,
     inspect_decoded_placement_gta_assets, read_decoded_placement_geometry_buffers,
@@ -71,6 +71,7 @@ pub fn prepare_rpf7_json_placement_pipeline<R, F>(
     reader: &mut R,
     archive_name: &str,
     virtual_prefix: &str,
+    archive_base: u64,
     inventory: &crate::Rpf7Inventory,
     placements: &JsonPlacementDocument,
     limits: &PlacementPipelineLimits,
@@ -80,10 +81,12 @@ where
     R: Read + Seek,
     F: FnMut(&InspectedPlacementGeometryBuffers) -> Result<Vec<VertexElement>, ManifestError>,
 {
-    let archive_len = reader.seek(SeekFrom::End(0))
+    let backing_len = reader.seek(SeekFrom::End(0))
         .map_err(|e| ManifestError(format!("cannot seek to RPF7 archive end: {e}")))?;
+    let archive_len = backing_len.checked_sub(archive_base)
+        .ok_or_else(|| ManifestError("RPF7 archive base is beyond backing file".into()))?;
     let mut mount_index = AssetMountIndex::new();
-    add_rpf7_inventory_to_mount(&mut mount_index, archive_name, virtual_prefix, archive_len, inventory)
+    add_rpf7_inventory_to_mount_at(&mut mount_index, archive_name, virtual_prefix, archive_base, archive_len, inventory)
         .map_err(|e| ManifestError(format!("RPF7 mount indexing failed: {}", e.0)))?;
 
     let plan = build_resolved_json_placement_plan(
