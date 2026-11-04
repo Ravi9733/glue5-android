@@ -8,6 +8,8 @@ use std::path::{Component, Path};
 /// Versioned JSON placement-mod parser for the experimental PC content layer.
 pub mod placement;
 pub mod mount;
+pub mod ytd;
+pub use ytd::{parse_ytd_resource_pages, YtdDictionary, YtdTextureInfo};
 pub use placement::{apply_json_placements, apply_resolved_json_placements, parse_json_placements, validate_json_placement_assets, JsonPlacement, JsonPlacementDocument, PlacementApplyError, PlacementAssetError, PlacementError, PlacementSink, ResolvedPlacementSink};
 pub use mount::{add_rpf7_inventory_to_mount, add_rpf7_inventory_to_mount_at, AssetMountIndex, MountError, MountedAsset, MountedAssetKind, MountedGtaResourceCandidate};
 
