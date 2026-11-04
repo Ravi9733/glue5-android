@@ -301,7 +301,9 @@ pub struct Rpf7PayloadRange {
     pub start: u64,
     pub end: u64,
     pub archive_len: u64,
+    pub metadata_end: u64,
     pub in_bounds: bool,
+    pub overlaps_metadata: bool,
 }
 
 /// Validate binary and resource payload ranges without reading or extracting them.
@@ -309,6 +311,10 @@ pub struct Rpf7PayloadRange {
 /// does not exceed the supplied archive length.
 pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -> Vec<Rpf7PayloadRange> {
     let archive_len = archive.len() as u64;
+    let metadata_end = 16_u64
+        .checked_add(inventory.header.toc_bytes)
+        .and_then(|value| value.checked_add(u64::from(inventory.header.names_length)))
+        .unwrap_or(u64::MAX);
     inventory.entries.iter().filter_map(|entry| {
         let (file_size, offset_blocks) = match &entry.kind {
             Rpf7EntryKind::BinaryFile { file_size, file_offset_blocks, .. }
@@ -328,7 +334,9 @@ pub fn validate_rpf7_payload_ranges(archive: &[u8], inventory: &Rpf7Inventory) -
             start,
             end,
             archive_len,
+            metadata_end,
             in_bounds,
+            overlaps_metadata: start < metadata_end,
         })
     }).collect()
 }
@@ -374,7 +382,9 @@ pub fn scan_nested_rpf7_open(archive: &[u8], inventory: &Rpf7Inventory) -> Vec<N
             let start = offset_blocks.checked_mul(512);
             let end = start.and_then(|value| value.checked_add(file_size));
             match (start, end) {
-                (Some(start), Some(end)) if end <= archive.len() => {
+                (Some(start), Some(end))
+                    if start >= 16 + inventory.header.toc_bytes as usize + inventory.header.names_length as usize
+                        && end <= archive.len() => {
                     match probe_rpf_header(&archive[start..end]) {
                         Ok(RpfProbe::GtaVLegacy(_)) => match inventory_rpf7_open(&archive[start..end]) {
                             Ok(nested) => NestedRpfStatus::InventoriedRpf7(nested),
@@ -529,6 +539,19 @@ mod tests {
         assert_eq!(ranges[0].start, 512);
         assert_eq!(ranges[0].end, 512);
         assert!(ranges[0].in_bounds);
+    }
+
+    #[test]
+    fn reports_payload_that_overlaps_archive_metadata() {
+        let mut data = minimal_open_rpf7();
+        // Block zero points into the archive header/TOC, not the payload area.
+        data[37] = 0;
+        let inventory = inventory_rpf7_open(&data).unwrap();
+        let ranges = validate_rpf7_payload_ranges(&data, &inventory);
+        assert_eq!(ranges.len(), 1);
+        assert!(ranges[0].in_bounds);
+        assert!(ranges[0].overlaps_metadata);
+        assert_eq!(ranges[0].metadata_end, 62);
     }
 
     #[test]
