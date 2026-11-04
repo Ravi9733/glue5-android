@@ -89,19 +89,34 @@ fn detect(bytes: &[u8]) -> (BinaryFormat, Architecture) {
     if bytes.starts_with(b"\0asm") {
         return (BinaryFormat::Wasm, if bytes.get(4) == Some(&1) { Architecture::Wasm32 } else { Architecture::Unknown });
     }
-    if bytes.len() >= 4 {
-        let magic = u32::from_be_bytes(bytes[..4].try_into().unwrap());
-        let arch = match magic {
-            0xfeedface | 0xcefaedfe => Architecture::X86,
-            0xfeedfacf | 0xcffaedfe => Architecture::X86_64,
-            0xfeedfece | 0xcefeedfe => Architecture::Arm32,
-            _ => Architecture::Unknown,
-        };
-        if matches!(magic, 0xfeedface | 0xcefaedfe | 0xfeedfacf | 0xcffaedfe | 0xfeedfece | 0xcefeedfe) {
-            return (BinaryFormat::MachO, arch);
-        }
+    if let Some(architecture) = mach_o_architecture(bytes) {
+        return (BinaryFormat::MachO, architecture);
     }
     (BinaryFormat::Unknown, Architecture::Unknown)
+}
+
+/// Read the CPU type from a thin Mach-O header. The magic determines
+/// byte order and 32/64-bit header form; CPU_TYPE, not the magic, determines
+/// whether the binary is x86, x86_64, ARM32 or ARM64.
+fn mach_o_architecture(bytes: &[u8]) -> Option<Architecture> {
+    if bytes.len() < 8 { return None; }
+    let little_endian = match &bytes[..4] {
+        b"\\xce\\xfa\\xed\\xfe" | b"\\xcf\\xfa\\xed\\xfe" => true,
+        b"\\xfe\\xed\\xfa\\xce" | b"\\xfe\\xed\\xfa\\xcf" => false,
+        _ => return None,
+    };
+    let cpu_type = if little_endian {
+        u32::from_le_bytes(bytes[4..8].try_into().ok()?)
+    } else {
+        u32::from_be_bytes(bytes[4..8].try_into().ok()?)
+    };
+    Some(match cpu_type {
+        7 => Architecture::X86,
+        0x0100_0007 => Architecture::X86_64,
+        12 => Architecture::Arm32,
+        0x0100_000c => Architecture::Arm64,
+        _ => Architecture::Unknown,
+    })
 }
 
 #[cfg(test)]
@@ -119,6 +134,27 @@ mod tests {
         assert_eq!(got.architecture, Architecture::X86_64);
         assert!(matches!(got.compatibility, Compatibility::WindowsPeNeedsCompatibilityLayer { .. }));
     }
+    #[test]
+    fn identifies_arm64_macho_by_cpu_type_not_magic() {
+        // MH_MAGIC_64, little-endian, CPU_TYPE_ARM64.
+        let mut bytes = vec![0u8; 32];
+        bytes[..4].copy_from_slice(b"\\xcf\\xfa\\xed\\xfe");
+        bytes[4..8].copy_from_slice(&0x0100_000cu32.to_le_bytes());
+        let got = inspect(&bytes);
+        assert_eq!(got.format, BinaryFormat::MachO);
+        assert_eq!(got.architecture, Architecture::Arm64);
+    }
+
+    #[test]
+    fn identifies_x86_64_macho_by_cpu_type() {
+        let mut bytes = vec![0u8; 32];
+        bytes[..4].copy_from_slice(b"\\xcf\\xfa\\xed\\xfe");
+        bytes[4..8].copy_from_slice(&0x0100_0007u32.to_le_bytes());
+        let got = inspect(&bytes);
+        assert_eq!(got.format, BinaryFormat::MachO);
+        assert_eq!(got.architecture, Architecture::X86_64);
+    }
+
     #[test]
     fn rejects_empty_and_truncated_data() {
         assert_eq!(inspect(&[]).compatibility, Compatibility::UnrecognizedBinary);
