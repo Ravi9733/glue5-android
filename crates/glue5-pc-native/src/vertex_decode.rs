@@ -202,6 +202,28 @@ pub fn decode_drawable_indices(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn parses_verified_legacy_declaration_semantics_and_offsets() {
+        // Position=float3, Normal=snorm8x4, Colour0=unorm8x4, TexCoord0=float2.
+        let flags = (1 << 0) | (1 << 3) | (1 << 4) | (1 << 6);
+        let types = 6u64 | (10u64 << 12) | (9u64 << 16) | (5u64 << 24);
+        let layout = parse_rockstar_vertex_declaration(flags, 28, types).unwrap();
+        assert_eq!(layout, vec![
+            VertexElement { semantic: "Position".into(), offset: 0, format: VertexElementFormat::Float32x3 },
+            VertexElement { semantic: "Normal".into(), offset: 12, format: VertexElementFormat::Snorm8x4 },
+            VertexElement { semantic: "Colour0".into(), offset: 16, format: VertexElementFormat::Unorm8x4 },
+            VertexElement { semantic: "TexCoord0".into(), offset: 20, format: VertexElementFormat::Float32x2 },
+        ]);
+    }
+
+    #[test]
+    fn rejects_legacy_declarations_with_unknown_bits_or_stride_mismatch() {
+        assert!(parse_rockstar_vertex_declaration(1 << 20, 12, 6).is_err());
+        assert!(parse_rockstar_vertex_declaration(1, 16, 6).is_err());
+        // Half-float encoding remains explicitly unsupported, not guessed.
+        assert!(parse_rockstar_vertex_declaration(1, 8, 1).is_err());
+    }
+
 
     #[test]
     fn decodes_float_position_and_normalized_color() {
