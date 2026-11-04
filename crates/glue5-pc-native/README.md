@@ -14,7 +14,7 @@ This crate is an isolated engineering foundation for investigating whether PC-fo
 - Borrow the decompressed RSC7 body as zero-copy system and graphics slices after checking that the body length exactly matches the page allocation metadata.
 - Resolve and read bounded 64-bit serialized virtual pointers in the `0x5xxxxxxx` system and `0x6xxxxxxx` graphics address spaces.
 - Parse candidate 8-byte pointer-list descriptors, read bounded fixed-size list records, decode arrays of 32-bit virtual pointers, and read each non-null target payload through the resolved system/graphics segment. Per-item segment/range validation is applied before returning slices. These are generic traversal primitives; they do not assert a particular GTA V class layout.
-- Extract/copy only bounded, unencrypted, uncompressed RPF7 binary entries. Decode one selected RPF7 RSC7 resource range with a caller-supplied decompressed-output cap and a per-entry result report; this is a narrow resource extraction path, not batch mounting. Scan one level of direct nested RPF7 archives when their payloads are eligible.
+- Extract/copy only bounded, unencrypted, uncompressed RPF7 binary entries. Decode one selected RPF7 RSC7 resource range with a caller-supplied decompressed-output cap and a per-entry result report; this is a narrow resource extraction path, not batch mounting. Scan one level of direct nested RPF7 archives when their payloads are eligible. A TOC-indexed extraction entry point rebuilds the inventory from the supplied archive bytes before selecting a resource, avoiding caller-supplied ranges or mismatched inventories.
 
 ## Deliberate limitations
 
