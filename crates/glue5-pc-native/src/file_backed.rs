@@ -253,6 +253,42 @@ mod tests {
         bytes
     }
 
+    fn empty_rpf7() -> Vec<u8> {
+        let mut bytes = vec![0_u8; 16];
+        bytes[0..4].copy_from_slice(&0x5250_4637_u32.to_le_bytes());
+        bytes[4..8].copy_from_slice(&0_u32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&0_u32.to_le_bytes());
+        bytes[12..16].copy_from_slice(&0x4E45_504F_u32.to_le_bytes());
+        bytes
+    }
+
+    fn archive_with_nested(name: &str, nested: &[u8]) -> Vec<u8> {
+        let mut names = b"root\\0".to_vec();
+        names.extend_from_slice(name.as_bytes());
+        names.push(0);
+        let metadata_len = 16 + 32 + names.len();
+        let mut bytes = vec![0_u8; 512 + nested.len()];
+        bytes[0..4].copy_from_slice(&0x5250_4637_u32.to_le_bytes());
+        bytes[4..8].copy_from_slice(&2_u32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&(names.len() as u32).to_le_bytes());
+        bytes[12..16].copy_from_slice(&0x4E45_504F_u32.to_le_bytes());
+        bytes[16..20].copy_from_slice(&0_u32.to_le_bytes());
+        bytes[20..24].copy_from_slice(&0x7FFF_FF00_u32.to_le_bytes());
+        bytes[24..28].copy_from_slice(&1_u32.to_le_bytes());
+        bytes[28..32].copy_from_slice(&1_u32.to_le_bytes());
+        bytes[32..34].copy_from_slice(&5_u16.to_le_bytes());
+        let size = nested.len() as u32;
+        bytes[34] = size as u8;
+        bytes[35] = (size >> 8) as u8;
+        bytes[36] = (size >> 16) as u8;
+        bytes[37] = 1; // payload starts at archive-relative block 1
+        bytes[40..44].copy_from_slice(&size.to_le_bytes());
+        bytes[48..48 + names.len()].copy_from_slice(&names);
+        assert!(metadata_len <= 512);
+        bytes[512..].copy_from_slice(nested);
+        bytes
+    }
+
     #[test]
     fn inventories_only_metadata_and_preserves_full_archive_length() {
         let bytes = fixture();
@@ -337,6 +373,54 @@ mod tests {
         let error = extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 64).unwrap_err();
         assert!(error.0.contains("resource range is truncated"));
         assert!(output.is_empty());
+    }
+
+    #[test]
+    fn file_backed_recursive_scan_reports_nested_paths_and_respects_depth() {
+        let leaf = empty_rpf7();
+        let middle = archive_with_nested("leaf.rpf", &leaf);
+        let outer = archive_with_nested("middle.rpf", &middle);
+        let mut reader = Cursor::new(outer);
+        let root = inventory_rpf7_open_reader(&mut reader).unwrap();
+
+        let reports = scan_nested_rpf7_open_reader_recursive(&mut reader, &root, 2, 8).unwrap();
+        assert_eq!(reports.len(), 2);
+        assert_eq!(reports[0].name, "middle.rpf");
+        assert_eq!(reports[1].name, "middle.rpf/leaf.rpf");
+
+        let reports = scan_nested_rpf7_open_reader_recursive(&mut reader, &root, 1, 8).unwrap();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].name, "middle.rpf");
+
+        let reports = scan_nested_rpf7_open_reader_recursive(&mut reader, &root, 0, 8).unwrap();
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn file_backed_recursive_scan_enforces_archive_count_limit() {
+        let leaf = empty_rpf7();
+        let middle = archive_with_nested("leaf.rpf", &leaf);
+        let outer = archive_with_nested("middle.rpf", &middle);
+        let mut reader = Cursor::new(outer);
+        let root = inventory_rpf7_open_reader(&mut reader).unwrap();
+
+        let reports = scan_nested_rpf7_open_reader_recursive(&mut reader, &root, 8, 1).unwrap();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].name, "middle.rpf");
+    }
+
+    #[test]
+    fn file_backed_recursive_scan_reports_out_of_bounds_child_payload() {
+        let nested = empty_rpf7();
+        let mut outer = archive_with_nested("middle.rpf", &nested);
+        outer[37] = 0; // points into the archive metadata instead of its payload
+        let mut reader = Cursor::new(outer);
+        let root = inventory_rpf7_open_reader(&mut reader).unwrap();
+
+        let reports = scan_nested_rpf7_open_reader_recursive(&mut reader, &root, 2, 8).unwrap();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].name, "middle.rpf");
+        assert_eq!(reports[0].status, crate::NestedRpfStatus::InvalidPayloadRange);
     }
 
     #[test]
