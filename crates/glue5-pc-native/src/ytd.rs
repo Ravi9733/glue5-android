@@ -1,7 +1,9 @@
-//! Bounded metadata parser for GTA V Legacy YTD texture dictionaries.
+//! Experimental bounded metadata parser for a presumed GTA V Legacy YTD layout.
 //!
-//! This parses the RSC7 page layout and texture descriptors. It validates
-//! virtual-pointer ranges but deliberately does not decode BC/DDS pixel formats.
+//! The field offsets in this local parser are not yet verified against retail
+//! assets. It parses RSC7 page descriptors and validates virtual-pointer ranges;
+//! it does not decode BC/DDS pixel data. Prefer a retail-validated parser before
+//! treating these results as authoritative game texture metadata.
 
 use crate::{
     read_rsc7_pointer_from_pages, resolve_rsc7_pointer, ManifestError,
@@ -12,6 +14,45 @@ const MAX_TEXTURES: usize = 4096;
 const MAX_NAME_BYTES: u32 = 256;
 const DICTIONARY_HEADER_BYTES: u32 = 0x40;
 const TEXTURE_HEADER_BYTES: u32 = 0x90;
+
+/// Known legacy GTA texture pixel-format identifiers. Unknown values are
+/// preserved by the parser rather than rejected.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum YtdPixelFormat {
+    A8R8G8B8,
+    X8R8G8B8,
+    A1R5G5B5,
+    A8,
+    A8B8G8R8,
+    L8,
+    Dxt1,
+    Dxt3,
+    Dxt5,
+    Ati1,
+    Ati2,
+    Bc7,
+    Unknown(u32),
+}
+
+impl YtdPixelFormat {
+    pub fn from_code(code: u32) -> Self {
+        match code {
+            21 => Self::A8R8G8B8,
+            22 => Self::X8R8G8B8,
+            25 => Self::A1R5G5B5,
+            28 => Self::A8,
+            32 => Self::A8B8G8R8,
+            50 => Self::L8,
+            0x3154_5844 => Self::Dxt1,
+            0x3354_5844 => Self::Dxt3,
+            0x3554_5844 => Self::Dxt5,
+            0x3149_5441 => Self::Ati1,
+            0x3249_5441 => Self::Ati2,
+            0x2037_4342 => Self::Bc7,
+            other => Self::Unknown(other),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct YtdTextureInfo {
@@ -200,6 +241,13 @@ fn read_u64(bytes: &[u8], offset: usize) -> Result<u64, ManifestError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn maps_known_pixel_formats_and_preserves_unknown_codes() {
+        assert_eq!(YtdPixelFormat::from_code(0x3154_5844), YtdPixelFormat::Dxt1);
+        assert_eq!(YtdPixelFormat::from_code(0x2037_4342), YtdPixelFormat::Bc7);
+        assert_eq!(YtdPixelFormat::from_code(0xDEAD_BEEF), YtdPixelFormat::Unknown(0xDEAD_BEEF));
+    }
 
     #[test]
     fn parses_texture_dictionary_and_validates_graphics_pointer() {
