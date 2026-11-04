@@ -400,7 +400,11 @@ mod tests {
     #[test] fn parses_manifest_and_normalizes_hash() { let m=parse_data_manifest(VALID).unwrap(); assert_eq!(m.files[0].sha256, "a".repeat(64)); }
     #[test] fn rejects_unknown_schema() { assert!(parse_data_manifest(&VALID.replace("\"schema_version\":1", "\"schema_version\":2")).is_err()); }
     #[test] fn rejects_traversal_absolute_and_backslash_paths() {
-        for bad in ["../escape", "/absolute", "a/../../b", "a\\b"] { assert!(parse_data_manifest(&VALID.replace("update/update.rpf", bad)).is_err(), "{bad}"); }
+        for bad in ["../escape", "/absolute", "a/../../b", "a\\b"] {
+            let json_path = serde_json::to_string(bad).unwrap();
+            let input = VALID.replace("\\"update/update.rpf\\"", &json_path);
+            assert!(parse_data_manifest(&input).is_err(), "{bad}");
+        }
     }
     #[test] fn rejects_bad_hash_and_duplicate_paths() {
         assert!(parse_data_manifest(&VALID.replace(&"A".repeat(64), "bad")).is_err());
