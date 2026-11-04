@@ -216,9 +216,34 @@ mod tests {
         let mut reader = Cursor::new(bytes);
         let mut output = Vec::new();
         let error = extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 64).unwrap_err();
-        assert!(!error.0.contains("sentinel is not supported"));
         assert!(!error.0.contains("sentinel is not supported"), "sentinel was not resolved: {}", error.0);
         assert!(!error.0.contains("outside archive payload bounds"), "resolved range was rejected: {}", error.0);
+    }
+
+    #[test]
+    fn rejects_file_backed_resource_sentinel_with_truncated_header() {
+        let mut bytes = fixture();
+        bytes.truncate(520);
+        bytes[34..37].copy_from_slice(&[0xFF, 0xFF, 0xFF]);
+        bytes[39] |= 0x80;
+        let mut reader = Cursor::new(bytes);
+        let mut output = Vec::new();
+        let error = extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 64).unwrap_err();
+        assert!(error.0.contains("sentinel header is outside archive payload bounds"));
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn rejects_file_backed_resource_sentinel_resolving_below_header_size() {
+        let mut bytes = fixture();
+        bytes[34..37].copy_from_slice(&[0xFF, 0xFF, 0xFF]);
+        bytes[39] |= 0x80;
+        bytes[512..516].copy_from_slice(b"RSC7");
+        let mut reader = Cursor::new(bytes);
+        let mut output = Vec::new();
+        let error = extract_rpf7_rsc7_entry_from_reader(&mut reader, 1, &mut output, 64).unwrap_err();
+        assert!(error.0.contains("resource range is truncated"));
+        assert!(output.is_empty());
     }
 
     #[test]
