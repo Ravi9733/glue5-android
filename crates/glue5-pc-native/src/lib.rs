@@ -111,7 +111,7 @@ pub fn verify_data_files(root: &Path, manifest: &DataManifest) -> Result<(), Man
             if count == 0 { break; }
             hasher.update(&buffer[..count]);
         }
-        let actual = format!("{:x}", hasher.finalize());
+        let actual = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
         if actual != entry.sha256 {
             return Err(ManifestError(format!("{}: SHA-256 mismatch", entry.path)));
         }
@@ -357,7 +357,7 @@ mod tests {
             files: vec![DataFile {
                 path: "update/update.rpf".into(),
                 size: bytes.len() as u64,
-                sha256: format!("{:x}", Sha256::digest(bytes)),
+                sha256: Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect(),
             }],
         };
         assert!(verify_data_files(&dir, &manifest).is_ok());
