@@ -1,4 +1,7 @@
 //! Capability gate and manifest validation for a future native PC-game backend.
+use sha2::{Digest, Sha256};
+use std::fs::File;
+use std::io::Read;
 use std::path::{Component, Path};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,9 +67,11 @@ pub fn parse_data_manifest(input: &str) -> Result<DataManifest, ManifestError> {
     }
     Ok(DataManifest { schema_version, game_build, preparation_tool, files })
 }
+
 fn string_field(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<String, ManifestError> {
     obj.get(key).and_then(|v| v.as_str()).map(str::to_owned).ok_or_else(|| ManifestError(format!("{key} must be a string")))
 }
+
 fn validate_path(value: &str) -> Result<(), &'static str> {
     if value.is_empty() || value.contains('\\') || value.starts_with('/') { return Err("must be a non-empty relative path using forward slashes"); }
     if Path::new(value).components().any(|c| !matches!(c, Component::Normal(_))) { return Err("must not contain traversal, root, or prefix components"); }
@@ -74,10 +79,59 @@ fn validate_path(value: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// Verify each manifest entry against files under the supplied data root.
+/// Hashing is streamed in bounded memory; symlinks escaping the data root are rejected.
+pub fn verify_data_files(root: &Path, manifest: &DataManifest) -> Result<(), ManifestError> {
+    let canonical_root = root.canonicalize().map_err(|e| ManifestError(format!("cannot resolve data root: {e}")))?;
+    if !canonical_root.is_dir() { return Err(ManifestError("data root is not a directory".into())); }
+
+    for entry in &manifest.files {
+        let candidate = canonical_root.join(&entry.path);
+        let resolved = candidate.canonicalize()
+            .map_err(|e| ManifestError(format!("{}: cannot resolve file: {e}", entry.path)))?;
+        if !resolved.starts_with(&canonical_root) {
+            return Err(ManifestError(format!("{}: resolved path escapes data root", entry.path)));
+        }
+        let metadata = resolved.metadata()
+            .map_err(|e| ManifestError(format!("{}: cannot read metadata: {e}", entry.path)))?;
+        if !metadata.is_file() {
+            return Err(ManifestError(format!("{}: expected a regular file", entry.path)));
+        }
+        if metadata.len() != entry.size {
+            return Err(ManifestError(format!("{}: size mismatch (expected {}, found {})", entry.path, entry.size, metadata.len())));
+        }
+
+        let mut file = File::open(&resolved)
+            .map_err(|e| ManifestError(format!("{}: cannot open file: {e}", entry.path)))?;
+        let mut hasher = Sha256::new();
+        let mut buffer = [0_u8; 1024 * 1024];
+        loop {
+            let count = file.read(&mut buffer)
+                .map_err(|e| ManifestError(format!("{}: read failed: {e}", entry.path)))?;
+            if count == 0 { break; }
+            hasher.update(&buffer[..count]);
+        }
+        let actual = format!("{:x}", hasher.finalize());
+        if actual != entry.sha256 {
+            return Err(ManifestError(format!("{}: SHA-256 mismatch", entry.path)));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     const VALID: &str = r#"{"schema_version":1,"game_build":"build-2699","preparation_tool":"glue5-data-prep/0.1","files":[{"path":"update/update.rpf","size":1234,"sha256":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}]}"#;
+
+    fn temp_dir() -> std::path::PathBuf {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        std::env::temp_dir().join(format!("glue5-pc-native-{}-{nonce}", std::process::id()))
+    }
+
     #[test] fn parses_manifest_and_normalizes_hash() { let m=parse_data_manifest(VALID).unwrap(); assert_eq!(m.files[0].sha256, "a".repeat(64)); }
     #[test] fn rejects_unknown_schema() { assert!(parse_data_manifest(&VALID.replace("\"schema_version\":1", "\"schema_version\":2")).is_err()); }
     #[test] fn rejects_traversal_absolute_and_backslash_paths() {
@@ -89,4 +143,39 @@ mod tests {
         assert!(parse_data_manifest(&dup).is_err());
     }
     #[test] fn rejects_empty_files() { assert!(parse_data_manifest(&VALID.replace("\"files\":[{\"path\":\"update/update.rpf\",\"size\":1234,\"sha256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}]", "\"files\":[]")).is_err()); }
+
+    #[test]
+    fn verifies_real_file_size_and_sha256() {
+        let dir = temp_dir();
+        fs::create_dir_all(dir.join("update")).unwrap();
+        let bytes = b"owned game data test";
+        fs::write(dir.join("update/update.rpf"), bytes).unwrap();
+        let manifest = DataManifest {
+            schema_version: 1,
+            game_build: "test-build".into(),
+            preparation_tool: "test".into(),
+            files: vec![DataFile {
+                path: "update/update.rpf".into(),
+                size: bytes.len() as u64,
+                sha256: format!("{:x}", Sha256::digest(bytes)),
+            }],
+        };
+        assert!(verify_data_files(&dir, &manifest).is_ok());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn detects_modified_file() {
+        let dir = temp_dir();
+        fs::create_dir_all(dir.join("update")).unwrap();
+        fs::write(dir.join("update/update.rpf"), b"changed").unwrap();
+        let manifest = DataManifest {
+            schema_version: 1,
+            game_build: "test-build".into(),
+            preparation_tool: "test".into(),
+            files: vec![DataFile { path: "update/update.rpf".into(), size: 7, sha256: "0".repeat(64) }],
+        };
+        assert!(verify_data_files(&dir, &manifest).unwrap_err().0.contains("SHA-256 mismatch"));
+        fs::remove_dir_all(dir).unwrap();
+    }
 }
