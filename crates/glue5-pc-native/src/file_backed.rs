@@ -948,3 +948,90 @@ mod mounted_rsc7_decode_tests {
         ).unwrap_err().0.contains("exceeds configured limit"));
     }
 }
+
+
+#[cfg(test)]
+mod mounted_rsc7_page_decode_tests {
+    use super::*;
+    use flate2::{write::DeflateEncoder, Compression};
+    use std::io::{Cursor, Write};
+
+    fn payload(system: &[u8], graphics: &[u8]) -> Vec<u8> {
+        assert_eq!(system.len(), 512);
+        assert_eq!(graphics.len(), 512);
+        let body = [system, graphics].concat();
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&body).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut bytes = b"RSC7".to_vec();
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        bytes.extend_from_slice(&(1_u32 << 27).to_le_bytes());
+        bytes.extend_from_slice(&compressed);
+        bytes
+    }
+
+    fn descriptor(offset: u64, length: u64, kind: crate::MountedAssetKind) -> crate::MountedAsset {
+        crate::MountedAsset { archive: "mods/test.rpf".into(), entry_index: 9, offset, length, kind }
+    }
+
+    #[test]
+    fn streams_mounted_resource_to_separate_pages_at_absolute_offset() {
+        let system = vec![0x51; 512];
+        let graphics = vec![0x62; 512];
+        let bytes = payload(&system, &graphics);
+        let mut backing = vec![0xCC; 256];
+        backing.extend_from_slice(&bytes);
+        let mut reader = Cursor::new(backing);
+        let mut system_page = Vec::new();
+        let mut graphics_page = Vec::new();
+        let report = decode_mounted_rsc7_asset_pages_from_reader(
+            &mut reader,
+            &descriptor(256, bytes.len() as u64, crate::MountedAssetKind::Resource),
+            &mut system_page,
+            &mut graphics_page,
+            2048,
+        ).unwrap();
+        assert_eq!(report.bytes_written, 1024);
+        assert_eq!(system_page, system);
+        assert_eq!(graphics_page, graphics);
+    }
+
+    #[test]
+    fn rejects_wrong_kind_short_range_and_backing_range_overflow() {
+        let mut reader = Cursor::new(vec![0_u8; 64]);
+        let mut system = Vec::new();
+        let mut graphics = Vec::new();
+        assert!(decode_mounted_rsc7_asset_pages_from_reader(
+            &mut reader, &descriptor(0, 32, crate::MountedAssetKind::Binary),
+            &mut system, &mut graphics, 2048,
+        ).unwrap_err().0.contains("not an RSC7 resource"));
+        assert!(decode_mounted_rsc7_asset_pages_from_reader(
+            &mut reader, &descriptor(0, 15, crate::MountedAssetKind::Resource),
+            &mut system, &mut graphics, 2048,
+        ).unwrap_err().0.contains("shorter than its header"));
+        assert!(decode_mounted_rsc7_asset_pages_from_reader(
+            &mut reader, &descriptor(48, 32, crate::MountedAssetKind::Resource),
+            &mut system, &mut graphics, 2048,
+        ).unwrap_err().0.contains("backing-file bounds"));
+        assert!(decode_mounted_rsc7_asset_pages_from_reader(
+            &mut reader, &descriptor(u64::MAX - 7, 16, crate::MountedAssetKind::Resource),
+            &mut system, &mut graphics, 2048,
+        ).unwrap_err().0.contains("overflows"));
+    }
+
+    #[test]
+    fn enforces_combined_decompressed_page_output_cap() {
+        let bytes = payload(&vec![0x31; 512], &vec![0x42; 512]);
+        let mut reader = Cursor::new(bytes.clone());
+        let mut system = Vec::new();
+        let mut graphics = Vec::new();
+        assert!(decode_mounted_rsc7_asset_pages_from_reader(
+            &mut reader,
+            &descriptor(0, bytes.len() as u64, crate::MountedAssetKind::Resource),
+            &mut system,
+            &mut graphics,
+            768,
+        ).unwrap_err().0.contains("exceeds configured limit"));
+    }
+}
