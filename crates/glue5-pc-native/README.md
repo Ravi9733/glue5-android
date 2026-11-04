@@ -12,7 +12,7 @@ This crate is an isolated engineering foundation for investigating whether PC-fo
 - Inspect the first 16 bytes of bounded RPF7 resource payloads for an RSC7 signature and report whether the header is valid, truncated, out of range, or has the wrong magic.
 - Decompress bounded RSC7 raw-DEFLATE bodies into system and graphics segments, validating output size against page flags.
 - Resolve and read bounded 64-bit serialized virtual pointers in the `0x5xxxxxxx` system and `0x6xxxxxxx` graphics address spaces.
-- Parse candidate 8-byte pointer-list descriptors, read bounded fixed-size list records, and decode arrays of 32-bit virtual pointers with per-item segment/range validation. These are generic traversal primitives; they do not assert a particular GTA V class layout.
+- Parse candidate 8-byte pointer-list descriptors, read bounded fixed-size list records, decode arrays of 32-bit virtual pointers, and read each non-null target payload through the resolved system/graphics segment. Per-item segment/range validation is applied before returning slices. These are generic traversal primitives; they do not assert a particular GTA V class layout.
 - Extract/copy only bounded, unencrypted, uncompressed RPF7 binary entries. Scan one level of direct nested RPF7 archives when their payloads are eligible.
 
 ## Deliberate limitations
@@ -24,7 +24,7 @@ This is metadata inspection and a narrow binary-entry extraction path, not a gen
 - Compressed or encrypted payloads are not extracted. Resource payloads are not extracted or decompressed.
 - The nested archive scan is one level deep, not recursive.
 - The RSC7 reader currently handles the loose-resource header + raw-DEFLATE body. RPF resource-entry extraction still needs its archive-specific resource-header reconstruction path.
-- Pointer resolution and pointer-array/list helpers validate address spaces, counts, element ranges, and bounds only; they do not interpret GTA structure layouts, relocate pointers, or reconstruct engine objects. The 8-byte list descriptor is a candidate generic layout and is not yet verified against real GTA V resources.
+- Pointer resolution and pointer-array/list helpers validate address spaces, counts, element ranges, and bounds only; the pointer-array reader can return bounded byte slices for non-null targets, but does not interpret GTA structure layouts, relocate pointers, or reconstruct engine objects. The 8-byte list descriptor is a candidate generic layout and is not yet verified against real GTA V resources.
 - Resource page sizes are used to bound decompression and pointer access, not to create GPU allocations.
 - Current tests use synthetic fixtures. The parser's assumptions must be checked against legally obtained, real GTA V archives before relying on it for production data.
 
