@@ -233,4 +233,92 @@ mod tests {
         let index = AssetMountIndex::new();
         assert!(index.resolve("props/not_mounted.ydr").unwrap().is_none());
     }
+    fn sample_inventory() -> crate::Rpf7Inventory {
+        crate::Rpf7Inventory {
+            header: crate::Rpf7Header {
+                entry_count: 5,
+                names_length: 32,
+                names_flags: 0,
+                encryption_tag: 0x4E45_504F,
+                toc_bytes: 80,
+            },
+            entries: vec![
+                crate::Rpf7Entry {
+                    index: 0,
+                    name: "ramp.ydr".into(),
+                    kind: crate::Rpf7EntryKind::BinaryFile {
+                        file_size: 128, file_offset_blocks: 1,
+                        uncompressed_size: 128, encrypted: false,
+                    },
+                },
+                crate::Rpf7Entry {
+                    index: 1,
+                    name: "compressed.ydr".into(),
+                    kind: crate::Rpf7EntryKind::BinaryFile {
+                        file_size: 64, file_offset_blocks: 2,
+                        uncompressed_size: 128, encrypted: false,
+                    },
+                },
+                crate::Rpf7Entry {
+                    index: 2,
+                    name: "encrypted.ydr".into(),
+                    kind: crate::Rpf7EntryKind::BinaryFile {
+                        file_size: 128, file_offset_blocks: 3,
+                        uncompressed_size: 128, encrypted: true,
+                    },
+                },
+                crate::Rpf7Entry {
+                    index: 3,
+                    name: "barrier.ydr".into(),
+                    kind: crate::Rpf7EntryKind::ResourceFile {
+                        file_size: 256, file_offset_blocks: 4,
+                        system_flags: 0, graphics_flags: 0,
+                    },
+                },
+                crate::Rpf7Entry {
+                    index: 4,
+                    name: "sentinel.ydr".into(),
+                    kind: crate::Rpf7EntryKind::ResourceFile {
+                        file_size: 0x00FF_FFFF, file_offset_blocks: 5,
+                        system_flags: 0, graphics_flags: 0,
+                    },
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn populates_mount_index_from_safe_rpf7_entries() {
+        let mut index = AssetMountIndex::new();
+        let added = add_rpf7_inventory_to_mount(
+            &mut index, "mods/maze.rpf", "maze", 4096, &sample_inventory(),
+        ).unwrap();
+        assert_eq!(added, 2);
+
+        let ramp = index.resolve("MAZE/ramp.ydr").unwrap().unwrap();
+        assert_eq!(ramp.archive, "mods/maze.rpf");
+        assert_eq!(ramp.entry_index, 0);
+        assert_eq!(ramp.offset, 512);
+        assert_eq!(ramp.length, 128);
+        assert_eq!(ramp.kind, MountedAssetKind::Binary);
+
+        let barrier = index.resolve("maze/barrier.ydr").unwrap().unwrap();
+        assert_eq!(barrier.entry_index, 3);
+        assert_eq!(barrier.offset, 2048);
+        assert_eq!(barrier.kind, MountedAssetKind::Resource);
+        assert!(index.resolve("maze/compressed.ydr").unwrap().is_none());
+        assert!(index.resolve("maze/encrypted.ydr").unwrap().is_none());
+        assert!(index.resolve("maze/sentinel.ydr").unwrap().is_none());
+    }
+
+    #[test]
+    fn rejects_rpf7_inventory_with_metadata_outside_archive() {
+        let mut index = AssetMountIndex::new();
+        let error = add_rpf7_inventory_to_mount(
+            &mut index, "mods/bad.rpf", "", 64, &sample_inventory(),
+        ).unwrap_err();
+        assert!(error.0.contains("metadata"));
+        assert!(index.is_empty());
+    }
+
 }
