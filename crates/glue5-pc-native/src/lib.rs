@@ -10,6 +10,8 @@ pub mod placement;
 pub mod mount;
 pub mod ytd;
 pub mod drawable;
+pub mod drawable_structure;
+pub use drawable_structure::{inspect_gta_drawable_structure, GtaDrawableResourceSummary, GtaDrawableSummary, GtaGeometrySummary, GtaModelSummary};
 pub use drawable::{inspect_mounted_gta_drawable_pages, MountedGtaDrawablePages};
 pub use ytd::{parse_ytd_resource_pages, YtdDictionary, YtdPixelFormat, YtdTextureInfo};
 pub use placement::{apply_json_placements, apply_resolved_json_placements, parse_json_placements, validate_json_placement_assets, JsonPlacement, JsonPlacementDocument, PlacementApplyError, PlacementAssetError, PlacementError, PlacementSink, ResolvedPlacementSink};
