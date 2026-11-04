@@ -1248,15 +1248,17 @@ mod mounted_ytd_inspection_tests {
         system[0x3A..0x3C].copy_from_slice(&1_u16.to_le_bytes());
         system[0x40..0x44].copy_from_slice(&0x1234_ABCD_u32.to_le_bytes());
         system[0x48..0x50].copy_from_slice(&0x5000_0080_u64.to_le_bytes());
-        system[0xA8..0xB0].copy_from_slice(&0x5000_0120_u64.to_le_bytes());
-        system[0xD0..0xD2].copy_from_slice(&4_u16.to_le_bytes());
-        system[0xD2..0xD4].copy_from_slice(&4_u16.to_le_bytes());
-        system[0xD4..0xD6].copy_from_slice(&1_u16.to_le_bytes());
-        system[0xD6..0xD8].copy_from_slice(&4_u16.to_le_bytes());
-        system[0xD8..0xDC].copy_from_slice(&0x3154_5844_u32.to_le_bytes());
-        system[0xDD] = 1;
-        system[0xF0..0xF8].copy_from_slice(&0x6000_0000_u64.to_le_bytes());
-        system[0x120..0x125].copy_from_slice(b"test\0");
+
+        // Texture structure at system offset 0x120 (VA 0x50000120).
+        system[0x148..0x150].copy_from_slice(&0x5000_01C0_u64.to_le_bytes());
+        system[0x170..0x172].copy_from_slice(&4_u16.to_le_bytes());
+        system[0x172..0x174].copy_from_slice(&4_u16.to_le_bytes());
+        system[0x174..0x176].copy_from_slice(&1_u16.to_le_bytes());
+        system[0x176..0x178].copy_from_slice(&4_u16.to_le_bytes());
+        system[0x178..0x17C].copy_from_slice(&0x3154_5844_u32.to_le_bytes());
+        system[0x17D] = 1;
+        system[0x190..0x198].copy_from_slice(&0x6000_0000_u64.to_le_bytes());
+        system[0x1C0..0x1C5].copy_from_slice(b"test\\0");
 
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(&system).unwrap();
@@ -1269,7 +1271,6 @@ mod mounted_ytd_inspection_tests {
         payload.extend_from_slice(&compressed);
         payload
     }
-
     #[test]
     fn parses_mounted_ytd_candidate_from_absolute_backing_offset() {
         let payload = ytd_payload();
