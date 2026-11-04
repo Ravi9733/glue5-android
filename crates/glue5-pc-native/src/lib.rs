@@ -1090,7 +1090,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn inspects_rpf7_resource_headers_only_inside_validated_ranges() {
         let mut archive = vec![0_u8; 528];
         archive[512..516].copy_from_slice(b"RSC7");
@@ -1481,7 +1480,7 @@ mod tests {
 
 
     fn wrap_in_open_rpf7(child: &[u8], child_name: &str) -> Vec<u8> {
-        let name = format!("root\\0{child_name}\\0");
+        let name = format!("root\0{child_name}\0");
         let names_len = name.len() as u32;
         let payload_offset = 1024_usize;
         let mut archive = vec![0_u8; payload_offset + child.len()];
@@ -1542,7 +1541,6 @@ mod tests {
         assert_eq!(limited[0].name, "nested.rpf");
     }
 
-    #[test]
     #[test]
     fn recursively_inventories_three_archive_levels_and_reports_full_paths() {
         let leaf = minimal_open_rpf7();
