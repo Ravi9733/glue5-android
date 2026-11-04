@@ -112,11 +112,14 @@ mod tests {
     fn parses_versioned_placement_and_transform() {
         let doc = parse_json_placements(VALID).unwrap();
         assert_eq!(doc.version, 1);
-        assert_eq!(doc.placements.len(), 1);
+        assert_eq!(doc.placements.len(), 2);
         assert_eq!(doc.placements[0].asset, "props/maze_bank_ramp.ydr");
-        assert_eq!(doc.placements[0].position, [1.0, 2.0, 3.0]);
-        assert_eq!(doc.placements[0].rotation, [0.0, 0.0, 90.0]);
-        assert_eq!(doc.placements[0].scale, [1.0, 1.0, 1.0]);
+        assert_eq!(doc.placements[0].position, [0.0, 0.0, 0.0]);
+        assert_eq!(doc.placements[0].rotation, [0.0, 0.0, 0.0]);
+        assert_eq!(doc.placements[1].asset, "props/maze_bank_barrier.ydr");
+        assert_eq!(doc.placements[1].position, [4.0, 0.0, 0.0]);
+        assert_eq!(doc.placements[1].rotation, [0.0, 0.0, 90.0]);
+        assert_eq!(doc.placements[1].scale, [1.0, 1.0, 1.0]);
     }
 
     #[test]
