@@ -91,6 +91,79 @@ impl AssetMountIndex {
     }
 }
 
+/// Populate a virtual mount index from an OPEN/NONE RPF7 inventory.
+///
+/// RPF7 TOC names are leaf names, so this adapter places them beneath the
+/// caller-provided virtual prefix. It only registers payloads whose storage
+/// ranges can be proven against the archive length. Encrypted/compressed
+/// binary entries and resource-size sentinels are deliberately skipped.
+pub fn add_rpf7_inventory_to_mount(
+    index: &mut AssetMountIndex,
+    archive_id: &str,
+    virtual_prefix: &str,
+    archive_len: u64,
+    inventory: &crate::Rpf7Inventory,
+) -> Result<usize, MountError> {
+    use crate::Rpf7EntryKind;
+
+    if archive_id.is_empty() {
+        return Err(MountError("archive identifier cannot be empty".into()));
+    }
+    let metadata_end = 16_u64
+        .checked_add(inventory.header.toc_bytes)
+        .and_then(|n| n.checked_add(u64::from(inventory.header.names_length)))
+        .ok_or_else(|| MountError("RPF7 metadata boundary overflows".into()))?;
+    if metadata_end > archive_len {
+        return Err(MountError("RPF7 metadata extends beyond archive length".into()));
+    }
+
+    let prefix = virtual_prefix.trim_matches('/');
+    if !prefix.is_empty() {
+        validate_virtual_path(prefix)?;
+    }
+
+    let mut added = 0usize;
+    for entry in &inventory.entries {
+        let (size, offset_blocks, kind) = match &entry.kind {
+            Rpf7EntryKind::Directory { .. } => continue,
+            Rpf7EntryKind::BinaryFile {
+                file_size, file_offset_blocks, uncompressed_size, encrypted,
+            } => {
+                if *encrypted || (*file_size != 0 && file_size != uncompressed_size) {
+                    continue;
+                }
+                (if *file_size == 0 { u64::from(*uncompressed_size) } else { u64::from(*file_size) },
+                 u64::from(*file_offset_blocks), MountedAssetKind::Binary)
+            }
+            Rpf7EntryKind::ResourceFile { file_size, file_offset_blocks, .. } => {
+                if *file_size == 0x00FF_FFFF { continue; }
+                (u64::from(*file_size), u64::from(*file_offset_blocks), MountedAssetKind::Resource)
+            }
+        };
+        if size == 0 { continue; }
+        let start = offset_blocks.checked_mul(512)
+            .ok_or_else(|| MountError(format!("RPF7 entry {} offset overflows", entry.index)))?;
+        let end = start.checked_add(size)
+            .ok_or_else(|| MountError(format!("RPF7 entry {} range overflows", entry.index)))?;
+        if start < metadata_end || end > archive_len { continue; }
+
+        let path = if prefix.is_empty() {
+            entry.name.clone()
+        } else {
+            format!("{prefix}/{}", entry.name)
+        };
+        index.insert(&path, MountedAsset {
+            archive: archive_id.to_owned(),
+            entry_index: entry.index,
+            offset: start,
+            length: size,
+            kind,
+        })?;
+        added += 1;
+    }
+    Ok(added)
+}
+
 fn validate_virtual_path(path: &str) -> Result<(), MountError> {
     if path.is_empty() || path.len() > MAX_VIRTUAL_PATH_BYTES {
         return Err(MountError("virtual asset path is empty or too long".into()));
