@@ -99,6 +99,56 @@ pub fn validate_json_placement_assets(
     Ok(document.placements.len())
 }
 
+/// Engine-facing adapter that receives both the validated transform and its
+/// mounted source descriptor. A native world backend can use the descriptor to
+/// read/decode the referenced YDR/YDD/YTD/RSC7 data before creating entities.
+pub trait ResolvedPlacementSink {
+    fn spawn_resolved_placement(
+        &mut self,
+        placement: &JsonPlacement,
+        asset: &crate::MountedAsset,
+    ) -> Result<(), String>;
+}
+
+/// Resolve every placement first, then hand the complete ordered set to a
+/// renderer/world adapter. Missing assets therefore fail before the first
+/// entity is spawned. This is an integration boundary, not a GTA model decoder.
+pub fn apply_resolved_json_placements<S: ResolvedPlacementSink>(
+    document: &JsonPlacementDocument,
+    mounts: &crate::AssetMountIndex,
+    sink: &mut S,
+) -> Result<usize, PlacementApplyError> {
+    let mut resolved = Vec::with_capacity(document.placements.len());
+    for (index, placement) in document.placements.iter().enumerate() {
+        let asset = mounts.resolve(&placement.asset)
+            .map_err(|error| PlacementApplyError {
+                failed_index: index,
+                applied: 0,
+                asset: placement.asset.clone(),
+                reason: error.0,
+            })?
+            .ok_or_else(|| PlacementApplyError {
+                failed_index: index,
+                applied: 0,
+                asset: placement.asset.clone(),
+                reason: "asset is not present in the mounted archive index".into(),
+            })?;
+        resolved.push(asset);
+    }
+
+    for (index, (placement, asset)) in document.placements.iter().zip(resolved).enumerate() {
+        if let Err(reason) = sink.spawn_resolved_placement(placement, asset) {
+            return Err(PlacementApplyError {
+                failed_index: index,
+                applied: index,
+                asset: placement.asset.clone(),
+                reason,
+            });
+        }
+    }
+    Ok(document.placements.len())
+}
+
 /// Parse Glue5's version-1 schema: root {version, placements}; each placement
 /// has asset, position [x,y,z], rotation [x,y,z], and scale [x,y,z].
 /// This is an explicit Glue5 interchange format, not a universal GTA JSON parser.
