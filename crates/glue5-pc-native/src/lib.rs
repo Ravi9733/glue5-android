@@ -301,6 +301,8 @@ pub enum NestedRpfStatus {
     SkippedEncryptedPayload,
     SkippedCompressedPayload,
     InvalidPayloadRange,
+    EncryptedTocUnsupported,
+    InvalidRpf7Toc,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -335,7 +337,9 @@ pub fn scan_nested_rpf7_open(archive: &[u8], inventory: &Rpf7Inventory) -> Vec<N
                     match probe_rpf_header(&archive[start..end]) {
                         Ok(RpfProbe::GtaVLegacy(_)) => match inventory_rpf7_open(&archive[start..end]) {
                             Ok(nested) => NestedRpfStatus::InventoriedRpf7(nested),
-                            Err(_) => NestedRpfStatus::NotAnRpfArchive,
+                            Err(error) if error.0.contains("AES/NG keys are required")
+                                => NestedRpfStatus::EncryptedTocUnsupported,
+                            Err(_) => NestedRpfStatus::InvalidRpf7Toc,
                         },
                         Ok(RpfProbe::GtaVEnhancedOrRdr2 { .. }) => NestedRpfStatus::Rpf8Unsupported,
                         _ => NestedRpfStatus::NotAnRpfArchive,
@@ -529,6 +533,28 @@ mod tests {
             NestedRpfStatus::InventoriedRpf7(inner) => assert_eq!(inner.entries.len(), 2),
             other => panic!("unexpected nested archive result: {other:?}"),
         }
+    }
+
+    #[test]
+    fn reports_encrypted_nested_rpf7_toc_separately() {
+        let mut outer = outer_with_nested_open_rpf7();
+        outer[1024 + 12..1024 + 16].copy_from_slice(&0x0FFF_FFF9_u32.to_le_bytes());
+        let inventory = inventory_rpf7_open(&outer).unwrap();
+        let nested = scan_nested_rpf7_open(&outer, &inventory);
+        assert_eq!(nested[0].status, NestedRpfStatus::EncryptedTocUnsupported);
+    }
+
+    #[test]
+    fn reports_truncated_nested_rpf7_toc_as_invalid() {
+        let mut outer = outer_with_nested_open_rpf7();
+        // Keep only the 16-byte nested header in the declared payload.
+        outer[34] = 16;
+        outer[35] = 0;
+        outer[36] = 0;
+        outer[40..44].copy_from_slice(&16_u32.to_le_bytes());
+        let inventory = inventory_rpf7_open(&outer).unwrap();
+        let nested = scan_nested_rpf7_open(&outer, &inventory);
+        assert_eq!(nested[0].status, NestedRpfStatus::InvalidRpf7Toc);
     }
 
     #[test]
