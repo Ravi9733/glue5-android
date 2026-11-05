@@ -15,6 +15,7 @@ mod bc;
 mod done;
 mod draw;
 mod exec;
+pub mod external_placement;
 mod format;
 mod fsr;
 #[cfg(target_vendor = "apple")]
