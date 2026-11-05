@@ -113,3 +113,45 @@ mod tests {
         assert_eq!(renderer_transform(&p), Err(TransformError::NonFiniteOrOutOfRange));
     }
 }
+
+
+/// Convert every placement transform before the caller begins spawning any
+/// world objects. Collecting the complete result first keeps malformed JSON
+/// batches from being partially applied by a renderer integration.
+pub fn renderer_transforms(
+    document: &crate::JsonPlacementDocument,
+) -> Result<Vec<RendererTransform>, TransformError> {
+    document.placements.iter().map(renderer_transform).collect()
+}
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+
+    #[test]
+    fn converts_all_document_transforms_in_order() {
+        let document = crate::JsonPlacementDocument {
+            version: 1,
+            placements: vec![
+                JsonPlacement { asset: "a.ydr".into(), position: [1.0, 2.0, 3.0], rotation: [0.0; 3], scale: [1.0; 3] },
+                JsonPlacement { asset: "b.ydr".into(), position: [4.0, 5.0, 6.0], rotation: [0.0, 0.0, 90.0], scale: [2.0; 3] },
+            ],
+        };
+        let converted = renderer_transforms(&document).unwrap();
+        assert_eq!(converted.len(), 2);
+        assert_eq!(converted[0].translation, [1.0, 2.0, 3.0]);
+        assert_eq!(converted[1].translation, [4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn rejects_entire_batch_when_any_transform_is_invalid() {
+        let document = crate::JsonPlacementDocument {
+            version: 1,
+            placements: vec![
+                JsonPlacement { asset: "a.ydr".into(), position: [1.0, 2.0, 3.0], rotation: [0.0; 3], scale: [1.0; 3] },
+                JsonPlacement { asset: "b.ydr".into(), position: [f64::NAN, 0.0, 0.0], rotation: [0.0; 3], scale: [1.0; 3] },
+            ],
+        };
+        assert_eq!(renderer_transforms(&document), Err(TransformError::NonFiniteOrOutOfRange));
+    }
+}
