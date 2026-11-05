@@ -159,9 +159,10 @@ mod tests {
 
     #[test]
     fn rejects_archive_when_per_archive_budget_is_exceeded() {
-        let root = empty_open_rpf7();
+        let mut root = empty_open_rpf7();
+        root.push(0);
         let mut limits = NestedRpf7Limits::default();
-        limits.max_single_archive_bytes = 15;
+        limits.max_single_archive_bytes = 16;
         assert!(discover_nested_rpf7_archives(&root, &limits).unwrap_err().0.contains("byte budget"));
     }
 
