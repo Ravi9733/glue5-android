@@ -93,16 +93,18 @@ mod tests {
 pub fn packet_from_json_placement(
     resource_id: u64,
     placement: &glue5_pc_native::JsonPlacement,
-    mesh: &crate::ExternalMeshBuffers,
+    vertex_count: u32,
+    index_count: u32,
+    vertex_stride: u32,
     material_key: impl Into<String>,
 ) -> Result<ExternalPlacementDraw, PlacementDrawError> {
     let transform = glue5_pc_native::renderer_transform(placement)
         .map_err(|_| PlacementDrawError::InvalidTransform)?;
     let packet = ExternalPlacementDraw {
         resource_id,
-        vertex_count: mesh.vertex_count,
-        index_count: mesh.index_count,
-        vertex_stride: mesh.vertex_stride,
+        vertex_count,
+        index_count,
+        vertex_stride,
         transform: PlacementTransform {
             scale: transform.scale,
             rotation_xyzw: transform.rotation_xyzw,
@@ -110,9 +112,10 @@ pub fn packet_from_json_placement(
         },
         material_key: material_key.into(),
     };
-    packet.validate(mesh.index_count)?;
+    packet.validate(index_count)?;
     Ok(packet)
 }
+
 
 #[cfg(test)]
 mod bridge_tests {
@@ -126,14 +129,24 @@ mod bridge_tests {
             rotation: [0.0, 0.0, 90.0],
             scale: [1.0, 1.0, 1.0],
         };
-        let mesh = crate::ExternalMeshBuffers {
-            vertex: wgpu::Buffer::dummy(),
-            index: None,
-            vertex_count: 3,
-            index_count: 0,
-            vertex_stride: 12,
+        let packet = packet_from_json_placement(9, &placement, 3, 3, 12, "fallback/unlit").unwrap();
+        assert_eq!(packet.resource_id, 9);
+        assert_eq!(packet.vertex_count, 3);
+        assert_eq!(packet.transform.translation, [4.0, 5.0, 6.0]);
+        assert!((packet.transform.rotation_xyzw[2] - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-5);
+    }
+
+    #[test]
+    fn rejects_empty_mesh_before_renderer_handoff() {
+        let placement = glue5_pc_native::JsonPlacement {
+            asset: "props/test.ydr".into(),
+            position: [0.0; 3],
+            rotation: [0.0; 3],
+            scale: [1.0; 3],
         };
-        let packet = packet_from_json_placement(9, &placement, &mesh, "fallback/unlit");
-        assert!(matches!(packet, Err(PlacementDrawError::EmptyMesh)));
+        assert_eq!(
+            packet_from_json_placement(1, &placement, 0, 0, 12, "fallback/unlit"),
+            Err(PlacementDrawError::EmptyMesh)
+        );
     }
 }
