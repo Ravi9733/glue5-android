@@ -7,7 +7,6 @@
 
 use crate::{copy_rpf7_open_binary_entry, inventory_rpf7_open, ManifestError, Rpf7Inventory};
 use sha2::{Digest, Sha256};
-use std::io::Cursor;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NestedRpf7Limits {
