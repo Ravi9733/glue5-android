@@ -7,7 +7,9 @@ on:
     paths:
       - "crates/glue5-pc-native/**"
       - "crates/glue5-gpu/**"
+      - "platform/android/java/local/glue5/Glue5Activity.java"
       - "docs/ANDROID_PC_NATIVE_BACKEND.md"
+      - ".github/scripts/check-android-activity.sh"
       - ".github/workflows/android-pc-native-check.yml"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -16,6 +18,18 @@ permissions:
   contents: read
 
 jobs:
+  android-activity-source-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Compile Android activity against minimal API stubs
+        run: bash .github/scripts/check-android-activity.sh
+
   manifest-and-gate-tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
