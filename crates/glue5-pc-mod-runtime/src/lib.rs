@@ -8,6 +8,9 @@
 
 use std::fmt;
 
+pub mod plugin_abi;
+pub use plugin_abi::{Glue5PluginDescriptorV1, Glue5PluginHostV1, GLUE5_PLUGIN_ABI_V1, validate_plugin_abi_header};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryFormat { Pe, Elf, MachO, Wasm, Unknown }
 
