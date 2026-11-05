@@ -1,0 +1,8 @@
+{
+  "name": "Graphics Presets",
+  "description": "Natural, colorful, cinematic and default graphics presets using built-in GTA V timecycle modifiers.",
+  "author": "GLUE 5 Android",
+  "version": "1.0.0",
+  "autostart": true,
+  "restartOnSave": true
+}
