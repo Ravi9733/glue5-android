@@ -5,7 +5,7 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-mkdir -p "$tmp/src/android/os" "$tmp/src/android/content" "$tmp/src/android/app" "$tmp/src/android/system" "$tmp/src/org/libsdl/app" "$tmp/classes"
+mkdir -p "$tmp/src/android/os" "$tmp/src/android/content" "$tmp/src/android/app" "$tmp/src/android/net" "$tmp/src/android/system" "$tmp/src/org/libsdl/app" "$tmp/classes"
 
 cat >"$tmp/src/android/os/Bundle.java" <<'JAVA'
 package android.os;
@@ -18,17 +18,54 @@ JAVA
 cat >"$tmp/src/android/content/Intent.java" <<'JAVA'
 package android.content;
 import android.os.Bundle;
+import android.net.Uri;
 public class Intent {
+    public static final String ACTION_OPEN_DOCUMENT_TREE = "android.intent.action.OPEN_DOCUMENT_TREE";
+    public static final int FLAG_GRANT_READ_URI_PERMISSION = 1;
+    public static final int FLAG_GRANT_WRITE_URI_PERMISSION = 2;
+    public static final int FLAG_GRANT_PERSISTABLE_URI_PERMISSION = 64;
+    public Intent(String action) {}
+    public Intent addFlags(int flags) { return this; }
     public Bundle getExtras() { return null; }
+    public Uri getData() { return null; }
+    public int getFlags() { return 0; }
 }
 JAVA
 cat >"$tmp/src/android/app/Activity.java" <<'JAVA'
 package android.app;
 import android.content.Intent;
 import android.os.Bundle;
+import android.content.SharedPreferences;
+import android.content.ContentResolver;
 public class Activity {
+    public static final int RESULT_OK = -1;
+    public static final int MODE_PRIVATE = 0;
     public Intent getIntent() { return null; }
     protected void onCreate(Bundle state) {}
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {}
+    public void startActivityForResult(Intent intent, int requestCode) {}
+    public void finish() {}
+    public SharedPreferences getSharedPreferences(String name, int mode) { return null; }
+    public ContentResolver getContentResolver() { return null; }
+}
+JAVA
+cat >"$tmp/src/android/net/Uri.java" <<'JAVA'
+package android.net;
+public class Uri { public String toString() { return ""; } }
+JAVA
+cat >"$tmp/src/android/content/SharedPreferences.java" <<'JAVA'
+package android.content;
+public interface SharedPreferences {
+    String getString(String key, String fallback);
+    Editor edit();
+    interface Editor { Editor putString(String key, String value); void apply(); }
+}
+JAVA
+cat >"$tmp/src/android/content/ContentResolver.java" <<'JAVA'
+package android.content;
+import android.net.Uri;
+public class ContentResolver {
+    public void takePersistableUriPermission(Uri uri, int flags) {}
 }
 JAVA
 cat >"$tmp/src/android/system/ErrnoException.java" <<'JAVA'
