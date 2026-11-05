@@ -195,7 +195,7 @@ pub fn probe_rpf_header(header: &[u8]) -> Result<RpfProbe, ManifestError> {
     if header.len() < 16 {
         return Err(ManifestError("RPF header is truncated (need 16 bytes)".into()));
     }
-    let magic = u32::from_le_bytes(header[0..4].try_into().unwrap());
+    let magic = u32::from_le_bytes(header[0..4].try_into().map_err(|_| ManifestError("RPF magic field is truncated".into()))?);
     if magic == RPF8_MAGIC {
         return Ok(RpfProbe::GtaVEnhancedOrRdr2 { magic });
     }
@@ -203,9 +203,9 @@ pub fn probe_rpf_header(header: &[u8]) -> Result<RpfProbe, ManifestError> {
         return Ok(RpfProbe::UnsupportedOrUnknown { magic });
     }
 
-    let entry_count = u32::from_le_bytes(header[4..8].try_into().unwrap());
-    let packed_names = u32::from_le_bytes(header[8..12].try_into().unwrap());
-    let encryption_tag = u32::from_le_bytes(header[12..16].try_into().unwrap());
+    let entry_count = u32::from_le_bytes(header[4..8].try_into().map_err(|_| ManifestError("RPF entry-count field is truncated".into()))?);
+    let packed_names = u32::from_le_bytes(header[8..12].try_into().map_err(|_| ManifestError("RPF names field is truncated".into()))?);
+    let encryption_tag = u32::from_le_bytes(header[12..16].try_into().map_err(|_| ManifestError("RPF encryption field is truncated".into()))?);
     let names_length = packed_names & 0x0fff_ffff;
     let names_flags = (packed_names >> 28) as u8;
     let toc_bytes = u64::from(entry_count).checked_mul(16)
@@ -312,13 +312,13 @@ pub fn probe_rsc7_resource_header(payload: &[u8]) -> Result<Rsc7Header, Manifest
     if payload.len() < 16 {
         return Err(ManifestError("RSC7 resource header is truncated (need 16 bytes)".into()));
     }
-    let magic: [u8; 4] = payload[0..4].try_into().unwrap();
+    let magic: [u8; 4] = payload[0..4].try_into().map_err(|_| ManifestError("RSC7 magic field is truncated".into()))?;
     if &magic != b"RSC7" {
         return Err(ManifestError("resource payload does not have RSC7 magic".into()));
     }
     Ok(Rsc7Header {
         magic,
-        opaque_word: u32::from_le_bytes(payload[4..8].try_into().unwrap()),
+        opaque_word: u32::from_le_bytes(payload[4..8].try_into().map_err(|_| ManifestError("RSC7 version field is truncated".into()))?),
         header_bytes: 16,
     })
 }
@@ -346,9 +346,9 @@ pub fn decode_rsc7_resource(
     if &payload[0..4] != b"RSC7" {
         return Err(ManifestError("resource payload does not have RSC7 magic".into()));
     }
-    let version = u32::from_le_bytes(payload[4..8].try_into().unwrap());
-    let system_flags = u32::from_le_bytes(payload[8..12].try_into().unwrap());
-    let graphics_flags = u32::from_le_bytes(payload[12..16].try_into().unwrap());
+    let version = u32::from_le_bytes(payload[4..8].try_into().map_err(|_| ManifestError("RSC7 version field is truncated".into()))?);
+    let system_flags = u32::from_le_bytes(payload[8..12].try_into().map_err(|_| ManifestError("RSC7 system page flags are truncated".into()))?);
+    let graphics_flags = u32::from_le_bytes(payload[12..16].try_into().map_err(|_| ManifestError("RSC7 graphics page flags are truncated".into()))?);
     let page_sizes = rpf7_resource_page_sizes(system_flags, graphics_flags)?;
     let expected = page_sizes.system_bytes.checked_add(page_sizes.graphics_bytes)
         .ok_or_else(|| ManifestError("RSC7 decompressed size overflow".into()))?;
@@ -453,10 +453,10 @@ pub fn decode_rsc7_resource_stream<R: Read + Seek, W: Write>(
     if &header[0..4] != b"RSC7" {
         return Err(ManifestError("resource payload does not have RSC7 magic".into()));
     }
-    let version = u32::from_le_bytes(header[4..8].try_into().unwrap());
+    let version = u32::from_le_bytes(header[4..8].try_into().map_err(|_| ManifestError("RPF entry-count field is truncated".into()))?);
     let page_sizes = rpf7_resource_page_sizes(
-        u32::from_le_bytes(header[8..12].try_into().unwrap()),
-        u32::from_le_bytes(header[12..16].try_into().unwrap()),
+        u32::from_le_bytes(header[8..12].try_into().map_err(|_| ManifestError("RPF names field is truncated".into()))?),
+        u32::from_le_bytes(header[12..16].try_into().map_err(|_| ManifestError("RPF encryption field is truncated".into()))?),
     )?;
     let expected = page_sizes.system_bytes.checked_add(page_sizes.graphics_bytes)
         .ok_or_else(|| ManifestError("RSC7 decompressed size overflow".into()))?;
@@ -549,8 +549,8 @@ pub fn decode_rsc7_resource_pages_stream<R: Read + Seek, WS: Write, WG: Write>(
         return Err(ManifestError("resource payload does not have RSC7 magic".into()));
     }
     let page_sizes = rpf7_resource_page_sizes(
-        u32::from_le_bytes(header[8..12].try_into().unwrap()),
-        u32::from_le_bytes(header[12..16].try_into().unwrap()),
+        u32::from_le_bytes(header[8..12].try_into().map_err(|_| ManifestError("RPF names field is truncated".into()))?),
+        u32::from_le_bytes(header[12..16].try_into().map_err(|_| ManifestError("RPF encryption field is truncated".into()))?),
     )?;
     let expected = page_sizes.system_bytes.checked_add(page_sizes.graphics_bytes)
         .ok_or_else(|| ManifestError("RSC7 decompressed size overflow".into()))?;
