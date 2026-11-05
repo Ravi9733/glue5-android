@@ -35,6 +35,7 @@ mod shader;
 mod slabs;
 mod submit;
 mod turnip;
+mod turnip_identity;
 mod uniforms;
 #[cfg(test)]
 mod upscale_tests;
