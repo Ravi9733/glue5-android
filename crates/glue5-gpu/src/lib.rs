@@ -34,6 +34,7 @@ mod scene;
 mod shader;
 mod slabs;
 mod submit;
+mod turnip;
 mod uniforms;
 #[cfg(test)]
 mod upscale_tests;
@@ -351,6 +352,7 @@ impl Device {
         }))
         .context("no GPU adapter")?;
         let info = adapter.get_info();
+        turnip::log_adapter_diagnostics(&info);
         let mut features = adapter.features() & WANTED_FEATURES;
         if std::env::var_os("GLUE5_NO_BC").is_some() {
             // Test the CPU decoding path of devices without BC compression.
