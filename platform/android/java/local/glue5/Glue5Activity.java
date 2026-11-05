@@ -17,7 +17,7 @@ public class Glue5Activity extends SDLActivity {
         if (extras != null) {
             for (String key : extras.keySet()) {
                 String value = extras.getString(key);
-                if (value != null && (key.equals("RUST_LOG") || key.startsWith("GLUE5_"))) {
+                if (value != null && (key.equals("RUST_LOG") || key.startsWith("GLUE5_")\n                        || key.equals("VK_DRIVER_FILES") || key.equals("VK_ICD_FILENAMES")\n                        || key.equals("VK_LAYER_PATH") || key.equals("VK_INSTANCE_LAYERS"))) {
                     try {
                         Os.setenv(key, value, true);
                     } catch (ErrnoException e) {
