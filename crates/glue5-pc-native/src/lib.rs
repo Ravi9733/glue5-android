@@ -26,6 +26,8 @@ pub mod placement_cpu_mesh;
 pub mod placement_scene;
 pub mod placement_gpu_payload;
 pub mod placement_pipeline;
+pub mod nested_rpf7;
+pub use nested_rpf7::{discover_nested_rpf7_archives, NestedRpf7Archive, NestedRpf7Limits};
 pub use placement_pipeline::{prepare_rpf7_archive_json_placement_pipeline, prepare_rpf7_json_placement_pipeline, PlacementPipelineLimits, PreparedPlacementPipeline};
 pub use placement_cpu_mesh::{assemble_decoded_placement_cpu_meshes, InspectedPlacementCpuMesh, PlacementCpuMeshBatch};
 pub use placement_scene::{build_placement_scene_meshes, PlacedCpuMesh, PlacementSceneBatch};
