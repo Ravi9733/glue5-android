@@ -232,3 +232,70 @@ mod atomic_batch_tests {
         assert_eq!(packets_from_json_placements(&document, &meshes), Err((1, PlacementDrawError::EmptyMesh)));
     }
 }
+
+
+/// Validate uploaded mesh byte streams against a placement packet before the
+/// renderer records a draw. Index data is interpreted as little-endian u32.
+pub fn validate_external_mesh_bytes(
+    packet: &ExternalPlacementDraw,
+    vertex_bytes: &[u8],
+    index_bytes: Option<&[u8]>,
+) -> Result<(), PlacementDrawError> {
+    packet.validate(index_bytes.map_or(0, |bytes| (bytes.len() / 4) as u32))?;
+    let expected_vertex_bytes = (packet.vertex_count as usize)
+        .checked_mul(packet.vertex_stride as usize)
+        .ok_or(PlacementDrawError::EmptyMesh)?;
+    if vertex_bytes.len() != expected_vertex_bytes || vertex_bytes.is_empty() {
+        return Err(PlacementDrawError::EmptyMesh);
+    }
+    match (packet.index_count, index_bytes) {
+        (0, None) => Ok(()),
+        (0, Some(bytes)) if bytes.is_empty() => Ok(()),
+        (count, Some(bytes)) if count > 0 && bytes.len() == (count as usize).saturating_mul(4) => {
+            for (index, chunk) in bytes.chunks_exact(4).enumerate() {
+                let value = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                if value >= packet.vertex_count {
+                    return Err(PlacementDrawError::IndexCountExceedsBuffer);
+                }
+                let _ = index;
+            }
+            Ok(())
+        }
+        _ => Err(PlacementDrawError::IndexCountExceedsBuffer),
+    }
+}
+
+#[cfg(test)]
+mod mesh_byte_validation_tests {
+    use super::*;
+
+    fn packet() -> ExternalPlacementDraw {
+        ExternalPlacementDraw {
+            resource_id: 1,
+            vertex_count: 3,
+            index_count: 3,
+            vertex_stride: 4,
+            transform: PlacementTransform {
+                scale: [1.0; 3], rotation_xyzw: [0.0, 0.0, 0.0, 1.0],
+                translation: [0.0; 3],
+            },
+            material_key: "fallback/unlit".into(),
+        }
+    }
+
+    #[test]
+    fn accepts_exact_vertex_and_valid_index_streams() {
+        let vertices = [0u8; 12];
+        let indices = [0u8, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0];
+        assert_eq!(validate_external_mesh_bytes(&packet(), &vertices, Some(&indices)), Ok(()));
+    }
+
+    #[test]
+    fn rejects_vertex_size_mismatch_and_out_of_range_indices() {
+        let short_vertices = [0u8; 11];
+        let valid_indices = [0u8, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0];
+        assert_eq!(validate_external_mesh_bytes(&packet(), &short_vertices, Some(&valid_indices)), Err(PlacementDrawError::EmptyMesh));
+        let bad_indices = [0u8, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0];
+        assert_eq!(validate_external_mesh_bytes(&packet(), &[0u8; 12], Some(&bad_indices)), Err(PlacementDrawError::IndexCountExceedsBuffer));
+    }
+}
