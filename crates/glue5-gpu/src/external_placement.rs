@@ -152,8 +152,8 @@ mod bridge_tests {
 }
 
 
-//! Batch preparation is deliberately atomic: every placement is converted and
-//! validated before the caller uploads any mesh or mutates the world.
+// Batch preparation is deliberately atomic: every placement is converted and
+// validated before the caller uploads any mesh or mutates the world.
 #[derive(Clone, Debug)]
 pub struct JsonPlacementMesh<'a> {
     pub resource_id: u64,
