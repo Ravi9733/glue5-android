@@ -1,7 +1,7 @@
 //! Pure driver identity classification, kept separate so CI can test it
 //! without compiling the full renderer or requiring the proprietary game.wasm.
 
-pub(super) fn contains_turnip_identity(value: &str) -> bool {
+pub fn contains_turnip_identity(value: &str) -> bool {
     let value = value.to_ascii_lowercase();
     value.contains("turnip") || value.contains("freedreno") || value.contains("mesa")
 }
