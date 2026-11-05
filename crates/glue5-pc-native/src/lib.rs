@@ -27,7 +27,7 @@ pub mod placement_scene;
 pub mod placement_gpu_payload;
 pub mod placement_pipeline;
 pub mod placement_transform;
-pub use placement_transform::{renderer_transform, RendererTransform, TransformError};
+pub use placement_transform::{renderer_transform, renderer_transforms, RendererTransform, TransformError};
 pub mod nested_rpf7;
 pub use nested_rpf7::{discover_nested_rpf7_archives, NestedRpf7Archive, NestedRpf7Limits};
 pub use placement_pipeline::{prepare_rpf7_archive_json_placement_pipeline, prepare_rpf7_json_placement_pipeline, PlacementPipelineLimits, PreparedPlacementPipeline};
