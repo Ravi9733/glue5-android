@@ -83,3 +83,57 @@ mod tests {
         assert_eq!(packet().validate(2), Err(PlacementDrawError::IndexCountExceedsBuffer));
     }
 }
+
+
+/// Build a renderer packet from a validated JSON placement and an uploaded mesh.
+///
+/// This is the explicit bridge between the PC-native transform parser and the
+/// GPU upload API. It does not submit a draw: the render command thread must
+/// still resolve the material key and record the packet in a render pass.
+pub fn packet_from_json_placement(
+    resource_id: u64,
+    placement: &glue5_pc_native::JsonPlacement,
+    mesh: &crate::ExternalMeshBuffers,
+    material_key: impl Into<String>,
+) -> Result<ExternalPlacementDraw, PlacementDrawError> {
+    let transform = glue5_pc_native::renderer_transform(placement)
+        .map_err(|_| PlacementDrawError::InvalidTransform)?;
+    let packet = ExternalPlacementDraw {
+        resource_id,
+        vertex_count: mesh.vertex_count,
+        index_count: mesh.index_count,
+        vertex_stride: mesh.vertex_stride,
+        transform: PlacementTransform {
+            scale: transform.scale,
+            rotation_xyzw: transform.rotation_xyzw,
+            translation: transform.translation,
+        },
+        material_key: material_key.into(),
+    };
+    packet.validate(mesh.index_count)?;
+    Ok(packet)
+}
+
+#[cfg(test)]
+mod bridge_tests {
+    use super::*;
+
+    #[test]
+    fn converts_json_placement_into_renderer_packet() {
+        let placement = glue5_pc_native::JsonPlacement {
+            asset: "props/test.ydr".into(),
+            position: [4.0, 5.0, 6.0],
+            rotation: [0.0, 0.0, 90.0],
+            scale: [1.0, 1.0, 1.0],
+        };
+        let mesh = crate::ExternalMeshBuffers {
+            vertex: wgpu::Buffer::dummy(),
+            index: None,
+            vertex_count: 3,
+            index_count: 0,
+            vertex_stride: 12,
+        };
+        let packet = packet_from_json_placement(9, &placement, &mesh, "fallback/unlit");
+        assert!(matches!(packet, Err(PlacementDrawError::EmptyMesh)));
+    }
+}
