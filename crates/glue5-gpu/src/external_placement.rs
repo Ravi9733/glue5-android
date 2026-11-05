@@ -150,3 +150,85 @@ mod bridge_tests {
         );
     }
 }
+
+
+//! Batch preparation is deliberately atomic: every placement is converted and
+//! validated before the caller uploads any mesh or mutates the world.
+#[derive(Clone, Debug)]
+pub struct JsonPlacementMesh<'a> {
+    pub resource_id: u64,
+    pub placement: &'a glue5_pc_native::JsonPlacement,
+    pub vertex_count: u32,
+    pub index_count: u32,
+    pub vertex_stride: u32,
+    pub material_key: &'a str,
+}
+
+/// Convert a complete JSON placement document into renderer packets.
+/// No GPU allocation or world mutation occurs here; callers can safely proceed
+/// only after this function returns the entire ordered batch.
+pub fn packets_from_json_placements(
+    document: &glue5_pc_native::JsonPlacementDocument,
+    meshes: &[JsonPlacementMesh<'_>],
+) -> Result<Vec<ExternalPlacementDraw>, (usize, PlacementDrawError)> {
+    if document.placements.len() != meshes.len() {
+        return Err((document.placements.len().min(meshes.len()), PlacementDrawError::EmptyMesh));
+    }
+    let mut packets = Vec::with_capacity(meshes.len());
+    for (index, mesh) in meshes.iter().enumerate() {
+        if !std::ptr::eq(mesh.placement, &document.placements[index]) {
+            return Err((index, PlacementDrawError::InvalidTransform));
+        }
+        let packet = packet_from_json_placement(
+            mesh.resource_id,
+            mesh.placement,
+            mesh.vertex_count,
+            mesh.index_count,
+            mesh.vertex_stride,
+            mesh.material_key,
+        ).map_err(|error| (index, error))?;
+        packets.push(packet);
+    }
+    Ok(packets)
+}
+
+#[cfg(test)]
+mod atomic_batch_tests {
+    use super::*;
+
+    #[test]
+    fn prepares_complete_ordered_json_batch() {
+        let document = glue5_pc_native::JsonPlacementDocument {
+            version: 1,
+            placements: vec![
+                glue5_pc_native::JsonPlacement { asset: "a.ydr".into(), position: [1.0, 2.0, 3.0], rotation: [0.0; 3], scale: [1.0; 3] },
+                glue5_pc_native::JsonPlacement { asset: "b.ydr".into(), position: [4.0, 5.0, 6.0], rotation: [0.0; 3], scale: [1.0; 3] },
+            ],
+        };
+        let meshes = vec![
+            JsonPlacementMesh { resource_id: 11, placement: &document.placements[0], vertex_count: 3, index_count: 3, vertex_stride: 12, material_key: "fallback/unlit" },
+            JsonPlacementMesh { resource_id: 12, placement: &document.placements[1], vertex_count: 4, index_count: 6, vertex_stride: 12, material_key: "fallback/unlit" },
+        ];
+        let packets = packets_from_json_placements(&document, &meshes).unwrap();
+        assert_eq!(packets.len(), 2);
+        assert_eq!(packets[0].resource_id, 11);
+        assert_eq!(packets[1].resource_id, 12);
+        assert_eq!(packets[1].transform.translation, [4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn rejects_invalid_later_item_without_returning_partial_batch() {
+        let document = glue5_pc_native::JsonPlacementDocument {
+            version: 1,
+            placements: vec![
+                glue5_pc_native::JsonPlacement { asset: "a.ydr".into(), position: [1.0, 2.0, 3.0], rotation: [0.0; 3], scale: [1.0; 3] },
+                glue5_pc_native::JsonPlacement { asset: "b.ydr".into(), position: [4.0, 5.0, 6.0], rotation: [0.0; 3], scale: [1.0; 3] },
+            ],
+        };
+        let meshes = vec![
+            JsonPlacementMesh { resource_id: 11, placement: &document.placements[0], vertex_count: 3, index_count: 3, vertex_stride: 12, material_key: "fallback/unlit" },
+            JsonPlacementMesh { resource_id: 12, placement: &document.placements[1], vertex_count: 0, index_count: 0, vertex_stride: 12, material_key: "fallback/unlit" },
+        ];
+        assert_eq!(packets_from_json_placements(&document, &meshes), Err((1, PlacementDrawError::EmptyMesh)));
+    }
+}
