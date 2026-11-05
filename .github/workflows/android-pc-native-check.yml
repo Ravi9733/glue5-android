@@ -46,3 +46,9 @@ jobs:
         run: mise run setup
       - name: Test native PC backend foundation
         run: cargo test -p glue5-pc-native
+
+      - name: Test Vulkan renderer and Turnip diagnostics
+        run: cargo test -p glue5-gpu
+
+      - name: Compile PC backend and renderer together
+        run: cargo check -p glue5-pc-native -p glue5-gpu
