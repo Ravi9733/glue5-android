@@ -360,9 +360,18 @@ pub fn decode_rsc7_resource(
     if expected > max_output_bytes {
         return Err(ManifestError(format!("RSC7 output size {expected} exceeds configured limit {max_output_bytes}")));
     }
+    // Do not use Vec::with_capacity here: a malformed or unusually large PC
+    // resource can otherwise turn an allocation failure into a process abort
+    // (which appears to the WASM host as an "unreachable instruction" trap).
+    // Reserve fallibly before inflating so Android can report a normal asset
+    // decode error instead of terminating the game thread.
+    let mut body = Vec::new();
+    body.try_reserve_exact(expected)
+        .map_err(|error| ManifestError(format!(
+            "cannot reserve {expected} bytes for RSC7 resource: {error}"
+        )))?;
     let decoder = DeflateDecoder::new(&payload[16..]);
     let mut bounded = decoder.take((expected as u64).saturating_add(1));
-    let mut body = Vec::with_capacity(expected);
     bounded.read_to_end(&mut body)
         .map_err(|error| ManifestError(format!("RSC7 raw-DEFLATE stream is invalid: {error}")))?;
     if body.len() != expected {
