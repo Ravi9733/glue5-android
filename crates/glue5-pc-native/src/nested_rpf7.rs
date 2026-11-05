@@ -121,7 +121,7 @@ pub fn discover_nested_rpf7_archives(
                 format!("{label}/{}", entry.name)
             };
             // A malformed .rpf candidate is not silently treated as a valid archive.
-            if child.get(0..4) != Some(b"RPF7") {
+            if child.get(0..4).map(|magic| u32::from_le_bytes(magic.try_into().unwrap())) != Some(0x5250_4637) {
                 continue;
             }
             if child.len() > limits.max_total_archive_bytes.saturating_sub(total_bytes) {
@@ -139,7 +139,7 @@ mod tests {
     use super::*;
 
     fn empty_open_rpf7() -> Vec<u8> {
-        let mut bytes = b"RPF7".to_vec();
+        let mut bytes = 0x5250_4637_u32.to_le_bytes().to_vec();
         bytes.extend_from_slice(&0_u32.to_le_bytes());
         bytes.extend_from_slice(&0_u32.to_le_bytes());
         bytes.extend_from_slice(&0x4E45_504F_u32.to_le_bytes());
