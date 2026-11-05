@@ -241,6 +241,33 @@ impl Screen {
         Ok(ExternalMeshBuffers { vertex, index, vertex_count, index_count, vertex_stride })
     }
 
+    /// Upload a validated PC JSON-placement batch through Glue5's active GPU device.
+    ///
+    /// This connects the prepared PC-native payload stage to the same Vulkan
+    /// device used by the Android renderer. It allocates buffers only; a
+    /// renderer pass must still bind materials and issue draw calls.
+    pub fn upload_pc_placement_batch(
+        &self,
+        batch: &glue5_pc_native::PlacementGpuPayloadBatch,
+        max_meshes: usize,
+        max_total_upload_bytes: usize,
+    ) -> Result<Vec<ExternalMeshBuffers>> {
+        let uploaded = glue5_pc_native::upload_placement_gpu_payloads(
+            &self.gpu.device,
+            batch,
+            max_meshes,
+            max_total_upload_bytes,
+        ).map_err(|error| anyhow::anyhow!("PC placement GPU upload: {error}"))?;
+        Ok(uploaded.into_iter().map(|mesh| ExternalMeshBuffers {
+            vertex: mesh.vertex_buffer,
+            index: mesh.index_buffer,
+            vertex_count: mesh.vertex_count,
+            index_count: mesh.index_count,
+            vertex_stride: u32::try_from(mesh.vertex_stride)
+                .expect("validated PC placement vertex stride fits u32"),
+        }).collect())
+    }
+
     pub fn open(window: Window) -> Result<Screen> {
         let gpu = Device::open(&window.instance, Some(&window.surface))?;
         let output = present::Output::new(gpu.adapter.clone(), &gpu.device, window);
