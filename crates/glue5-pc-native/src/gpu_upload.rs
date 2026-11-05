@@ -139,6 +139,17 @@ pub fn upload_placement_gpu_payloads(
     max_total_upload_bytes: usize,
 ) -> Result<Vec<GpuMeshBuffers>, ManifestError> {
     let declared_total = validate_placement_gpu_payload_batch(batch, max_meshes, max_total_upload_bytes)?;
+    // Validate every individual allocation against the active device before
+    // creating any buffers. The aggregate budget alone does not guarantee that
+    // one mesh fits the device's maximum buffer size.
+    let max_buffer_size = device.limits().max_buffer_size;
+    for mesh in &batch.meshes {
+        if mesh.vertex_bytes.len() as u64 > max_buffer_size
+            || mesh.index_bytes.as_ref().is_some_and(|bytes| bytes.len() as u64 > max_buffer_size)
+        {
+            return Err(ManifestError("placement GPU mesh exceeds the active device maximum buffer size".into()));
+        }
+    }
     let mut actual_total = 0usize;
     let mut buffers = Vec::new();
     buffers.try_reserve_exact(batch.meshes.len())
