@@ -112,6 +112,33 @@ pub fn parse_rockstar_vertex_declaration(
     Ok(elements)
 }
 
+/// Validate that an explicit vertex layout has unique semantics and non-overlapping fields.
+/// This is a structural safety check; it does not establish that a layout matches a retail GTA V build.
+pub fn validate_vertex_layout(stride: u16, elements: &[VertexElement]) -> Result<(), ManifestError> {
+    if stride == 0 || elements.is_empty() {
+        return Err(ManifestError("vertex layout has zero stride or no elements".into()));
+    }
+    let mut ranges = Vec::with_capacity(elements.len());
+    let mut semantics = std::collections::HashSet::with_capacity(elements.len());
+    for element in elements {
+        if element.semantic.trim().is_empty() || !semantics.insert(element.semantic.to_ascii_lowercase()) {
+            return Err(ManifestError("vertex layout contains an empty or duplicate semantic".into()));
+        }
+        let start = usize::from(element.offset);
+        let end = start.checked_add(element.format.byte_len())
+            .ok_or_else(|| ManifestError("vertex element range overflow".into()))?;
+        if end > usize::from(stride) {
+            return Err(ManifestError("vertex element exceeds declared stride".into()));
+        }
+        ranges.push((start, end));
+    }
+    ranges.sort_unstable();
+    if ranges.windows(2).any(|pair| pair[0].1 > pair[1].0) {
+        return Err(ManifestError("vertex layout contains overlapping elements".into()));
+    }
+    Ok(())
+}
+
 /// Decode interleaved vertex bytes using an explicit, pre-validated element
 /// layout. All offsets and reads are checked against the supplied stride.
 pub fn decode_interleaved_vertices(
@@ -130,13 +157,7 @@ pub fn decode_interleaved_vertices(
     if expected > max_output_bytes || bytes.len() != expected {
         return Err(ManifestError("vertex input length does not match bounded count and stride".into()));
     }
-    for element in elements {
-        let end = usize::from(element.offset).checked_add(element.format.byte_len())
-            .ok_or_else(|| ManifestError("vertex element range overflow".into()))?;
-        if end > usize::from(stride) || element.semantic.is_empty() {
-            return Err(ManifestError("vertex element exceeds stride or has empty semantic".into()));
-        }
-    }
+    validate_vertex_layout(stride, elements)?;
 
     let mut decoded = Vec::with_capacity(vertex_count as usize);
     for vertex_bytes in bytes.chunks_exact(stride as usize) {
