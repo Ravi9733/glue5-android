@@ -96,10 +96,15 @@ impl Vm {
             .set_name("=ready")
             .eval()?;
         lua.sandbox(true)?;
-        let path = dir.join("main.luau");
+        // Prefer Glue 5's native entrypoint, but also accept source-based Lua
+        // mods. This is not a Windows .asi/.dll or ScriptHookV compatibility layer.
+        let path = [dir.join("main.luau"), dir.join("main.lua")].into_iter()
+            .find(|candidate| candidate.is_file())
+            .ok_or_else(|| mlua::Error::runtime(format!("{name}: expected main.luau or main.lua")))?;
         let source = std::fs::read_to_string(&path)
             .map_err(|e| mlua::Error::runtime(format!("reading {}: {e}", path.display())))?;
-        let chunk = lua.load(source).set_name(format!("@{name}/main.luau")).into_function()?;
+        let entrypoint = path.file_name().unwrap_or_default().to_string_lossy();
+        let chunk = lua.load(source).set_name(format!("@{name}/{entrypoint}")).into_function()?;
         let main = lua.create_thread(ready.call::<Function>(chunk)?)?;
         Ok(Vm {
             lua,
@@ -318,9 +323,11 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
         .set_name("=wait")
         .eval()?;
     g.set("wait", wait.clone())?;
+    // Common ScriptHook-style trainers call Wait(ms) rather than wait(ms).
+    g.set("Wait", wait.clone())?;
     // `task.spawn(f, ...)`, `task.delay(ms, f, ...)`, `task.wait(ms)`.
     let task = lua.create_table()?;
-    task.set("wait", wait)?;
+    task.set("wait", wait.clone())?;
     let s = sched.clone();
     task.set(
         "spawn",
@@ -340,6 +347,39 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
             Ok(())
         })?,
     )?;
+    // Source-level aliases for common ScriptHook-style Lua trainers.
+    // This adapts Lua scheduling conventions only; it does not load Windows
+    // .asi/.dll binaries or implement ScriptHookV's native API.
+    let citizen = lua.create_table()?;
+    citizen.set("Wait", wait.clone())?;
+    citizen.set("wait", wait.clone())?;
+    let spawn = lua.load("return function(task, f, ...) return task.spawn(f, ...) end")
+        .set_name("=pc-trainer-create-thread")
+        .eval::<Function>()?;
+    g.set("CreateThread", spawn.call::<Function>(task.clone())?)?;
+    citizen.set("CreateThread", spawn.call::<Function>(task.clone())?)?;
+    citizen.set("SetTimeout", task.get::<Function>("delay")?)?;
+    g.set("SetTimeout", task.get::<Function>("delay")?)?;
+    // ScriptHook-style InvokeNative compatibility for hashes present in
+    // Glue5's generated native database for this exact game build. Unknown
+    // hashes fail clearly instead of being guessed or called unsafely.
+    let invoke_native = lua.create_function(|lua, mut args: MultiValue| {
+        let hash_value = args.pop_front().ok_or_else(|| mlua::Error::runtime("Citizen.InvokeNative: missing native hash"))?;
+        let hash = match hash_value {
+            Value::Integer(i) => i as u64,
+            Value::Number(n) if n.is_finite() && n >= 0.0 && n <= u64::MAX as f64 => n as u64,
+            Value::String(s) => parse_native_hash_string(&s.to_str()?)?,
+            _ => return Err(mlua::Error::runtime("Citizen.InvokeNative: hash must be an integer or string")),
+        };
+        let index = natives::find_hash(hash).ok_or_else(|| mlua::Error::runtime(format!(
+            "Citizen.InvokeNative: native hash 0x{hash:016X} is not present in this Glue5 build's native database"
+        )))?;
+        natives::call(lua, index, args)
+    })?;
+    citizen.set("InvokeNative", invoke_native.clone())?;
+    g.set("InvokeNative", invoke_native)?;
+    g.set("Citizen", citizen)?;
+    g.set("task", task.clone())?;
     menus::install(&lua, name, sched.handlers.clone())?;
     json::install(&lua)?;
     // `world.vehicles()`..., the catalog's lists.
@@ -357,7 +397,29 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
     world.set("pedModels", lua.create_function(|_, ()| Ok(crate::world::catalog().map(|c| c.peds).unwrap_or_default()))?)?;
     world.set("weapons", lua.create_function(|_, ()| Ok(crate::world::catalog().map(|c| c.weapons).unwrap_or_default()))?)?;
     g.set("world", world)?;
-    g.set("joaat", lua.create_function(|_, s: mlua::LuaString| Ok(natives::joaat(&s.to_str()?)))?)?;
+    // ScriptHook-style pool enumeration used by many trainers.
+    // The supported pool names are intentionally explicit; this does not expose
+    // arbitrary game memory or Windows process structures.
+    g.set("GetGamePool", lua.create_function(|lua, pool_name: String| {
+        let pool = match pool_name.as_str() {
+            "CVehicle" => Pool::Vehicles,
+            "CPed" => Pool::Peds,
+            "CObject" => Pool::Objects,
+            _ => return Err(mlua::Error::runtime(format!(
+                "GetGamePool: unsupported pool '{pool_name}' (use CVehicle, CPed, or CObject)"
+            ))),
+        };
+        let env = natives::env().ok_or_else(|| mlua::Error::runtime("GetGamePool: only available in a mod's script"))?;
+        let handles = unsafe { crate::world::handles(env, pool, 4096) };
+        let result = lua.create_table()?;
+        for (i, handle) in handles.into_iter().enumerate() {
+            result.raw_set(i + 1, handle)?;
+        }
+        Ok(result)
+    })?)?;
+    let get_hash_key = lua.create_function(|_, s: mlua::LuaString| Ok(natives::joaat(&s.to_str()?)))?;
+    g.set("joaat", get_hash_key.clone())?;
+    g.set("GetHashKey", get_hash_key)?;
     let m = lua.create_table()?;
     m.set("name", name)?;
     g.set("mod", m)?;
@@ -391,6 +453,8 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
         g.set(*space, table)?;
     }
 
+    install_pc_trainer_native_aliases(&lua)?;
+
     let deadline = Rc::new(Cell::new(Instant::now() + SLICE));
     let interrupt_deadline = deadline.clone();
     lua.set_interrupt(move |_| {
@@ -399,7 +463,109 @@ fn base(name: &str, log: Rc<dyn Fn(&str)>, sched: &Sched) -> mlua::Result<(Lua, 
     Ok((lua, deadline))
 }
 
+
+/// Expose a conservative set of common GTA native names as global functions,
+/// as expected by many ScriptHook-style Lua trainers. Glue5 still supplies the
+/// actual WASM-native metadata and validates every argument; this is not a PE
+/// loader or a complete ScriptHookV API.
+fn install_pc_trainer_native_aliases(lua: &Lua) -> mlua::Result<()> {
+    const COMMON: &[&str] = &[
+        "PLAYER_ID", "PLAYER_PED_ID", "GET_PLAYER_PED", "GET_PLAYER_NAME",
+        "GET_ENTITY_COORDS", "SET_ENTITY_COORDS", "SET_ENTITY_COORDS_NO_OFFSET",
+        "GET_ENTITY_HEADING", "SET_ENTITY_HEADING", "GET_ENTITY_HEALTH",
+        "SET_ENTITY_HEALTH", "GET_ENTITY_MAX_HEALTH", "SET_ENTITY_MAX_HEALTH",
+        "DOES_ENTITY_EXIST", "IS_ENTITY_DEAD", "IS_ENTITY_A_PED",
+        "IS_ENTITY_A_VEHICLE", "IS_ENTITY_IN_A_VEHICLE", "GET_ENTITY_MODEL",
+        "GET_ENTITY_SPEED", "GET_ENTITY_FORWARD_VECTOR", "GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS",
+        "GET_VEHICLE_PED_IS_IN", "GET_VEHICLE_ENGINE_HEALTH", "SET_VEHICLE_ENGINE_HEALTH",
+        "SET_VEHICLE_ENGINE_ON", "SET_VEHICLE_FIXED", "SET_VEHICLE_DIRT_LEVEL",
+        "SET_VEHICLE_MOD", "GET_VEHICLE_MOD", "GET_NUM_VEHICLE_MODS",
+        "CREATE_VEHICLE", "DELETE_VEHICLE", "SET_VEHICLE_ON_GROUND_PROPERLY",
+        "CREATE_PED", "DELETE_PED", "SET_PED_INTO_VEHICLE", "GET_PED_IN_VEHICLE_SEAT",
+        "IS_PED_IN_ANY_VEHICLE", "SET_PED_ARMOUR", "GET_PED_ARMOUR",
+        "GIVE_WEAPON_TO_PED", "REMOVE_WEAPON_FROM_PED", "HAS_PED_GOT_WEAPON",
+        "GET_SELECTED_PED_WEAPON", "SET_CURRENT_PED_WEAPON",
+        "REQUEST_MODEL", "HAS_MODEL_LOADED", "IS_MODEL_VALID",
+        "IS_MODEL_IN_CDIMAGE", "SET_MODEL_AS_NO_LONGER_NEEDED",
+        "CREATE_OBJECT", "DELETE_OBJECT", "PLACE_OBJECT_ON_GROUND_PROPERLY",
+        "GET_GAME_TIMER", "GET_FRAME_TIME", "GET_FRAME_COUNT",
+        "GET_GROUND_Z_FOR_3D_COORD", "GET_WATER_HEIGHT",
+        "SET_WEATHER_TYPE_NOW", "SET_WEATHER_TYPE_NOW_PERSIST",
+        "SET_OVERRIDE_WEATHER", "CLEAR_OVERRIDE_WEATHER", "GET_PREV_WEATHER_TYPE_HASH_NAME",
+        "SET_CLOCK_TIME", "GET_CLOCK_HOURS", "GET_CLOCK_MINUTES", "GET_CLOCK_SECONDS",
+        "IS_CONTROL_PRESSED", "IS_CONTROL_JUST_PRESSED", "IS_CONTROL_JUST_RELEASED",
+        "DISABLE_CONTROL_ACTION", "ENABLE_CONTROL_ACTION",
+        "DRAW_MARKER", "DRAW_LINE", "DRAW_RECT", "DRAW_TEXT",
+        "SET_TEXT_SCALE", "SET_TEXT_COLOUR", "SET_TEXT_CENTRE",
+        "BEGIN_TEXT_COMMAND_DISPLAY_TEXT", "ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME",
+        "END_TEXT_COMMAND_DISPLAY_TEXT", "SET_NEW_WAYPOINT", "GET_FIRST_BLIP_INFO_ID",
+        "GET_BLIP_INFO_ID_COORD", "ADD_BLIP_FOR_COORD", "ADD_BLIP_FOR_ENTITY",
+        "SET_BLIP_SPRITE", "SET_BLIP_COLOUR", "SET_BLIP_ROUTE", "REMOVE_BLIP",
+        "GET_ENTITY_ALPHA", "SET_ENTITY_ALPHA", "RESET_ENTITY_ALPHA",
+        "SET_ENTITY_VISIBLE", "SET_ENTITY_INVINCIBLE", "SET_ENTITY_COLLISION",
+        "FREEZE_ENTITY_POSITION", "APPLY_FORCE_TO_ENTITY", "SET_ENTITY_VELOCITY",
+        "GET_ENTITY_VELOCITY", "GET_ENTITY_ROTATION", "SET_ENTITY_ROTATION",
+        "GET_PLAYER_WANTED_LEVEL", "SET_PLAYER_WANTED_LEVEL",
+        "IS_PLAYER_PLAYING", "IS_PLAYER_FREE_AIMING", "GET_PLAYER_GROUP",
+        "GET_HASH_KEY",
+    ];
+    let globals = lua.globals();
+    for name in COMMON {
+        let Some(index) = natives::find_game_name(name) else { continue };
+        let native = &natives::NATIVES[index];
+        let mut pascal = String::new();
+        for part in native.name.split('_').filter(|part| !part.is_empty()) {
+            let mut chars = part.chars();
+            if let Some(first) = chars.next() {
+                pascal.push(first.to_ascii_uppercase());
+                pascal.extend(chars.map(|ch| ch.to_ascii_lowercase()));
+            }
+        }
+        let function = lua.create_function(move |lua, args: MultiValue| natives::call(lua, index, args))?;
+        for alias in [name.to_string(), pascal] {
+            if globals.get::<Value>(alias.as_str())?.is_nil() {
+                globals.set(alias, function.clone())?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// `require("./menu")`: the mod's `menu.luau`, run once.
+
+/// Parse decimal strings as decimal; hexadecimal strings require a 0x prefix.
+fn parse_native_hash_string(raw: &str) -> mlua::Result<u64> {
+    let value = raw.trim();
+    let parsed = if let Some(hex) = value.strip_prefix("0x").or_else(|| value.strip_prefix("0X")) {
+        u64::from_str_radix(hex, 16)
+    } else {
+        value.parse::<u64>()
+    };
+    parsed.map_err(|_| mlua::Error::runtime("Citizen.InvokeNative: hash string must be decimal or 0x-prefixed hexadecimal"))
+}
+
+#[cfg(test)]
+mod invoke_native_hash_tests {
+    use super::parse_native_hash_string;
+
+    #[test]
+    fn parses_decimal_string_as_decimal() {
+        assert_eq!(parse_native_hash_string("123").unwrap(), 123);
+    }
+
+    #[test]
+    fn parses_prefixed_hex_string() {
+        assert_eq!(parse_native_hash_string("0x1A").unwrap(), 26);
+        assert_eq!(parse_native_hash_string("0X1a").unwrap(), 26);
+    }
+
+    #[test]
+    fn rejects_unprefixed_hex_and_invalid_values() {
+        assert!(parse_native_hash_string("1A").is_err());
+        assert!(parse_native_hash_string("").is_err());
+    }
+}
+
 fn require(lua: &Lua, name: &str, dir: &Path) -> mlua::Result<Function> {
     let loaded: RefCell<HashMap<PathBuf, Value>> = RefCell::default();
     let (name, dir) = (name.to_string(), dir.to_path_buf());
@@ -408,13 +574,16 @@ fn require(lua: &Lua, name: &str, dir: &Path) -> mlua::Result<Function> {
             .strip_prefix("./")
             .filter(|r| !r.split('/').any(|p| p.is_empty() || p.starts_with('.')))
             .ok_or_else(|| mlua::Error::runtime(format!("require(\"{path}\"): a file of the mod, as \"./name\"")))?;
-        let file = dir.join(format!("{rel}.luau"));
+        let file = [dir.join(format!("{rel}.luau")), dir.join(format!("{rel}.lua"))]
+            .into_iter().find(|candidate| candidate.is_file())
+            .ok_or_else(|| mlua::Error::runtime(format!("require(\"{path}\"): module .luau/.lua file not found")))?;
         if let Some(v) = loaded.borrow().get(&file) {
             return Ok(v.clone());
         }
         let source = std::fs::read_to_string(&file)
             .map_err(|e| mlua::Error::runtime(format!("require(\"{path}\"): {e}")))?;
-        let value: Value = lua.load(source).set_name(format!("@{name}/{rel}.luau")).call(())?;
+        let entrypoint = file.file_name().unwrap_or_default().to_string_lossy();
+        let value: Value = lua.load(source).set_name(format!("@{name}/{entrypoint}")).call(())?;
         let value = if value.is_nil() { Value::Boolean(true) } else { value };
         loaded.borrow_mut().insert(file, value.clone());
         Ok(value)
