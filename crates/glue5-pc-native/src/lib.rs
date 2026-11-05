@@ -1334,19 +1334,18 @@ pub fn copy_rpf7_open_binary_entry<W: Write>(
     if encrypted {
         return Err(ManifestError("RPF7 binary payload is encrypted".into()));
     }
-    if file_size != 0 && file_size != uncompressed_size {
-        return Err(ManifestError("RPF7 binary payload is compressed; decompression is not supported".into()));
-    }
     let range = validate_rpf7_payload_ranges(archive, inventory).into_iter()
         .find(|range| range.entry_index == entry_index)
         .ok_or_else(|| ManifestError("RPF7 binary payload range is unavailable".into()))?;
     if range.offset_is_sentinel || !range.in_bounds || range.overlaps_metadata {
         return Err(ManifestError("RPF7 binary payload range is invalid".into()));
     }
-    let size = usize::try_from(range.resolved_size.unwrap_or(0))
-        .map_err(|_| ManifestError("RPF7 binary payload size does not fit this platform".into()))?;
-    if size > max_output_bytes {
-        return Err(ManifestError(format!("RPF7 binary payload exceeds extraction limit ({size} > {max_output_bytes})")));
+    let stored_size = usize::try_from(range.end.checked_sub(range.start)
+        .ok_or_else(|| ManifestError("RPF7 binary payload range is inverted".into()))?)
+        .map_err(|_| ManifestError("RPF7 stored payload size does not fit this platform".into()))?;
+    let output_size = if file_size == 0 { uncompressed_size as usize } else { uncompressed_size as usize };
+    if output_size > max_output_bytes {
+        return Err(ManifestError(format!("RPF7 binary output exceeds extraction limit ({output_size} > {max_output_bytes})")));
     }
     let start = usize::try_from(range.start)
         .map_err(|_| ManifestError("RPF7 binary payload offset does not fit this platform".into()))?;
@@ -1354,11 +1353,39 @@ pub fn copy_rpf7_open_binary_entry<W: Write>(
         .map_err(|_| ManifestError("RPF7 binary payload end does not fit this platform".into()))?;
     let payload = archive.get(start..end)
         .ok_or_else(|| ManifestError("RPF7 binary payload slice is unavailable".into()))?;
-    for chunk in payload.chunks(64 * 1024) {
-        writer.write_all(chunk)
-            .map_err(|error| ManifestError(format!("writing RPF7 payload failed: {error}")))?;
+    if file_size == 0 || file_size == uncompressed_size {
+        if stored_size != output_size {
+            return Err(ManifestError("RPF7 uncompressed payload length does not match TOC".into()));
+        }
+        for chunk in payload.chunks(64 * 1024) {
+            writer.write_all(chunk)
+                .map_err(|error| ManifestError(format!("writing RPF7 payload failed: {error}")))?;
+        }
+    } else {
+        // RPF7 compressed binary entries use the same raw-DEFLATE stream format
+        // as RSC7 page payloads. Bound expansion to the TOC's declared size.
+        let decoder = DeflateDecoder::new(payload);
+        let mut bounded = decoder.take((output_size as u64).saturating_add(1));
+        let mut written = 0usize;
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            let count = bounded.read(&mut buffer)
+                .map_err(|error| ManifestError(format!("RPF7 raw-DEFLATE payload is invalid: {error}")))?;
+            if count == 0 { break; }
+            written = written.checked_add(count)
+                .ok_or_else(|| ManifestError("RPF7 decompressed byte count overflow".into()))?;
+            if written > output_size {
+                return Err(ManifestError("RPF7 decompressed payload exceeds TOC uncompressed size".into()));
+            }
+            writer.write_all(&buffer[..count])
+                .map_err(|error| ManifestError(format!("writing decompressed RPF7 payload failed: {error}")))?;
+        }
+        if written != output_size {
+            return Err(ManifestError(format!("RPF7 decompressed size mismatch: expected {output_size}, got {written}")));
+        }
     }
-    Ok(size as u64)
+    let _ = stored_size;
+    Ok(output_size as u64)
 }
 
 /// Convenience wrapper for small payloads. Prefer the streaming copy API for
