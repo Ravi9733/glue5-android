@@ -68,8 +68,10 @@ jobs:
           install_args: rust cmake
       - name: Prepare workspace-patched dependencies
         run: mise run setup
-      - name: Test Vulkan renderer and Turnip diagnostics
-        run: cargo test -p glue5-gpu
+      - name: Test Turnip identity detection without proprietary game assets
+        run: |
+          rustc --edition=2024 --test crates/glue5-gpu/src/turnip_identity.rs -o /tmp/turnip-identity-tests
+          /tmp/turnip-identity-tests
 
   combined-runtime-compile-check:
     runs-on: ubuntu-24.04
@@ -85,5 +87,5 @@ jobs:
           install_args: rust cmake
       - name: Prepare workspace-patched dependencies
         run: mise run setup
-      - name: Compile PC backend and Vulkan renderer together
-        run: cargo check -p glue5-pc-native -p glue5-gpu
+      - name: Compile the PC asset backend (renderer requires local game.wasm)
+        run: cargo check -p glue5-pc-native
