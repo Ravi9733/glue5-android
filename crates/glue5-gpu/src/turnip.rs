@@ -4,6 +4,8 @@
 //! Vulkan loader actually selected so a build cannot silently claim Turnip
 //! support merely because the Vulkan backend was compiled in.
 
+use crate::turnip_identity::contains_turnip_identity;
+
 pub(super) fn log_adapter_diagnostics(info: &wgpu::AdapterInfo) {
     let driver_identity = format!("{} {}", info.driver, info.driver_info);
     let turnip_identity = contains_turnip_identity(&driver_identity);
@@ -40,7 +42,7 @@ pub(super) fn log_adapter_diagnostics(info: &wgpu::AdapterInfo) {
 
 #[cfg(test)]
 mod tests {
-    use super::turnip_identity::contains_turnip_identity;
+    use crate::turnip_identity::contains_turnip_identity;
 
     #[test]
     fn recognizes_turnip_and_freedreno_driver_strings() {
