@@ -33,7 +33,7 @@ public class Activity {
 JAVA
 cat >"$tmp/src/android/system/ErrnoException.java" <<'JAVA'
 package android.system;
-public class ErrnoException extends Exception {}
+public class ErrnoException extends Exception {\n    private static final long serialVersionUID = 1L;\n}
 JAVA
 cat >"$tmp/src/android/system/Os.java" <<'JAVA'
 package android.system;
