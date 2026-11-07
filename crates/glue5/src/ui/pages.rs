@@ -861,7 +861,22 @@ fn settings_items(
         SettingsTab::Device => {
             card_title(ui, "THIS DEVICE", None);
             small(ui, &format!("Platform: {} · Window: {} × {}", std::env::consts::OS, status.window.0, status.window.1), theme::MUTED);
-            small(ui, "Performance details are available in Graphics → Performance overlay.", theme::MUTED);
+            small(ui, &format!("Display refresh: {:.0} Hz", status.refresh_rate), theme::MUTED);
+            if let Some((width, height)) = status.back_buffer {
+                small(ui, &format!("Active render buffer: {width} × {height}"), theme::MUTED);
+            } else {
+                small(ui, &format!("Configured render scale: {:.0}%", settings.render_scale() * 100.0), theme::MUTED);
+            }
+            let upscalers = status.upscalers.iter().map(|upscaler| match upscaler {
+                Upscaling::Bicubic => "Bicubic",
+                Upscaling::Fsr => "FSR",
+                Upscaling::MetalFx => "MetalFX",
+                Upscaling::MetalFxTemporal => "MetalFX Temporal",
+            }).collect::<Vec<_>>().join(", ");
+            small(ui, &format!("Available upscalers: {}", if upscalers.is_empty() { "None reported" } else { &upscalers }), theme::MUTED);
+            small(ui, &format!("Game files: {}", match settings.source { Source::Folder => "This device", Source::Server => "Network server" }), theme::MUTED);
+            small(ui, &format!("Mods running: {}", if status.mods { "Yes" } else { "No" }), theme::MUTED);
+            small(ui, "Live frame-time and memory details are available in Graphics → Performance overlay.", theme::MUTED);
         }
         SettingsTab::Video => {
             if cfg!(target_os = "android") {
