@@ -16,6 +16,7 @@ mod app;
 mod audio;
 mod benchmark;
 mod haptics;
+mod gyro;
 mod keymap;
 mod pads;
 mod paths;
