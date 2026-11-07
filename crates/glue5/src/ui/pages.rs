@@ -684,27 +684,54 @@ pub(super) fn settings_page(
             ui.label(RichText::new("GAME SETTINGS").small().color(theme::MUTED));
             ui.add_space(6.0 * scale);
             let mut selected = None;
+            let graphics_detail = format!(
+                "{} · {} FPS · Vulkan / Turnip",
+                settings.render_scale().mul_add(100.0, 0.0).round() as u32,
+                if settings.max_fps == 0 { "Display".to_owned() } else { settings.max_fps.to_string() },
+            );
+            let controls_detail = format!(
+                "Touch layout · {:.0}% size · {:.0}% opacity · camera and aim",
+                settings.touch_size * 100.0,
+                settings.touch_opacity * 100.0,
+            );
+            let mode_detail = if settings.sandbox { "Sandbox · Free roam".to_owned() } else { "Story · Campaign".to_owned() };
+            let mods_detail = if settings.mods {
+                "Enabled · Luau scripts and GLUE 5 Studio".to_owned()
+            } else {
+                "Disabled · install and manage available mods".to_owned()
+            };
             let mut category = |tab_value: SettingsTab, title: &str, detail: &str| {
                 let width = ui.available_width();
                 let response = ui.add_sized(
                     [width, 58.0 * scale],
-                    egui::Button::new(egui::RichText::new(format!("{title}\n{detail}")).color(Color32::WHITE))
-                        .fill(Color32::from_black_alpha(185))
-                        .corner_radius((12.0 * scale) as u8),
+                    egui::Button::new(
+                        egui::RichText::new(title).strong().size(16.0 * scale).color(Color32::WHITE)
+                            .text_style(egui::TextStyle::Button),
+                    )
+                    .fill(Color32::from_black_alpha(185))
+                    .corner_radius((12.0 * scale) as u8),
+                );
+                let rect = response.rect;
+                ui.painter().text(
+                    egui::pos2(rect.left() + 14.0 * scale, rect.center().y + 10.0 * scale),
+                    Align2::LEFT_CENTER,
+                    detail,
+                    egui::FontId::proportional(11.0 * scale),
+                    theme::MUTED,
                 );
                 if response.clicked() { selected = Some(tab_value); }
                 ui.add_space(5.0 * scale);
             };
-            category(SettingsTab::Video, "Graphics", "Resolution, upscaling, frame rate and Vulkan / Turnip");
-            category(SettingsTab::Controls, "Controls", "Touch layout, camera, aiming and haptics");
+            category(SettingsTab::Video, "Graphics", &graphics_detail);
+            category(SettingsTab::Controls, "Controls", &controls_detail);
             if status.started.is_some() {
                 category(SettingsTab::Cheats, "Cheats", "In-game actions (only verified hooks will be enabled)");
             }
-            category(SettingsTab::Language, "Language / Game mode", "Language and starting mode");
+            category(SettingsTab::Language, "Language / Game mode", &mode_detail);
             if status.started.is_none() {
                 category(SettingsTab::Game, "Game Files", "Game folder, server and file status");
             }
-            category(SettingsTab::Mods, "Mods", "Install and manage available mods");
+            category(SettingsTab::Mods, "Mods", &mods_detail);
             category(SettingsTab::SelfRadio, "Self Radio", "Your own music in the game's radio");
             category(SettingsTab::Device, "This Device", "Device information and diagnostics");
             if let Some(next) = selected {
