@@ -229,9 +229,15 @@ const WARN: Color32 = Color32::from_rgb(240, 180, 100);
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum SettingsTab {
     #[default]
+    Home,
     Video,
     Controls,
     Game,
+    Cheats,
+    Language,
+    Mods,
+    SelfRadio,
+    Device,
 }
 
 pub struct Ui {
