@@ -1,6 +1,6 @@
 //! Home and the floating settings window share the same responsive controls.
 use super::widgets::{
-    Control, action_button, choice, close_button, focus, segmented, setting, slider, text_field, toggle,
+    Control, action_button, choice, close_button, focus, setting, slider, text_field, toggle,
 };
 use super::{Action, Mode, Page, SettingsTab, Status, TextKind, WARN, theme};
 use crate::paths::{self, MOBILE, TOUCH, TV};
