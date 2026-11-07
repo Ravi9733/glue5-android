@@ -683,7 +683,7 @@ pub(super) fn settings_page(
 ) -> bool {
     sheet(ctx, "settings-window", "SETTINGS", |ui| {
         let scale = theme::density(ui);
-        let tabs = [(SettingsTab::Video, "GRAPHICS"), (SettingsTab::Controls, "CONTROLS"), (SettingsTab::Game, "GAME")];
+        let tabs = [(SettingsTab::Video, "GRAPHICS"), (SettingsTab::Controls, "CONTROLS"), (SettingsTab::Game, "GAME & FILES")];
         segmented(ui, tab, &tabs, 40.0 * scale);
         ui.add_space(10.0 * scale);
         if let Some(note) = note {
@@ -963,6 +963,15 @@ fn settings_items(
             if crate::haptics::SUPPORTED {
                 setting(ui, "Haptics", Control::Toggle, None, |ui| toggle(ui, &mut settings.haptics));
             }
+            ui.add_space(6.0 * scale);
+            card_title(ui, "GYROSCOPE", Some(("Not available", WARN)));
+            ui.label(
+                RichText::new(
+                    "Gyroscope aiming and tilt steering are part of the iOS controls, but Android sensor input is not connected to the game yet. No inactive switch is shown as if it worked.",
+                )
+                .small()
+                .color(theme::MUTED),
+            );
         }
         SettingsTab::Game => {
             let r = setting(
