@@ -700,7 +700,7 @@ pub(super) fn settings_page(
                 settings.touch_opacity * 100.0,
             );
             let mode_detail = if settings.sandbox { "Sandbox · Free roam".to_owned() } else { "Story · Campaign".to_owned() };
-            let mods_detail = super::mods::summary(settings, status);
+            let mods_detail = "Install and manage car, skin and script mods".to_owned();
             let mut category = |tab_value: SettingsTab, title: &str, detail: &str| {
                 let width = ui.available_width();
                 let response = ui.add_sized(
@@ -728,15 +728,15 @@ pub(super) fn settings_page(
                 ui.add_space(5.0 * scale);
             };
             category(SettingsTab::Video, "Graphics", &graphics_detail);
-            category(SettingsTab::Controls, "Controls", &controls_detail);
+            category(SettingsTab::Controls, "Controls", controls_detail);
             if status.started.is_some() {
                 category(SettingsTab::Cheats, "Cheats", "In-game actions (only verified hooks will be enabled)");
             }
-            category(SettingsTab::Language, "Language / Game mode", &mode_detail);
+            category(SettingsTab::Language, "Language / Game mode", mode_detail);
             if status.started.is_none() {
                 category(SettingsTab::Game, "Game Files", "Game folder, server and file status");
             }
-            category(SettingsTab::Mods, "Mods", &mods_detail);
+            category(SettingsTab::Mods, "Mods", mods_detail);
             category(SettingsTab::SelfRadio, "Self Radio", "Your own music in the game's radio");
             category(SettingsTab::Device, "This Device", "Device information and diagnostics");
             if let Some(next) = selected {
