@@ -689,17 +689,18 @@ pub(super) fn settings_page(
                 settings.render_scale().mul_add(100.0, 0.0).round() as u32,
                 if settings.max_fps == 0 { "Display".to_owned() } else { settings.max_fps.to_string() },
             );
+            let touch_mode = match settings.touch {
+                TouchMode::Auto => "Auto",
+                TouchMode::Always => "On",
+                TouchMode::Off => "Off",
+            };
             let controls_detail = format!(
-                "Touch layout · {:.0}% size · {:.0}% opacity · camera and aim",
+                "Touch {touch_mode} · {:.0}% size · {:.0}% opacity · camera and aim",
                 settings.touch_size * 100.0,
                 settings.touch_opacity * 100.0,
             );
             let mode_detail = if settings.sandbox { "Sandbox · Free roam".to_owned() } else { "Story · Campaign".to_owned() };
-            let mods_detail = if settings.mods {
-                "Enabled · Luau scripts and GLUE 5 Studio".to_owned()
-            } else {
-                "Disabled · install and manage available mods".to_owned()
-            };
+            let mods_detail = super::mods::summary(settings, status);
             let mut category = |tab_value: SettingsTab, title: &str, detail: &str| {
                 let width = ui.available_width();
                 let response = ui.add_sized(
