@@ -441,6 +441,7 @@ impl Ui {
         if self.page == Some(Page::Settings) {
             self.back();
         } else {
+            self.tab = SettingsTab::Home;
             self.show(Some(Page::Settings));
         }
     }
