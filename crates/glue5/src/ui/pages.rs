@@ -727,11 +727,7 @@ pub(super) fn settings_page(
             category(SettingsTab::SelfRadio, "Self Radio", "Your own music in the game's radio");
             category(SettingsTab::Device, "This Device", "Device information and diagnostics");
             if let Some(next) = selected {
-                if next == SettingsTab::Mods {
-                    *go = Some(Some(Page::Mods));
-                } else {
-                    *tab = next;
-                }
+                *tab = next;
             }
         } else {
             ui.horizontal(|ui| {
@@ -836,6 +832,10 @@ fn settings_items(
         SettingsTab::Cheats => {
             card_title(ui, "CHEATS", Some(("Unavailable", WARN)));
             small(ui, "Cheat actions are not connected to verified Android game-thread hooks yet.", theme::MUTED);
+        }
+        SettingsTab::Mods => {
+            card_title(ui, "MODS", Some(("iOS manager pending", WARN)));
+            small(ui, "The iOS Mods workflow is being ported here. Glue 5's separate LuaU Mods page is intentionally not used.", theme::MUTED);
         }
         SettingsTab::Language => {
             card_title(ui, "LANGUAGE / GAME MODE", Some(("Partial", WARN)));
