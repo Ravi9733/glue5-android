@@ -688,16 +688,14 @@ pub(super) fn settings_page(
             ui.add_space(6.0 * scale);
             let mut selected = None;
             let mut category = |tab_value: SettingsTab, title: &str, detail: &str| {
-                let label = egui::RichText::new(title).strong().color(Color32::WHITE);
-                let sub = egui::RichText::new(detail).small().color(theme::MUTED);
+                let width = ui.available_width();
                 let response = ui.add_sized(
-                    [ui.available_width(), 58.0 * scale],
-                    egui::Button::new(egui::RichText::new(format!("{title}\n{}", detail)).color(Color32::WHITE))
+                    [width, 58.0 * scale],
+                    egui::Button::new(egui::RichText::new(format!("{title}\n{detail}")).color(Color32::WHITE))
                         .fill(Color32::from_black_alpha(185))
                         .corner_radius((12.0 * scale) as u8),
                 );
                 if response.clicked() { selected = Some(tab_value); }
-                let _ = (label, sub);
                 ui.add_space(5.0 * scale);
             };
             category(SettingsTab::Video, "Graphics", "Resolution, upscaling, frame rate and Vulkan / Turnip");
