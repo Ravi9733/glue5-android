@@ -1,0 +1,34 @@
+name: Prepare iOS IPA inspection artifact
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-ipa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download the exact v1.6.2 IPA release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p inspection
+          curl --fail --location --retry 3 --retry-all-errors --connect-timeout 30 --max-time 900 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/octet-stream" \
+            "https://api.github.com/repos/Ravi9733/glue5-android/releases/assets/721623373" \
+            -o inspection/GTA5Port-iOS-v1.6.2.ipa
+          echo "9fdf3e9a6637982bf060ecd4e6f18f3ef970e8c736f0b3013665ce454e3a0864  inspection/GTA5Port-iOS-v1.6.2.ipa" | sha256sum --check
+          file inspection/GTA5Port-iOS-v1.6.2.ipa
+          unzip -t inspection/GTA5Port-iOS-v1.6.2.ipa
+      - name: Upload IPA for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-v1.6.2-ipa-inspection
+          path: inspection/GTA5Port-iOS-v1.6.2.ipa
+          if-no-files-found: error
+          retention-days: 1
