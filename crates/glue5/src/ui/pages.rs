@@ -704,16 +704,20 @@ pub(super) fn settings_page(
                 let width = ui.available_width();
                 let response = ui.add_sized(
                     [width, 58.0 * scale],
-                    egui::Button::new(
-                        egui::RichText::new(title).strong().size(16.0 * scale).color(Color32::WHITE)
-                            .text_style(egui::TextStyle::Button),
-                    )
-                    .fill(Color32::from_black_alpha(185))
-                    .corner_radius((12.0 * scale) as u8),
+                    egui::Button::new("")
+                        .fill(Color32::from_black_alpha(185))
+                        .corner_radius((12.0 * scale) as u8),
                 );
                 let rect = response.rect;
                 ui.painter().text(
-                    egui::pos2(rect.left() + 14.0 * scale, rect.center().y + 10.0 * scale),
+                    egui::pos2(rect.left() + 14.0 * scale, rect.center().y - 9.0 * scale),
+                    Align2::LEFT_CENTER,
+                    title,
+                    egui::FontId::proportional(16.0 * scale),
+                    Color32::WHITE,
+                );
+                ui.painter().text(
+                    egui::pos2(rect.left() + 14.0 * scale, rect.center().y + 11.0 * scale),
                     Align2::LEFT_CENTER,
                     detail,
                     egui::FontId::proportional(11.0 * scale),
