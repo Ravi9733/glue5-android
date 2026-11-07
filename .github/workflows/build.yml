@@ -116,6 +116,22 @@ jobs:
               ;;
           esac
 
+      - name: Verify Android Turnip runtime libraries in APK
+        if: env.PLATFORM == 'android'
+        run: |
+          set -euo pipefail
+          apk=Glue5-android.apk
+          [ -s "$apk" ] || { echo "Android APK is missing or empty" >&2; exit 1; }
+          entries=$(unzip -Z1 "$apk")
+          for lib in libadrenotools.so libhook_impl.so libmain_hook.so libfile_redirect_hook.so libgsl_alloc_hook.so; do
+            printf '%s\n' "$entries" | grep -Fx "lib/arm64-v8a/$lib" >/dev/null || {
+              echo "Missing Turnip loader dependency in APK: $lib" >&2
+              exit 1
+            }
+          done
+          printf '%s\n' "$entries" | grep -Fx 'lib/arm64-v8a/libglue5.so' >/dev/null
+          echo "Verified arm64 Glue 5 library and all AdrenoTools Turnip loader dependencies."
+
       - name: Package the Graphic Mods ZIP
         if: env.PLATFORM == 'android'
         run: |
