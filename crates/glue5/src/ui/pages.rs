@@ -684,22 +684,9 @@ pub(super) fn settings_page(
             ui.label(RichText::new("GAME SETTINGS").small().color(theme::MUTED));
             ui.add_space(6.0 * scale);
             let mut selected = None;
-            let graphics_detail = format!(
-                "{} · {} FPS · Vulkan / Turnip",
-                settings.render_scale().mul_add(100.0, 0.0).round() as u32,
-                if settings.max_fps == 0 { "Display".to_owned() } else { settings.max_fps.to_string() },
-            );
-            let touch_mode = match settings.touch {
-                TouchMode::Auto => "Auto",
-                TouchMode::Always => "On",
-                TouchMode::Off => "Off",
-            };
-            let controls_detail = format!(
-                "Touch {touch_mode} · {:.0}% size · {:.0}% opacity · camera and aim",
-                settings.touch_size * 100.0,
-                settings.touch_opacity * 100.0,
-            );
-            let mode_detail = if settings.sandbox { "Sandbox · Free roam".to_owned() } else { "Story · Campaign".to_owned() };
+            let graphics_detail = "Graphics preset · resolution · frame rate · memory";
+            let controls_detail = "Camera · buttons · layout · gyro · controller and keyboard";
+            let mode_detail = "Game mode and language";
             let mods_detail = "Install and manage car, skin and script mods".to_owned();
             let mut category = |tab_value: SettingsTab, title: &str, detail: &str| {
                 let width = ui.available_width();
@@ -727,7 +714,7 @@ pub(super) fn settings_page(
                 if response.clicked() { selected = Some(tab_value); }
                 ui.add_space(5.0 * scale);
             };
-            category(SettingsTab::Video, "Graphics", &graphics_detail);
+            category(SettingsTab::Video, "Graphics", graphics_detail);
             category(SettingsTab::Controls, "Controls", controls_detail);
             if status.started.is_some() {
                 category(SettingsTab::Cheats, "Cheats", "In-game actions (only verified hooks will be enabled)");
