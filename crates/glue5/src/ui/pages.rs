@@ -683,13 +683,63 @@ pub(super) fn settings_page(
 ) -> bool {
     sheet(ctx, "settings-window", "SETTINGS", |ui| {
         let scale = theme::density(ui);
-        let tabs = [(SettingsTab::Video, "GRAPHICS"), (SettingsTab::Controls, "CONTROLS"), (SettingsTab::Game, "GAME & FILES")];
-        segmented(ui, tab, &tabs, 40.0 * scale);
-        ui.add_space(10.0 * scale);
-        if let Some(note) = note {
-            ui.label(RichText::new(note).small().color(WARN));
+        if *tab == SettingsTab::Home {
+            ui.label(RichText::new("GAME SETTINGS").small().color(theme::MUTED));
+            ui.add_space(6.0 * scale);
+            let mut selected = None;
+            let mut category = |tab_value: SettingsTab, title: &str, detail: &str| {
+                let label = egui::RichText::new(title).strong().color(Color32::WHITE);
+                let sub = egui::RichText::new(detail).small().color(theme::MUTED);
+                let response = ui.add_sized(
+                    [ui.available_width(), 58.0 * scale],
+                    egui::Button::new(egui::RichText::new(format!("{title}\n{}", detail)).color(Color32::WHITE))
+                        .fill(Color32::from_black_alpha(185))
+                        .corner_radius((12.0 * scale) as u8),
+                );
+                if response.clicked() { selected = Some(tab_value); }
+                let _ = (label, sub);
+                ui.add_space(5.0 * scale);
+            };
+            category(SettingsTab::Video, "Graphics", "Resolution, upscaling, frame rate and Vulkan / Turnip");
+            category(SettingsTab::Controls, "Controls", "Touch layout, camera, aiming and haptics");
+            if status.started.is_some() {
+                category(SettingsTab::Cheats, "Cheats", "In-game actions (only verified hooks will be enabled)");
+            }
+            category(SettingsTab::Language, "Language / Game mode", "Language and starting mode");
+            if status.started.is_none() {
+                category(SettingsTab::Game, "Game Files", "Game folder, server and file status");
+            }
+            category(SettingsTab::Mods, "Mods", "Install and manage available mods");
+            category(SettingsTab::SelfRadio, "Self Radio", "Your own music in the game's radio");
+            category(SettingsTab::Device, "This Device", "Device information and diagnostics");
+            if let Some(next) = selected {
+                if next == SettingsTab::Mods {
+                    *go = Some(Some(Page::Mods));
+                } else {
+                    *tab = next;
+                }
+            }
+        } else {
+            ui.horizontal(|ui| {
+                if action_button(ui, "‹ Settings").clicked() { *tab = SettingsTab::Home; }
+                ui.label(theme::heading(match *tab {
+                    SettingsTab::Video => "GRAPHICS",
+                    SettingsTab::Controls => "CONTROLS",
+                    SettingsTab::Game => "GAME FILES",
+                    SettingsTab::Cheats => "CHEATS",
+                    SettingsTab::Language => "LANGUAGE / GAME MODE",
+                    SettingsTab::Mods => "MODS",
+                    SettingsTab::SelfRadio => "SELF RADIO",
+                    SettingsTab::Device => "THIS DEVICE",
+                    SettingsTab::Home => "SETTINGS",
+                }, 18.0 * scale));
+            });
+            ui.add_space(10.0 * scale);
+            if let Some(note) = note {
+                ui.label(RichText::new(note).small().color(WARN));
+            }
+            settings_items(ui, settings, status, *tab, scale_edit, actions, go);
         }
-        settings_items(ui, settings, status, *tab, scale_edit, actions, go);
     })
 }
 
@@ -768,6 +818,24 @@ fn settings_items(
 ) {
     let started = status.started;
     match tab {
+        SettingsTab::Home => {}
+        SettingsTab::Cheats => {
+            card_title(ui, "CHEATS", Some(("Unavailable", WARN)));
+            small(ui, "Cheat actions are not connected to verified Android game-thread hooks yet.", theme::MUTED);
+        }
+        SettingsTab::Language => {
+            card_title(ui, "LANGUAGE / GAME MODE", Some(("Partial", WARN)));
+            small(ui, "Game mode is selected on the start screen. A language selector needs Android localization support before it can be enabled.", theme::MUTED);
+        }
+        SettingsTab::SelfRadio => {
+            card_title(ui, "SELF RADIO", Some(("Not connected", WARN)));
+            small(ui, "Android song import and the in-game radio audio bridge are not implemented yet.", theme::MUTED);
+        }
+        SettingsTab::Device => {
+            card_title(ui, "THIS DEVICE", None);
+            small(ui, &format!("Platform: {} · Window: {} × {}", std::env::consts::OS, status.window.0, status.window.1), theme::MUTED);
+            small(ui, "Performance details are available in Graphics → Performance overlay.", theme::MUTED);
+        }
         SettingsTab::Video => {
             if cfg!(target_os = "android") {
                 let app_files = std::env::var_os("GLUE5_APP_FILES_DIR")
