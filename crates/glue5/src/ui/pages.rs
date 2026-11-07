@@ -137,9 +137,6 @@ pub(super) fn start_page(
                 if icon_button(ui, "★", "Credits", labels).clicked() {
                     *go = Some(Some(Page::Credits));
                 }
-                if icon_button(ui, "🛠", "Mods", labels).clicked() {
-                    *go = Some(Some(Page::Mods));
-                }
                 // Asked to be friends: how many, on the button.
                 let friends = match status.friend_requests {
                     0 => "Friends".to_owned(),
