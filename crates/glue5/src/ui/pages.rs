@@ -683,7 +683,7 @@ pub(super) fn settings_page(
 ) -> bool {
     sheet(ctx, "settings-window", "SETTINGS", |ui| {
         let scale = theme::density(ui);
-        let tabs = [(SettingsTab::Video, "VIDEO"), (SettingsTab::Controls, "CONTROLS"), (SettingsTab::Game, "GAME")];
+        let tabs = [(SettingsTab::Video, "GRAPHICS"), (SettingsTab::Controls, "CONTROLS"), (SettingsTab::Game, "GAME")];
         segmented(ui, tab, &tabs, 40.0 * scale);
         ui.add_space(10.0 * scale);
         if let Some(note) = note {
