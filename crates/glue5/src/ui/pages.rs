@@ -85,8 +85,8 @@ pub(super) fn start_page(
             ui.painter().text(
                 title_row.left_center(),
                 Align2::LEFT_CENTER,
-                "GLUE 5",
-                egui::FontId::new(48.0 * scale, egui::FontFamily::Name("condensed".into())),
+                "GLUE 5  /  LOS SANTOS",
+                egui::FontId::new(42.0 * scale, egui::FontFamily::Name("condensed".into())),
                 Color32::WHITE,
             );
             ui.add_space(20.0 * scale);
@@ -279,16 +279,29 @@ fn mode_card(
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     let lit = interactive && (response.hovered() || response.has_focus());
     let fill = match (look, lit) {
-        (Look::Primary, false) => Color32::WHITE,
-        (Look::Primary, true) => Color32::from_gray(228),
-        (Look::Plain, false) => Color32::from_black_alpha(215),
-        (Look::Plain, true) => Color32::from_rgba_unmultiplied(40, 41, 45, 235),
+        (Look::Primary, false) => Color32::from_rgb(242, 232, 255),
+        (Look::Primary, true) => Color32::from_rgb(255, 248, 255),
+        (Look::Plain, false) => Color32::from_rgba_unmultiplied(25, 12, 48, 238),
+        (Look::Plain, true) => Color32::from_rgba_unmultiplied(61, 25, 101, 248),
         (Look::Open, false) => Color32::TRANSPARENT,
         (Look::Open, true) => Color32::from_white_alpha(8),
     };
     let radius = 18.0 * scale;
     let painter = ui.painter();
     painter.rect_filled(rect, radius, fill);
+    if look != Look::Primary {
+        painter.rect_stroke(
+            rect,
+            radius,
+            Stroke::new(if lit { 1.8 } else { 1.0 }, Color32::from_rgb(153, 72, 255)),
+            StrokeKind::Inside,
+        );
+        painter.rect_filled(
+            Rect::from_min_max(rect.left_top(), pos2(rect.left() + 4.0 * scale, rect.bottom())),
+            radius,
+            Color32::from_rgb(185, 91, 255),
+        );
+    }
     let top = rect.center().y - text_height * 0.5;
     painter.galley(pos2(rect.left() + pad.x, top), title.clone(), ink);
     painter.galley(pos2(rect.left() + pad.x, top + title.size().y + 2.0 * scale), about, soft);
