@@ -1,4 +1,5 @@
 # Builds the app for one platform from the game.wasm in a draft release.
+# Android settings UI compile fixes are included on this branch.
 name: Build
 
 on:
