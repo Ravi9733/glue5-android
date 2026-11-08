@@ -33,6 +33,7 @@ wgpu = { version = "30", default-features = false }
 # build-time
 cc = { version = "1", features = ["parallel"] }
 sha2 = "0.11"
+flate2 = "1"
 wasmparser = "0.261"
 
 [profile.release]

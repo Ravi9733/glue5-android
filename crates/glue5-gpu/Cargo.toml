@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 glue5-runtime.workspace = true
+glue5-pc-native = { path = "../glue5-pc-native" }
 anyhow.workspace = true
 log.workspace = true
 arrayvec = "0.7"

@@ -9,6 +9,10 @@ on:
         type: choice
         options: [ios, android, windows, macos, linux-x86_64, linux-aarch64]
         default: ios
+      publish_to_draft:
+        description: Replace assets in the shared draft release (normally leave disabled)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -100,7 +104,17 @@ jobs:
               ;;
           esac
 
-      - name: Into the draft release
+      - name: Preserve build as workflow artifact
+        if: ${{ !inputs.publish_to_draft }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glue5-${{ inputs.platform }}-candidate-${{ github.run_number }}
+          path: Glue5-*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Into the draft release (explicit opt-in only)
+        if: ${{ inputs.publish_to_draft }}
         run: |
           .github/scripts/draft.sh upload "${{ steps.game.outputs.release }}" Glue5-*
-          echo "Built for $PLATFORM: the files are in the draft release. Keep it a draft." >>"$GITHUB_STEP_SUMMARY"
+          echo "Built for $PLATFORM: the files replaced assets in the shared draft release. Keep it a draft." >>"$GITHUB_STEP_SUMMARY"
