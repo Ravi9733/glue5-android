@@ -687,7 +687,7 @@ pub(super) fn settings_page(
             let graphics_detail = "Graphics preset · resolution · frame rate · memory";
             let controls_detail = "Camera · buttons · layout · gyro · controller and keyboard";
             let mode_detail = "Game mode and language";
-            let mods_detail = "Install and manage car, skin and script mods".to_owned();
+            let mods_detail = "Install and manage car, skin and script mods";
             let mut category = |tab_value: SettingsTab, title: &str, detail: &str| {
                 let width = ui.available_width();
                 let response = ui.add_sized(
@@ -1060,7 +1060,7 @@ fn settings_items(
             if crate::haptics::SUPPORTED {
                 setting(ui, "Haptics", Control::Toggle, None, |ui| toggle(ui, &mut settings.haptics));
             }
-            ui.add_space(6.0 * scale);
+            ui.add_space(6.0 * theme::density(ui));
             card_title(ui, "GYROSCOPE", Some(("Not available", WARN)));
             ui.label(
                 RichText::new(
