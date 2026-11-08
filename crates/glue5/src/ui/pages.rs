@@ -90,11 +90,12 @@ pub(super) fn start_page(
                                 ui.add_space(12.0 * scale);
                                 ui.horizontal_top(|ui| {
                                     let main_w = (ui.available_width() * 0.64).max(300.0);
+                                    let side_w = (ui.available_width() - 12.0 * scale).max(210.0);
                                     column(ui, "home-modes", main_w, height - 205.0 * scale, |ui| {
                                         chosen = mode_list(ui, settings, status, starting, online_open, main_w);
                                     });
                                     ui.add_space(12.0 * scale);
-                                    column(ui, "home-status", (ui.available_width()).max(210.0), height - 205.0 * scale, |ui| {
+                                    column(ui, "home-status", side_w, height - 205.0 * scale, |ui| {
                                         info(ui, settings, status, actions, go);
                                     });
                                 });
@@ -108,8 +109,9 @@ pub(super) fn start_page(
                         mobile_nav(ui, scale, status, actions, go);
                         ui.add_space(8.0 * scale);
                         let remain = (ui.available_height() - 4.0 * scale).max(100.0);
-                        column(ui, "home-mobile", ui.available_width(), remain, |ui| {
-                            chosen = mode_list(ui, settings, status, starting, online_open, ui.available_width());
+                        let mobile_w = ui.available_width();
+                        column(ui, "home-mobile", mobile_w, remain, |ui| {
+                            chosen = mode_list(ui, settings, status, starting, online_open, mobile_w);
                             ui.add_space(8.0 * scale);
                             info(ui, settings, status, actions, go);
                         });
