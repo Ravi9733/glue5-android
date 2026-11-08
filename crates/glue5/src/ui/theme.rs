@@ -1,8 +1,8 @@
 //! Portable visual assets and the shared home backdrop.
 use egui::*;
 
-pub(super) const INK: Color32 = Color32::from_rgb(14, 15, 17);
-pub(super) const MUTED: Color32 = Color32::from_rgb(157, 160, 166);
+pub(super) const INK: Color32 = Color32::from_rgb(10, 7, 22);
+pub(super) const MUTED: Color32 = Color32::from_rgb(190, 176, 220);
 
 pub(super) fn heading(text: &str, size: f32) -> RichText {
     RichText::new(text).font(FontId::new(size, FontFamily::Name("condensed".into())))
@@ -30,21 +30,21 @@ pub(super) fn install(ctx: &Context) {
         s.spacing.button_padding = vec2(12.0, 8.0);
         s.spacing.interact_size.y = 44.0;
         s.visuals.override_text_color = Some(Color32::WHITE);
-        s.visuals.panel_fill = INK;
-        s.visuals.window_fill = Color32::from_rgba_unmultiplied(12, 13, 15, 242);
+        s.visuals.panel_fill = Color32::from_rgb(15, 9, 31);
+        s.visuals.window_fill = Color32::from_rgba_unmultiplied(18, 10, 39, 246);
         s.visuals.window_corner_radius = 22.into();
-        s.visuals.window_stroke = Stroke::new(1.0, Color32::from_gray(76));
-        s.visuals.selection.bg_fill = Color32::from_gray(90);
+        s.visuals.window_stroke = Stroke::new(1.2, Color32::from_rgb(151, 65, 255));
+        s.visuals.selection.bg_fill = Color32::from_rgb(116, 37, 220);
         s.visuals.selection.stroke = Stroke::new(1.0, Color32::WHITE);
         for w in [&mut s.visuals.widgets.inactive, &mut s.visuals.widgets.hovered, &mut s.visuals.widgets.active] {
             w.corner_radius = 14.into();
-            w.bg_fill = Color32::from_gray(39);
-            w.weak_bg_fill = Color32::from_gray(34);
-            w.bg_stroke = Stroke::NONE;
+            w.bg_fill = Color32::from_rgb(35, 20, 62);
+            w.weak_bg_fill = Color32::from_rgb(26, 15, 48);
+            w.bg_stroke = Stroke::new(0.8, Color32::from_rgb(91, 49, 145));
             w.fg_stroke = Stroke::new(1.5, Color32::WHITE);
         }
-        s.visuals.widgets.hovered.bg_fill = Color32::from_gray(60);
-        s.visuals.widgets.active.bg_stroke = Stroke::new(2.0, Color32::WHITE);
+        s.visuals.widgets.hovered.bg_fill = Color32::from_rgb(78, 37, 128);
+        s.visuals.widgets.active.bg_stroke = Stroke::new(2.0, Color32::from_rgb(220, 170, 255));
     });
 }
 
