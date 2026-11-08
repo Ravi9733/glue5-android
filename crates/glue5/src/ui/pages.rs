@@ -184,12 +184,58 @@ fn topbar(ui: &mut egui::Ui, scale: f32, status: &Status, actions: &mut Vec<Acti
 fn hero_panel(ui: &mut egui::Ui, scale: f32, status: &Status) {
     let w = ui.available_width();
     egui::Frame::new()
-        .fill(Color32::from_rgb(31, 16, 49))
-        .stroke(Stroke::new(1.0 * scale, Color32::from_rgb(127, 72, 190)))
+        .fill(Color32::from_rgb(24, 12, 40))
+        .stroke(Stroke::new(1.0 * scale, Color32::from_rgb(145, 77, 207)))
         .corner_radius((18.0 * scale) as u8)
         .inner_margin((18.0 * scale) as i8)
         .show(ui, |ui| {
             ui.set_width(w - 36.0 * scale);
+            let scene_size = vec2(ui.available_width(), 112.0 * scale);
+            let (scene, _) = ui.allocate_exact_size(scene_size, Sense::hover());
+            let painter = ui.painter();
+            painter.rect_filled(scene, 12.0 * scale, Color32::from_rgb(38, 17, 57));
+            // Layered sunset bands and a Los Santos skyline create a GTA-inspired
+            // banner without loading large textures or changing renderer settings.
+            painter.circle_filled(
+                pos2(scene.right() - 82.0 * scale, scene.top() + 42.0 * scale),
+                25.0 * scale,
+                Color32::from_rgb(230, 128, 168),
+            );
+            painter.rect_filled(
+                Rect::from_min_max(
+                    pos2(scene.left(), scene.top() + 72.0 * scale),
+                    scene.right_bottom(),
+                ),
+                0.0,
+                Color32::from_rgb(24, 17, 43),
+            );
+            let skyline = [
+                (0.04, 0.57, 0.10), (0.15, 0.43, 0.14), (0.31, 0.62, 0.09),
+                (0.43, 0.49, 0.12), (0.58, 0.37, 0.13), (0.73, 0.55, 0.10),
+                (0.86, 0.46, 0.12),
+            ];
+            for (x, y, width) in skyline {
+                let left = scene.left() + scene.width() * x;
+                let top = scene.top() + scene.height() * y;
+                let right = left + scene.width() * width;
+                painter.rect_filled(
+                    Rect::from_min_max(pos2(left, top), pos2(right, scene.bottom())),
+                    1.0 * scale,
+                    Color32::from_rgb(13, 11, 29),
+                );
+                for row in 0..3 {
+                    for col in 0..2 {
+                        let wx = left + (8.0 + col as f32 * 12.0) * scale;
+                        let wy = top + (9.0 + row as f32 * 13.0) * scale;
+                        painter.rect_filled(
+                            Rect::from_min_size(pos2(wx, wy), vec2(3.0, 4.0) * scale),
+                            0.5,
+                            Color32::from_rgb(222, 145, 193),
+                        );
+                    }
+                }
+            }
+            ui.add_space(10.0 * scale);
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.label(RichText::new("WELCOME TO").size(10.0 * scale).strong().color(Color32::from_rgb(207, 157, 255)));
@@ -198,9 +244,6 @@ fn hero_panel(ui: &mut egui::Ui, scale: f32, status: &Status) {
                     ui.add_space(6.0 * scale);
                     ui.label(RichText::new(if status.game_dir.is_some() { "●  GAME CONTENT READY" } else { "●  ADD GAME FILES TO PLAY" })
                         .size(10.0 * scale).strong().color(if status.game_dir.is_some() { READY } else { WARN }));
-                });
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.label(RichText::new("V").size(64.0 * scale).strong().color(Color32::from_rgba_unmultiplied(205, 155, 255, 75)));
                 });
             });
         });
