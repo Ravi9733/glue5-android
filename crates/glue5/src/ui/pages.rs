@@ -80,7 +80,7 @@ pub(super) fn start_page(
                     ui.set_height(height - 24.0 * scale);
                     if wide {
                         ui.horizontal_top(|ui| {
-                            sidebar(ui, 174.0 * scale, scale, status, actions, go);
+                            sidebar(ui, 174.0 * scale, scale, status, actions, go, &mut chosen);
                             ui.add_space(12.0 * scale);
                             ui.vertical(|ui| {
                                 ui.set_width((width - 238.0 * scale).max(300.0));
@@ -122,7 +122,7 @@ pub(super) fn start_page(
 }
 
 /// Full-height navigation rail, separate from the game-mode cards.
-fn sidebar(ui: &mut egui::Ui, width: f32, scale: f32, status: &Status, actions: &mut Vec<Action>, go: &mut Option<Option<Page>>) {
+fn sidebar(ui: &mut egui::Ui, width: f32, scale: f32, status: &Status, actions: &mut Vec<Action>, go: &mut Option<Option<Page>>, chosen: &mut Option<Mode>) {
     egui::Frame::new()
         .fill(Color32::from_rgb(17, 12, 31))
         .stroke(Stroke::new(1.0, Color32::from_rgb(69, 43, 102)))
@@ -137,8 +137,8 @@ fn sidebar(ui: &mut egui::Ui, width: f32, scale: f32, status: &Status, actions: 
                 ui.label(RichText::new("MAIN MENU").size(10.0 * scale).strong().color(theme::MUTED));
                 ui.add_space(6.0 * scale);
                 rail_button(ui, "⌂   Dashboard", true, scale, || {});
-                rail_button(ui, "▶   Story Mode", false, scale, || {});
-                rail_button(ui, "◎   Sandbox", false, scale, || {});
+                rail_button(ui, "▶   Story Mode", false, scale, || { if status.game_dir.is_some() && status.preparing.is_none() { *chosen = Some(Mode::Story); } });
+                rail_button(ui, "◎   Sandbox", false, scale, || { if status.game_dir.is_some() && status.preparing.is_none() { *chosen = Some(Mode::Sandbox); } });
                 rail_button(ui, "◷   Performance", false, scale, || { *go = Some(Some(Page::Settings)); });
                 rail_button(ui, "✦   Mods & Patches", false, scale, || { *go = Some(Some(Page::Mods)); });
                 rail_button(ui, "♫   Self Radio", false, scale, || { *go = Some(Some(Page::Settings)); });
