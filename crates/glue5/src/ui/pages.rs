@@ -79,7 +79,7 @@ pub(super) fn start_page(
             }
             // Dark cinematic overlay keeps controls legible over the poster.
             bg.rect_filled(screen, 0.0, Color32::from_black_alpha(72));
-            ui.allocate_ui(UiBuilder::new().max_rect(screen.shrink(22.0 * scale)), |ui| {
+            ui.scope_builder(UiBuilder::new().max_rect(screen.shrink(22.0 * scale)), |ui| {
                 ui.horizontal_top(|ui| {
                     sidebar(ui, 150.0 * scale, scale, status, actions, go, &mut chosen);
                     ui.add_space(18.0 * scale);
