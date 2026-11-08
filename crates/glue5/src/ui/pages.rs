@@ -48,75 +48,87 @@ pub(super) const READY: Color32 = Color32::from_rgb(120, 205, 145);
 #[allow(clippy::too_many_arguments)]
 pub(super) fn start_page(
     ctx: &egui::Context,
-    settings: &mut Settings,
+    _settings: &mut Settings,
     status: &Status,
     starting: Option<Mode>,
-    online_open: &mut bool,
+    _online_open: &mut bool,
     actions: &mut Vec<Action>,
     go: &mut Option<Option<Page>>,
 ) -> Option<Mode> {
-    let safe = ctx.content_rect();
-    let scale = theme::layout_scale(safe);
-    let edge = 14.0 * scale;
-    let width = (safe.width() - edge * 2.0).max(1.0).min(1400.0);
-    let height = (safe.height() - edge * 2.0).max(1.0);
-    let wide = width >= 900.0 * scale && safe.width() > safe.height();
+    let screen = ctx.content_rect();
+    let scale = theme::layout_scale(screen);
     let mut chosen = None;
-
     egui::Area::new(Id::new("start"))
-        .fixed_pos(pos2(safe.center().x - width * 0.5, safe.center().y - height * 0.5))
+        .fixed_pos(screen.min)
+        .order(egui::Order::Background)
         .constrain(false)
         .show(ctx, |ui| {
-            theme::apply_density(ui, scale);
-            ui.set_width(width);
-            ui.set_height(height);
-            egui::Frame::new()
-                .fill(Color32::from_rgb(9, 8, 19))
-                .stroke(Stroke::new(1.0 * scale, Color32::from_rgb(89, 54, 137)))
-                .corner_radius((22.0 * scale) as u8)
-                .inner_margin((12.0 * scale) as i8)
-                .show(ui, |ui| {
-                    ui.set_width(width - 24.0 * scale);
-                    ui.set_height(height - 24.0 * scale);
-                    if wide {
-                        ui.horizontal_top(|ui| {
-                            sidebar(ui, 174.0 * scale, scale, status, actions, go, &mut chosen);
-                            ui.add_space(12.0 * scale);
-                            ui.vertical(|ui| {
-                                ui.set_width((width - 238.0 * scale).max(300.0));
-                                topbar(ui, scale, status, actions, go);
-                                ui.add_space(10.0 * scale);
-                                hero_panel(ui, scale, status);
-                                ui.add_space(12.0 * scale);
-                                ui.horizontal_top(|ui| {
-                                    let main_w = (ui.available_width() * 0.64).max(300.0);
-                                    let side_w = (ui.available_width() - 12.0 * scale).max(210.0);
-                                    column(ui, "home-modes", main_w, height - 205.0 * scale, |ui| {
-                                        chosen = mode_list(ui, settings, status, starting, online_open, main_w);
-                                    });
-                                    ui.add_space(12.0 * scale);
-                                    column(ui, "home-status", side_w, height - 205.0 * scale, |ui| {
-                                        info(ui, settings, status, actions, go);
-                                    });
-                                });
-                            });
-                        });
-                    } else {
+            ui.set_min_size(screen.size());
+            let bg = ui.painter();
+            // Full-screen Los Santos sunset artwork: the background is the
+            // canvas, not a framed poster panel.
+            bg.rect_filled(screen, 0.0, Color32::from_rgb(18, 8, 31));
+            bg.rect_filled(Rect::from_min_max(screen.left_top(), pos2(screen.right(), screen.top() + screen.height() * 0.68)), 0.0, Color32::from_rgb(75, 29, 70));
+            bg.circle_filled(pos2(screen.right() * 0.76, screen.top() + screen.height() * 0.29), screen.height() * 0.19, Color32::from_rgb(235, 133, 143));
+            bg.rect_filled(Rect::from_min_max(pos2(screen.left(), screen.top() + screen.height() * 0.61), screen.right_bottom()), 0.0, Color32::from_rgb(22, 14, 34));
+            for i in 0..18 {
+                let x = screen.left() + screen.width() * i as f32 / 18.0;
+                let w = screen.width() * (0.025 + (i % 3) as f32 * 0.009);
+                let h = screen.height() * (0.12 + ((i * 7) % 8) as f32 * 0.025);
+                bg.rect_filled(Rect::from_min_max(pos2(x, screen.bottom() - h), pos2(x + w, screen.bottom())), 1.0, Color32::from_rgb(12, 10, 27));
+            }
+            // Dark cinematic overlay keeps controls legible over the poster.
+            bg.rect_filled(screen, 0.0, Color32::from_black_alpha(72));
+            ui.allocate_new_ui(UiBuilder::new().max_rect(screen.shrink(22.0 * scale)), |ui| {
+                ui.horizontal_top(|ui| {
+                    sidebar(ui, 150.0 * scale, scale, status, actions, go, &mut chosen);
+                    ui.add_space(18.0 * scale);
+                    ui.vertical(|ui| {
+                        ui.set_width((ui.available_width()).max(1.0));
                         topbar(ui, scale, status, actions, go);
-                        ui.add_space(8.0 * scale);
-                        hero_panel(ui, scale, status);
-                        ui.add_space(8.0 * scale);
-                        mobile_nav(ui, scale, status, actions, go);
-                        ui.add_space(8.0 * scale);
-                        let remain = (ui.available_height() - 4.0 * scale).max(100.0);
-                        let mobile_w = ui.available_width();
-                        column(ui, "home-mobile", mobile_w, remain, |ui| {
-                            chosen = mode_list(ui, settings, status, starting, online_open, mobile_w);
-                            ui.add_space(8.0 * scale);
-                            info(ui, settings, status, actions, go);
+                        ui.add_space(screen.height() * 0.39);
+                        ui.vertical(|ui| {
+                            ui.label(RichText::new("GRAND THEFT AUTO V").size(13.0 * scale).strong().color(Color32::from_rgb(255, 211, 190)));
+                            ui.label(RichText::new("LOS SANTOS").size(42.0 * scale).strong().color(Color32::WHITE));
+                            ui.label(RichText::new("Welcome back. Your city is waiting.").size(15.0 * scale).color(Color32::from_rgb(244, 224, 237)));
+                            ui.label(RichText::new(if status.game_dir.is_some() { "●  GAME CONTENT READY" } else { "●  ADD GAME FILES TO PLAY" })
+                                .size(10.0 * scale).strong().color(if status.game_dir.is_some() { READY } else { WARN }));
                         });
-                    }
+                        ui.add_space(18.0 * scale);
+                        let gap = 10.0 * scale;
+                        let card_w = ((ui.available_width() - gap * 4.0) / 5.0).max(90.0);
+                        ui.horizontal_top(|ui| {
+                            let cards = [
+                                ("STORY MODE", "Michael • Franklin • Trevor", Some(Mode::Story), None),
+                                ("SANDBOX", "Explore Los Santos", Some(Mode::Sandbox), None),
+                                ("PERFORMANCE", "Graphics • FPS • Vulkan", None, Some(Page::Settings)),
+                                ("MODS & PATCHES", "Manage game mods", None, Some(Page::Mods)),
+                                ("SELF RADIO", "Audio & music", None, Some(Page::Settings)),
+                            ];
+                            for (index, (title, subtitle, mode, page)) in cards.into_iter().enumerate() {
+                                if index > 0 { ui.add_space(gap); }
+                                let (rect, response) = ui.allocate_exact_size(vec2(card_w, 132.0 * scale), Sense::click());
+                                let painter = ui.painter();
+                                painter.rect_filled(rect, 8.0 * scale, Color32::from_black_alpha(178));
+                                let art = Rect::from_min_max(rect.left_top(), pos2(rect.right(), rect.top() + 82.0 * scale));
+                                let art_name = match index { 0 => "STORY", 1 => "SANDBOX", 2 => "BENCHMARK", 3 => "MODS", _ => "RADIO" };
+                                paint_mode_art(painter, art, art_name, scale);
+                                painter.rect_filled(Rect::from_min_max(pos2(rect.left(), art.bottom() - 12.0 * scale), rect.right_bottom()), 0.0, Color32::from_black_alpha(195));
+                                painter.text(pos2(rect.left() + 8.0 * scale, art.bottom() + 17.0 * scale), Align2::LEFT_CENTER, *title, egui::FontId::proportional(11.0 * scale), Color32::WHITE);
+                                painter.text(pos2(rect.left() + 8.0 * scale, art.bottom() + 38.0 * scale), Align2::LEFT_CENTER, *subtitle, egui::FontId::proportional(8.0 * scale), Color32::from_gray(205));
+                                if response.hovered() { painter.rect_stroke(rect, 8.0 * scale, Stroke::new(1.5, Color32::from_rgb(210, 135, 255)), StrokeKind::Outside); }
+                                if response.clicked() && starting.is_none() {
+                                    if let Some(mode) = mode {
+                                        if status.game_dir.is_some() && status.preparing.is_none() { chosen = Some(mode); }
+                                    } else if let Some(page) = page {
+                                        *go = Some(Some(page));
+                                    }
+                                }
+                            }
+                        });
+                    });
                 });
+            });
         });
     chosen
 }
