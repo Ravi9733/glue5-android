@@ -377,15 +377,18 @@ fn mode_card(
     progress: Option<f32>,
 ) -> egui::Response {
     let scale = theme::density(ui);
-    let pad = vec2(20.0, 12.0) * scale;
+    let pad = vec2(14.0, 12.0) * scale;
+    let art_w = (82.0 * scale).min((width * 0.28).max(54.0));
+    let gap = 12.0 * scale;
+    let text_left = pad.x + art_w + gap;
     let (ink, soft) =
         if look == Look::Primary { (theme::INK, Color32::from_gray(92)) } else { (Color32::WHITE, theme::MUTED) };
-    let text_width = (width - 2.0 * pad.x - 24.0 * scale).max(1.0);
+    let text_width = (width - text_left - pad.x - 24.0 * scale).max(1.0);
     let galley = |text: egui::RichText, wrap| {
         egui::WidgetText::from(text).into_galley(ui, Some(wrap), text_width, egui::TextStyle::Body)
     };
-    let title = galley(theme::heading(name, 22.0 * scale).color(ink), egui::TextWrapMode::Truncate);
-    let about = galley(RichText::new(about).size(12.0 * scale).color(soft), egui::TextWrapMode::Wrap);
+    let title = galley(theme::heading(name, 20.0 * scale).color(ink), egui::TextWrapMode::Truncate);
+    let about = galley(RichText::new(about).size(11.0 * scale).color(soft), egui::TextWrapMode::Wrap);
     let text_height = title.size().y + 2.0 * scale + about.size().y;
     let height = (text_height + 2.0 * pad.y).max(MODE_HEIGHT * scale);
     let interactive = chevron.is_some() && ui.is_enabled();
@@ -401,7 +404,7 @@ fn mode_card(
         (Look::Open, false) => Color32::TRANSPARENT,
         (Look::Open, true) => Color32::from_white_alpha(8),
     };
-    let radius = 18.0 * scale;
+    let radius = 16.0 * scale;
     let painter = ui.painter();
     painter.rect_filled(rect, radius, fill);
     if look != Look::Primary {
@@ -411,15 +414,15 @@ fn mode_card(
             Stroke::new(if lit { 1.8 } else { 1.0 }, Color32::from_rgb(153, 72, 255)),
             StrokeKind::Inside,
         );
-        painter.rect_filled(
-            Rect::from_min_max(rect.left_top(), pos2(rect.left() + 4.0 * scale, rect.bottom())),
-            radius,
-            Color32::from_rgb(185, 91, 255),
-        );
     }
+    let art_rect = Rect::from_min_max(
+        pos2(rect.left() + 5.0 * scale, rect.top() + 5.0 * scale),
+        pos2(rect.left() + 5.0 * scale + art_w, rect.bottom() - 5.0 * scale),
+    );
+    paint_mode_art(painter, art_rect, name, scale);
     let top = rect.center().y - text_height * 0.5;
-    painter.galley(pos2(rect.left() + pad.x, top), title.clone(), ink);
-    painter.galley(pos2(rect.left() + pad.x, top + title.size().y + 2.0 * scale), about, soft);
+    painter.galley(pos2(rect.left() + text_left, top), title.clone(), ink);
+    painter.galley(pos2(rect.left() + text_left, top + title.size().y + 2.0 * scale), about, soft);
     if let Some(chevron) = chevron.filter(|_| interactive) {
         let at = pos2(rect.right() - pad.x - 4.0 * scale, rect.center().y);
         let towards = match chevron {
@@ -428,8 +431,7 @@ fn mode_card(
             Chevron::Closes => vec2(0.0, -1.0),
         };
         let (side, depth) = (towards.rot90() * 6.0 * scale, towards * 3.5 * scale);
-        let stroke = Stroke::new(2.0 * scale, soft);
-        painter.add(egui::Shape::line(vec![at - depth + side, at + depth, at - depth - side], stroke));
+        painter.add(egui::Shape::line(vec![at - depth + side, at + depth, at - depth - side], Stroke::new(2.0 * scale, soft)));
     }
     if let Some(done) = progress {
         let rail = Rect::from_min_max(
@@ -444,6 +446,47 @@ fn mode_card(
         focus_ring(ui, rect, radius);
     }
     focus(response)
+}
+
+/// Compact, per-section illustrated thumbnails. Kept vector-based so the
+/// launcher stays lightweight and does not depend on external image downloads.
+fn paint_mode_art(painter: &egui::Painter, rect: Rect, name: &str, scale: f32) {
+    let (sky, glow) = if name.contains("STORY") {
+        (Color32::from_rgb(66, 32, 73), Color32::from_rgb(242, 137, 137))
+    } else if name.contains("ONLINE") {
+        (Color32::from_rgb(30, 49, 76), Color32::from_rgb(91, 195, 235))
+    } else if name.contains("SANDBOX") {
+        (Color32::from_rgb(34, 66, 57), Color32::from_rgb(180, 217, 125))
+    } else {
+        (Color32::from_rgb(43, 30, 76), Color32::from_rgb(196, 143, 255))
+    };
+    painter.rect_filled(rect, 10.0 * scale, sky);
+    painter.circle_filled(pos2(rect.right() - 17.0 * scale, rect.top() + 18.0 * scale), 9.0 * scale, glow);
+    let horizon = rect.top() + rect.height() * 0.62;
+    for i in 0..5 {
+        let x = rect.left() + rect.width() * (i as f32 * 0.205);
+        let bw = rect.width() * (0.12 + (i % 2) as f32 * 0.035);
+        let bh = rect.height() * (0.22 + (i % 3) as f32 * 0.07);
+        painter.rect_filled(
+            Rect::from_min_max(pos2(x, horizon - bh), pos2((x + bw).min(rect.right()), rect.bottom())),
+            1.0 * scale,
+            Color32::from_rgb(17, 15, 31),
+        );
+    }
+    if name.contains("BENCHMARK") {
+        let pts = [
+            pos2(rect.left() + rect.width() * 0.12, rect.bottom() - rect.height() * 0.22),
+            pos2(rect.left() + rect.width() * 0.34, rect.bottom() - rect.height() * 0.46),
+            pos2(rect.left() + rect.width() * 0.55, rect.bottom() - rect.height() * 0.34),
+            pos2(rect.left() + rect.width() * 0.83, rect.bottom() - rect.height() * 0.72),
+        ];
+        painter.add(egui::Shape::line(pts.to_vec(), Stroke::new(2.0 * scale, glow)));
+    } else {
+        let road = Rect::from_min_max(pos2(rect.left(), rect.bottom() - 7.0 * scale), rect.right_bottom());
+        painter.rect_filled(road, 0.0, Color32::from_rgb(13, 12, 25));
+        let car = Rect::from_min_size(pos2(rect.left() + rect.width() * 0.28, rect.bottom() - 16.0 * scale), vec2(rect.width() * 0.43, 6.0 * scale));
+        painter.rect_filled(car, 3.0 * scale, glow);
+    }
 }
 
 /// Around a focused card or button, a little apart (white on white shows).
