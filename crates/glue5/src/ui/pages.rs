@@ -79,7 +79,7 @@ pub(super) fn start_page(
             }
             // Dark cinematic overlay keeps controls legible over the poster.
             bg.rect_filled(screen, 0.0, Color32::from_black_alpha(72));
-            ui.allocate_new_ui(UiBuilder::new().max_rect(screen.shrink(22.0 * scale)), |ui| {
+            ui.allocate_ui(UiBuilder::new().max_rect(screen.shrink(22.0 * scale)), |ui| {
                 ui.horizontal_top(|ui| {
                     sidebar(ui, 150.0 * scale, scale, status, actions, go, &mut chosen);
                     ui.add_space(18.0 * scale);
@@ -114,8 +114,8 @@ pub(super) fn start_page(
                                 let art_name = match index { 0 => "STORY", 1 => "SANDBOX", 2 => "BENCHMARK", 3 => "MODS", _ => "RADIO" };
                                 paint_mode_art(painter, art, art_name, scale);
                                 painter.rect_filled(Rect::from_min_max(pos2(rect.left(), art.bottom() - 12.0 * scale), rect.right_bottom()), 0.0, Color32::from_black_alpha(195));
-                                painter.text(pos2(rect.left() + 8.0 * scale, art.bottom() + 17.0 * scale), Align2::LEFT_CENTER, *title, egui::FontId::proportional(11.0 * scale), Color32::WHITE);
-                                painter.text(pos2(rect.left() + 8.0 * scale, art.bottom() + 38.0 * scale), Align2::LEFT_CENTER, *subtitle, egui::FontId::proportional(8.0 * scale), Color32::from_gray(205));
+                                painter.text(pos2(rect.left() + 8.0 * scale, art.bottom() + 17.0 * scale), Align2::LEFT_CENTER, title, egui::FontId::proportional(11.0 * scale), Color32::WHITE);
+                                painter.text(pos2(rect.left() + 8.0 * scale, art.bottom() + 38.0 * scale), Align2::LEFT_CENTER, subtitle, egui::FontId::proportional(8.0 * scale), Color32::from_gray(205));
                                 if response.hovered() { painter.rect_stroke(rect, 8.0 * scale, Stroke::new(1.5, Color32::from_rgb(210, 135, 255)), StrokeKind::Outside); }
                                 if response.clicked() && starting.is_none() {
                                     if let Some(mode) = mode {
