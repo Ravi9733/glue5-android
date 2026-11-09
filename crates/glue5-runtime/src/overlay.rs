@@ -285,20 +285,13 @@ mod loose_replacement_tests {
     #[test]
     fn resolves_overlay_paths_without_case_sensitivity() {
         let root = temp_root();
-        let user = root.join("user");
-        let scratch = user.join("fsroot");
-        let game = root.join("game");
-        std::fs::create_dir_all(&scratch).unwrap();
-        std::fs::create_dir_all(game.join("common/data")).unwrap();
-        let mods = user.join("mods/files/Common/Data");
+        let overlay = root.join("mods/files");
+        let mods = overlay.join("Common/Data");
         std::fs::create_dir_all(&mods).unwrap();
-        let original = game.join("common/data/example.xml");
-        std::fs::write(&original, b"original").unwrap();
         std::fs::write(mods.join("Example.XML"), b"modified").unwrap();
-        std::env::set_var("GLUE5_GRAPHICS_MOD_DIR", user.join("mods/files"));
-        let mounted = game_file("common/data/example.xml", &original, &scratch).unwrap();
-        assert_eq!(std::fs::read(mounted).unwrap(), b"modified");
-        std::env::remove_var("GLUE5_GRAPHICS_MOD_DIR");
+        let canonical_root = overlay.canonicalize().unwrap();
+        let resolved = resolve_overlay_case_insensitive(&canonical_root, "common/data/example.xml").unwrap();
+        assert_eq!(std::fs::read(resolved).unwrap(), b"modified");
         std::fs::remove_dir_all(root).unwrap();
     }
 
