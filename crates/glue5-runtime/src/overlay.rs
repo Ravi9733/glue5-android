@@ -95,10 +95,13 @@ pub(crate) fn game_file(rel: &str, real: &Path, scratch: &Path) -> Option<PathBu
         return path;
     }
 
-    // PC-style loose replacements: only an existing game-data path, with
-    // exactly the original size. Canonicalization prevents symlink escapes.
+    // User-installed graphics replacements are mounted read-only over the
+    // original game data. Android points this at GTA5/GraphicsMods/active;
+    // desktop and older installs retain the legacy user/mods/files path.
     let user = scratch.parent()?;
-    let root = user.join("mods").join("files").canonicalize().ok()?;
+    let configured = std::env::var_os("GLUE5_GRAPHICS_MOD_DIR").map(PathBuf::from);
+    let root_path = configured.unwrap_or_else(|| user.join("mods").join("files"));
+    let root = root_path.canonicalize().ok()?;
     let candidate = root.join(rel);
     let actual = candidate.canonicalize().ok()?;
     if !actual.starts_with(&root) || !actual.is_file() {
