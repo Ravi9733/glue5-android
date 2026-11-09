@@ -32,6 +32,9 @@ pub fn apply_oiv_rpf_archive(
     if !root.has_tag_name("archive") {
         bail!("expected an OpenIV archive element");
     }
+    if root.attribute("type").is_some_and(|kind| !kind.eq_ignore_ascii_case("rpf7")) {
+        bail!("only OpenIV RPF7 archive commands are supported");
+    }
 
     let source_root = content_root.canonicalize().context("cannot resolve OIV content folder")?;
     let mut replacements = BTreeMap::<String, Vec<u8>>::new();
@@ -240,8 +243,16 @@ fn rewrite_archive(
             }
             rpf_archive::RpfEntryKind::Directory { .. } => continue,
         }
-        let mut bytes = archive.extract_entry(data, entry, keys)
-            .with_context(|| format!("cannot extract {}", file.path))?;
+        let empty_binary = matches!(
+            &entry.kind,
+            rpf_archive::RpfEntryKind::BinaryFile { file_size: 0, uncompressed_size: 0, .. }
+        );
+        let mut bytes = if empty_binary {
+            Vec::new()
+        } else {
+            archive.extract_entry(data, entry, keys)
+                .with_context(|| format!("cannot extract {}", file.path))?
+        };
         let full_path = join_archive_path(prefix, &file.path).to_ascii_lowercase();
 
         if deletions.remove(&full_path) {
