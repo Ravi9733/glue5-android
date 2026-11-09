@@ -327,6 +327,7 @@ public class Glue5Activity extends SDLActivity {
         File overlay = new File(root, "active");
         if (!overlay.isDirectory() && !overlay.mkdirs()) throw new Exception("Cannot create graphics overlay folder");
         int installed = 0;
+        int installedRpf = 0;
         int skippedArchive = 0;
         int skippedUnsupported = 0;
         java.util.ArrayList<String> archiveTargets = new java.util.ArrayList<>();
@@ -406,6 +407,7 @@ public class Glue5Activity extends SDLActivity {
                     // This does not edit an encrypted RPF or apply nested archive commands.
                     installGraphicsReplacement(sourceFile, overlay, relative, installedOutputs);
                     installed++;
+                    if (wholeRpf) installedRpf++;
                 }
             } else {
                 installed = importLooseZipFiles(staging, overlay, installedOutputs);
@@ -425,8 +427,9 @@ public class Glue5Activity extends SDLActivity {
             File info = new File(staging, "GLUE5_IMPORT_INFO.txt");
             String note = "Graphics package import report\n"
                     + "Archive: " + displayName + "\n"
-                    + "Loose-file replacements installed: " + installed + "\n"
-                    + "RPF archive operations not applied: " + skippedArchive + "\n"
+                    + "Loose-file and whole-file replacements installed: " + installed + "\n"
+                    + "Complete RPF replacements installed: " + installedRpf + "\n"
+                    + "Nested RPF archive operations not applied: " + skippedArchive + "\n"
                     + "RPF archive targets declared by package: " + archiveTargets.size() + "\n"
                     + (archiveTargets.isEmpty() ? "" : "Archive targets: " + android.text.TextUtils.join(", ", archiveTargets) + "\n")
                     + "Unsupported, missing, or size-mismatched entries: " + skippedUnsupported + "\n"
@@ -449,7 +452,8 @@ public class Glue5Activity extends SDLActivity {
             throw e;
         }
         return "Graphics package saved: " + folderName + ". Active loose files: " + installed
-                + "; RPF operations not applied: " + skippedArchive
+                + "; complete RPF replacements: " + installedRpf
+                + "; nested RPF operations not applied: " + skippedArchive
                 + "; other unsupported entries: " + skippedUnsupported
                 + (installed == 0 ? ". No game changes were activated; see GLUE5_IMPORT_INFO.txt."
                                   : ". Original game data remains unchanged.");
