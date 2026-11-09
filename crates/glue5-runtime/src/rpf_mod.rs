@@ -303,12 +303,10 @@ fn rewrite_archive(
             let child_prefix_with_slash = format!("{child_prefix}/");
             if replacements.keys().any(|candidate| candidate.starts_with(&child_prefix_with_slash))
                 || deletions.iter().any(|candidate| candidate.starts_with(&child_prefix_with_slash)) {
-                if matches!(
+                let nested_encrypted = matches!(
                     &entry.kind,
                     rpf_archive::RpfEntryKind::BinaryFile { is_encrypted: true, .. }
-                ) {
-                    bail!("cannot edit inside individually encrypted nested archive {}", file.path);
-                }
+                );
                 let nested_bytes = archive.extract_entry(data, entry, keys)
                     .with_context(|| format!("cannot extract nested archive {}", file.path))?;
                 let (nested, count) = rewrite_archive(
@@ -319,7 +317,11 @@ fn rewrite_archive(
                     keys,
                     depth + 1,
                 )?;
-                builder.add_file(&file.path, nested);
+                if nested_encrypted {
+                    builder.add_encrypted_binary(&file.path, nested, keys)?;
+                } else {
+                    builder.add_file(&file.path, nested);
+                }
                 applied += count;
                 continue;
             }
