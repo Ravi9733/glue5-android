@@ -474,6 +474,43 @@ mod tests {
     }
 
     #[test]
+    fn replaces_rsc7_resource_without_converting_it_to_a_binary_entry() {
+        let root = temp_dir();
+        let content = root.join("content");
+        fs::create_dir_all(&content).unwrap();
+
+        let mut replacement = Vec::new();
+        replacement.extend_from_slice(&rpf_archive::RSC7_MAGIC.to_le_bytes());
+        replacement.extend_from_slice(&0x10u32.to_le_bytes());
+        replacement.extend_from_slice(&0x20000000u32.to_le_bytes());
+        replacement.extend_from_slice(&0x30000000u32.to_le_bytes());
+        replacement.extend_from_slice(&vec![0x5Au8; 64]);
+        fs::write(content.join("replacement.ytd"), &replacement).unwrap();
+
+        let mut original_resource = replacement.clone();
+        original_resource[16..].fill(0x11);
+        let mut builder = RpfBuilder::new(RpfEncryption::Open);
+        builder.add_file("common/data/example.ytd", original_resource);
+        let original = builder.build(None).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><add source="replacement.ytd">common/data/example.ytd</add></archive>"#;
+        assert_eq!(
+            apply_oiv_rpf_archive(&original_path, xml, &content, &output_path, None).unwrap(),
+            1
+        );
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
+        let entry = archive.entries.iter().find(|entry| entry.name_lower == "example.ytd").unwrap();
+        assert!(matches!(entry.kind, rpf_archive::RpfEntryKind::ResourceFile { .. }));
+        assert_eq!(archive.extract_entry(&rebuilt, entry, None).unwrap(), replacement);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn deletes_an_entry_inside_rpf7() {
         let root = temp_dir();
         let content = root.join("content");
