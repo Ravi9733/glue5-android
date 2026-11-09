@@ -643,6 +643,38 @@ mod tests {
     }
 
     #[test]
+    fn applies_delete_inside_nested_rpf7() {
+        let root = temp_dir();
+        let content = root.join("content");
+        fs::create_dir_all(&content).unwrap();
+
+        let mut nested_builder = RpfBuilder::new(RpfEncryption::Open);
+        nested_builder.add_file("remove.ytd", b"remove".to_vec());
+        nested_builder.add_file("keep.ytd", b"keep".to_vec());
+        let nested = nested_builder.build(None).unwrap();
+
+        let mut root_builder = RpfBuilder::new(RpfEncryption::Open);
+        root_builder.add_file("x64/vehicles.rpf", nested);
+        let original = root_builder.build(None).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><archive path="x64/vehicles.rpf"><delete>remove.ytd</delete></archive></archive>"#;
+        let count = apply_oiv_rpf_archive(&original_path, xml, &content, &output_path, None).unwrap();
+        assert_eq!(count, 1);
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
+        let nested_entry = archive.entries.iter().find(|entry| entry.name_lower == "vehicles.rpf").unwrap();
+        let nested_bytes = archive.extract_entry(&rebuilt, nested_entry, None).unwrap();
+        let nested_archive = RpfArchive::parse(&nested_bytes, "vehicles.rpf", None).unwrap();
+        assert!(!nested_archive.entries.iter().any(|entry| entry.name_lower == "remove.ytd"));
+        assert!(nested_archive.entries.iter().any(|entry| entry.name_lower == "keep.ytd"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn applies_file_replacement_inside_nested_rpf7() {
         let root = temp_dir();
         let content = root.join("content");
