@@ -377,6 +377,33 @@ mod tests {
     }
 
     #[test]
+    fn preserves_compressed_entries_while_editing_another_file() {
+        let root = temp_dir();
+        let content = root.join("content");
+        fs::create_dir_all(&content).unwrap();
+        fs::write(content.join("replace.bin"), b"new-data").unwrap();
+
+        let large_payload = vec![b'Q'; 32 * 1024];
+        let mut builder = RpfBuilder::new(RpfEncryption::Open);
+        builder.add_file("common/data/compressed.bin", large_payload.clone());
+        builder.add_file("common/data/target.bin", b"old-data".to_vec());
+        let original = builder.build(None).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><add source="replace.bin">common/data/target.bin</add></archive>"#;
+        let count = apply_oiv_rpf_archive(&original_path, xml, &content, &output_path, None).unwrap();
+        assert_eq!(count, 1);
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
+        let compressed = archive.entries.iter().find(|entry| entry.name_lower == "compressed.bin").unwrap();
+        assert_eq!(archive.extract_entry(&rebuilt, compressed, None).unwrap(), large_payload);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn applies_file_replacement_inside_nested_rpf7() {
         let root = temp_dir();
         let content = root.join("content");
