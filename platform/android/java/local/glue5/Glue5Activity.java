@@ -495,7 +495,7 @@ public class Glue5Activity extends SDLActivity {
                     + (archiveWarnings.isEmpty() ? "" : "RPF warnings: " + android.text.TextUtils.join(" | ", archiveWarnings) + "\n")
                     + "RPF archive targets declared by package: " + archiveTargets.size() + "\n"
                     + (archiveTargets.isEmpty() ? "" : "Archive targets: " + android.text.TextUtils.join(", ", archiveTargets) + "\n")
-                    + "RPF editor: GTA V RPF7 Open/None/AES; 512 MiB per archive; NG encryption and YSC replacement are unsupported.\n"
+                    + "RPF editor: GTA V RPF7 Open/None/AES; 512 MiB per archive; NG-encrypted archives are unsupported.\n"
                     + "Optional AES key file: " + new File(getFilesDir(), "rpf-keys/gtav_aes_key.dat").getAbsolutePath() + "\n"
                     + "Unsupported, missing, or size-mismatched entries: " + skippedUnsupported + "\n"
                     + (installed == 0
