@@ -301,7 +301,6 @@ fn rewrite_archive(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rpf_archive::RpfEntryKind;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_dir() -> PathBuf {
@@ -371,10 +370,4 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
-    #[test]
-    fn refuses_compressed_entries_instead_of_rebuilding_them_as_raw() {
-        // This guard is exercised by production RPFs: the generic builder
-        // cannot preserve compressed payloads, so fail closed before writing.
-        let _ = RpfEntryKind::Directory { entries_index: 0, entries_count: 0 };
-    }
 }
