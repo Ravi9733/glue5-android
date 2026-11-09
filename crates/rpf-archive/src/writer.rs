@@ -145,7 +145,7 @@ impl RpfBuilder {
         let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         if parts.is_empty() { return; }
         let filename = parts[parts.len() - 1];
-        self.insert_build_file(&parts[..parts.len() - 1], filename, BuildFile {
+        self.insert_build_file(&parts[..parts.len() - 1], BuildFile {
             name: filename.to_string(), data, is_resource: true, system_flags, graphics_flags,
             stored_uncompressed_size: None, is_encrypted: false,
         });
