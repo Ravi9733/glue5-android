@@ -93,6 +93,9 @@ fn collect_oiv_operations(
             if replacements.contains_key(&target) || !deletions.insert(target.clone()) {
                 bail!("duplicate or conflicting OIV archive target: {target}");
             }
+        } else if child.has_tag_name("defragmentation") {
+            // Rebuilding the archive compacts its data and table of contents.
+            continue;
         } else if child.has_tag_name("add") {
             let source = child.attribute("source").context("OIV add has no source")?;
             let target = safe_relative(child.text().unwrap_or("").trim())?;
@@ -269,10 +272,14 @@ fn rewrite_archive(
                 rpf_archive::RpfEntryKind::BinaryFile { is_encrypted, .. } if *is_encrypted => {
                     bail!("cannot replace individually encrypted binary entry {}", file.path);
                 }
-                rpf_archive::RpfEntryKind::ResourceFile { is_encrypted, .. }
-                    if *is_encrypted || file.name.to_ascii_lowercase().ends_with(".ysc") =>
-                {
-                    bail!("cannot replace encrypted script resource {}", file.path);
+                rpf_archive::RpfEntryKind::ResourceFile { is_encrypted, .. } => {
+                    if *is_encrypted || file.name.to_ascii_lowercase().ends_with(".ysc") {
+                        bail!("cannot replace encrypted script resource {}", file.path);
+                    }
+                    if replacement.len() < 4
+                        || u32::from_le_bytes(replacement[0..4].try_into().unwrap()) != rpf_archive::RSC7_MAGIC {
+                        bail!("replacement for resource {} is not an RSC7 resource", file.path);
+                    }
                 }
                 rpf_archive::RpfEntryKind::Directory { .. } => continue,
                 _ => {}
