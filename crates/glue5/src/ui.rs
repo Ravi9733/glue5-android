@@ -84,6 +84,8 @@ pub enum Action {
     ImportTurnip,
     /// Open Android's document picker to import an OIV or ZIP graphics archive.
     ImportGraphicsArchive,
+    /// Remove installed graphics overlays and imported package folders.
+    ClearGraphicsMods,
     /// The game's graphics settings back to the engine's defaults.
     ResetGraphics,
     /// Join a friend (by its key) playing GTA Online in `lobby`, from the
