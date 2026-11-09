@@ -291,7 +291,10 @@ public class Glue5Activity extends SDLActivity {
                         if (!target.isDirectory() && !target.mkdirs()) throw new Exception("Cannot create package folder");
                         continue;
                     }
-                    String outputKey = target.getCanonicalPath();
+                    // The runtime resolves mod paths case-insensitively. Reject
+                    // ZIP entries that differ only by case so extraction order
+                    // cannot decide which replacement becomes active.
+                    String outputKey = raw.toLowerCase(java.util.Locale.ROOT);
                     if (!extractedFiles.add(outputKey)) {
                         throw new Exception("Archive contains a duplicate file path: " + raw);
                     }
