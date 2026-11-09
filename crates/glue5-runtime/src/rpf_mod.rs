@@ -17,7 +17,7 @@ use std::{
 const MAX_ARCHIVE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_NESTING: usize = 8;
 
-/// Applies add operations from one OpenIV archive element. Nested archive
+/// Applies add/delete operations from one OpenIV archive element. Nested archive
 /// elements are followed into nested RPF7 files. Only RPF7 Open/None/AES
 /// archives are writable; NG-encrypted archives are rejected without changes.
 /// Existing compressed/encrypted payloads are copied in their stored form.
