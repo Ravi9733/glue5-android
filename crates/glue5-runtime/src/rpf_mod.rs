@@ -524,6 +524,43 @@ mod tests {
     }
 
     #[test]
+    fn edits_aes_encrypted_rpf7_with_the_imported_key_file() {
+        let root = temp_dir();
+        let content = root.join("content");
+        let keys_dir = root.join("rpf-keys");
+        fs::create_dir_all(&content).unwrap();
+        fs::create_dir_all(&keys_dir).unwrap();
+        fs::write(content.join("replacement.bin"), b"new-data").unwrap();
+
+        let aes_key = [0x5Au8; 32];
+        fs::write(keys_dir.join("gtav_aes_key.dat"), aes_key).unwrap();
+        let keys = GtaKeys {
+            aes_key,
+            ng_keys: Vec::new(),
+            ng_decrypt_tables: Box::new([[[0u32; 256]; 16]; 17]),
+        };
+
+        let mut builder = RpfBuilder::new(RpfEncryption::Aes);
+        builder.add_file("common/data/example.bin", b"old-data".to_vec());
+        let original = builder.build(Some(&keys)).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><add source="replacement.bin">common/data/example.bin</add></archive>"#;
+        let count = apply_oiv_rpf_archive(
+            &original_path, xml, &content, &output_path, Some(&keys_dir)
+        ).unwrap();
+        assert_eq!(count, 1);
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", Some(&keys)).unwrap();
+        let entry = archive.entries.iter().find(|entry| entry.name_lower == "example.bin").unwrap();
+        assert_eq!(archive.extract_entry(&rebuilt, entry, Some(&keys)).unwrap(), b"new-data".to_vec());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn replaces_open_archive_ysc_resource_without_losing_resource_flags() {
         let root = temp_dir();
         let content = root.join("content");
