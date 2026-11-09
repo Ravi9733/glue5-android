@@ -329,6 +329,7 @@ public class Glue5Activity extends SDLActivity {
         int installed = 0;
         int skippedArchive = 0;
         int skippedUnsupported = 0;
+        java.util.ArrayList<String> archiveTargets = new java.util.ArrayList<>();
         java.util.ArrayList<File> installedOutputs = new java.util.ArrayList<>();
         try {
             // OpenIV 2.2 uses assembly.xml and stores add-source files under
@@ -357,6 +358,16 @@ public class Glue5Activity extends SDLActivity {
                     }
                 }
                 File sourceRoot = standardOiv ? new File(staging, "content") : staging;
+                NodeList archives = document.getElementsByTagName("archive");
+                for (int i = 0; i < archives.getLength(); i++) {
+                    Node archiveNode = archives.item(i);
+                    if (archiveNode instanceof Element) {
+                        String archivePath = ((Element) archiveNode).getAttribute("path").trim();
+                        if (!archivePath.isEmpty() && archiveTargets.size() < 50) {
+                            archiveTargets.add(archivePath);
+                        }
+                    }
+                }
                 NodeList adds = document.getElementsByTagName("add");
                 for (int i = 0; i < adds.getLength(); i++) {
                     Node node = adds.item(i);
@@ -409,6 +420,8 @@ public class Glue5Activity extends SDLActivity {
                     + "Archive: " + displayName + "\n"
                     + "Loose-file replacements installed: " + installed + "\n"
                     + "RPF archive operations not applied: " + skippedArchive + "\n"
+                    + "RPF archive targets declared by package: " + archiveTargets.size() + "\n"
+                    + (archiveTargets.isEmpty() ? "" : "Archive targets: " + android.text.TextUtils.join(", ", archiveTargets) + "\n")
                     + "Unsupported, missing, or size-mismatched entries: " + skippedUnsupported + "\n"
                     + (installed == 0
                         ? "STATUS: Package extracted, but no game files were activated. This archive may contain only RPF edits or unsupported entries.\n"
