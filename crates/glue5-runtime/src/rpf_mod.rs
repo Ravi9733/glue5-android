@@ -511,6 +511,40 @@ mod tests {
     }
 
     #[test]
+    fn adds_a_new_file_to_rpf7() {
+        let root = temp_dir();
+        let content = root.join("content");
+        fs::create_dir_all(&content).unwrap();
+        fs::write(content.join("new-file.ytd"), b"new-asset").unwrap();
+
+        let mut builder = RpfBuilder::new(RpfEncryption::Open);
+        builder.add_file("common/data/existing.dat", b"existing".to_vec());
+        let original = builder.build(None).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><add source="new-file.ytd">common/data/new-file.ytd</add></archive>"#;
+        let count = apply_oiv_rpf_archive(&original_path, xml, &content, &output_path, None).unwrap();
+        assert_eq!(count, 1);
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
+        let entry = archive.entries.iter().find(|entry| entry.name_lower == "new-file.ytd").unwrap();
+        assert_eq!(archive.extract_entry(&rebuilt, entry, None).unwrap(), b"new-asset".to_vec());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_archive_path_traversal_and_absolute_paths() {
+        assert!(safe_relative("../outside.rpf").is_err());
+        assert!(safe_relative("common/../../outside.rpf").is_err());
+        assert!(safe_relative("/absolute/file.ytd").is_err());
+        assert!(safe_relative(r"..\outside.rpf").is_err());
+        assert_eq!(safe_relative(r"common\data\file.ytd").unwrap(), "common/data/file.ytd");
+    }
+
+    #[test]
     fn deletes_an_entry_inside_rpf7() {
         let root = temp_dir();
         let content = root.join("content");
