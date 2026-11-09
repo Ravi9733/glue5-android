@@ -197,6 +197,16 @@ fn load_aes_keys_if_needed(data: &[u8], keys_dir: Option<&Path>) -> Result<Optio
     }
 }
 
+
+/// RPF7 file offsets are measured in 512-byte blocks. Copying the stored
+/// bytes preserves existing compression and per-entry encryption verbatim.
+fn raw_entry_bytes(data: &[u8], block_offset: u32, size: u32) -> Result<Vec<u8>> {
+    let start = (block_offset as usize).checked_mul(512)
+        .context("RPF7 file offset overflow")?;
+    let end = start.checked_add(size as usize).context("RPF7 file size overflow")?;
+    Ok(data.get(start..end).context("RPF7 stored entry is out of bounds")?.to_vec())
+}
+
 fn rewrite_archive(
     data: &[u8],
     prefix: &str,
@@ -228,57 +238,76 @@ fn rewrite_archive(
 
     for file in files {
         let entry = &archive.entries[file.entry_index];
-        match &entry.kind {
-            rpf_archive::RpfEntryKind::BinaryFile {
-                file_size, uncompressed_size, is_encrypted, ..
-            } => {
-                if *is_encrypted || (*file_size > 0 && file_size < uncompressed_size) {
-                    bail!("cannot safely rebuild compressed or individually encrypted entry {}", file.path);
-                }
-            }
-            rpf_archive::RpfEntryKind::ResourceFile { is_encrypted, .. } => {
-                if *is_encrypted {
-                    bail!("cannot safely rebuild individually encrypted resource {}", file.path);
-                }
-            }
-            rpf_archive::RpfEntryKind::Directory { .. } => continue,
-        }
-        let empty_binary = matches!(
-            &entry.kind,
-            rpf_archive::RpfEntryKind::BinaryFile { file_size: 0, uncompressed_size: 0, .. }
-        );
-        let mut bytes = if empty_binary {
-            Vec::new()
-        } else {
-            archive.extract_entry(data, entry, keys)
-                .with_context(|| format!("cannot extract {}", file.path))?
-        };
         let full_path = join_archive_path(prefix, &file.path).to_ascii_lowercase();
 
         if deletions.remove(&full_path) {
             applied += 1;
             continue;
-        } else if let Some(replacement) = replacements.remove(&full_path) {
-            bytes = replacement;
+        }
+
+        if let Some(replacement) = replacements.remove(&full_path) {
+            match &entry.kind {
+                rpf_archive::RpfEntryKind::BinaryFile { is_encrypted, .. } if *is_encrypted => {
+                    bail!("cannot replace individually encrypted binary entry {}", file.path);
+                }
+                rpf_archive::RpfEntryKind::ResourceFile { is_encrypted, .. }
+                    if *is_encrypted || file.name.to_ascii_lowercase().ends_with(".ysc") =>
+                {
+                    bail!("cannot replace encrypted script resource {}", file.path);
+                }
+                rpf_archive::RpfEntryKind::Directory { .. } => continue,
+                _ => {}
+            }
+            builder.add_file(&file.path, replacement);
             applied += 1;
-        } else if file.name.to_ascii_lowercase().ends_with(".rpf") {
-            let child_prefix = full_path;
+            continue;
+        }
+
+        if file.name.to_ascii_lowercase().ends_with(".rpf") {
+            let child_prefix = full_path.clone();
             let child_prefix_with_slash = format!("{child_prefix}/");
             if replacements.keys().any(|candidate| candidate.starts_with(&child_prefix_with_slash))
                 || deletions.iter().any(|candidate| candidate.starts_with(&child_prefix_with_slash)) {
+                if matches!(
+                    &entry.kind,
+                    rpf_archive::RpfEntryKind::BinaryFile { is_encrypted: true, .. }
+                ) {
+                    bail!("cannot edit inside individually encrypted nested archive {}", file.path);
+                }
+                let nested_bytes = archive.extract_entry(data, entry, keys)
+                    .with_context(|| format!("cannot extract nested archive {}", file.path))?;
                 let (nested, count) = rewrite_archive(
-                    &bytes,
+                    &nested_bytes,
                     &child_prefix,
                     replacements,
                     deletions,
                     keys,
                     depth + 1,
                 )?;
-                bytes = nested;
+                builder.add_file(&file.path, nested);
                 applied += count;
+                continue;
             }
         }
-        builder.add_file(&file.path, bytes);
+
+        match &entry.kind {
+            rpf_archive::RpfEntryKind::BinaryFile {
+                file_offset, file_size, uncompressed_size, is_encrypted
+            } => {
+                let stored_size = if *file_size > 0 { *file_size } else { *uncompressed_size };
+                let stored = raw_entry_bytes(data, *file_offset, stored_size)
+                    .with_context(|| format!("cannot preserve stored payload {}", file.path))?;
+                builder.add_stored_binary(&file.path, stored, *uncompressed_size, *is_encrypted);
+            }
+            rpf_archive::RpfEntryKind::ResourceFile {
+                file_offset, file_size, system_flags, graphics_flags, ..
+            } => {
+                let stored = raw_entry_bytes(data, *file_offset, *file_size)
+                    .with_context(|| format!("cannot preserve resource payload {}", file.path))?;
+                builder.add_stored_resource(&file.path, stored, *system_flags, *graphics_flags);
+            }
+            rpf_archive::RpfEntryKind::Directory { .. } => {}
+        }
     }
 
     // Add new files belonging directly to this archive. Targets containing an
