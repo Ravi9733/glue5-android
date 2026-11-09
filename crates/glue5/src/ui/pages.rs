@@ -879,6 +879,19 @@ fn settings_items(
                         response
                     },
                 );
+                setting(
+                    ui,
+                    "Installed graphics mods",
+                    Control::Action,
+                    Some("Remove imported packages and restore original game files"),
+                    |ui| {
+                        let response = action_button(ui, "Remove all graphics mods");
+                        if response.clicked() {
+                            actions.push(Action::ClearGraphicsMods);
+                        }
+                        response
+                    },
+                );
             }
             let mode = setting(
                 ui,
