@@ -754,6 +754,18 @@ impl App {
                         None => self.ui.note("Android app storage path is unavailable"),
                     }
                 }
+                Action::ClearGraphicsMods => {
+                    match std::env::var_os("GLUE5_APP_FILES_DIR") {
+                        Some(directory) => {
+                            let request = PathBuf::from(directory).join("graphics-mod-clear-request");
+                            match std::fs::write(request, b"1") {
+                                Ok(()) => self.ui.note("Removing installed graphics mods…"),
+                                Err(e) => self.ui.note(format!("Cannot request graphics mod removal: {e}")),
+                            }
+                        }
+                        None => self.ui.note("Android app storage path is unavailable"),
+                    }
+                }
                 Action::ResetGraphics => self.reset_graphics(),
                 Action::JoinFriend { key, lobby } => {
                     if self.game.is_none() {
