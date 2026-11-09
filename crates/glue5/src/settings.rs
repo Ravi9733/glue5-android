@@ -43,6 +43,8 @@ pub struct Settings {
     pub android_performance_profile_v3_applied: bool,
     /// One-time Android profile: balanced 30 FPS target at 50% render scale with bicubic output.
     pub android_performance_profile_v4_applied: bool,
+    /// One-time Android profile targeting 45–60 FPS with a clearer 60% bicubic render scale.
+    pub android_performance_profile_v5_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -249,6 +251,7 @@ impl Default for Settings {
             android_performance_profile_v2_applied: false,
             android_performance_profile_v3_applied: false,
             android_performance_profile_v4_applied: false,
+            android_performance_profile_v5_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -351,6 +354,16 @@ impl Settings {
             settings.render_scale = Some(0.50);
             settings.upscaler = Upscaling::Bicubic;
             settings.android_performance_profile_v4_applied = true;
+        }
+        // Balanced Android target: up to 60 FPS and 60% render scale with bicubic
+        // reconstruction. This is a target profile, not a device-verified guarantee;
+        // it deliberately leaves the game's graphics preset and Turnip selection alone.
+        #[cfg(target_os = "android")]
+        if !settings.android_performance_profile_v5_applied {
+            settings.max_fps = 60;
+            settings.render_scale = Some(0.60);
+            settings.upscaler = Upscaling::Bicubic;
+            settings.android_performance_profile_v5_applied = true;
         }
         // Apply the persisted Vulkan choice before the GPU backend creates
         // its first Vulkan entry. The Android activity sets the paths, but
