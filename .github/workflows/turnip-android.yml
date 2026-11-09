@@ -29,6 +29,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
       MISE_TASK_RUN_AUTO_INSTALL: "false"
+      # Keep native Rust/C++ compilation within the hosted runner memory budget.
+      CARGO_BUILD_JOBS: "2"
+      CMAKE_BUILD_PARALLEL_LEVEL: "2"
+      GRADLE_OPTS: "-Dorg.gradle.workers.max=2"
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
