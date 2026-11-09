@@ -21,6 +21,11 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 /** The app's activity: SDL's, with our library (libglue5.so) as the main one. */
 public class Glue5Activity extends SDLActivity {
@@ -39,6 +44,10 @@ public class Glue5Activity extends SDLActivity {
         try {
             Os.setenv("GLUE5_NATIVE_LIB_DIR", getApplicationInfo().nativeLibraryDir, true);
             Os.setenv("GLUE5_APP_FILES_DIR", getFilesDir().getAbsolutePath(), true);
+            // The native VFS reads approved loose-file replacements from this
+            // separate overlay; the original GTA V data directory stays read-only.
+            Os.setenv("GLUE5_GRAPHICS_MOD_DIR",
+                    "/storage/emulated/0/GTA5/GraphicsMods/active", true);
             // Activate the imported custom driver before SDL starts native code.
             // An explicit GLUE5_VULKAN_DRIVER launch extra below can override this
             // (for example, "system" to recover from a bad driver).
@@ -200,18 +209,14 @@ public class Glue5Activity extends SDLActivity {
         }
         String folderName = displayName.replaceFirst("(?i)\\.(zip|oiv)$", "")
                 .replaceAll("[^A-Za-z0-9._ -]", "_").trim();
-        if (folderName.isEmpty() || folderName.equals(".") || folderName.equals("..")) {
-            folderName = "GraphicsMod";
-        }
+        if (folderName.isEmpty() || folderName.equals(".") || folderName.equals("..")) folderName = "GraphicsMod";
 
         File root = new File(Environment.getExternalStorageDirectory(), "GTA5/GraphicsMods");
         if (!root.isDirectory() && !root.mkdirs()) {
             throw new Exception("Cannot create GTA5/GraphicsMods; enable Glue 5 all-files access");
         }
         File destination = new File(root, folderName);
-        if (destination.exists()) {
-            throw new Exception("A graphics package with this name already exists; rename the ZIP and retry");
-        }
+        if (destination.exists()) throw new Exception("A graphics package with this name already exists; rename the ZIP and retry");
         File staging = new File(root, "." + folderName + ".installing");
         deleteTree(staging);
         if (!staging.mkdirs()) throw new Exception("Cannot create temporary graphics package folder");
@@ -230,14 +235,12 @@ public class Glue5Activity extends SDLActivity {
                     if (raw.isEmpty() || raw.startsWith("/") || raw.matches("^[A-Za-z]:.*")) {
                         throw new Exception("Archive contains an unsafe absolute path");
                     }
-                    String[] parts = raw.split("/");
-                    for (String part : parts) {
-                        if (part.equals("..")) throw new Exception("Archive contains a path traversal entry");
+                    for (String part : raw.split("/")) if (part.equals("..")) {
+                        throw new Exception("Archive contains a path traversal entry");
                     }
                     File target = new File(staging, raw);
                     String canonicalRoot = staging.getCanonicalPath() + File.separator;
-                    String canonicalTarget = target.getCanonicalPath();
-                    if (!canonicalTarget.startsWith(canonicalRoot)) {
+                    if (!target.getCanonicalPath().startsWith(canonicalRoot)) {
                         throw new Exception("Archive contains an unsafe output path");
                     }
                     if (entry.isDirectory()) {
@@ -245,17 +248,14 @@ public class Glue5Activity extends SDLActivity {
                         continue;
                     }
                     File parent = target.getParentFile();
-                    if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
-                        throw new Exception("Cannot create package subfolder");
-                    }
+                    if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new Exception("Cannot create package subfolder");
                     long entrySize = 0;
                     try (FileOutputStream output = new FileOutputStream(target)) {
                         int count;
                         while ((count = zip.read(buffer)) != -1) {
                             entrySize += count;
                             totalExtracted += count;
-                            if (entrySize > 512L * 1024L * 1024L ||
-                                    totalExtracted > 1536L * 1024L * 1024L) {
+                            if (entrySize > 512L * 1024L * 1024L || totalExtracted > 1536L * 1024L * 1024L) {
                                 throw new Exception("Graphics archive exceeds the 1.5 GB extraction limit");
                             }
                             output.write(buffer, 0, count);
@@ -272,21 +272,159 @@ public class Glue5Activity extends SDLActivity {
             deleteTree(staging);
             throw new Exception("Archive is empty or is not a supported ZIP-based OIV package");
         }
+
+        File overlay = new File(root, "active");
+        if (!overlay.isDirectory() && !overlay.mkdirs()) throw new Exception("Cannot create graphics overlay folder");
+        int installed = 0;
+        int skippedArchive = 0;
+        int skippedUnsupported = 0;
+        File installXml = findNamedFile(staging, "install.xml");
+        if (installXml != null) {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setXIncludeAware(false);
+            factory.setExpandEntityReferences(false);
+            try { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, ""); } catch (Exception ignored) {}
+            try { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, ""); } catch (Exception ignored) {}
+            org.w3c.dom.Document document;
+            try (InputStream xml = new java.io.FileInputStream(installXml)) {
+                document = factory.newDocumentBuilder().parse(xml);
+            }
+            NodeList adds = document.getElementsByTagName("add");
+            for (int i = 0; i < adds.getLength(); i++) {
+                Node node = adds.item(i);
+                if (!(node instanceof Element)) continue;
+                Element add = (Element) node;
+                String source = add.getAttribute("source");
+                String targetPath = add.getAttribute("destination");
+                boolean insideArchive = false;
+                for (Node parent = add.getParentNode(); parent != null; parent = parent.getParentNode()) {
+                    if (parent instanceof Element && "archive".equalsIgnoreCase(((Element) parent).getTagName())) {
+                        insideArchive = true;
+                        break;
+                    }
+                }
+                if (insideArchive) { skippedArchive++; continue; }
+                if (source.isEmpty() || targetPath.isEmpty()) { skippedUnsupported++; continue; }
+                File sourceFile = safePackageFile(staging, source);
+                if (sourceFile == null || !sourceFile.isFile()) { skippedUnsupported++; continue; }
+                String relative = normalizeGameDataPath(targetPath);
+                if (relative == null || relative.toLowerCase(java.util.Locale.ROOT).endsWith(".rpf")) {
+                    skippedUnsupported++;
+                    continue;
+                }
+                File original = new File(Environment.getExternalStorageDirectory(),
+                        "GTA5/game/data/" + relative);
+                if (!original.isFile() || original.length() != sourceFile.length()) {
+                    skippedUnsupported++;
+                    continue;
+                }
+                File output = new File(overlay, relative);
+                if (!isChildOf(overlay, output)) throw new Exception("Unsafe OIV destination path");
+                File parent = output.getParentFile();
+                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new Exception("Cannot create overlay folder");
+                copyFile(sourceFile, output);
+                installed++;
+            }
+        } else {
+            // Plain ZIPs may contain loose files rooted at common/ or x64/.
+            installed += importLooseZipFiles(staging, overlay);
+        }
+
         File info = new File(staging, "GLUE5_IMPORT_INFO.txt");
+        String note = "Imported archive: " + displayName + "\n"
+                + "Supported loose files installed into GTA5/GraphicsMods/active: " + installed + "\n"
+                + "RPF/archive instructions skipped (RPF editing is not yet supported): " + skippedArchive + "\n"
+                + "Other unsupported or size-mismatched entries skipped: " + skippedUnsupported + "\n"
+                + "Original GTA V game/data files were not modified. Glue 5 reads active loose-file replacements through its VFS overlay.\n";
         try (FileOutputStream output = new FileOutputStream(info)) {
-            String note = "Imported archive: " + displayName + "\n"
-                    + "Extracted safely by Glue 5 into GTA5/GraphicsMods/" + folderName + "\n"
-                    + "Original GTA V game files were not modified. OpenIV install.xml instructions "
-                    + "are preserved but are not automatically executed by this importer.\n";
             output.write(note.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
         if (!staging.renameTo(destination)) {
             deleteTree(staging);
             throw new Exception("Could not finalize graphics package folder");
         }
-        return "GTA5/GraphicsMods/" + folderName;
+        return "GTA5/GraphicsMods/" + folderName + " (installed " + installed + " loose files; " +
+                skippedArchive + " RPF entries skipped)";
     }
 
+    private static File findNamedFile(File root, String name) {
+        File[] children = root.listFiles();
+        if (children == null) return null;
+        for (File child : children) {
+            if (child.isFile() && child.getName().equalsIgnoreCase(name)) return child;
+            if (child.isDirectory()) {
+                File found = findNamedFile(child, name);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private static File safePackageFile(File root, String path) throws Exception {
+        String normalized = path.replace('\\', '/');
+        if (normalized.startsWith("/") || normalized.matches("^[A-Za-z]:.*")) return null;
+        for (String part : normalized.split("/")) if (part.equals("..")) return null;
+        File file = new File(root, normalized);
+        return isChildOf(root, file) ? file : null;
+    }
+
+    private static String normalizeGameDataPath(String path) {
+        String value = path.replace('\\', '/').replaceAll("^/+", "");
+        if (value.matches("^[A-Za-z]:.*")) return null;
+        while (value.startsWith("./")) value = value.substring(2);
+        if (value.regionMatches(true, 0, "data/", 0, 5)) value = value.substring(5);
+        if (value.isEmpty()) return null;
+        for (String part : value.split("/")) {
+            if (part.isEmpty() || part.equals(".") || part.equals("..")) return null;
+        }
+        String lower = value.toLowerCase(java.util.Locale.ROOT);
+        if (lower.contains(".rpf/") || lower.endsWith(".rpf") || lower.startsWith("update/")) return null;
+        if (!(lower.startsWith("common/") || lower.startsWith("x64/"))) return null;
+        return value;
+    }
+
+    private static boolean isChildOf(File root, File candidate) throws Exception {
+        String base = root.getCanonicalPath() + File.separator;
+        return candidate.getCanonicalPath().startsWith(base);
+    }
+
+    private static void copyFile(File source, File destination) throws Exception {
+        try (InputStream input = new java.io.FileInputStream(source);
+             FileOutputStream output = new FileOutputStream(destination)) {
+            byte[] buffer = new byte[32768];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+        }
+    }
+
+    private static int importLooseZipFiles(File packageRoot, File overlay) throws Exception {
+        int installed = 0;
+        java.util.ArrayDeque<File> pending = new java.util.ArrayDeque<>();
+        pending.add(packageRoot);
+        while (!pending.isEmpty()) {
+            File dir = pending.removeFirst();
+            File[] children = dir.listFiles();
+            if (children == null) continue;
+            for (File child : children) {
+                if (child.isDirectory()) { pending.add(child); continue; }
+                String relative = packageRoot.toURI().relativize(child.toURI()).getPath();
+                String targetPath = normalizeGameDataPath(relative);
+                if (targetPath == null) continue;
+                File original = new File(Environment.getExternalStorageDirectory(), "GTA5/game/data/" + targetPath);
+                if (!original.isFile() || original.length() != child.length()) continue;
+                File output = new File(overlay, targetPath);
+                if (!isChildOf(overlay, output)) continue;
+                File parent = output.getParentFile();
+                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) continue;
+                copyFile(child, output);
+                installed++;
+            }
+        }
+        return installed;
+    }
     private void importTurnipZip(Uri uri) throws Exception {
         File staging = new File(getFilesDir(), "turnip-import");
         deleteTree(staging);
