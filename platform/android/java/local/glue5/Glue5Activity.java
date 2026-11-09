@@ -410,7 +410,9 @@ public class Glue5Activity extends SDLActivity {
                     if (wholeRpf) installedRpf++;
                 }
             } else {
-                installed = importLooseZipFiles(staging, overlay, installedOutputs);
+                int[] zipRpfCount = new int[1];
+                installed = importLooseZipFiles(staging, overlay, installedOutputs, zipRpfCount);
+                installedRpf += zipRpfCount[0];
             }
         } catch (Exception e) {
             for (int i = installedOutputs.size() - 1; i >= 0; i--) {
@@ -435,7 +437,7 @@ public class Glue5Activity extends SDLActivity {
                     + "Unsupported, missing, or size-mismatched entries: " + skippedUnsupported + "\n"
                     + (installed == 0
                         ? "STATUS: Package extracted, but no game files were activated. This archive may contain only RPF edits or unsupported entries.\n"
-                        : "STATUS: Supported loose-file replacements are active through Glue 5's VFS overlay.\n")
+                        : "STATUS: Supported file replacements (loose files and/or complete RPFs) are active through Glue 5's VFS overlay.\n")
                     + "Original GTA V game/data files were not modified.\n";
             try (FileOutputStream output = new FileOutputStream(info)) {
                 output.write(note.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -552,7 +554,7 @@ public class Glue5Activity extends SDLActivity {
     }
 
     private static int importLooseZipFiles(File packageRoot, File overlay,
-            java.util.ArrayList<File> installedOutputs) throws Exception {
+            java.util.ArrayList<File> installedOutputs, int[] installedRpf) throws Exception {
         int installed = 0;
         java.util.ArrayDeque<File> pending = new java.util.ArrayDeque<>();
         pending.add(packageRoot);
@@ -564,11 +566,17 @@ public class Glue5Activity extends SDLActivity {
                 if (child.isDirectory()) { pending.add(child); continue; }
                 String relative = packageRoot.toURI().relativize(child.toURI()).getPath();
                 String targetPath = normalizeGameDataPath(relative);
+                boolean wholeRpf = false;
+                if (targetPath == null) {
+                    targetPath = normalizeWholeRpfPath(relative);
+                    wholeRpf = targetPath != null;
+                }
                 if (targetPath == null) continue;
                 File original = new File(Environment.getExternalStorageDirectory(), "GTA5/game/data/" + targetPath);
                 if (!original.isFile() || original.length() != child.length()) continue;
                 installGraphicsReplacement(child, overlay, targetPath, installedOutputs);
                 installed++;
+                if (wholeRpf) installedRpf[0]++;
             }
         }
         return installed;
