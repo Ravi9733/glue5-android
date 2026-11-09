@@ -742,6 +742,18 @@ impl App {
                         None => self.ui.note("Android app storage path is unavailable"),
                     }
                 }
+                Action::ImportGraphicsArchive => {
+                    match std::env::var_os("GLUE5_APP_FILES_DIR") {
+                        Some(directory) => {
+                            let request = PathBuf::from(directory).join("graphics-mod-import-request");
+                            match std::fs::write(request, b"1") {
+                                Ok(()) => self.ui.note("Choose an OpenIV OIV or graphics ZIP archive…"),
+                                Err(e) => self.ui.note(format!("Cannot request graphics archive picker: {e}")),
+                            }
+                        }
+                        None => self.ui.note("Android app storage path is unavailable"),
+                    }
+                }
                 Action::ResetGraphics => self.reset_graphics(),
                 Action::JoinFriend { key, lobby } => {
                     if self.game.is_none() {
