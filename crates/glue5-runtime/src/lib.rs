@@ -31,6 +31,7 @@ pub mod overlay;
 mod p2p;
 pub mod prompts;
 pub mod qos;
+pub mod rpf_mod;
 mod readback;
 mod scenario;
 mod shader_settings;
