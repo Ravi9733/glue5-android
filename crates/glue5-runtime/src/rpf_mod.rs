@@ -543,11 +543,12 @@ mod tests {
             ng_decrypt_tables: Box::new([[[0u32; 256]; 16]; 17]),
         };
 
+        let protected_payload = vec![b'P'; 4096];
         let mut builder = RpfBuilder::new(RpfEncryption::Aes);
         builder.add_file("common/data/example.bin", b"old-data".to_vec());
         builder.add_encrypted_binary(
             "common/data/protected.bin",
-            b"preserve this individually encrypted payload".to_vec(),
+            protected_payload.clone(),
             Some(&keys),
         ).unwrap();
         let original = builder.build(Some(&keys)).unwrap();
@@ -568,7 +569,7 @@ mod tests {
         let protected = archive.entries.iter().find(|entry| entry.name_lower == "protected.bin").unwrap();
         assert_eq!(
             archive.extract_entry(&rebuilt, protected, Some(&keys)).unwrap(),
-            b"preserve this individually encrypted payload".to_vec()
+            protected_payload
         );
         fs::remove_dir_all(root).unwrap();
     }
