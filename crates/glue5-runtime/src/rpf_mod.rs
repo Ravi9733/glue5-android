@@ -157,24 +157,19 @@ fn safe_source_file(root: &Path, relative: &str) -> Result<PathBuf> {
     for component in relative.split('/') {
         let entries = fs::read_dir(&current)
             .with_context(|| format!("cannot read OIV source folder {}", current.display()))?;
-        let mut exact = None;
-        let mut folded = None;
+        let mut matched = None;
         for entry in entries {
             let entry = entry?;
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name == component {
-                exact = Some(entry.path());
-                break;
-            }
             if name.eq_ignore_ascii_case(component) {
-                if folded.is_some() {
+                if matched.is_some() {
                     bail!("ambiguous case-insensitive OIV source path: {relative}");
                 }
-                folded = Some(entry.path());
+                matched = Some(entry.path());
             }
         }
-        current = exact.or(folded).context("OIV source file is missing")?;
+        current = matched.context("OIV source file is missing")?;
         if fs::symlink_metadata(&current)?.file_type().is_symlink() {
             bail!("OIV source path contains a symbolic link");
         }
@@ -412,6 +407,24 @@ mod tests {
         let path = std::env::temp_dir().join(format!("glue5-rpf-test-{}-{nonce}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn rejects_ambiguous_case_insensitive_oiv_sources() {
+        let root = temp_dir();
+        fs::write(root.join("vehicle.yft"), b"one").unwrap();
+        fs::write(root.join("VEHICLE.YFT"), b"two").unwrap();
+        assert!(safe_source_file(&root, "Vehicle.yft").is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn resolves_oiv_source_paths_case_insensitively() {
+        let root = temp_dir();
+        fs::write(root.join("Vehicle.YFT"), b"vehicle").unwrap();
+        let resolved = safe_source_file(&root, "vehicle.yft").unwrap();
+        assert_eq!(fs::read(resolved).unwrap(), b"vehicle");
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
