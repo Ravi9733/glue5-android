@@ -151,6 +151,59 @@ impl RpfBuilder {
         });
     }
 
+    /// Add a binary entry whose RPF TOC marks it individually encrypted.
+    /// Compression is performed before AES encryption, matching the reader's
+    /// decrypt-then-decompress order.
+    pub fn add_encrypted_binary(
+        &mut self, path: &str, data: Vec<u8>, keys: Option<&GtaKeys>
+    ) -> Result<()> {
+        if self.version != RpfVersion::V7 {
+            bail!("individually encrypted entries are supported only in RPF7");
+        }
+        let uncompressed_size = u32::try_from(data.len())
+            .map_err(|_| anyhow::anyhow!("RPF7 entry exceeds the 4 GiB size limit"))?;
+        let mut payload = data.clone();
+        if data.len() > 64 {
+            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+            if encoder.write_all(&data).is_ok() {
+                if let Ok(compressed) = encoder.finish() {
+                    if compressed.len() < payload.len() { payload = compressed; }
+                }
+            }
+        }
+        match self.encryption {
+            RpfEncryption::Aes => {
+                let key = keys.ok_or_else(|| anyhow::anyhow!("AES key required for encrypted RPF entry"))?;
+                payload = encrypt_aes(&payload, &key.aes_key);
+            }
+            RpfEncryption::Open | RpfEncryption::None => {}
+            _ => bail!("NG/TFIT encrypted RPF entries cannot be written"),
+        }
+        self.add_stored_binary(path, payload, uncompressed_size, true);
+        Ok(())
+    }
+
+    /// Add an RSC7 resource whose body is encrypted as a YSC script resource.
+    pub fn add_encrypted_resource(
+        &mut self, path: &str, mut data: Vec<u8>, keys: Option<&GtaKeys>
+    ) -> Result<()> {
+        if self.version != RpfVersion::V7 || data.len() < 16
+            || u32::from_le_bytes(data[0..4].try_into().unwrap()) != RSC7_MAGIC {
+            bail!("encrypted resource replacement must be an RSC7 resource");
+        }
+        match self.encryption {
+            RpfEncryption::Aes => {
+                let key = keys.ok_or_else(|| anyhow::anyhow!("AES key required for YSC replacement"))?;
+                let encrypted = encrypt_aes(&data[16..], &key.aes_key);
+                data[16..].copy_from_slice(&encrypted);
+            }
+            RpfEncryption::Open | RpfEncryption::None => {}
+            _ => bail!("NG/TFIT encrypted script resources cannot be written"),
+        }
+        self.add_file(path, data);
+        Ok(())
+    }
+
     fn insert_build_file(&mut self, dirs: &[&str], file: BuildFile) {
         let mut dir = &mut self.root;
         for part in dirs { dir = dir.get_or_create_subdir(part); }
