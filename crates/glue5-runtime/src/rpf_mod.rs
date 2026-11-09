@@ -193,7 +193,21 @@ fn load_aes_keys_if_needed(data: &[u8], keys_dir: Option<&Path>) -> Result<Optio
                 ng_decrypt_tables: Box::new([[[0u32; 256]; 16]; 17]),
             }))
         }
-        RpfEncryption::Open | RpfEncryption::None => Ok(None),
+        RpfEncryption::Open | RpfEncryption::None => {
+            let key_path = keys_dir.map(|directory| directory.join("gtav_aes_key.dat"));
+            if let Some(key_path) = key_path.filter(|path| path.is_file()) {
+                let bytes = fs::read(&key_path)?;
+                let aes_key: [u8; 32] = bytes.try_into()
+                    .map_err(|_| anyhow::anyhow!("gtav_aes_key.dat must contain exactly 32 bytes"))?;
+                Ok(Some(GtaKeys {
+                    aes_key,
+                    ng_keys: Vec::new(),
+                    ng_decrypt_tables: Box::new([[[0u32; 256]; 16]; 17]),
+                }))
+            } else {
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -327,6 +341,9 @@ fn rewrite_archive(
         })
         .collect::<Vec<_>>();
     for (key, relative) in pending {
+        if relative.to_ascii_lowercase().ends_with(".ysc") {
+            bail!("adding new encrypted script resources is not supported: {relative}");
+        }
         if let Some(bytes) = replacements.remove(&key) {
             builder.add_file(&relative, bytes);
             applied += 1;
