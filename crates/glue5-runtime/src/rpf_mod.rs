@@ -451,7 +451,7 @@ mod tests {
         fs::create_dir_all(&content).unwrap();
         let mut replacement = Vec::new();
         replacement.extend_from_slice(&rpf_archive::RSC7_MAGIC.to_le_bytes());
-        replacement.extend_from_slice(&1u32.to_le_bytes());
+        replacement.extend_from_slice(&0x12u32.to_le_bytes());
         replacement.extend_from_slice(&0x10000000u32.to_le_bytes());
         replacement.extend_from_slice(&0x20000000u32.to_le_bytes());
         replacement.extend_from_slice(b"new-script");
