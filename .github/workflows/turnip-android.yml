@@ -31,10 +31,11 @@ jobs:
       MISE_TASK_RUN_AUTO_INSTALL: "false"
       # Native compilation takes longer than mise's common five-minute task limit.
       MISE_TASK_TIMEOUT: "45m"
-      # Keep native Rust/C++ compilation within the hosted runner memory budget.
-      CARGO_BUILD_JOBS: "2"
-      CMAKE_BUILD_PARALLEL_LEVEL: "2"
-      GRADLE_OPTS: "-Dorg.gradle.workers.max=2"
+      # Keep native compilation below the hosted runner memory ceiling.
+      CARGO_BUILD_JOBS: "1"
+      CMAKE_BUILD_PARALLEL_LEVEL: "1"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      GRADLE_OPTS: "-Dorg.gradle.workers.max=1"
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
@@ -86,6 +87,13 @@ jobs:
               -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
           fi
+
+      - name: Diagnose runner resources
+        run: |
+          free -h
+          df -h "$GITHUB_WORKSPACE" "$RUNNER_TEMP"
+          sed -n "1,12p" /proc/meminfo
+          ulimit -a
 
       - name: Build Turnip-enabled APK
         run: |
