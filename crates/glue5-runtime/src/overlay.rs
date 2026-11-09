@@ -282,6 +282,26 @@ mod loose_replacement_tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn resolves_overlay_paths_without_case_sensitivity() {
+        let root = temp_root();
+        let user = root.join("user");
+        let scratch = user.join("fsroot");
+        let game = root.join("game");
+        std::fs::create_dir_all(&scratch).unwrap();
+        std::fs::create_dir_all(game.join("common/data")).unwrap();
+        let mods = user.join("mods/files/Common/Data");
+        std::fs::create_dir_all(&mods).unwrap();
+        let original = game.join("common/data/example.xml");
+        std::fs::write(&original, b"original").unwrap();
+        std::fs::write(mods.join("Example.XML"), b"modified").unwrap();
+        std::env::set_var("GLUE5_GRAPHICS_MOD_DIR", user.join("mods/files"));
+        let mounted = game_file("common/data/example.xml", &original, &scratch).unwrap();
+        assert_eq!(std::fs::read(mounted).unwrap(), b"modified");
+        std::env::remove_var("GLUE5_GRAPHICS_MOD_DIR");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[cfg(unix)]
     #[test]
     fn rejects_symlink_escape() {
