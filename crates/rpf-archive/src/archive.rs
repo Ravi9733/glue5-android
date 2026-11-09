@@ -200,7 +200,10 @@ impl RpfArchive {
             } => {
                 let byte_off = self.offset_to_bytes(*file_offset);
                 let size = if *file_size > 0 { *file_size as usize } else { *uncompressed_size as usize };
-                if size == 0 { bail!("binary file has zero size"); }
+                if size == 0 {
+                    if *uncompressed_size == 0 { return Ok(Vec::new()); }
+                    bail!("binary file has zero stored size but a non-zero logical size");
+                }
 
                 let raw = data.get(byte_off..byte_off + size)
                     .with_context(|| format!("{}: binary file out of bounds", entry.name_lower))?;
