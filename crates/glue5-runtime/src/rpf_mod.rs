@@ -445,6 +445,39 @@ mod tests {
     }
 
     #[test]
+    fn replaces_open_archive_ysc_resource_without_losing_resource_flags() {
+        let root = temp_dir();
+        let content = root.join("content");
+        fs::create_dir_all(&content).unwrap();
+        let mut replacement = Vec::new();
+        replacement.extend_from_slice(&rpf_archive::RSC7_MAGIC.to_le_bytes());
+        replacement.extend_from_slice(&1u32.to_le_bytes());
+        replacement.extend_from_slice(&0x10000000u32.to_le_bytes());
+        replacement.extend_from_slice(&0x20000000u32.to_le_bytes());
+        replacement.extend_from_slice(b"new-script");
+        fs::write(content.join("main.ysc"), &replacement).unwrap();
+
+        let mut original_resource = replacement.clone();
+        original_resource[16..].copy_from_slice(b"old-script");
+        let mut builder = RpfBuilder::new(RpfEncryption::Open);
+        builder.add_file("scripts/main.ysc", original_resource);
+        let original = builder.build(None).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><add source="main.ysc">scripts/main.ysc</add></archive>"#;
+        let count = apply_oiv_rpf_archive(&original_path, xml, &content, &output_path, None).unwrap();
+        assert_eq!(count, 1);
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
+        let entry = archive.entries.iter().find(|entry| entry.name_lower == "main.ysc").unwrap();
+        assert_eq!(archive.extract_entry(&rebuilt, entry, None).unwrap(), replacement);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn applies_file_replacement_inside_nested_rpf7() {
         let root = temp_dir();
         let content = root.join("content");
