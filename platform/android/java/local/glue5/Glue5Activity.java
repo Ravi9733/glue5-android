@@ -479,12 +479,35 @@ public class Glue5Activity extends SDLActivity {
         return null;
     }
 
+    /**
+     * Resolve an OIV source path inside the extracted package. OpenIV packages
+     * commonly vary path casing between assembly.xml and ZIP entries, while
+     * Android's shared storage is case-sensitive. Resolve each component
+     * case-insensitively, but reject ambiguous names and every symlink.
+     */
     private static File safePackageFile(File root, String path) throws Exception {
-        String normalized = path.replace('\\', '/');
-        if (normalized.startsWith("/") || normalized.matches("^[A-Za-z]:.*")) return null;
-        for (String part : normalized.split("/")) if (part.equals("..")) return null;
-        File file = new File(root, normalized);
-        return isChildOf(root, file) ? file : null;
+        String normalized = path.replace('\\\\', '/');
+        if (normalized.isEmpty() || normalized.startsWith("/")
+                || normalized.matches("^[A-Za-z]:.*")) return null;
+        String[] parts = normalized.split("/", -1);
+        File current = root.getCanonicalFile();
+        for (String part : parts) {
+            if (part.isEmpty() || part.equals(".") || part.equals("..")) return null;
+            if (java.nio.file.Files.isSymbolicLink(current.toPath())) return null;
+            File[] children = current.listFiles();
+            if (children == null) return null;
+            File match = null;
+            for (File child : children) {
+                if (child.getName().equalsIgnoreCase(part)) {
+                    if (match != null) return null; // ambiguous case-folded name
+                    match = child;
+                }
+            }
+            if (match == null || java.nio.file.Files.isSymbolicLink(match.toPath())) return null;
+            current = match.getCanonicalFile();
+            if (!isChildOf(root, current)) return null;
+        }
+        return current.isFile() ? current : null;
     }
 
     private static String normalizeGameDataPath(String path) {
