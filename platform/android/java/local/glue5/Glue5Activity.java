@@ -490,7 +490,7 @@ public class Glue5Activity extends SDLActivity {
             String note = "Graphics package import report\n"
                     + "Archive: " + displayName + "\n"
                     + "Loose-file and edited/whole-file RPF replacements installed: " + installed + "\n"
-                    + "Complete RPF replacements installed: " + installedRpf + "\n"
+                    + "RPF archives edited or replaced: " + installedRpf + "\n"
                     + "Nested RPF archive operations not applied or unsupported: " + skippedArchive + "\n"
                     + (archiveWarnings.isEmpty() ? "" : "RPF warnings: " + android.text.TextUtils.join(" | ", archiveWarnings) + "\n")
                     + "RPF archive targets declared by package: " + archiveTargets.size() + "\n"
@@ -515,7 +515,7 @@ public class Glue5Activity extends SDLActivity {
             throw e;
         }
         return "Graphics package saved: " + folderName + ". Active loose files: " + installed
-                + "; complete RPF replacements: " + installedRpf
+                + "; RPF archives edited/replaced: " + installedRpf
                 + "; nested RPF operations not applied or unsupported: " + skippedArchive
                 + "; other unsupported entries: " + skippedUnsupported
                 + (installed == 0 ? ". No game changes were activated; see GLUE5_IMPORT_INFO.txt."
