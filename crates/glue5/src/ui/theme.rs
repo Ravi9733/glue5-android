@@ -2,7 +2,9 @@
 use egui::*;
 
 pub(super) const INK: Color32 = Color32::from_rgb(14, 15, 17);
-pub(super) const MUTED: Color32 = Color32::from_rgb(157, 160, 166);
+pub(super) const MUTED: Color32 = Color32::from_rgb(177, 171, 188);
+pub(super) const ACCENT: Color32 = Color32::from_rgb(112, 48, 190);
+pub(super) const GREEN: Color32 = Color32::from_rgb(94, 232, 83);
 
 pub(super) fn heading(text: &str, size: f32) -> RichText {
     RichText::new(text).font(FontId::new(size, FontFamily::Name("condensed".into())))
@@ -31,20 +33,20 @@ pub(super) fn install(ctx: &Context) {
         s.spacing.interact_size.y = 44.0;
         s.visuals.override_text_color = Some(Color32::WHITE);
         s.visuals.panel_fill = INK;
-        s.visuals.window_fill = Color32::from_rgba_unmultiplied(12, 13, 15, 242);
+        s.visuals.window_fill = Color32::from_rgba_unmultiplied(13, 9, 20, 246);
         s.visuals.window_corner_radius = 22.into();
-        s.visuals.window_stroke = Stroke::new(1.0, Color32::from_gray(76));
-        s.visuals.selection.bg_fill = Color32::from_gray(90);
+        s.visuals.window_stroke = Stroke::new(1.0, Color32::from_rgb(91, 54, 127));
+        s.visuals.selection.bg_fill = ACCENT;
         s.visuals.selection.stroke = Stroke::new(1.0, Color32::WHITE);
         for w in [&mut s.visuals.widgets.inactive, &mut s.visuals.widgets.hovered, &mut s.visuals.widgets.active] {
             w.corner_radius = 14.into();
-            w.bg_fill = Color32::from_gray(39);
-            w.weak_bg_fill = Color32::from_gray(34);
+            w.bg_fill = Color32::from_rgb(28, 23, 36);
+            w.weak_bg_fill = Color32::from_rgb(22, 18, 30);
             w.bg_stroke = Stroke::NONE;
             w.fg_stroke = Stroke::new(1.5, Color32::WHITE);
         }
-        s.visuals.widgets.hovered.bg_fill = Color32::from_gray(60);
-        s.visuals.widgets.active.bg_stroke = Stroke::new(2.0, Color32::WHITE);
+        s.visuals.widgets.hovered.bg_fill = Color32::from_rgb(69, 43, 91);
+        s.visuals.widgets.active.bg_stroke = Stroke::new(2.0, Color32::from_rgb(178, 132, 255));
     });
 }
 
@@ -105,12 +107,12 @@ pub(super) fn backdrop(ctx: &Context, texture: Option<&TextureHandle>) {
             let w = aspect / image_aspect;
             Rect::from_min_max(pos2((1.0 - w) * 0.65, 0.0), pos2((1.0 - w) * 0.65 + w, 1.0))
         };
-        p.image(texture.id(), r, uv, Color32::from_gray(185));
+        p.image(texture.id(), r, uv, Color32::WHITE);
     }
     for alphas in [[235, 35, 35, 235], [0, 0, 255, 255]] {
         let mut mesh = Mesh::default();
         for (pos, a) in [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom()].into_iter().zip(alphas) {
-            mesh.colored_vertex(pos, Color32::from_rgba_unmultiplied(14, 15, 17, a));
+            mesh.colored_vertex(pos, Color32::from_rgba_unmultiplied(15, 8, 23, a));
         }
         mesh.add_triangle(0, 1, 2);
         mesh.add_triangle(0, 2, 3);

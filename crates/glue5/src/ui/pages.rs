@@ -264,7 +264,7 @@ fn mode_card(
     let scale = theme::density(ui);
     let pad = vec2(20.0, 12.0) * scale;
     let (ink, soft) =
-        if look == Look::Primary { (theme::INK, Color32::from_gray(92)) } else { (Color32::WHITE, theme::MUTED) };
+        if look == Look::Primary { (Color32::WHITE, Color32::from_white_alpha(205)) } else { (Color32::WHITE, theme::MUTED) };
     let text_width = (width - 2.0 * pad.x - 24.0 * scale).max(1.0);
     let galley = |text: egui::RichText, wrap| {
         egui::WidgetText::from(text).into_galley(ui, Some(wrap), text_width, egui::TextStyle::Body)
@@ -279,10 +279,10 @@ fn mode_card(
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     let lit = interactive && (response.hovered() || response.has_focus());
     let fill = match (look, lit) {
-        (Look::Primary, false) => Color32::WHITE,
-        (Look::Primary, true) => Color32::from_gray(228),
-        (Look::Plain, false) => Color32::from_black_alpha(215),
-        (Look::Plain, true) => Color32::from_rgba_unmultiplied(40, 41, 45, 235),
+        (Look::Primary, false) => theme::ACCENT,
+        (Look::Primary, true) => Color32::from_rgb(142, 83, 238),
+        (Look::Plain, false) => Color32::from_rgba_unmultiplied(12, 12, 18, 225),
+        (Look::Plain, true) => Color32::from_rgba_unmultiplied(52, 30, 76, 245),
         (Look::Open, false) => Color32::TRANSPARENT,
         (Look::Open, true) => Color32::from_white_alpha(8),
     };
@@ -386,7 +386,7 @@ fn play_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     let lit = response.hovered() || response.has_focus();
     let radius = 14.0 * scale;
     let painter = ui.painter();
-    painter.rect_filled(rect, radius, if lit { Color32::from_gray(228) } else { Color32::WHITE });
+    painter.rect_filled(rect, radius, if lit { Color32::from_rgb(142, 83, 238) } else { theme::ACCENT });
     let font = egui::FontId::new(20.0 * scale, egui::FontFamily::Name("condensed".into()));
     painter.text(rect.center(), Align2::CENTER_CENTER, label, font, theme::INK);
     if response.has_focus() {
@@ -404,7 +404,8 @@ fn icon_button(ui: &mut egui::Ui, icon: &str, label: &str, with_label: bool) -> 
     let button = egui::Button::new(
         RichText::new(text).size(if with_label { 14.0 } else { 18.0 } * scale).color(Color32::from_white_alpha(220)),
     )
-    .fill(Color32::from_black_alpha(140))
+    .fill(Color32::from_rgba_unmultiplied(12, 10, 20, 205))
+    .stroke(Stroke::new(1.0 * scale, Color32::from_rgba_unmultiplied(151, 91, 245, 150)))
     .min_size(vec2(size, size))
     .corner_radius((12.0 * scale) as u8);
     let response = focus(ui.add(button));
@@ -436,7 +437,7 @@ fn info(
 fn card<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let scale = theme::density(ui);
     egui::Frame::new()
-        .fill(Color32::from_black_alpha(210))
+        .fill(Color32::from_rgba_unmultiplied(10, 9, 17, 224))
         .corner_radius((18.0 * scale) as u8)
         .inner_margin(egui::Margin::symmetric((20.0 * scale) as i8, (16.0 * scale) as i8))
         .show(ui, |ui| {
