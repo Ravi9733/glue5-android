@@ -117,7 +117,7 @@ impl RpfBuilder {
                 }
             }
         }
-        self.insert_build_file(dir_parts, filename, BuildFile {
+        self.insert_build_file(dir_parts, BuildFile {
             name: filename.to_string(), data, is_resource, system_flags, graphics_flags,
             stored_uncompressed_size, is_encrypted: false,
         });
@@ -131,7 +131,7 @@ impl RpfBuilder {
         let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         if parts.is_empty() { return; }
         let filename = parts[parts.len() - 1];
-        self.insert_build_file(&parts[..parts.len() - 1], filename, BuildFile {
+        self.insert_build_file(&parts[..parts.len() - 1], BuildFile {
             name: filename.to_string(), data, is_resource: false, system_flags: 0,
             graphics_flags: 0, stored_uncompressed_size: Some(uncompressed_size), is_encrypted,
         });
@@ -151,7 +151,7 @@ impl RpfBuilder {
         });
     }
 
-    fn insert_build_file(&mut self, dirs: &[&str], filename: &str, file: BuildFile) {
+    fn insert_build_file(&mut self, dirs: &[&str], file: BuildFile) {
         let mut dir = &mut self.root;
         for part in dirs { dir = dir.get_or_create_subdir(part); }
         dir.files.push(file);
