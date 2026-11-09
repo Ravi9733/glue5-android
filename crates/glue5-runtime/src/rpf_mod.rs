@@ -9,7 +9,7 @@ use rpf_archive::{
     RpfEncryption, RpfVersion,
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -35,9 +35,10 @@ pub fn apply_oiv_rpf_archive(
 
     let source_root = content_root.canonicalize().context("cannot resolve OIV content folder")?;
     let mut replacements = BTreeMap::<String, Vec<u8>>::new();
-    collect_oiv_adds(root, "", &source_root, &mut replacements)?;
-    if replacements.is_empty() {
-        bail!("OIV archive contains no supported add operations");
+    let mut deletions = BTreeSet::<String>::new();
+    collect_oiv_operations(root, "", &source_root, &mut replacements, &mut deletions)?;
+    if replacements.is_empty() && deletions.is_empty() {
+        bail!("OIV archive contains no supported archive operations");
     }
 
     let metadata = fs::metadata(original_archive).context("cannot read original RPF archive")?;
@@ -46,9 +47,11 @@ pub fn apply_oiv_rpf_archive(
     }
     let original = fs::read(original_archive).context("cannot read original RPF archive")?;
     let keys = load_aes_keys_if_needed(&original, keys_dir)?;
-    let (mut rebuilt, applied) = rewrite_archive(&original, "", &mut replacements, keys.as_ref(), 0)?;
-    if !replacements.is_empty() {
-        let remaining = replacements.keys().cloned().collect::<Vec<_>>().join(", ");
+    let (mut rebuilt, applied) = rewrite_archive(
+        &original, "", &mut replacements, &mut deletions, keys.as_ref(), 0
+    )?;
+    if !replacements.is_empty() || !deletions.is_empty() {
+        let remaining = replacements.keys().chain(deletions.iter()).cloned().collect::<Vec<_>>().join(", ");
         bail!("some OIV archive targets were not applied: {remaining}");
     }
     if rebuilt.len() > original.len() {
@@ -66,17 +69,27 @@ pub fn apply_oiv_rpf_archive(
     Ok(applied)
 }
 
-fn collect_oiv_adds(
+fn collect_oiv_operations(
     node: roxmltree::Node<'_, '_>,
     prefix: &str,
     source_root: &Path,
     replacements: &mut BTreeMap<String, Vec<u8>>,
+    deletions: &mut BTreeSet<String>,
 ) -> Result<()> {
     for child in node.children().filter(roxmltree::Node::is_element) {
         if child.has_tag_name("archive") {
+            if child.attribute("type").is_some_and(|kind| !kind.eq_ignore_ascii_case("rpf7")) {
+                bail!("only nested RPF7 archives are supported");
+            }
             let nested = safe_relative(child.attribute("path").context("nested archive has no path")?)?;
             let path = join_archive_path(prefix, &nested);
-            collect_oiv_adds(child, &path, source_root, replacements)?;
+            collect_oiv_operations(child, &path, source_root, replacements, deletions)?;
+        } else if child.has_tag_name("delete") {
+            let target = join_archive_path(prefix, &safe_relative(child.text().unwrap_or("").trim())?)
+                .to_ascii_lowercase();
+            if replacements.contains_key(&target) || !deletions.insert(target.clone()) {
+                bail!("duplicate or conflicting OIV archive target: {target}");
+            }
         } else if child.has_tag_name("add") {
             let source = child.attribute("source").context("OIV add has no source")?;
             let target = safe_relative(child.text().unwrap_or("").trim())?;
@@ -87,8 +100,8 @@ fn collect_oiv_adds(
                 bail!("OIV source file is too large: {source}");
             }
             let target = join_archive_path(prefix, &target).to_ascii_lowercase();
-            if replacements.insert(target.clone(), data).is_some() {
-                bail!("OIV package contains duplicate archive target: {target}");
+            if deletions.contains(&target) || replacements.insert(target.clone(), data).is_some() {
+                bail!("duplicate or conflicting OIV archive target: {target}");
             }
         } else {
             bail!("unsupported command inside OIV archive: {}", child.tag_name().name());
@@ -185,6 +198,7 @@ fn rewrite_archive(
     data: &[u8],
     prefix: &str,
     replacements: &mut BTreeMap<String, Vec<u8>>,
+    deletions: &mut BTreeSet<String>,
     keys: Option<&GtaKeys>,
     depth: usize,
 ) -> Result<(Vec<u8>, usize)> {
@@ -230,17 +244,22 @@ fn rewrite_archive(
             .with_context(|| format!("cannot extract {}", file.path))?;
         let full_path = join_archive_path(prefix, &file.path).to_ascii_lowercase();
 
-        if let Some(replacement) = replacements.remove(&full_path) {
+        if deletions.remove(&full_path) {
+            applied += 1;
+            continue;
+        } else if let Some(replacement) = replacements.remove(&full_path) {
             bytes = replacement;
             applied += 1;
         } else if file.name.to_ascii_lowercase().ends_with(".rpf") {
             let child_prefix = full_path;
             let child_prefix_with_slash = format!("{child_prefix}/");
-            if replacements.keys().any(|candidate| candidate.starts_with(&child_prefix_with_slash)) {
+            if replacements.keys().any(|candidate| candidate.starts_with(&child_prefix_with_slash))
+                || deletions.iter().any(|candidate| candidate.starts_with(&child_prefix_with_slash)) {
                 let (nested, count) = rewrite_archive(
                     &bytes,
                     &child_prefix,
                     replacements,
+                    deletions,
                     keys,
                     depth + 1,
                 )?;
