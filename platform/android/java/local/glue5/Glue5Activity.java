@@ -204,7 +204,7 @@ public class Glue5Activity extends SDLActivity {
             try {
                 if (resultCode == RESULT_OK && data != null && data.getData() != null) {
                     String installedAt = importGraphicsArchive(data.getData());
-                    Toast.makeText(this, "Graphics archive extracted to " + installedAt, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, installedAt, Toast.LENGTH_LONG).show();
                 }
             } catch (Exception e) {
                 Toast.makeText(this, "Graphics archive import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
