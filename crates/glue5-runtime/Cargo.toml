@@ -11,6 +11,9 @@ glue5-game.workspace = true
 glue5-stream.workspace = true
 anyhow.workspace = true
 log.workspace = true
+# RPF7 archive parsing and rebuilding for OpenIV package operations.
+rpf-archive = "0.10"
+roxmltree = "0.20"
 sha2.workspace = true
 serde_json.workspace = true
 serde = { version = "1", features = ["derive"] }
