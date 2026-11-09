@@ -276,7 +276,7 @@ fn rewrite_archive(
         let full_path = join_archive_path(prefix, &file.path).to_ascii_lowercase();
 
         if let Some(target) = deletions.iter().find(|target| {
-            full_path == **target || full_path.starts_with(&format!("{target}/"))
+            full_path == target.as_str() || full_path.starts_with(&format!("{}/", target.as_str()))
         }) {
             applied_deletions.insert(target.clone());
             continue;
@@ -461,6 +461,39 @@ mod tests {
         assert!(!archive.entries.iter().any(|entry| entry.name_lower == "remove.bin"));
         assert!(archive.entries.iter().any(|entry| entry.name_lower == "keep.bin"));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn deletes_all_files_beneath_a_directory_target() {
+        let root = temp_dir();
+        let content = root.join("content");
+        fs::create_dir_all(&content).unwrap();
+
+        let mut builder = RpfBuilder::new(RpfEncryption::Open);
+        builder.add_file("common/data/remove/one.bin", b"one".to_vec());
+        builder.add_file("common/data/remove/two.bin", b"two".to_vec());
+        builder.add_file("common/data/keep.bin", b"keep".to_vec());
+        let original = builder.build(None).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><delete>common/data/remove</delete></archive>"#;
+        let count = apply_oiv_rpf_archive(&original_path, xml, &content, &output_path, None).unwrap();
+        assert_eq!(count, 1);
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
+        assert!(!archive.entries.iter().any(|entry| entry.name_lower == "one.bin" || entry.name_lower == "two.bin"));
+        assert!(archive.entries.iter().any(|entry| entry.name_lower == "keep.bin"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_overlapping_add_and_delete_paths() {
+        assert!(archive_paths_overlap("common/data/folder", "common/data/folder/file.ytd"));
+        assert!(archive_paths_overlap("common/data/folder/file.ytd", "common/data/folder"));
+        assert!(!archive_paths_overlap("common/data/a.ytd", "common/data/b.ytd"));
     }
 
     #[test]
