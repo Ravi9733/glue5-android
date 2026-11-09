@@ -82,3 +82,39 @@ pub extern "C" fn SDL_main(_: std::ffi::c_int, _: *mut *mut std::ffi::c_char) ->
     glue5_runtime::qos::end();
     std::process::exit(code)
 }
+
+
+/// JNI entry point used by the Android OIV importer. It edits only a staged
+/// copy of the selected RPF and returns a short status string to Java.
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_local_glue5_Glue5Activity_applyOivArchiveNative(
+    mut env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    archive_path: jni::objects::JString,
+    archive_xml: jni::objects::JString,
+    content_root: jni::objects::JString,
+    output_path: jni::objects::JString,
+    keys_dir: jni::objects::JString,
+) -> jni::sys::jstring {
+    let result = (|| -> anyhow::Result<String> {
+        let archive_path: String = env.get_string(&archive_path)?.into();
+        let archive_xml: String = env.get_string(&archive_xml)?.into();
+        let content_root: String = env.get_string(&content_root)?.into();
+        let output_path: String = env.get_string(&output_path)?.into();
+        let keys_dir: String = env.get_string(&keys_dir)?.into();
+        let applied = glue5_runtime::rpf_mod::apply_oiv_rpf_archive(
+            std::path::Path::new(&archive_path),
+            &archive_xml,
+            std::path::Path::new(&content_root),
+            std::path::Path::new(&output_path),
+            Some(std::path::Path::new(&keys_dir)),
+        )?;
+        Ok(format!("OK:{applied}"))
+    })()
+    .unwrap_or_else(|error| format!("ERROR:{error:#}"));
+
+    env.new_string(result)
+        .map(|value| value.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
