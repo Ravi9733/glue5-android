@@ -20,6 +20,7 @@ const MAX_NESTING: usize = 8;
 /// Applies add operations from one OpenIV archive element. Nested archive
 /// elements are followed into nested RPF7 files. Only RPF7 Open/None/AES
 /// archives are writable; NG-encrypted archives are rejected without changes.
+/// Existing compressed/encrypted payloads are copied in their stored form.
 pub fn apply_oiv_rpf_archive(
     original_archive: &Path,
     archive_xml: &str,
@@ -401,7 +402,7 @@ mod tests {
         assert_eq!(rebuilt.len(), original.len());
         let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
         let entry = archive.entries.iter().find(|entry| entry.name_lower == "example.bin").unwrap();
-        assert_eq!(archive.extract_entry(&rebuilt, entry, None).unwrap(), b"new-data");
+        assert_eq!(archive.extract_entry(&rebuilt, entry, None).unwrap(), b"new-data".to_vec());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -462,7 +463,7 @@ mod tests {
         let nested_bytes = archive.extract_entry(&rebuilt, nested_entry, None).unwrap();
         let nested_archive = RpfArchive::parse(&nested_bytes, "vehicles.rpf", None).unwrap();
         let car = nested_archive.entries.iter().find(|entry| entry.name_lower == "car.yft").unwrap();
-        assert_eq!(nested_archive.extract_entry(&nested_bytes, car, None).unwrap(), b"new-car");
+        assert_eq!(nested_archive.extract_entry(&nested_bytes, car, None).unwrap(), b"new-car".to_vec());
         fs::remove_dir_all(root).unwrap();
     }
 
