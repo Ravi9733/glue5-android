@@ -381,7 +381,16 @@ public class Glue5Activity extends SDLActivity {
                     if (!archivePath.isEmpty() && archiveTargets.size() < 50) {
                         archiveTargets.add(archivePath);
                     }
-                    if (!standardOiv) continue;
+                    if (!standardOiv) {
+                        // The legacy install.xml importer has no archive-command
+                        // executor. Count this explicitly instead of reporting a
+                        // successful package with silently ignored RPF edits.
+                        skippedArchive++;
+                        if (archiveWarnings.size() < 20) {
+                            archiveWarnings.add(archivePath + ": legacy install.xml archive operations are unsupported");
+                        }
+                        continue;
+                    }
                     boolean nestedArchive = false;
                     for (Node parent = archiveNode.getParentNode(); parent != null; parent = parent.getParentNode()) {
                         if (parent instanceof Element && "archive".equalsIgnoreCase(((Element) parent).getTagName())) {
