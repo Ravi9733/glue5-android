@@ -235,14 +235,19 @@ fn rewrite_archive(
     if data.len() as u64 > MAX_ARCHIVE_BYTES {
         bail!("nested RPF exceeds the 512 MiB on-device editing limit");
     }
+    if data.len() < 16 || u32::from_le_bytes(data[0..4].try_into().unwrap()) != 0x5250_4637 {
+        bail!("nested target is not a GTA V RPF7 archive");
+    }
+    let encryption = RpfEncryption::from_u32(u32::from_le_bytes(data[12..16].try_into().unwrap()));
+    match encryption {
+        RpfEncryption::Ng => bail!("NG-encrypted nested RPF cannot be rebuilt"),
+        RpfEncryption::Tfit => bail!("unsupported nested RPF encryption"),
+        RpfEncryption::Aes if keys.is_none() => bail!("nested AES-encrypted RPF needs an AES key"),
+        _ => {}
+    }
     let archive = RpfArchive::parse(data, "oiv.rpf", keys).context("cannot parse RPF7 archive")?;
     if archive.version != RpfVersion::V7 {
         bail!("only GTA V RPF7 archives can be edited");
-    }
-    match archive.encryption {
-        RpfEncryption::Ng => bail!("NG-encrypted nested RPF cannot be rebuilt"),
-        RpfEncryption::Tfit => bail!("unsupported nested RPF encryption"),
-        _ => {}
     }
 
     let tree = build_directory_tree(&archive.entries);
