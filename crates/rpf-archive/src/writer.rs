@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::io::Write;
+use flate2::{write::ZlibEncoder, Compression};
 
 use anyhow::{bail, Result};
 
@@ -22,6 +24,8 @@ struct BuildFile {
     is_resource    : bool,
     system_flags   : u32,
     graphics_flags : u32,
+    stored_uncompressed_size: Option<u32>,
+    is_encrypted: bool,
 }
 
 impl BuildDir {
@@ -43,7 +47,7 @@ impl BuildDir {
 #[derive(Debug)]
 enum FlatKind {
     Directory { entries_index: u32, entries_count: u32 },
-    Binary    { file_offset: u32, file_size: u32, uncompressed_size: u32 },
+    Binary    { file_offset: u32, file_size: u32, uncompressed_size: u32, is_encrypted: bool },
     Resource  { file_offset: u32, file_size: u32, system_flags: u32, graphics_flags: u32 },
 }
 
@@ -84,32 +88,73 @@ impl RpfBuilder {
         Self { version, encryption, root: BuildDir::new("") }
     }
 
-    /// Add a file at `path` (forward-slash separated).
-    pub fn add_file(&mut self, path: &str, data: Vec<u8>) {
+    /// Add a file at a forward-slash separated path. RPF7 binary files are
+    /// zlib-compressed when that makes the stored payload smaller.
+    pub fn add_file(&mut self, path: &str, mut data: Vec<u8>) {
         let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         if parts.is_empty() { return; }
-
-        let filename  = parts[parts.len() - 1];
+        let filename = parts[parts.len() - 1];
         let dir_parts = &parts[..parts.len() - 1];
-
-        let mut dir = &mut self.root;
-        for part in dir_parts {
-            dir = dir.get_or_create_subdir(part);
-        }
-
-        // Resource detection: only meaningful for V7 archives
         let is_resource = self.version == RpfVersion::V7
             && data.len() >= 4
             && u32::from_le_bytes(data[..4].try_into().unwrap()) == RSC7_MAGIC;
         let (system_flags, graphics_flags) = if is_resource && data.len() >= 16 {
-            let sys = u32::from_le_bytes(data[8..12].try_into().unwrap());
-            let gfx = u32::from_le_bytes(data[12..16].try_into().unwrap());
-            (sys, gfx)
-        } else {
-            (0, 0)
-        };
+            (
+                u32::from_le_bytes(data[8..12].try_into().unwrap()),
+                u32::from_le_bytes(data[12..16].try_into().unwrap()),
+            )
+        } else { (0, 0) };
+        let original_size = u32::try_from(data.len()).unwrap_or(u32::MAX);
+        let mut stored_uncompressed_size = None;
+        if self.version == RpfVersion::V7 && !is_resource && data.len() > 64 {
+            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+            if encoder.write_all(&data).is_ok() {
+                if let Ok(compressed) = encoder.finish() {
+                    if compressed.len() < data.len() {
+                        data = compressed;
+                        stored_uncompressed_size = Some(original_size);
+                    }
+                }
+            }
+        }
+        self.insert_build_file(dir_parts, filename, BuildFile {
+            name: filename.to_string(), data, is_resource, system_flags, graphics_flags,
+            stored_uncompressed_size, is_encrypted: false,
+        });
+    }
 
-        dir.files.push(BuildFile { name: filename.to_string(), data, is_resource, system_flags, graphics_flags });
+    /// Preserve an existing RPF7 binary payload exactly as stored, including
+    /// compression and its per-entry encryption flag.
+    pub fn add_stored_binary(
+        &mut self, path: &str, data: Vec<u8>, uncompressed_size: u32, is_encrypted: bool
+    ) {
+        let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        if parts.is_empty() { return; }
+        let filename = parts[parts.len() - 1];
+        self.insert_build_file(&parts[..parts.len() - 1], filename, BuildFile {
+            name: filename.to_string(), data, is_resource: false, system_flags: 0,
+            graphics_flags: 0, stored_uncompressed_size: Some(uncompressed_size), is_encrypted,
+        });
+    }
+
+    /// Preserve a resource payload exactly as stored, including encrypted YSC
+    /// bodies. The supplied data includes its 16-byte RSC7 header.
+    pub fn add_stored_resource(
+        &mut self, path: &str, data: Vec<u8>, system_flags: u32, graphics_flags: u32
+    ) {
+        let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        if parts.is_empty() { return; }
+        let filename = parts[parts.len() - 1];
+        self.insert_build_file(&parts[..parts.len() - 1], filename, BuildFile {
+            name: filename.to_string(), data, is_resource: true, system_flags, graphics_flags,
+            stored_uncompressed_size: None, is_encrypted: false,
+        });
+    }
+
+    fn insert_build_file(&mut self, dirs: &[&str], filename: &str, file: BuildFile) {
+        let mut dir = &mut self.root;
+        for part in dirs { dir = dir.get_or_create_subdir(part); }
+        dir.files.push(file);
     }
 
     /// Serialize the archive to bytes.
@@ -193,7 +238,7 @@ impl RpfBuilder {
                     entries_buf.extend_from_slice(&entries_index.to_le_bytes());
                     entries_buf.extend_from_slice(&entries_count.to_le_bytes());
                 }
-                FlatKind::Binary { file_offset, file_size, uncompressed_size } => {
+                FlatKind::Binary { file_offset, file_size, uncompressed_size, is_encrypted } => {
                     let no = entry.name_offset as u16;
                     entries_buf.extend_from_slice(&no.to_le_bytes());
                     entries_buf.push((file_size & 0xFF) as u8);
@@ -203,7 +248,7 @@ impl RpfBuilder {
                     entries_buf.push(((file_offset >> 8)  & 0xFF) as u8);
                     entries_buf.push(((file_offset >> 16) & 0xFF) as u8);
                     entries_buf.extend_from_slice(&uncompressed_size.to_le_bytes());
-                    entries_buf.extend_from_slice(&0u32.to_le_bytes());
+                    entries_buf.extend_from_slice(&(*is_encrypted as u32).to_le_bytes());
                 }
                 FlatKind::Resource { file_offset, file_size, system_flags, graphics_flags } => {
                     let no = entry.name_offset as u16;
@@ -298,7 +343,7 @@ impl RpfBuilder {
                     entries_buf.extend_from_slice(&entries_count.to_le_bytes());
                     entries_buf.extend_from_slice(&entries_count.to_le_bytes());
                 }
-                FlatKind::Binary { file_offset, file_size, uncompressed_size }
+                FlatKind::Binary { file_offset, file_size, uncompressed_size, .. }
                 | FlatKind::Resource { file_offset, file_size,
                     system_flags: uncompressed_size, graphics_flags: _ } => {
                     entries_buf.extend_from_slice(&name_off.to_le_bytes());
@@ -767,7 +812,8 @@ impl RpfBuilder {
                         name: f.name.clone(), name_offset: 0,
                         kind: FlatKind::Binary {
                             file_offset: 0, file_size: 0,
-                            uncompressed_size: f.data.len() as u32,
+                            uncompressed_size: f.stored_uncompressed_size.unwrap_or(f.data.len() as u32),
+                            is_encrypted: f.is_encrypted,
                         },
                     });
                 }
