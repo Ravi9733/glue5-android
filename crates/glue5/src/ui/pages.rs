@@ -394,7 +394,7 @@ fn mode_card(
     let gap = 12.0 * scale;
     let text_left = pad.x + art_w + gap;
     let (ink, soft) =
-        if look == Look::Primary { (theme::INK, Color32::from_gray(92)) } else { (Color32::WHITE, theme::MUTED) };
+        if look == Look::Primary { (Color32::WHITE, Color32::from_white_alpha(220)) } else { (Color32::WHITE, theme::MUTED) };
     let text_width = (width - text_left - pad.x - 24.0 * scale).max(1.0);
     let galley = |text: egui::RichText, wrap| {
         egui::WidgetText::from(text).into_galley(ui, Some(wrap), text_width, egui::TextStyle::Body)
@@ -409,8 +409,8 @@ fn mode_card(
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     let lit = interactive && (response.hovered() || response.has_focus());
     let fill = match (look, lit) {
-        (Look::Primary, false) => Color32::from_rgb(242, 232, 255),
-        (Look::Primary, true) => Color32::from_rgb(255, 248, 255),
+        (Look::Primary, false) => Color32::from_rgb(104, 38, 184),
+        (Look::Primary, true) => Color32::from_rgb(133, 62, 218),
         (Look::Plain, false) => Color32::from_rgba_unmultiplied(25, 12, 48, 238),
         (Look::Plain, true) => Color32::from_rgba_unmultiplied(61, 25, 101, 248),
         (Look::Open, false) => Color32::TRANSPARENT,
@@ -419,7 +419,9 @@ fn mode_card(
     let radius = 16.0 * scale;
     let painter = ui.painter();
     painter.rect_filled(rect, radius, fill);
-    if look != Look::Primary {
+    if look == Look::Primary {
+        painter.rect_stroke(rect, radius, Stroke::new(2.2, Color32::from_rgb(207, 157, 255)), StrokeKind::Inside);
+    } else {
         painter.rect_stroke(
             rect,
             radius,
@@ -587,7 +589,8 @@ fn icon_button(ui: &mut egui::Ui, icon: &str, label: &str, with_label: bool) -> 
     let button = egui::Button::new(
         RichText::new(text).size(if with_label { 14.0 } else { 18.0 } * scale).color(Color32::from_white_alpha(220)),
     )
-    .fill(Color32::from_black_alpha(140))
+    .fill(Color32::from_rgba_unmultiplied(15, 8, 25, 220))
+    .stroke(Stroke::new(1.0 * scale, Color32::from_rgb(123, 65, 184)))
     .min_size(vec2(size, size))
     .corner_radius((12.0 * scale) as u8);
     let response = focus(ui.add(button));
