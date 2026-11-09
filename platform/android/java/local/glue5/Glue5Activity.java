@@ -23,6 +23,10 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.io.StringWriter;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
@@ -31,6 +35,8 @@ import org.w3c.dom.NodeList;
 public class Glue5Activity extends SDLActivity {
     private static final int REQUEST_TURNIP_ZIP = 47112;
     private static final int REQUEST_GRAPHICS_ARCHIVE = 47113;
+    private static native String applyOivArchiveNative(String archivePath, String archiveXml,
+            String contentRoot, String outputPath, String keysDir);
     private final Handler turnipHandler = new Handler(Looper.getMainLooper());
     private boolean turnipPickerOpen = false;
     private boolean graphicsPickerOpen = false;
@@ -363,13 +369,55 @@ public class Glue5Activity extends SDLActivity {
                 }
                 File sourceRoot = standardOiv ? new File(staging, "content") : staging;
                 NodeList archives = document.getElementsByTagName("archive");
+                File gameDataRoot = new File(Environment.getExternalStorageDirectory(),
+                        "GTA5/game/data");
+                int rebuiltArchiveIndex = 0;
                 for (int i = 0; i < archives.getLength(); i++) {
                     Node archiveNode = archives.item(i);
-                    if (archiveNode instanceof Element) {
-                        String archivePath = ((Element) archiveNode).getAttribute("path").trim();
-                        if (!archivePath.isEmpty() && archiveTargets.size() < 50) {
-                            archiveTargets.add(archivePath);
+                    if (!(archiveNode instanceof Element)) continue;
+                    Element archiveElement = (Element) archiveNode;
+                    String archivePath = archiveElement.getAttribute("path").trim();
+                    if (!archivePath.isEmpty() && archiveTargets.size() < 50) {
+                        archiveTargets.add(archivePath);
+                    }
+                    if (!standardOiv) continue;
+                    boolean nestedArchive = false;
+                    for (Node parent = archiveNode.getParentNode(); parent != null; parent = parent.getParentNode()) {
+                        if (parent instanceof Element && "archive".equalsIgnoreCase(((Element) parent).getTagName())) {
+                            nestedArchive = true;
+                            break;
                         }
+                    }
+                    if (nestedArchive) continue;
+                    String relativeArchive = normalizeWholeRpfPath(archivePath);
+                    File originalArchive = relativeArchive == null ? null : safePackageFile(gameDataRoot, relativeArchive);
+                    if (originalArchive == null || !originalArchive.isFile()
+                            || originalArchive.length() > 512L * 1024L * 1024L) {
+                        skippedArchive++;
+                        continue;
+                    }
+                    File rebuiltArchive = new File(staging, "oiv-rpf-" + (rebuiltArchiveIndex++) + ".rpf");
+                    try {
+                        StringWriter xmlWriter = new StringWriter();
+                        TransformerFactory.newInstance().newTransformer().transform(
+                                new DOMSource(archiveNode), new StreamResult(xmlWriter));
+                        String result = applyOivArchiveNative(
+                                originalArchive.getAbsolutePath(), xmlWriter.toString(),
+                                sourceRoot.getAbsolutePath(), rebuiltArchive.getAbsolutePath(),
+                                new File(getFilesDir(), "rpf-keys").getAbsolutePath());
+                        if (result == null || !result.startsWith("OK:")
+                                || !rebuiltArchive.isFile()
+                                || rebuiltArchive.length() != originalArchive.length()) {
+                            skippedArchive++;
+                            if (rebuiltArchive.exists()) rebuiltArchive.delete();
+                            continue;
+                        }
+                        installGraphicsReplacement(rebuiltArchive, overlay, relativeArchive, installedOutputs);
+                        installed++;
+                        installedRpf++;
+                    } catch (Exception archiveError) {
+                        skippedArchive++;
+                        if (rebuiltArchive.exists()) rebuiltArchive.delete();
                     }
                 }
                 NodeList adds = document.getElementsByTagName("add");
@@ -384,7 +432,7 @@ public class Glue5Activity extends SDLActivity {
                             break;
                         }
                     }
-                    if (insideArchive) { skippedArchive++; continue; }
+                    if (insideArchive) continue;
                     String source = add.getAttribute("source");
                     String targetPath = standardOiv ? add.getTextContent().trim() : add.getAttribute("destination");
                     if (source.isEmpty() || targetPath.isEmpty()) { skippedUnsupported++; continue; }
@@ -436,13 +484,13 @@ public class Glue5Activity extends SDLActivity {
                     + "Archive: " + displayName + "\n"
                     + "Loose-file and whole-file replacements installed: " + installed + "\n"
                     + "Complete RPF replacements installed: " + installedRpf + "\n"
-                    + "Nested RPF archive operations not applied: " + skippedArchive + "\n"
+                    + "Nested RPF archive operations not applied or unsupported: " + skippedArchive + "\n"
                     + "RPF archive targets declared by package: " + archiveTargets.size() + "\n"
                     + (archiveTargets.isEmpty() ? "" : "Archive targets: " + android.text.TextUtils.join(", ", archiveTargets) + "\n")
                     + "Unsupported, missing, or size-mismatched entries: " + skippedUnsupported + "\n"
                     + (installed == 0
                         ? "STATUS: Package extracted, but no game files were activated. This archive may contain only RPF edits or unsupported entries.\n"
-                        : "STATUS: Supported file replacements (loose files and/or complete RPFs) are active through Glue 5's VFS overlay.\n")
+                        : "STATUS: Supported loose files and rebuilt RPF archives are active through Glue 5's VFS overlay.\n")
                     + "Original GTA V game/data files were not modified.\n";
             try (FileOutputStream output = new FileOutputStream(info)) {
                 output.write(note.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -460,7 +508,7 @@ public class Glue5Activity extends SDLActivity {
         }
         return "Graphics package saved: " + folderName + ". Active loose files: " + installed
                 + "; complete RPF replacements: " + installedRpf
-                + "; nested RPF operations not applied: " + skippedArchive
+                + "; nested RPF operations not applied or unsupported: " + skippedArchive
                 + "; other unsupported entries: " + skippedUnsupported
                 + (installed == 0 ? ". No game changes were activated; see GLUE5_IMPORT_INFO.txt."
                                   : ". Original game data remains unchanged.");
