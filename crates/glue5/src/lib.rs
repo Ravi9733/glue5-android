@@ -88,14 +88,14 @@ pub extern "C" fn SDL_main(_: std::ffi::c_int, _: *mut *mut std::ffi::c_char) ->
 /// copy of the selected RPF and returns a short status string to Java.
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_local_glue5_Glue5Activity_applyOivArchiveNative(
-    mut env: jni::JNIEnv,
-    _class: jni::objects::JClass,
-    archive_path: jni::objects::JString,
-    archive_xml: jni::objects::JString,
-    content_root: jni::objects::JString,
-    output_path: jni::objects::JString,
-    keys_dir: jni::objects::JString,
+pub extern "system" fn Java_local_glue5_Glue5Activity_applyOivArchiveNative<'local>(
+    mut env: jni::JNIEnv<'local>,
+    _class: jni::objects::JClass<'local>,
+    archive_path: jni::objects::JString<'local>,
+    archive_xml: jni::objects::JString<'local>,
+    content_root: jni::objects::JString<'local>,
+    output_path: jni::objects::JString<'local>,
+    keys_dir: jni::objects::JString<'local>,
 ) -> jni::sys::jstring {
     let result = (|| -> anyhow::Result<String> {
         let archive_path: String = env.get_string(&archive_path)?.into();
