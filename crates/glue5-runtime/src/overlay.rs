@@ -102,8 +102,10 @@ pub(crate) fn game_file(rel: &str, real: &Path, scratch: &Path) -> Option<PathBu
     let configured = std::env::var_os("GLUE5_GRAPHICS_MOD_DIR").map(PathBuf::from);
     let root_path = configured.unwrap_or_else(|| user.join("mods").join("files"));
     let root = root_path.canonicalize().ok()?;
-    let candidate = root.join(rel);
-    let actual = candidate.canonicalize().ok()?;
+    // Package paths are not consistently cased across OpenIV exports. Resolve
+    // each component against the real game-data spelling, preferring an exact
+    // match, while keeping the lookup strictly beneath the approved overlay.
+    let actual = resolve_overlay_case_insensitive(&root, rel)?;
     if !actual.starts_with(&root) || !actual.is_file() {
         return None;
     }
@@ -115,6 +117,34 @@ pub(crate) fn game_file(rel: &str, real: &Path, scratch: &Path) -> Option<PathBu
     }
     log::info!("mod replacement: {rel}");
     Some(actual)
+}
+
+/// Resolve a relative overlay path without depending on ZIP/OIV path casing.
+fn resolve_overlay_case_insensitive(root: &Path, rel: &str) -> Option<PathBuf> {
+    let mut current = root.to_path_buf();
+    for component in Path::new(rel).components() {
+        let std::path::Component::Normal(wanted) = component else {
+            return None;
+        };
+        let wanted = wanted.to_str()?;
+        let exact = current.join(wanted);
+        if exact.exists() {
+            current = exact;
+            continue;
+        }
+        let entries = std::fs::read_dir(&current).ok()?;
+        let mut matched = None;
+        for entry in entries {
+            let entry = entry.ok()?;
+            if entry.file_name().to_string_lossy().eq_ignore_ascii_case(wanted) {
+                matched = Some(entry.path());
+                break;
+            }
+        }
+        current = matched?;
+    }
+    let canonical = current.canonicalize().ok()?;
+    canonical.starts_with(root).then_some(canonical)
 }
 
 /// pausemenu.xml, "Saving And Startup": the engine greys "Startup Flow" out
