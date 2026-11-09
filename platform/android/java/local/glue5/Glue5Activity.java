@@ -269,6 +269,7 @@ public class Glue5Activity extends SDLActivity {
             try (ZipInputStream zip = new ZipInputStream(input)) {
                 ZipEntry entry;
                 byte[] buffer = new byte[32768];
+                java.util.HashSet<String> extractedFiles = new java.util.HashSet<>();
                 while ((entry = zip.getNextEntry()) != null) {
                     if (++entries > 10000) throw new Exception("Archive contains too many files");
                     String raw = entry.getName().replace('\\', '/');
@@ -284,8 +285,18 @@ public class Glue5Activity extends SDLActivity {
                         throw new Exception("Archive contains an unsafe output path");
                     }
                     if (entry.isDirectory()) {
+                        if (target.exists() && !target.isDirectory()) {
+                            throw new Exception("Archive path is both a file and a folder: " + raw);
+                        }
                         if (!target.isDirectory() && !target.mkdirs()) throw new Exception("Cannot create package folder");
                         continue;
+                    }
+                    String outputKey = target.getCanonicalPath();
+                    if (!extractedFiles.add(outputKey)) {
+                        throw new Exception("Archive contains a duplicate file path: " + raw);
+                    }
+                    if (target.exists()) {
+                        throw new Exception("Archive file collides with an existing folder or entry: " + raw);
                     }
                     File parent = target.getParentFile();
                     if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new Exception("Cannot create package subfolder");
