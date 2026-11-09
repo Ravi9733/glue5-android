@@ -278,8 +278,12 @@ public class Glue5Activity extends SDLActivity {
         int installed = 0;
         int skippedArchive = 0;
         int skippedUnsupported = 0;
-        File installXml = findNamedFile(staging, "install.xml");
+        // OpenIV 2.2 uses assembly.xml and stores add-source files under
+        // content/. Keep the older install.xml layout as a compatibility path.
+        File assemblyXml = findNamedFile(staging, "assembly.xml");
+        File installXml = assemblyXml == null ? findNamedFile(staging, "install.xml") : assemblyXml;
         if (installXml != null) {
+            boolean standardOiv = assemblyXml != null;
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
@@ -292,13 +296,19 @@ public class Glue5Activity extends SDLActivity {
             try (InputStream xml = new java.io.FileInputStream(installXml)) {
                 document = factory.newDocumentBuilder().parse(xml);
             }
+            if (standardOiv) {
+                Element packageRoot = document.getDocumentElement();
+                if (packageRoot == null || !"package".equalsIgnoreCase(packageRoot.getTagName())
+                        || !"Five".equalsIgnoreCase(packageRoot.getAttribute("target"))) {
+                    throw new Exception("Unsupported OIV package: expected a GTA V (Five) assembly.xml");
+                }
+            }
+            File sourceRoot = standardOiv ? new File(staging, "content") : staging;
             NodeList adds = document.getElementsByTagName("add");
             for (int i = 0; i < adds.getLength(); i++) {
                 Node node = adds.item(i);
                 if (!(node instanceof Element)) continue;
                 Element add = (Element) node;
-                String source = add.getAttribute("source");
-                String targetPath = add.getAttribute("destination");
                 boolean insideArchive = false;
                 for (Node parent = add.getParentNode(); parent != null; parent = parent.getParentNode()) {
                     if (parent instanceof Element && "archive".equalsIgnoreCase(((Element) parent).getTagName())) {
@@ -307,8 +317,12 @@ public class Glue5Activity extends SDLActivity {
                     }
                 }
                 if (insideArchive) { skippedArchive++; continue; }
+                String source = add.getAttribute("source");
+                // OpenIV 2.2 stores the destination in the element text;
+                // the legacy install.xml dialect used a destination attribute.
+                String targetPath = standardOiv ? add.getTextContent().trim() : add.getAttribute("destination");
                 if (source.isEmpty() || targetPath.isEmpty()) { skippedUnsupported++; continue; }
-                File sourceFile = safePackageFile(staging, source);
+                File sourceFile = safePackageFile(sourceRoot, source);
                 if (sourceFile == null || !sourceFile.isFile()) { skippedUnsupported++; continue; }
                 String relative = normalizeGameDataPath(targetPath);
                 if (relative == null || relative.toLowerCase(java.util.Locale.ROOT).endsWith(".rpf")) {
