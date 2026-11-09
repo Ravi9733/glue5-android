@@ -444,7 +444,7 @@ impl RpfBuilder {
                     entries_buf.extend_from_slice(&(0x80000000u32 | entries_index).to_le_bytes());
                     entries_buf.extend_from_slice(&entries_count.to_le_bytes());
                 }
-                FlatKind::Binary { file_offset, file_size: _, uncompressed_size } => {
+                FlatKind::Binary { file_offset, file_size: _, uncompressed_size, .. } => {
                     // For stored binary: dword8 = raw_offset (V2/V3) or raw_offset/8 (V4)
                     let stored_offset = if offset_shift { file_offset / 8 } else { *file_offset };
                     entries_buf.extend_from_slice(&dword0.to_le_bytes());
@@ -561,7 +561,7 @@ impl RpfBuilder {
                     entries_buf.extend_from_slice(&entries_count.to_be_bytes());// dwordC EntryCount
                     entries_buf.extend_from_slice(&0u32.to_be_bytes());         // dword10
                 }
-                FlatKind::Binary { file_offset, file_size, uncompressed_size } => {
+                FlatKind::Binary { file_offset, file_size, uncompressed_size, .. } => {
                     // raw_offset = file_offset / 8 (stored as offset>>3)
                     let raw = (*file_offset / 8) & 0x7FFFFFFF;
                     entries_buf.extend_from_slice(&hash.to_be_bytes());
