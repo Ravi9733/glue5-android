@@ -487,7 +487,7 @@ public class Glue5Activity extends SDLActivity {
      * case-insensitively, but reject ambiguous names and every symlink.
      */
     private static File safePackageFile(File root, String path) throws Exception {
-        String normalized = path.replace('\\\\', '/');
+        String normalized = path.replace('\\', '/');
         if (normalized.isEmpty() || normalized.startsWith("/")
                 || normalized.matches("^[A-Za-z]:.*")) return null;
         String[] parts = normalized.split("/", -1);
@@ -528,10 +528,14 @@ public class Glue5Activity extends SDLActivity {
 
     /** Accept only a complete RPF file path, never a path inside an archive. */
     private static String normalizeWholeRpfPath(String path) {
-        String value = path.replace('\\\\', '/').replaceAll("^/+", "");
+        String value = path.replace('\\', '/').replaceAll("^/+", "");
         if (value.matches("^[A-Za-z]:.*")) return null;
         while (value.startsWith("./")) value = value.substring(2);
+        if (value.regionMatches(true, 0, "data/", 0, 5)) value = value.substring(5);
         if (value.isEmpty()) return null;
+        for (String part : value.split("/")) {
+            if (part.isEmpty() || part.equals(".") || part.equals("..")) return null;
+        }
         String lower = value.toLowerCase(java.util.Locale.ROOT);
         if (!lower.endsWith(".rpf") || lower.contains(".rpf/")) return null;
         for (String part : value.split("/")) {
