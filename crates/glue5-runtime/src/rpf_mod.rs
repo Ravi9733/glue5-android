@@ -561,6 +561,52 @@ mod tests {
     }
 
     #[test]
+    fn replaces_aes_encrypted_ysc_resource_and_preserves_rsc7_flags() {
+        let root = temp_dir();
+        let content = root.join("content");
+        let keys_dir = root.join("rpf-keys");
+        fs::create_dir_all(&content).unwrap();
+        fs::create_dir_all(&keys_dir).unwrap();
+
+        let aes_key = [0xA5u8; 32];
+        fs::write(keys_dir.join("gtav_aes_key.dat"), aes_key).unwrap();
+        let keys = GtaKeys {
+            aes_key,
+            ng_keys: Vec::new(),
+            ng_decrypt_tables: Box::new([[[0u32; 256]; 16]; 17]),
+        };
+
+        let mut replacement = Vec::new();
+        replacement.extend_from_slice(&rpf_archive::RSC7_MAGIC.to_le_bytes());
+        replacement.extend_from_slice(&0x12u32.to_le_bytes());
+        replacement.extend_from_slice(&0x10000000u32.to_le_bytes());
+        replacement.extend_from_slice(&0x20000000u32.to_le_bytes());
+        replacement.extend_from_slice(b"new-script-body");
+        fs::write(content.join("script.ysc"), &replacement).unwrap();
+
+        let mut original_resource = replacement.clone();
+        original_resource[16..].copy_from_slice(b"old-script-body");
+        let mut builder = RpfBuilder::new(RpfEncryption::Aes);
+        builder.add_encrypted_resource("common/data/script.ysc", original_resource, Some(&keys)).unwrap();
+        let original = builder.build(Some(&keys)).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><add source="script.ysc">common/data/script.ysc</add></archive>"#;
+        let count = apply_oiv_rpf_archive(
+            &original_path, xml, &content, &output_path, Some(&keys_dir)
+        ).unwrap();
+        assert_eq!(count, 1);
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", Some(&keys)).unwrap();
+        let entry = archive.entries.iter().find(|entry| entry.name_lower == "script.ysc").unwrap();
+        assert_eq!(archive.extract_entry(&rebuilt, entry, Some(&keys)).unwrap(), replacement);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn replaces_open_archive_ysc_resource_without_losing_resource_flags() {
         let root = temp_dir();
         let content = root.join("content");
