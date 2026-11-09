@@ -545,6 +545,11 @@ mod tests {
 
         let mut builder = RpfBuilder::new(RpfEncryption::Aes);
         builder.add_file("common/data/example.bin", b"old-data".to_vec());
+        builder.add_encrypted_binary(
+            "common/data/protected.bin",
+            b"preserve this individually encrypted payload".to_vec(),
+            Some(&keys),
+        ).unwrap();
         let original = builder.build(Some(&keys)).unwrap();
         let original_path = root.join("original.rpf");
         fs::write(&original_path, &original).unwrap();
@@ -560,6 +565,11 @@ mod tests {
         let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", Some(&keys)).unwrap();
         let entry = archive.entries.iter().find(|entry| entry.name_lower == "example.bin").unwrap();
         assert_eq!(archive.extract_entry(&rebuilt, entry, Some(&keys)).unwrap(), b"new-data".to_vec());
+        let protected = archive.entries.iter().find(|entry| entry.name_lower == "protected.bin").unwrap();
+        assert_eq!(
+            archive.extract_entry(&rebuilt, protected, Some(&keys)).unwrap(),
+            b"preserve this individually encrypted payload".to_vec()
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
