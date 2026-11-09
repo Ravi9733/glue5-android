@@ -98,7 +98,8 @@ fn collect_oiv_adds(
 }
 
 fn safe_relative(value: &str) -> Result<String> {
-    let value = value.replace('\\', "/");
+    let mut value = value.replace('\\', "/");
+    while value.starts_with("./") { value.drain(..2); }
     if value.is_empty() || value.starts_with('/') || value.starts_with("//") {
         bail!("empty or absolute archive path");
     }
@@ -185,6 +186,21 @@ fn rewrite_archive(
 
     for file in files {
         let entry = &archive.entries[file.entry_index];
+        match &entry.kind {
+            rpf_archive::RpfEntryKind::BinaryFile {
+                file_size, uncompressed_size, is_encrypted, ..
+            } => {
+                if *is_encrypted || (*file_size > 0 && file_size < uncompressed_size) {
+                    bail!("cannot safely rebuild compressed or individually encrypted entry {}", file.path);
+                }
+            }
+            rpf_archive::RpfEntryKind::ResourceFile { is_encrypted, .. } => {
+                if *is_encrypted {
+                    bail!("cannot safely rebuild individually encrypted resource {}", file.path);
+                }
+            }
+            rpf_archive::RpfEntryKind::Directory { .. } => continue,
+        }
         let mut bytes = archive.extract_entry(data, entry, keys)
             .with_context(|| format!("cannot extract {}", file.path))?;
         let full_path = join_archive_path(prefix, &file.path).to_ascii_lowercase();
