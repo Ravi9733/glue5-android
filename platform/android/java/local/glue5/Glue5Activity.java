@@ -387,7 +387,12 @@ public class Glue5Activity extends SDLActivity {
                     File sourceFile = safePackageFile(sourceRoot, source);
                     if (sourceFile == null || !sourceFile.isFile()) { skippedUnsupported++; continue; }
                     String relative = normalizeGameDataPath(targetPath);
-                    if (relative == null || relative.toLowerCase(java.util.Locale.ROOT).endsWith(".rpf")) {
+                    boolean wholeRpf = false;
+                    if (relative == null) {
+                        relative = normalizeWholeRpfPath(targetPath);
+                        wholeRpf = relative != null;
+                    }
+                    if (relative == null) {
                         skippedUnsupported++;
                         continue;
                     }
@@ -397,6 +402,8 @@ public class Glue5Activity extends SDLActivity {
                         skippedUnsupported++;
                         continue;
                     }
+                    // A complete, same-size RPF can be mounted as a VFS replacement.
+                    // This does not edit an encrypted RPF or apply nested archive commands.
                     installGraphicsReplacement(sourceFile, overlay, relative, installedOutputs);
                     installed++;
                 }
@@ -486,6 +493,21 @@ public class Glue5Activity extends SDLActivity {
         String lower = value.toLowerCase(java.util.Locale.ROOT);
         if (lower.contains(".rpf/") || lower.endsWith(".rpf") || lower.startsWith("update/")) return null;
         if (!(lower.startsWith("common/") || lower.startsWith("x64/"))) return null;
+        return value;
+    }
+
+    /** Accept only a complete RPF file path, never a path inside an archive. */
+    private static String normalizeWholeRpfPath(String path) {
+        String value = path.replace('\\\\', '/').replaceAll("^/+", "");
+        if (value.matches("^[A-Za-z]:.*")) return null;
+        while (value.startsWith("./")) value = value.substring(2);
+        if (value.isEmpty()) return null;
+        String lower = value.toLowerCase(java.util.Locale.ROOT);
+        if (!lower.endsWith(".rpf") || lower.contains(".rpf/")) return null;
+        for (String part : value.split("/")) {
+            if (part.isEmpty() || part.equals(".") || part.equals("..")) return null;
+        }
+        if (!(lower.startsWith("common/") || lower.startsWith("x64/") || lower.startsWith("update/"))) return null;
         return value;
     }
 
