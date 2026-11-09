@@ -463,8 +463,8 @@ public class Glue5Activity extends SDLActivity {
                         skippedUnsupported++;
                         continue;
                     }
-                    // A complete, same-size RPF can be mounted as a VFS replacement.
-                    // This does not edit an encrypted RPF or apply nested archive commands.
+                    // Direct whole-file RPF replacements are mounted as-is. Nested
+                    // archive commands are rebuilt in the native RPF path above.
                     installGraphicsReplacement(sourceFile, overlay, relative, installedOutputs);
                     installed++;
                     if (wholeRpf) installedRpf++;
@@ -516,7 +516,7 @@ public class Glue5Activity extends SDLActivity {
             deleteTree(staging);
             throw e;
         }
-        return "Graphics package saved: " + folderName + ". Active loose files: " + installed
+        return "Graphics package saved: " + folderName + ". Active replacements: " + installed
                 + "; RPF archives edited/replaced: " + installedRpf
                 + "; nested RPF operations not applied or unsupported: " + skippedArchive
                 + "; other unsupported entries: " + skippedUnsupported
