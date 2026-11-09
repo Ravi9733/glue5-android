@@ -122,8 +122,33 @@ fn join_archive_path(prefix: &str, path: &str) -> String {
 
 fn safe_source_file(root: &Path, relative: &str) -> Result<PathBuf> {
     let relative = safe_relative(relative)?;
-    let candidate = root.join(relative);
-    let canonical = candidate.canonicalize().context("OIV source file is missing")?;
+    let mut current = root.to_path_buf();
+    for component in relative.split('/') {
+        let entries = fs::read_dir(&current)
+            .with_context(|| format!("cannot read OIV source folder {}", current.display()))?;
+        let mut exact = None;
+        let mut folded = None;
+        for entry in entries {
+            let entry = entry?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name == component {
+                exact = Some(entry.path());
+                break;
+            }
+            if name.eq_ignore_ascii_case(component) {
+                if folded.is_some() {
+                    bail!("ambiguous case-insensitive OIV source path: {relative}");
+                }
+                folded = Some(entry.path());
+            }
+        }
+        current = exact.or(folded).context("OIV source file is missing")?;
+        if fs::symlink_metadata(&current)?.file_type().is_symlink() {
+            bail!("OIV source path contains a symbolic link");
+        }
+    }
+    let canonical = current.canonicalize().context("cannot resolve OIV source file")?;
     if !canonical.starts_with(root) || !canonical.is_file() {
         bail!("OIV source escapes content folder or is not a file");
     }
