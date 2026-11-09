@@ -424,14 +424,19 @@ public class Glue5Activity extends SDLActivity {
                                   : ". Original game data remains unchanged.");
     }
 
+    /** Find package metadata iteratively so deeply nested ZIP paths cannot exhaust the Java stack. */
     private static File findNamedFile(File root, String name) {
-        File[] children = root.listFiles();
-        if (children == null) return null;
-        for (File child : children) {
-            if (child.isFile() && child.getName().equalsIgnoreCase(name)) return child;
-            if (child.isDirectory()) {
-                File found = findNamedFile(child, name);
-                if (found != null) return found;
+        java.util.ArrayDeque<File> pending = new java.util.ArrayDeque<>();
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            File dir = pending.removeFirst();
+            File[] children = dir.listFiles();
+            if (children == null) continue;
+            for (File child : children) {
+                if (child.isFile() && child.getName().equalsIgnoreCase(name)) return child;
+                if (child.isDirectory() && !java.nio.file.Files.isSymbolicLink(child.toPath())) {
+                    pending.addLast(child);
+                }
             }
         }
         return null;
@@ -626,14 +631,32 @@ public class Glue5Activity extends SDLActivity {
         return output.toByteArray();
     }
 
+    /**
+     * Delete without following symbolic links. ZIP imports and cleanup must
+     * never recurse through a link into unrelated user storage.
+     */
     private static void deleteTree(File file) {
-        if (file.isDirectory()) {
-            File[] children = file.listFiles();
-            if (children != null) {
-                for (File child : children) deleteTree(child);
-            }
+        if (file == null || !file.exists() && !java.nio.file.Files.isSymbolicLink(file.toPath())) return;
+        try {
+            java.nio.file.Files.walkFileTree(file.toPath(), new java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
+                @Override
+                public java.nio.file.FileVisitResult visitFile(java.nio.file.Path path,
+                        java.nio.file.attribute.BasicFileAttributes attrs) throws java.io.IOException {
+                    java.nio.file.Files.deleteIfExists(path);
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public java.nio.file.FileVisitResult postVisitDirectory(java.nio.file.Path path,
+                        java.io.IOException error) throws java.io.IOException {
+                    if (error != null) throw error;
+                    java.nio.file.Files.deleteIfExists(path);
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (java.io.IOException e) {
+            e.printStackTrace();
         }
-        file.delete();
     }
 
     @Override
