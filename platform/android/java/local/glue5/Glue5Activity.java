@@ -112,6 +112,17 @@ public class Glue5Activity extends SDLActivity {
 
     private void checkTurnipImportRequest() {
         if (isFinishing() || turnipPickerOpen || graphicsPickerOpen) return;
+        File clearGraphicsRequest = new File(getFilesDir(), "graphics-mod-clear-request");
+        if (clearGraphicsRequest.isFile() && clearGraphicsRequest.delete()) {
+            try {
+                clearGraphicsMods();
+                Toast.makeText(this, "Graphics mods removed. Original GTA V files are unchanged.", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Cannot remove graphics mods: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+            return;
+        }
         File graphicsRequest = new File(getFilesDir(), "graphics-mod-import-request");
         if (graphicsRequest.isFile() && graphicsRequest.delete()) {
             graphicsPickerOpen = true;
@@ -125,6 +136,18 @@ public class Glue5Activity extends SDLActivity {
             return;
         }
         turnipHandler.postDelayed(turnipImportWatcher, 500);
+    }
+
+    /** Remove only Glue 5's separate graphics overlay and imported package copies. */
+    private void clearGraphicsMods() throws Exception {
+        File root = new File(Environment.getExternalStorageDirectory(), "GTA5/GraphicsMods");
+        if (!root.exists()) return;
+        File[] children = root.listFiles();
+        if (children == null) throw new Exception("Cannot list GTA5/GraphicsMods");
+        for (File child : children) {
+            deleteTree(child);
+            if (child.exists()) throw new Exception("Cannot remove " + child.getName());
+        }
     }
 
     private void openGraphicsArchivePicker() {
