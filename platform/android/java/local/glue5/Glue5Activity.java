@@ -138,13 +138,30 @@ public class Glue5Activity extends SDLActivity {
         turnipHandler.postDelayed(turnipImportWatcher, 500);
     }
 
-    /** Remove only Glue 5's separate graphics overlay and imported package copies. */
+    /** Remove Glue 5's overlay and only package folders created by this importer. */
     private void clearGraphicsMods() throws Exception {
         File root = new File(Environment.getExternalStorageDirectory(), "GTA5/GraphicsMods");
         if (!root.exists()) return;
+        File canonicalRoot = root.getCanonicalFile();
+        File active = new File(root, "active");
+        if (active.exists()) {
+            if (!canonicalRoot.equals(active.getCanonicalFile().getParentFile())) {
+                throw new Exception("Graphics overlay path is not a safe child of GTA5/GraphicsMods");
+            }
+            deleteTree(active);
+            if (active.exists()) throw new Exception("Cannot remove active graphics overlay");
+        }
         File[] children = root.listFiles();
         if (children == null) throw new Exception("Cannot list GTA5/GraphicsMods");
         for (File child : children) {
+            if (child.getName().equals("active")) continue;
+            boolean importerPackage = child.isDirectory()
+                    && (new File(child, "GLUE5_IMPORT_INFO.txt").isFile()
+                    || child.getName().endsWith(".installing"));
+            if (!importerPackage) continue;
+            if (!canonicalRoot.equals(child.getCanonicalFile().getParentFile())) {
+                throw new Exception("Unsafe graphics package path: " + child.getName());
+            }
             deleteTree(child);
             if (child.exists()) throw new Exception("Cannot remove " + child.getName());
         }
