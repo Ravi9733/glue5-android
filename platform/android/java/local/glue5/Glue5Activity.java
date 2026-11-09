@@ -394,11 +394,15 @@ public class Glue5Activity extends SDLActivity {
 
         try {
             File info = new File(staging, "GLUE5_IMPORT_INFO.txt");
-            String note = "Imported archive: " + displayName + "\n"
-                    + "Supported loose files installed into GTA5/GraphicsMods/active: " + installed + "\n"
-                    + "RPF/archive instructions skipped (RPF editing is not yet supported): " + skippedArchive + "\n"
-                    + "Other unsupported or size-mismatched entries skipped: " + skippedUnsupported + "\n"
-                    + "Original GTA V game/data files were not modified. Glue 5 reads active loose-file replacements through its VFS overlay.\n";
+            String note = "Graphics package import report\n"
+                    + "Archive: " + displayName + "\n"
+                    + "Loose-file replacements installed: " + installed + "\n"
+                    + "RPF archive operations not applied: " + skippedArchive + "\n"
+                    + "Unsupported, missing, or size-mismatched entries: " + skippedUnsupported + "\n"
+                    + (installed == 0
+                        ? "STATUS: Package extracted, but no game files were activated. This archive may contain only RPF edits or unsupported entries.\n"
+                        : "STATUS: Supported loose-file replacements are active through Glue 5's VFS overlay.\n")
+                    + "Original GTA V game/data files were not modified.\n";
             try (FileOutputStream output = new FileOutputStream(info)) {
                 output.write(note.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
@@ -413,8 +417,11 @@ public class Glue5Activity extends SDLActivity {
             deleteTree(staging);
             throw e;
         }
-        return "GTA5/GraphicsMods/" + folderName + " (installed " + installed + " loose files; " +
-                skippedArchive + " RPF entries skipped)";
+        return "Graphics package saved: " + folderName + ". Active loose files: " + installed
+                + "; RPF operations not applied: " + skippedArchive
+                + "; other unsupported entries: " + skippedUnsupported
+                + (installed == 0 ? ". No game changes were activated; see GLUE5_IMPORT_INFO.txt."
+                                  : ". Original game data remains unchanged.");
     }
 
     private static File findNamedFile(File root, String name) {
