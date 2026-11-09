@@ -318,73 +318,78 @@ public class Glue5Activity extends SDLActivity {
         int installed = 0;
         int skippedArchive = 0;
         int skippedUnsupported = 0;
-        // OpenIV 2.2 uses assembly.xml and stores add-source files under
-        // content/. Keep the older install.xml layout as a compatibility path.
-        File assemblyXml = findNamedFile(staging, "assembly.xml");
-        File installXml = assemblyXml == null ? findNamedFile(staging, "install.xml") : assemblyXml;
-        if (installXml != null) {
-            boolean standardOiv = assemblyXml != null;
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            factory.setXIncludeAware(false);
-            factory.setExpandEntityReferences(false);
-            try { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, ""); } catch (Exception ignored) {}
-            try { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, ""); } catch (Exception ignored) {}
-            org.w3c.dom.Document document;
-            try (InputStream xml = new java.io.FileInputStream(installXml)) {
-                document = factory.newDocumentBuilder().parse(xml);
-            }
-            if (standardOiv) {
-                Element packageRoot = document.getDocumentElement();
-                if (packageRoot == null || !"package".equalsIgnoreCase(packageRoot.getTagName())
-                        || !"Five".equalsIgnoreCase(packageRoot.getAttribute("target"))) {
-                    throw new Exception("Unsupported OIV package: expected a GTA V (Five) assembly.xml");
+        java.util.ArrayList<File> installedOutputs = new java.util.ArrayList<>();
+        try {
+            // OpenIV 2.2 uses assembly.xml and stores add-source files under
+            // content/. Keep the older install.xml layout as a compatibility path.
+            File assemblyXml = findNamedFile(staging, "assembly.xml");
+            File installXml = assemblyXml == null ? findNamedFile(staging, "install.xml") : assemblyXml;
+            if (installXml != null) {
+                boolean standardOiv = assemblyXml != null;
+                DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+                factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+                factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+                factory.setXIncludeAware(false);
+                factory.setExpandEntityReferences(false);
+                try { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, ""); } catch (Exception ignored) {}
+                try { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, ""); } catch (Exception ignored) {}
+                org.w3c.dom.Document document;
+                try (InputStream xml = new java.io.FileInputStream(installXml)) {
+                    document = factory.newDocumentBuilder().parse(xml);
                 }
-            }
-            File sourceRoot = standardOiv ? new File(staging, "content") : staging;
-            NodeList adds = document.getElementsByTagName("add");
-            for (int i = 0; i < adds.getLength(); i++) {
-                Node node = adds.item(i);
-                if (!(node instanceof Element)) continue;
-                Element add = (Element) node;
-                boolean insideArchive = false;
-                for (Node parent = add.getParentNode(); parent != null; parent = parent.getParentNode()) {
-                    if (parent instanceof Element && "archive".equalsIgnoreCase(((Element) parent).getTagName())) {
-                        insideArchive = true;
-                        break;
+                if (standardOiv) {
+                    Element packageRoot = document.getDocumentElement();
+                    if (packageRoot == null || !"package".equalsIgnoreCase(packageRoot.getTagName())
+                            || !"Five".equalsIgnoreCase(packageRoot.getAttribute("target"))) {
+                        throw new Exception("Unsupported OIV package: expected a GTA V (Five) assembly.xml");
                     }
                 }
-                if (insideArchive) { skippedArchive++; continue; }
-                String source = add.getAttribute("source");
-                // OpenIV 2.2 stores the destination in the element text;
-                // the legacy install.xml dialect used a destination attribute.
-                String targetPath = standardOiv ? add.getTextContent().trim() : add.getAttribute("destination");
-                if (source.isEmpty() || targetPath.isEmpty()) { skippedUnsupported++; continue; }
-                File sourceFile = safePackageFile(sourceRoot, source);
-                if (sourceFile == null || !sourceFile.isFile()) { skippedUnsupported++; continue; }
-                String relative = normalizeGameDataPath(targetPath);
-                if (relative == null || relative.toLowerCase(java.util.Locale.ROOT).endsWith(".rpf")) {
-                    skippedUnsupported++;
-                    continue;
+                File sourceRoot = standardOiv ? new File(staging, "content") : staging;
+                NodeList adds = document.getElementsByTagName("add");
+                for (int i = 0; i < adds.getLength(); i++) {
+                    Node node = adds.item(i);
+                    if (!(node instanceof Element)) continue;
+                    Element add = (Element) node;
+                    boolean insideArchive = false;
+                    for (Node parent = add.getParentNode(); parent != null; parent = parent.getParentNode()) {
+                        if (parent instanceof Element && "archive".equalsIgnoreCase(((Element) parent).getTagName())) {
+                            insideArchive = true;
+                            break;
+                        }
+                    }
+                    if (insideArchive) { skippedArchive++; continue; }
+                    String source = add.getAttribute("source");
+                    String targetPath = standardOiv ? add.getTextContent().trim() : add.getAttribute("destination");
+                    if (source.isEmpty() || targetPath.isEmpty()) { skippedUnsupported++; continue; }
+                    File sourceFile = safePackageFile(sourceRoot, source);
+                    if (sourceFile == null || !sourceFile.isFile()) { skippedUnsupported++; continue; }
+                    String relative = normalizeGameDataPath(targetPath);
+                    if (relative == null || relative.toLowerCase(java.util.Locale.ROOT).endsWith(".rpf")) {
+                        skippedUnsupported++;
+                        continue;
+                    }
+                    File original = new File(Environment.getExternalStorageDirectory(),
+                            "GTA5/game/data/" + relative);
+                    if (!original.isFile() || original.length() != sourceFile.length()) {
+                        skippedUnsupported++;
+                        continue;
+                    }
+                    installGraphicsReplacement(sourceFile, overlay, relative, installedOutputs);
+                    installed++;
                 }
-                File original = new File(Environment.getExternalStorageDirectory(),
-                        "GTA5/game/data/" + relative);
-                if (!original.isFile() || original.length() != sourceFile.length()) {
-                    skippedUnsupported++;
-                    continue;
-                }
-                File output = new File(overlay, relative);
-                if (!isChildOf(overlay, output)) throw new Exception("Unsafe OIV destination path");
-                File parent = output.getParentFile();
-                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new Exception("Cannot create overlay folder");
-                copyFile(sourceFile, output);
-                installed++;
+            } else {
+                installed = importLooseZipFiles(staging, overlay, installedOutputs);
             }
-        } else {
-            // Plain ZIPs may contain loose files rooted at common/ or x64/.
-            installed += importLooseZipFiles(staging, overlay);
+        } catch (Exception e) {
+            for (int i = installedOutputs.size() - 1; i >= 0; i--) {
+                File output = installedOutputs.get(i);
+                if (output.exists() && !output.delete()) {
+                    e.addSuppressed(new Exception("Could not roll back " + output.getName()));
+                }
+            }
+            deleteTree(staging);
+            throw e;
         }
 
         File info = new File(staging, "GLUE5_IMPORT_INFO.txt");
@@ -454,7 +459,30 @@ public class Glue5Activity extends SDLActivity {
         }
     }
 
-    private static int importLooseZipFiles(File packageRoot, File overlay) throws Exception {
+    /** Install a replacement without silently overwriting another mod's file. */
+    private static void installGraphicsReplacement(File source, File overlay, String relative,
+            java.util.ArrayList<File> installedOutputs) throws Exception {
+        File output = new File(overlay, relative);
+        if (!isChildOf(overlay, output)) throw new Exception("Unsafe graphics overlay path");
+        if (output.exists()) {
+            throw new Exception("Graphics mod conflict at " + relative
+                    + ". Remove all graphics mods before installing a different package set.");
+        }
+        File parent = output.getParentFile();
+        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+            throw new Exception("Cannot create overlay folder for " + relative);
+        }
+        try {
+            copyFile(source, output);
+            installedOutputs.add(output);
+        } catch (Exception e) {
+            output.delete();
+            throw e;
+        }
+    }
+
+    private static int importLooseZipFiles(File packageRoot, File overlay,
+            java.util.ArrayList<File> installedOutputs) throws Exception {
         int installed = 0;
         java.util.ArrayDeque<File> pending = new java.util.ArrayDeque<>();
         pending.add(packageRoot);
@@ -469,11 +497,7 @@ public class Glue5Activity extends SDLActivity {
                 if (targetPath == null) continue;
                 File original = new File(Environment.getExternalStorageDirectory(), "GTA5/game/data/" + targetPath);
                 if (!original.isFile() || original.length() != child.length()) continue;
-                File output = new File(overlay, targetPath);
-                if (!isChildOf(overlay, output)) continue;
-                File parent = output.getParentFile();
-                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) continue;
-                copyFile(child, output);
+                installGraphicsReplacement(child, overlay, targetPath, installedOutputs);
                 installed++;
             }
         }
