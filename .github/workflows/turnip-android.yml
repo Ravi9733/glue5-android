@@ -35,6 +35,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Preserve Cargo build artifacts between runner restarts so a
+      # transient hosted-runner shutdown does not force a full cold compile.
+      - name: Cache Rust and native build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          cache-on-failure: true
+
       - name: Fetch game.wasm from the draft release
         id: game
         run: |
