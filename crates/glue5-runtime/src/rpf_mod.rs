@@ -306,7 +306,9 @@ fn rewrite_archive(
                         builder.add_file(&file.path, replacement);
                     }
                 }
-                rpf_archive::RpfEntryKind::Directory { .. } => continue,
+                rpf_archive::RpfEntryKind::Directory { .. } => {
+                    bail!("OIV replacement target is a directory, not a file: {}", file.path);
+                }
             }
             applied += 1;
             continue;
@@ -435,6 +437,26 @@ mod tests {
         let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
         let entry = archive.entries.iter().find(|entry| entry.name_lower == "example.bin").unwrap();
         assert_eq!(archive.extract_entry(&rebuilt, entry, None).unwrap(), b"new-data".to_vec());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_replacing_a_directory_with_a_file() {
+        let root = temp_dir();
+        let content = root.join("content");
+        fs::create_dir_all(content.join("replacement")).unwrap();
+        fs::write(content.join("replacement.bin"), b"replacement").unwrap();
+
+        let mut builder = RpfBuilder::new(RpfEncryption::Open);
+        builder.add_file("common/data/folder/inside.bin", b"inside".to_vec());
+        let original = builder.build(None).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><add source="replacement.bin">common/data/folder</add></archive>"#;
+        assert!(apply_oiv_rpf_archive(&original_path, xml, &content, &output_path, None).is_err());
+        assert!(!output_path.exists());
         fs::remove_dir_all(root).unwrap();
     }
 
