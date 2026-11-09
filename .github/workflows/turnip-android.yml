@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - turnip-driver-integration
+      - turnip-45-60-performance
 
 permissions:
   contents: write
