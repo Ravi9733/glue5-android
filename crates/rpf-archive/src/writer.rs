@@ -268,12 +268,19 @@ impl RpfBuilder {
         let mut current_block = header_blocks as u32;
         let mut file_idx = 0usize;
         for entry in flat.iter_mut() {
+            if entry.name_offset > u16::MAX as u32 {
+                bail!("RPF7 name table exceeds the 16-bit entry offset for {}", entry.name);
+            }
             match &mut entry.kind {
                 FlatKind::Binary   { file_offset, file_size, .. }
                 | FlatKind::Resource { file_offset, file_size, .. } => {
-                    let blocks = (file_data[file_idx].len() as u32 + 511) / 512;
+                    let stored_len = file_data[file_idx].len();
+                    if stored_len > 0xFFFFFF {
+                        bail!("RPF7 stored entry exceeds the 24-bit size field: {}", entry.name);
+                    }
+                    let blocks = (stored_len as u32 + 511) / 512;
                     *file_offset = current_block;
-                    *file_size   = file_data[file_idx].len() as u32;
+                    *file_size   = stored_len as u32;
                     current_block += blocks;
                     file_idx += 1;
                 }
