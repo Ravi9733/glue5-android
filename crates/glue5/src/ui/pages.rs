@@ -865,6 +865,21 @@ fn settings_items(
                     response
                 });
             }
+            if cfg!(target_os = "android") {
+                setting(
+                    ui,
+                    "iOS graphics mod",
+                    Control::Action,
+                    Some("Import an OpenIV .oiv or graphics .zip archive"),
+                    |ui| {
+                        let response = action_button(ui, "Import OIV / ZIP");
+                        if response.clicked() {
+                            actions.push(Action::ImportGraphicsArchive);
+                        }
+                        response
+                    },
+                );
+            }
             let mode = setting(
                 ui,
                 "Light graphics + natural colours",
