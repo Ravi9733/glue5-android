@@ -7,13 +7,16 @@ on:
     branches:
       - turnip-driver-integration
       - ios-graphics-oiv-zip-installer
+    paths-ignore:
+      - .github/workflows/build.yml
 
 permissions:
   contents: write
 
 concurrency:
-  group: turnip-android-integration-v6
-  cancel-in-progress: true
+  # Queue builds instead of terminating an in-progress native compilation.
+  group: glue5-android-release-build
+  cancel-in-progress: false
 
 jobs:
   build:
