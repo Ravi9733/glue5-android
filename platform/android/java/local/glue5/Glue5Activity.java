@@ -397,8 +397,9 @@ public class Glue5Activity extends SDLActivity {
                         skippedUnsupported++;
                         continue;
                     }
-                    File original = new File(Environment.getExternalStorageDirectory(),
-                            "GTA5/game/data/" + relative);
+                    File gameDataRoot = new File(Environment.getExternalStorageDirectory(),
+                            "GTA5/game/data");
+                    File original = safePackageFile(gameDataRoot, relative);
                     if (!original.isFile() || original.length() != sourceFile.length()) {
                         skippedUnsupported++;
                         continue;
@@ -595,7 +596,8 @@ public class Glue5Activity extends SDLActivity {
                     wholeRpf = targetPath != null;
                 }
                 if (targetPath == null) continue;
-                File original = new File(Environment.getExternalStorageDirectory(), "GTA5/game/data/" + targetPath);
+                File gameDataRoot = new File(Environment.getExternalStorageDirectory(), "GTA5/game/data");
+                File original = safePackageFile(gameDataRoot, targetPath);
                 if (!original.isFile() || original.length() != child.length()) continue;
                 installGraphicsReplacement(child, overlay, targetPath, installedOutputs);
                 installed++;
