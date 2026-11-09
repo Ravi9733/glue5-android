@@ -340,6 +340,7 @@ public class Glue5Activity extends SDLActivity {
         int skippedArchive = 0;
         int skippedUnsupported = 0;
         java.util.ArrayList<String> archiveTargets = new java.util.ArrayList<>();
+        java.util.ArrayList<String> archiveWarnings = new java.util.ArrayList<>();
         java.util.ArrayList<File> installedOutputs = new java.util.ArrayList<>();
         try {
             // OpenIV 2.2 uses assembly.xml and stores add-source files under
@@ -409,6 +410,9 @@ public class Glue5Activity extends SDLActivity {
                                 || !rebuiltArchive.isFile()
                                 || rebuiltArchive.length() != originalArchive.length()) {
                             skippedArchive++;
+                            if (archiveWarnings.size() < 20) {
+                                archiveWarnings.add(archivePath + ": " + (result == null ? "native RPF editor returned no result" : result));
+                            }
                             if (rebuiltArchive.exists()) rebuiltArchive.delete();
                             continue;
                         }
@@ -417,6 +421,9 @@ public class Glue5Activity extends SDLActivity {
                         installedRpf++;
                     } catch (Exception archiveError) {
                         skippedArchive++;
+                        if (archiveWarnings.size() < 20) {
+                            archiveWarnings.add(archivePath + ": " + archiveError.getMessage());
+                        }
                         if (rebuiltArchive.exists()) rebuiltArchive.delete();
                     }
                 }
@@ -482,9 +489,10 @@ public class Glue5Activity extends SDLActivity {
             File info = new File(staging, "GLUE5_IMPORT_INFO.txt");
             String note = "Graphics package import report\n"
                     + "Archive: " + displayName + "\n"
-                    + "Loose-file and whole-file replacements installed: " + installed + "\n"
+                    + "Loose-file and edited/whole-file RPF replacements installed: " + installed + "\n"
                     + "Complete RPF replacements installed: " + installedRpf + "\n"
                     + "Nested RPF archive operations not applied or unsupported: " + skippedArchive + "\n"
+                    + (archiveWarnings.isEmpty() ? "" : "RPF warnings: " + android.text.TextUtils.join(" | ", archiveWarnings) + "\n")
                     + "RPF archive targets declared by package: " + archiveTargets.size() + "\n"
                     + (archiveTargets.isEmpty() ? "" : "Archive targets: " + android.text.TextUtils.join(", ", archiveTargets) + "\n")
                     + "Unsupported, missing, or size-mismatched entries: " + skippedUnsupported + "\n"
