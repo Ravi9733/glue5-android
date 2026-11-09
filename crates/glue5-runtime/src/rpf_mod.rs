@@ -581,11 +581,11 @@ mod tests {
         replacement.extend_from_slice(&0x12u32.to_le_bytes());
         replacement.extend_from_slice(&0x10000000u32.to_le_bytes());
         replacement.extend_from_slice(&0x20000000u32.to_le_bytes());
-        replacement.extend_from_slice(b"new-script-body");
+        replacement.extend_from_slice(&vec![b'N'; 32]);
         fs::write(content.join("script.ysc"), &replacement).unwrap();
 
         let mut original_resource = replacement.clone();
-        original_resource[16..].copy_from_slice(b"old-script-body");
+        original_resource[16..].copy_from_slice(&vec![b'O'; 32]);
         let mut builder = RpfBuilder::new(RpfEncryption::Aes);
         builder.add_encrypted_resource("common/data/script.ysc", original_resource, Some(&keys)).unwrap();
         let original = builder.build(Some(&keys)).unwrap();
