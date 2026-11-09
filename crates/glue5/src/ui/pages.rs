@@ -48,227 +48,112 @@ pub(super) const READY: Color32 = Color32::from_rgb(120, 205, 145);
 #[allow(clippy::too_many_arguments)]
 pub(super) fn start_page(
     ctx: &egui::Context,
-    _settings: &mut Settings,
+    settings: &mut Settings,
     status: &Status,
     starting: Option<Mode>,
-    _online_open: &mut bool,
+    online_open: &mut bool,
     actions: &mut Vec<Action>,
     go: &mut Option<Option<Page>>,
 ) -> Option<Mode> {
-    let screen = ctx.content_rect();
-    let scale = theme::layout_scale(screen);
+    let safe = ctx.content_rect();
+    let scale = theme::layout_scale(safe);
+    let edge = 16.0 * scale;
+    let available = (safe.width() - 2.0 * edge).clamp(1.0, 1100.0).floor();
+    let gap = 32.0 * scale;
+    // Upright screens read better in one column: a phone, a tablet.
+    let two_columns = available >= 600.0 * scale && safe.width() >= safe.height();
+    let width = if two_columns { available } else { available.min(520.0) };
+    let menu_width = if two_columns { (420.0 * scale).min((width - gap) * 0.5).floor() } else { width };
+    // A little above the middle when there is room: the title and the
+    // modes (the other cards come and go), on one column all of it.
+    let modes = MODES.len() as f32 * (MODE_HEIGHT + GAP) * scale;
+    let content = (TITLE_HEIGHT + 20.0) * scale + modes + if two_columns { 0.0 } else { 160.0 * scale };
+    let top = ((safe.height() - content) * 0.4).max(edge * 0.5).floor();
+    let height = (safe.height() - top - edge * 0.5).max(1.0).floor();
     let mut chosen = None;
     egui::Area::new(Id::new("start"))
-        .fixed_pos(screen.min)
-        .order(egui::Order::Background)
+        .default_size(vec2(width, height))
         .constrain(false)
+        .fixed_pos(pos2(safe.center().x - width * 0.5, safe.top() + top))
         .show(ctx, |ui| {
-            ui.set_min_size(screen.size());
-            // theme::backdrop() has already painted the embedded cinematic
-            // home.png artwork behind this page. Keep it visible edge-to-edge;
-            // opaque placeholder rectangles here used to hide the poster.
-            ui.scope_builder(UiBuilder::new().max_rect(screen.shrink(22.0 * scale)), |ui| {
+            theme::apply_density(ui, scale);
+            ui.set_width(width);
+            ui.set_height(height);
+            // The buttons go in last, so that the first move of a
+            // controller lands on the modes.
+            let (title_row, _) = ui.allocate_exact_size(vec2(width, TITLE_HEIGHT * scale), Sense::hover());
+            ui.painter().text(
+                title_row.left_center(),
+                Align2::LEFT_CENTER,
+                "GLUE 5  /  LOS SANTOS",
+                egui::FontId::new(42.0 * scale, egui::FontFamily::Name("condensed".into())),
+                Color32::WHITE,
+            );
+            ui.add_space(20.0 * scale);
+            let remaining = (ui.max_rect().bottom() - ui.cursor().top()).max(1.0).floor();
+            if two_columns {
                 ui.horizontal_top(|ui| {
-                    sidebar(ui, 150.0 * scale, scale, status, actions, go, &mut chosen);
-                    ui.add_space(18.0 * scale);
-                    ui.vertical(|ui| {
-                        ui.set_width((ui.available_width()).max(1.0));
-                        topbar(ui, scale, status, actions, go);
-                        ui.add_space(screen.height() * 0.39);
-                        ui.vertical(|ui| {
-                            ui.label(RichText::new("GRAND THEFT AUTO V").size(13.0 * scale).strong().color(Color32::from_rgb(255, 211, 190)));
-                            ui.label(RichText::new("LOS SANTOS").size(42.0 * scale).strong().color(Color32::WHITE));
-                            ui.label(RichText::new("Welcome back. Your city is waiting.").size(15.0 * scale).color(Color32::from_rgb(244, 224, 237)));
-                            ui.label(RichText::new(if status.game_dir.is_some() { "●  GAME CONTENT READY" } else { "●  ADD GAME FILES TO PLAY" })
-                                .size(10.0 * scale).strong().color(if status.game_dir.is_some() { READY } else { WARN }));
-                        });
-                        ui.add_space(18.0 * scale);
-                        let gap = 10.0 * scale;
-                        let card_w = ((ui.available_width() - gap * 4.0) / 5.0).max(90.0);
-                        ui.horizontal_top(|ui| {
-                            let cards = [
-                                ("STORY MODE", "Michael • Franklin • Trevor", Some(Mode::Story), None),
-                                ("SANDBOX", "Explore Los Santos", Some(Mode::Sandbox), None),
-                                ("PERFORMANCE", "Graphics • FPS • Vulkan", None, Some(Page::Settings)),
-                                ("MODS & PATCHES", "Manage game mods", None, Some(Page::Mods)),
-                                ("SELF RADIO", "Audio & music", None, Some(Page::Settings)),
-                            ];
-                            for (index, (title, subtitle, mode, page)) in cards.into_iter().enumerate() {
-                                if index > 0 { ui.add_space(gap); }
-                                let (rect, response) = ui.allocate_exact_size(vec2(card_w, 132.0 * scale), Sense::click());
-                                let painter = ui.painter();
-                                painter.rect_filled(rect, 8.0 * scale, Color32::from_black_alpha(178));
-                                let art = Rect::from_min_max(rect.left_top(), pos2(rect.right(), rect.top() + 82.0 * scale));
-                                let art_name = match index { 0 => "STORY", 1 => "SANDBOX", 2 => "BENCHMARK", 3 => "MODS", _ => "RADIO" };
-                                paint_mode_art(painter, art, art_name, scale);
-                                painter.rect_filled(Rect::from_min_max(pos2(rect.left(), art.bottom() - 12.0 * scale), rect.right_bottom()), 0.0, Color32::from_black_alpha(195));
-                                painter.text(pos2(rect.left() + 8.0 * scale, art.bottom() + 17.0 * scale), Align2::LEFT_CENTER, title, egui::FontId::proportional(11.0 * scale), Color32::WHITE);
-                                painter.text(pos2(rect.left() + 8.0 * scale, art.bottom() + 38.0 * scale), Align2::LEFT_CENTER, subtitle, egui::FontId::proportional(8.0 * scale), Color32::from_gray(205));
-                                if response.hovered() { painter.rect_stroke(rect, 8.0 * scale, Stroke::new(1.5, Color32::from_rgb(210, 135, 255)), StrokeKind::Outside); }
-                                if response.clicked() && starting.is_none() {
-                                    if let Some(mode) = mode {
-                                        if status.game_dir.is_some() && status.preparing.is_none() { chosen = Some(mode); }
-                                    } else if let Some(page) = page {
-                                        *go = Some(Some(page));
-                                    }
-                                }
-                            }
-                        });
+                    ui.spacing_mut().item_spacing.x = gap;
+                    column(ui, "home-modes", menu_width, remaining, |ui| {
+                        chosen = mode_list(ui, settings, status, starting, online_open, menu_width);
+                    });
+                    column(ui, "home-status", width - menu_width - gap, remaining, |ui| {
+                        info(ui, settings, status, actions, go)
                     });
                 });
-            });
-        });
-    chosen
-}
-
-/// Full-height navigation rail, separate from the game-mode cards.
-fn sidebar(ui: &mut egui::Ui, width: f32, scale: f32, status: &Status, actions: &mut Vec<Action>, go: &mut Option<Option<Page>>, chosen: &mut Option<Mode>) {
-    egui::Frame::new()
-        .fill(Color32::from_rgb(17, 12, 31))
-        .stroke(Stroke::new(1.0, Color32::from_rgb(69, 43, 102)))
-        .corner_radius((16.0 * scale) as u8)
-        .inner_margin((12.0 * scale) as i8)
-        .show(ui, |ui| {
-            ui.set_width(width - 24.0 * scale);
-            ui.vertical(|ui| {
-                ui.label(RichText::new("GLUE 5").size(25.0 * scale).strong().color(Color32::WHITE));
-                ui.label(RichText::new("LOS SANTOS").size(10.0 * scale).strong().color(Color32::from_rgb(190, 132, 255)));
-                ui.add_space(24.0 * scale);
-                ui.label(RichText::new("MAIN MENU").size(10.0 * scale).strong().color(theme::MUTED));
-                ui.add_space(6.0 * scale);
-                rail_button(ui, "⌂   Dashboard", true, scale, || {});
-                rail_button(ui, "▶   Story Mode", false, scale, || { if status.game_dir.is_some() && status.preparing.is_none() { *chosen = Some(Mode::Story); } });
-                rail_button(ui, "◎   Sandbox", false, scale, || { if status.game_dir.is_some() && status.preparing.is_none() { *chosen = Some(Mode::Sandbox); } });
-                rail_button(ui, "◷   Performance", false, scale, || { *go = Some(Some(Page::Settings)); });
-                rail_button(ui, "✦   Mods & Patches", false, scale, || { *go = Some(Some(Page::Mods)); });
-                rail_button(ui, "♫   Self Radio", false, scale, || { *go = Some(Some(Page::Settings)); });
-                ui.add_space(16.0 * scale);
-                ui.label(RichText::new("PREFERENCES").size(10.0 * scale).strong().color(theme::MUTED));
-                rail_button(ui, "⚙   Settings", false, scale, || { *go = Some(Some(Page::Settings)); });
-                rail_button(ui, "★   Credits", false, scale, || { *go = Some(Some(Page::Credits)); });
-                rail_button(ui, "♡   Friends", false, scale, || { *go = Some(Some(Page::Friends)); });
-                ui.add_space(20.0 * scale);
-                ui.separator();
-                ui.label(RichText::new(if status.game_dir.is_some() { "GAME FILES READY" } else { "GAME FILES MISSING" })
-                    .size(10.0 * scale).strong().color(if status.game_dir.is_some() { READY } else { WARN }));
-                let (icon, label) = match status.source {
-                    Source::Server => ("⇩", "Servers"),
-                    Source::Folder if MOBILE => ("▣", "Find files"),
-                    Source::Folder => ("▣", "Game folder"),
+            } else {
+                column(ui, "home", width, remaining, |ui| {
+                    // Without the game's files, why first.
+                    if status.game_dir.is_none() {
+                        info(ui, settings, status, actions, go);
+                        ui.add_space(8.0 * scale);
+                    }
+                    chosen = mode_list(ui, settings, status, starting, online_open, width);
+                    if status.game_dir.is_some() {
+                        ui.add_space(8.0 * scale);
+                        info(ui, settings, status, actions, go);
+                    }
+                });
+            }
+            let labels = width >= 720.0 * scale;
+            ui.scope_builder(UiBuilder::new().max_rect(title_row).layout(Layout::right_to_left(Align::Center)), |ui| {
+                ui.spacing_mut().item_spacing.x = 8.0 * scale;
+                if !MOBILE && icon_button(ui, "🗙", "Quit", labels).clicked() {
+                    actions.push(Action::Quit);
+                }
+                // Streamed (always, on the Apple TV), the files come from the
+                // Servers page.
+                let (icon, files) = match status.source {
+                    Source::Server => ("🖧", "Server"),
+                    Source::Folder if MOBILE => ("🗁", "Find files"),
+                    Source::Folder => ("🗁", "Game folder"),
                 };
-                if ui.add_sized(vec2(ui.available_width(), 34.0 * scale), egui::Button::new(format!("{icon}  {label}"))).clicked() {
+                if icon_button(ui, icon, files, labels).clicked() {
                     match status.source {
                         Source::Server => *go = Some(Some(Page::Servers)),
                         Source::Folder => actions.push(if MOBILE { Action::FindGame } else { Action::ChooseGame }),
                     }
                 }
+                if icon_button(ui, "★", "Credits", labels).clicked() {
+                    *go = Some(Some(Page::Credits));
+                }
+                if icon_button(ui, "🛠", "Mods", labels).clicked() {
+                    *go = Some(Some(Page::Mods));
+                }
+                // Asked to be friends: how many, on the button.
+                let friends = match status.friend_requests {
+                    0 => "Friends".to_owned(),
+                    n => format!("Friends ({n})"),
+                };
+                if icon_button(ui, "♡", &friends, labels || status.friend_requests > 0).clicked() {
+                    *go = Some(Some(Page::Friends));
+                }
+                if icon_button(ui, "⚙", "Settings", labels).clicked() {
+                    *go = Some(Some(Page::Settings));
+                }
             });
         });
-}
-
-/// Top command bar with the same working destinations as the original launcher.
-fn topbar(ui: &mut egui::Ui, scale: f32, status: &Status, actions: &mut Vec<Action>, go: &mut Option<Option<Page>>) {
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("LOS SANTOS  /  LAUNCHER").size(12.0 * scale).strong().color(theme::MUTED));
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if !MOBILE && icon_button(ui, "⏻", "Exit", true).clicked() { actions.push(Action::Quit); }
-            if icon_button(ui, "ⓘ", "Info", true).clicked() { *go = Some(Some(Page::Credits)); }
-            if icon_button(ui, "⚙", "Settings", true).clicked() { *go = Some(Some(Page::Settings)); }
-            if icon_button(ui, "✦", "Mods", true).clicked() { *go = Some(Some(Page::Mods)); }
-            if status.friend_requests > 0 && icon_button(ui, "♡", "Friends", true).clicked() { *go = Some(Some(Page::Friends)); }
-        });
-    });
-}
-
-/// Large feature banner: a distinct hero region rather than a title floating over the old cards.
-fn hero_panel(ui: &mut egui::Ui, scale: f32, status: &Status) {
-    let w = ui.available_width();
-    egui::Frame::new()
-        .fill(Color32::from_rgb(24, 12, 40))
-        .stroke(Stroke::new(1.0 * scale, Color32::from_rgb(145, 77, 207)))
-        .corner_radius((18.0 * scale) as u8)
-        .inner_margin((18.0 * scale) as i8)
-        .show(ui, |ui| {
-            ui.set_width(w - 36.0 * scale);
-            let scene_size = vec2(ui.available_width(), 112.0 * scale);
-            let (scene, _) = ui.allocate_exact_size(scene_size, Sense::hover());
-            let painter = ui.painter();
-            painter.rect_filled(scene, 12.0 * scale, Color32::from_rgb(38, 17, 57));
-            // Layered sunset bands and a Los Santos skyline create a GTA-inspired
-            // banner without loading large textures or changing renderer settings.
-            painter.circle_filled(
-                pos2(scene.right() - 82.0 * scale, scene.top() + 42.0 * scale),
-                25.0 * scale,
-                Color32::from_rgb(230, 128, 168),
-            );
-            painter.rect_filled(
-                Rect::from_min_max(
-                    pos2(scene.left(), scene.top() + 72.0 * scale),
-                    scene.right_bottom(),
-                ),
-                0.0,
-                Color32::from_rgb(24, 17, 43),
-            );
-            let skyline = [
-                (0.04, 0.57, 0.10), (0.15, 0.43, 0.14), (0.31, 0.62, 0.09),
-                (0.43, 0.49, 0.12), (0.58, 0.37, 0.13), (0.73, 0.55, 0.10),
-                (0.86, 0.46, 0.12),
-            ];
-            for (x, y, width) in skyline {
-                let left = scene.left() + scene.width() * x;
-                let top = scene.top() + scene.height() * y;
-                let right = left + scene.width() * width;
-                painter.rect_filled(
-                    Rect::from_min_max(pos2(left, top), pos2(right, scene.bottom())),
-                    1.0 * scale,
-                    Color32::from_rgb(13, 11, 29),
-                );
-                for row in 0..3 {
-                    for col in 0..2 {
-                        let wx = left + (8.0 + col as f32 * 12.0) * scale;
-                        let wy = top + (9.0 + row as f32 * 13.0) * scale;
-                        painter.rect_filled(
-                            Rect::from_min_size(pos2(wx, wy), vec2(3.0, 4.0) * scale),
-                            0.5,
-                            Color32::from_rgb(222, 145, 193),
-                        );
-                    }
-                }
-            }
-            ui.add_space(10.0 * scale);
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.label(RichText::new("WELCOME TO").size(10.0 * scale).strong().color(Color32::from_rgb(207, 157, 255)));
-                    ui.label(RichText::new("LOS SANTOS").size(31.0 * scale).strong().color(Color32::WHITE));
-                    ui.label(RichText::new("Your city. Your story. Your rules.").size(12.0 * scale).color(Color32::from_rgb(218, 202, 236)));
-                    ui.add_space(6.0 * scale);
-                    ui.label(RichText::new(if status.game_dir.is_some() { "●  GAME CONTENT READY" } else { "●  ADD GAME FILES TO PLAY" })
-                        .size(10.0 * scale).strong().color(if status.game_dir.is_some() { READY } else { WARN }));
-                });
-            });
-        });
-}
-
-fn rail_button(ui: &mut egui::Ui, label: &str, selected: bool, scale: f32, action: impl FnOnce()) {
-    let fill = if selected { Color32::from_rgb(83, 42, 124) } else { Color32::TRANSPARENT };
-    let response = ui.add_sized(
-        vec2(ui.available_width(), 38.0 * scale),
-        egui::Button::new(RichText::new(label).size(12.0 * scale).color(Color32::WHITE))
-            .fill(fill).corner_radius((9.0 * scale) as u8),
-    );
-    if response.clicked() { action(); }
-}
-
-fn mobile_nav(ui: &mut egui::Ui, scale: f32, _status: &Status, _actions: &mut Vec<Action>, go: &mut Option<Option<Page>>) {
-    egui::ScrollArea::horizontal().id_salt("mobile-nav").show(ui, |ui| {
-        ui.horizontal(|ui| {
-            for (label, page) in [("Dashboard", None), ("Mods", Some(Page::Mods)), ("Performance", Some(Page::Settings)), ("Settings", Some(Page::Settings)), ("Credits", Some(Page::Credits))] {
-                if ui.add(egui::Button::new(RichText::new(label).size(11.0 * scale)).corner_radius((9.0 * scale) as u8)).clicked() {
-                    if let Some(page) = page { *go = Some(Some(page)); }
-                }
-            }
-        });
-    });
+    chosen
 }
 
 /// A column of the start page, scrolling if it has to.
@@ -399,8 +284,8 @@ fn mode_card(
     let fill = match (look, lit) {
         (Look::Primary, false) => Color32::from_rgb(242, 232, 255),
         (Look::Primary, true) => Color32::from_rgb(255, 248, 255),
-        (Look::Plain, false) => Color32::from_rgba_unmultiplied(25, 12, 48, 238),
-        (Look::Plain, true) => Color32::from_rgba_unmultiplied(61, 25, 101, 248),
+        (Look::Plain, false) => Color32::from_rgba_unmultiplied(25, 12, 48, 172),
+        (Look::Plain, true) => Color32::from_rgba_unmultiplied(61, 25, 101, 205),
         (Look::Open, false) => Color32::TRANSPARENT,
         (Look::Open, true) => Color32::from_white_alpha(8),
     };
@@ -607,7 +492,8 @@ fn info(
 fn card<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let scale = theme::density(ui);
     egui::Frame::new()
-        .fill(Color32::from_black_alpha(210))
+        .fill(Color32::from_rgba_unmultiplied(16, 10, 29, 172))
+        .stroke(Stroke::new(1.0 * scale, Color32::from_rgba_unmultiplied(178, 112, 255, 105)))
         .corner_radius((18.0 * scale) as u8)
         .inner_margin(egui::Margin::symmetric((20.0 * scale) as i8, (16.0 * scale) as i8))
         .show(ui, |ui| {
