@@ -269,23 +269,31 @@ fn rewrite_archive(
         }
 
         if let Some(replacement) = replacements.remove(&full_path) {
+            let is_rsc7 = replacement.len() >= 16
+                && u32::from_le_bytes(replacement[0..4].try_into().unwrap()) == rpf_archive::RSC7_MAGIC;
             match &entry.kind {
-                rpf_archive::RpfEntryKind::BinaryFile { is_encrypted, .. } if *is_encrypted => {
-                    bail!("cannot replace individually encrypted binary entry {}", file.path);
+                rpf_archive::RpfEntryKind::BinaryFile { is_encrypted, .. } => {
+                    if is_rsc7 {
+                        bail!("replacement type does not match binary entry {}", file.path);
+                    }
+                    if *is_encrypted {
+                        builder.add_encrypted_binary(&file.path, replacement, keys)?;
+                    } else {
+                        builder.add_file(&file.path, replacement);
+                    }
                 }
                 rpf_archive::RpfEntryKind::ResourceFile { is_encrypted, .. } => {
-                    if *is_encrypted || file.name.to_ascii_lowercase().ends_with(".ysc") {
-                        bail!("cannot replace encrypted script resource {}", file.path);
-                    }
-                    if replacement.len() < 4
-                        || u32::from_le_bytes(replacement[0..4].try_into().unwrap()) != rpf_archive::RSC7_MAGIC {
+                    if !is_rsc7 {
                         bail!("replacement for resource {} is not an RSC7 resource", file.path);
+                    }
+                    if *is_encrypted || file.name.to_ascii_lowercase().ends_with(".ysc") {
+                        builder.add_encrypted_resource(&file.path, replacement, keys)?;
+                    } else {
+                        builder.add_file(&file.path, replacement);
                     }
                 }
                 rpf_archive::RpfEntryKind::Directory { .. } => continue,
-                _ => {}
             }
-            builder.add_file(&file.path, replacement);
             applied += 1;
             continue;
         }
@@ -354,11 +362,12 @@ fn rewrite_archive(
         })
         .collect::<Vec<_>>();
     for (key, relative) in pending {
-        if relative.to_ascii_lowercase().ends_with(".ysc") {
-            bail!("adding new encrypted script resources is not supported: {relative}");
-        }
         if let Some(bytes) = replacements.remove(&key) {
-            builder.add_file(&relative, bytes);
+            if relative.to_ascii_lowercase().ends_with(".ysc") {
+                builder.add_encrypted_resource(&relative, bytes, keys)?;
+            } else {
+                builder.add_file(&relative, bytes);
+            }
             applied += 1;
         }
     }
