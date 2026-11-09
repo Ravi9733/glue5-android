@@ -507,6 +507,7 @@ mod tests {
         let mut builder = RpfBuilder::new(RpfEncryption::Open);
         builder.add_file("common/data/compressed.bin", large_payload.clone());
         builder.add_file("common/data/target.bin", b"old-data".to_vec());
+        builder.add_file("common/data/empty.bin", Vec::new());
         let original = builder.build(None).unwrap();
         let original_path = root.join("original.rpf");
         fs::write(&original_path, &original).unwrap();
@@ -520,6 +521,8 @@ mod tests {
         let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
         let compressed = archive.entries.iter().find(|entry| entry.name_lower == "compressed.bin").unwrap();
         assert_eq!(archive.extract_entry(&rebuilt, compressed, None).unwrap(), large_payload);
+        let empty = archive.entries.iter().find(|entry| entry.name_lower == "empty.bin").unwrap();
+        assert!(archive.extract_entry(&rebuilt, empty, None).unwrap().is_empty());
         fs::remove_dir_all(root).unwrap();
     }
 
