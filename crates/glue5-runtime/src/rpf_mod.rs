@@ -91,7 +91,9 @@ fn collect_oiv_operations(
         } else if child.has_tag_name("delete") {
             let target = join_archive_path(prefix, &safe_relative(child.text().unwrap_or("").trim())?)
                 .to_ascii_lowercase();
-            if replacements.contains_key(&target) || !deletions.insert(target.clone()) {
+            if replacements.keys().any(|existing| archive_paths_overlap(existing, &target))
+                || deletions.iter().any(|existing| archive_paths_overlap(existing, &target))
+                || !deletions.insert(target.clone()) {
                 bail!("duplicate or conflicting OIV archive target: {target}");
             }
         } else if child.has_tag_name("defragmentation") {
@@ -107,7 +109,9 @@ fn collect_oiv_operations(
                 bail!("OIV source file is too large: {source}");
             }
             let target = join_archive_path(prefix, &target).to_ascii_lowercase();
-            if deletions.contains(&target) || replacements.insert(target.clone(), data).is_some() {
+            if deletions.iter().any(|existing| archive_paths_overlap(existing, &target))
+                || replacements.keys().any(|existing| archive_paths_overlap(existing, &target))
+                || replacements.insert(target.clone(), data).is_some() {
                 bail!("duplicate or conflicting OIV archive target: {target}");
             }
         } else {
@@ -115,6 +119,13 @@ fn collect_oiv_operations(
         }
     }
     Ok(())
+}
+
+
+/// Two archive paths conflict when either operation replaces/deletes the
+/// other path or one of its descendants.
+fn archive_paths_overlap(left: &str, right: &str) -> bool {
+    left == right || left.starts_with(&format!("{right}/")) || right.starts_with(&format!("{left}/"))
 }
 
 fn safe_relative(value: &str) -> Result<String> {
@@ -258,13 +269,16 @@ fn rewrite_archive(
     let files = list_all_files(&tree);
     let mut builder = RpfBuilder::new(archive.encryption);
     let mut applied = 0usize;
+    let mut applied_deletions = BTreeSet::<String>::new();
 
     for file in files {
         let entry = &archive.entries[file.entry_index];
         let full_path = join_archive_path(prefix, &file.path).to_ascii_lowercase();
 
-        if deletions.remove(&full_path) {
-            applied += 1;
+        if let Some(target) = deletions.iter().find(|target| {
+            full_path == **target || full_path.starts_with(&format!("{target}/"))
+        }) {
+            applied_deletions.insert(target.clone());
             continue;
         }
 
@@ -344,6 +358,13 @@ fn rewrite_archive(
                 builder.add_stored_resource(&file.path, stored, *system_flags, *graphics_flags);
             }
             rpf_archive::RpfEntryKind::Directory { .. } => {}
+        }
+    }
+
+    // Count each delete command once, even when it removes an entire directory.
+    for target in applied_deletions {
+        if deletions.remove(&target) {
+            applied += 1;
         }
     }
 
