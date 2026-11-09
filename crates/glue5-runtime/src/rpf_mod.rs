@@ -418,6 +418,31 @@ mod tests {
     }
 
     #[test]
+    fn deletes_an_entry_inside_rpf7() {
+        let root = temp_dir();
+        let content = root.join("content");
+        fs::create_dir_all(&content).unwrap();
+
+        let mut builder = RpfBuilder::new(RpfEncryption::Open);
+        builder.add_file("common/data/remove.bin", b"remove".to_vec());
+        builder.add_file("common/data/keep.bin", b"keep".to_vec());
+        let original = builder.build(None).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><delete>common/data/remove.bin</delete></archive>"#;
+        let count = apply_oiv_rpf_archive(&original_path, xml, &content, &output_path, None).unwrap();
+        assert_eq!(count, 1);
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
+        assert!(!archive.entries.iter().any(|entry| entry.name_lower == "remove.bin"));
+        assert!(archive.entries.iter().any(|entry| entry.name_lower == "keep.bin"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn preserves_compressed_entries_while_editing_another_file() {
         let root = temp_dir();
         let content = root.join("content");
