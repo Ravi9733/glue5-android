@@ -64,21 +64,9 @@ pub(super) fn start_page(
         .constrain(false)
         .show(ctx, |ui| {
             ui.set_min_size(screen.size());
-            let bg = ui.painter();
-            // Full-screen Los Santos sunset artwork: the background is the
-            // canvas, not a framed poster panel.
-            bg.rect_filled(screen, 0.0, Color32::from_rgb(18, 8, 31));
-            bg.rect_filled(Rect::from_min_max(screen.left_top(), pos2(screen.right(), screen.top() + screen.height() * 0.68)), 0.0, Color32::from_rgb(75, 29, 70));
-            bg.circle_filled(pos2(screen.right() * 0.76, screen.top() + screen.height() * 0.29), screen.height() * 0.19, Color32::from_rgb(235, 133, 143));
-            bg.rect_filled(Rect::from_min_max(pos2(screen.left(), screen.top() + screen.height() * 0.61), screen.right_bottom()), 0.0, Color32::from_rgb(22, 14, 34));
-            for i in 0..18 {
-                let x = screen.left() + screen.width() * i as f32 / 18.0;
-                let w = screen.width() * (0.025 + (i % 3) as f32 * 0.009);
-                let h = screen.height() * (0.12 + ((i * 7) % 8) as f32 * 0.025);
-                bg.rect_filled(Rect::from_min_max(pos2(x, screen.bottom() - h), pos2(x + w, screen.bottom())), 1.0, Color32::from_rgb(12, 10, 27));
-            }
-            // Dark cinematic overlay keeps controls legible over the poster.
-            bg.rect_filled(screen, 0.0, Color32::from_black_alpha(72));
+            // theme::backdrop() has already painted the embedded cinematic
+            // home.png artwork behind this page. Keep it visible edge-to-edge;
+            // opaque placeholder rectangles here used to hide the poster.
             ui.scope_builder(UiBuilder::new().max_rect(screen.shrink(22.0 * scale)), |ui| {
                 ui.horizontal_top(|ui| {
                     sidebar(ui, 150.0 * scale, scale, status, actions, go, &mut chosen);
