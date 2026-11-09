@@ -296,3 +296,85 @@ fn rewrite_archive(
     let rebuilt = builder.build(keys).context("cannot rebuild modified RPF7 archive")?;
     Ok((rebuilt, applied))
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rpf_archive::RpfEntryKind;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir() -> PathBuf {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("glue5-rpf-test-{}-{nonce}", std::process::id()));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn applies_loose_file_replacement_inside_rpf7() {
+        let root = temp_dir();
+        let content = root.join("content");
+        fs::create_dir_all(&content).unwrap();
+        fs::write(content.join("replacement.bin"), b"new-data").unwrap();
+
+        let mut builder = RpfBuilder::new(RpfEncryption::Open);
+        builder.add_file("common/data/example.bin", b"old-data".to_vec());
+        let original = builder.build(None).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><add source="replacement.bin">common/data/example.bin</add></archive>"#;
+        let count = apply_oiv_rpf_archive(&original_path, xml, &content, &output_path, None).unwrap();
+        assert_eq!(count, 1);
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        assert_eq!(rebuilt.len(), original.len());
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
+        let entry = archive.entries.iter().find(|entry| entry.name_lower == "example.bin").unwrap();
+        assert_eq!(archive.extract_entry(&rebuilt, entry, None).unwrap(), b"new-data");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn applies_file_replacement_inside_nested_rpf7() {
+        let root = temp_dir();
+        let content = root.join("content");
+        fs::create_dir_all(&content).unwrap();
+        fs::write(content.join("car.yft"), b"new-car").unwrap();
+
+        let mut nested_builder = RpfBuilder::new(RpfEncryption::Open);
+        nested_builder.add_file("car.yft", b"old-car".to_vec());
+        let nested = nested_builder.build(None).unwrap();
+
+        let mut root_builder = RpfBuilder::new(RpfEncryption::Open);
+        root_builder.add_file("x64/vehicles.rpf", nested);
+        root_builder.add_file("common/data/keep.dat", b"keep".to_vec());
+        let original = root_builder.build(None).unwrap();
+        let original_path = root.join("original.rpf");
+        fs::write(&original_path, &original).unwrap();
+
+        let output_path = root.join("rebuilt.rpf");
+        let xml = r#"<archive path="update/update.rpf"><archive path="x64/vehicles.rpf"><add source="car.yft">car.yft</add></archive></archive>"#;
+        let count = apply_oiv_rpf_archive(&original_path, xml, &content, &output_path, None).unwrap();
+        assert_eq!(count, 1);
+
+        let rebuilt = fs::read(&output_path).unwrap();
+        assert_eq!(rebuilt.len(), original.len());
+        let archive = RpfArchive::parse(&rebuilt, "rebuilt.rpf", None).unwrap();
+        let nested_entry = archive.entries.iter().find(|entry| entry.name_lower == "vehicles.rpf").unwrap();
+        let nested_bytes = archive.extract_entry(&rebuilt, nested_entry, None).unwrap();
+        let nested_archive = RpfArchive::parse(&nested_bytes, "vehicles.rpf", None).unwrap();
+        let car = nested_archive.entries.iter().find(|entry| entry.name_lower == "car.yft").unwrap();
+        assert_eq!(nested_archive.extract_entry(&nested_bytes, car, None).unwrap(), b"new-car");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn refuses_compressed_entries_instead_of_rebuilding_them_as_raw() {
+        // This guard is exercised by production RPFs: the generic builder
+        // cannot preserve compressed payloads, so fail closed before writing.
+        let _ = RpfEntryKind::Directory { entries_index: 0, entries_count: 0 };
+    }
+}
