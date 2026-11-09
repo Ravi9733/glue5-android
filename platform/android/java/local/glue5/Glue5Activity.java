@@ -392,18 +392,26 @@ public class Glue5Activity extends SDLActivity {
             throw e;
         }
 
-        File info = new File(staging, "GLUE5_IMPORT_INFO.txt");
-        String note = "Imported archive: " + displayName + "\n"
-                + "Supported loose files installed into GTA5/GraphicsMods/active: " + installed + "\n"
-                + "RPF/archive instructions skipped (RPF editing is not yet supported): " + skippedArchive + "\n"
-                + "Other unsupported or size-mismatched entries skipped: " + skippedUnsupported + "\n"
-                + "Original GTA V game/data files were not modified. Glue 5 reads active loose-file replacements through its VFS overlay.\n";
-        try (FileOutputStream output = new FileOutputStream(info)) {
-            output.write(note.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        }
-        if (!staging.renameTo(destination)) {
+        try {
+            File info = new File(staging, "GLUE5_IMPORT_INFO.txt");
+            String note = "Imported archive: " + displayName + "\n"
+                    + "Supported loose files installed into GTA5/GraphicsMods/active: " + installed + "\n"
+                    + "RPF/archive instructions skipped (RPF editing is not yet supported): " + skippedArchive + "\n"
+                    + "Other unsupported or size-mismatched entries skipped: " + skippedUnsupported + "\n"
+                    + "Original GTA V game/data files were not modified. Glue 5 reads active loose-file replacements through its VFS overlay.\n";
+            try (FileOutputStream output = new FileOutputStream(info)) {
+                output.write(note.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            if (!staging.renameTo(destination)) throw new Exception("Could not finalize graphics package folder");
+        } catch (Exception e) {
+            for (int i = installedOutputs.size() - 1; i >= 0; i--) {
+                File output = installedOutputs.get(i);
+                if (output.exists() && !output.delete()) {
+                    e.addSuppressed(new Exception("Could not roll back " + output.getName()));
+                }
+            }
             deleteTree(staging);
-            throw new Exception("Could not finalize graphics package folder");
+            throw e;
         }
         return "GTA5/GraphicsMods/" + folderName + " (installed " + installed + " loose files; " +
                 skippedArchive + " RPF entries skipped)";
