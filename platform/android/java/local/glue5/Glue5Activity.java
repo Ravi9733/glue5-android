@@ -8,6 +8,7 @@ import android.os.Handler;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
+import android.provider.OpenableColumns;
 import android.os.Looper;
 import android.system.ErrnoException;
 import android.system.Os;
@@ -24,8 +25,10 @@ import java.util.zip.ZipInputStream;
 /** The app's activity: SDL's, with our library (libglue5.so) as the main one. */
 public class Glue5Activity extends SDLActivity {
     private static final int REQUEST_TURNIP_ZIP = 47112;
+    private static final int REQUEST_GRAPHICS_ARCHIVE = 47113;
     private final Handler turnipHandler = new Handler(Looper.getMainLooper());
     private boolean turnipPickerOpen = false;
+    private boolean graphicsPickerOpen = false;
     private final Runnable turnipImportWatcher = new Runnable() {
         @Override public void run() { checkTurnipImportRequest(); }
     };
@@ -99,7 +102,13 @@ public class Glue5Activity extends SDLActivity {
     }
 
     private void checkTurnipImportRequest() {
-        if (isFinishing() || turnipPickerOpen) return;
+        if (isFinishing() || turnipPickerOpen || graphicsPickerOpen) return;
+        File graphicsRequest = new File(getFilesDir(), "graphics-mod-import-request");
+        if (graphicsRequest.isFile() && graphicsRequest.delete()) {
+            graphicsPickerOpen = true;
+            openGraphicsArchivePicker();
+            return;
+        }
         File request = new File(getFilesDir(), "turnip-import-request");
         if (request.isFile() && request.delete()) {
             turnipPickerOpen = true;
@@ -107,6 +116,19 @@ public class Glue5Activity extends SDLActivity {
             return;
         }
         turnipHandler.postDelayed(turnipImportWatcher, 500);
+    }
+
+    private void openGraphicsArchivePicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivityForResult(intent, REQUEST_GRAPHICS_ARCHIVE);
+        } catch (Exception e) {
+            graphicsPickerOpen = false;
+            Toast.makeText(this, "Cannot open graphics archive picker: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+        }
     }
 
     private void openTurnipPicker() {
@@ -128,6 +150,20 @@ public class Glue5Activity extends SDLActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_GRAPHICS_ARCHIVE) {
+            graphicsPickerOpen = false;
+            try {
+                if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                    String installedAt = importGraphicsArchive(data.getData());
+                    Toast.makeText(this, "Graphics archive extracted to " + installedAt, Toast.LENGTH_LONG).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(this, "Graphics archive import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            } finally {
+                turnipHandler.postDelayed(turnipImportWatcher, 500);
+            }
+            return;
+        }
         if (requestCode != REQUEST_TURNIP_ZIP) return;
         turnipPickerOpen = false;
         try {
@@ -140,6 +176,115 @@ public class Glue5Activity extends SDLActivity {
         } finally {
             turnipHandler.postDelayed(turnipImportWatcher, 500);
         }
+    }
+
+
+    /**
+     * Safely unpack an OpenIV OIV (ZIP container) or graphics ZIP into a
+     * separate user-owned staging directory. It never writes into game/data.
+     * OpenIV install.xml instructions are retained as package content; they
+     * are not executed as arbitrary file operations.
+     */
+    private String importGraphicsArchive(Uri uri) throws Exception {
+        String displayName = "GraphicsMod";
+        try (android.database.Cursor cursor = getContentResolver().query(
+                uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                String name = cursor.getString(0);
+                if (name != null && !name.trim().isEmpty()) displayName = name.trim();
+            }
+        }
+        String lowerName = displayName.toLowerCase(java.util.Locale.ROOT);
+        if (!lowerName.endsWith(".zip") && !lowerName.endsWith(".oiv")) {
+            throw new Exception("Select a .zip or .oiv archive");
+        }
+        String folderName = displayName.replaceFirst("(?i)\\.(zip|oiv)$", "")
+                .replaceAll("[^A-Za-z0-9._ -]", "_").trim();
+        if (folderName.isEmpty() || folderName.equals(".") || folderName.equals("..")) {
+            folderName = "GraphicsMod";
+        }
+
+        File root = new File(Environment.getExternalStorageDirectory(), "GTA5/GraphicsMods");
+        if (!root.isDirectory() && !root.mkdirs()) {
+            throw new Exception("Cannot create GTA5/GraphicsMods; enable Glue 5 all-files access");
+        }
+        File destination = new File(root, folderName);
+        if (destination.exists()) {
+            throw new Exception("A graphics package with this name already exists; rename the ZIP and retry");
+        }
+        File staging = new File(root, "." + folderName + ".installing");
+        deleteTree(staging);
+        if (!staging.mkdirs()) throw new Exception("Cannot create temporary graphics package folder");
+
+        int entries = 0;
+        long totalExtracted = 0;
+        boolean sawContent = false;
+        try (InputStream input = getContentResolver().openInputStream(uri)) {
+            if (input == null) throw new Exception("Cannot read selected archive");
+            try (ZipInputStream zip = new ZipInputStream(input)) {
+                ZipEntry entry;
+                byte[] buffer = new byte[32768];
+                while ((entry = zip.getNextEntry()) != null) {
+                    if (++entries > 10000) throw new Exception("Archive contains too many files");
+                    String raw = entry.getName().replace('\\', '/');
+                    if (raw.isEmpty() || raw.startsWith("/") || raw.matches("^[A-Za-z]:.*")) {
+                        throw new Exception("Archive contains an unsafe absolute path");
+                    }
+                    String[] parts = raw.split("/");
+                    for (String part : parts) {
+                        if (part.equals("..")) throw new Exception("Archive contains a path traversal entry");
+                    }
+                    File target = new File(staging, raw);
+                    String canonicalRoot = staging.getCanonicalPath() + File.separator;
+                    String canonicalTarget = target.getCanonicalPath();
+                    if (!canonicalTarget.startsWith(canonicalRoot)) {
+                        throw new Exception("Archive contains an unsafe output path");
+                    }
+                    if (entry.isDirectory()) {
+                        if (!target.isDirectory() && !target.mkdirs()) throw new Exception("Cannot create package folder");
+                        continue;
+                    }
+                    File parent = target.getParentFile();
+                    if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+                        throw new Exception("Cannot create package subfolder");
+                    }
+                    long entrySize = 0;
+                    try (FileOutputStream output = new FileOutputStream(target)) {
+                        int count;
+                        while ((count = zip.read(buffer)) != -1) {
+                            entrySize += count;
+                            totalExtracted += count;
+                            if (entrySize > 512L * 1024L * 1024L ||
+                                    totalExtracted > 1536L * 1024L * 1024L) {
+                                throw new Exception("Graphics archive exceeds the 1.5 GB extraction limit");
+                            }
+                            output.write(buffer, 0, count);
+                        }
+                    }
+                    sawContent = true;
+                }
+            }
+        } catch (Exception e) {
+            deleteTree(staging);
+            throw e;
+        }
+        if (!sawContent) {
+            deleteTree(staging);
+            throw new Exception("Archive is empty or is not a supported ZIP-based OIV package");
+        }
+        File info = new File(staging, "GLUE5_IMPORT_INFO.txt");
+        try (FileOutputStream output = new FileOutputStream(info)) {
+            String note = "Imported archive: " + displayName + "\n"
+                    + "Extracted safely by Glue 5 into GTA5/GraphicsMods/" + folderName + "\n"
+                    + "Original GTA V game files were not modified. OpenIV install.xml instructions "
+                    + "are preserved but are not automatically executed by this importer.\n";
+            output.write(note.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        if (!staging.renameTo(destination)) {
+            deleteTree(staging);
+            throw new Exception("Could not finalize graphics package folder");
+        }
+        return "GTA5/GraphicsMods/" + folderName;
     }
 
     private void importTurnipZip(Uri uri) throws Exception {
