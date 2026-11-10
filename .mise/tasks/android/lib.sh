@@ -56,16 +56,17 @@ android_libs() {
     # custom-driver support. Packaging alone does not activate Turnip.
     local adrenotools_src="$out/adrenotools-src"
     local adrenotools_build="$out/adrenotools-build"
-    if [ ! -d "$adrenotools_src/.git" ]; then
-        # A fresh shallow clone already checks out the repository's advertised
-        # default branch. Avoid a second fetch: GitHub's upload-pack endpoint
-        # intermittently rejects the same public master ref despite the API
-        # exposing it, which previously stopped the APK build after Rust passed.
+    # The Android cache may restore a stale/incomplete checkout directory.
+    # Treat the root CMakeLists.txt as the authoritative source-tree check;
+    # a .git directory alone does not mean the cached source is usable.
+    if [ ! -f "$adrenotools_src/CMakeLists.txt" ]; then
+        rm -rf "$adrenotools_src"
         git clone --depth 1 https://github.com/Bylaws/libadrenotools.git "$adrenotools_src"
-    else
-        git -C "$adrenotools_src" rev-parse --verify HEAD >/dev/null ||
-            die "AdrenoTools source checkout is incomplete: $adrenotools_src"
     fi
+    [ -f "$adrenotools_src/CMakeLists.txt" ] ||
+        die "AdrenoTools clone is missing its root CMakeLists.txt: $adrenotools_src"
+    git -C "$adrenotools_src" rev-parse --verify HEAD >/dev/null ||
+        die "AdrenoTools source checkout is incomplete: $adrenotools_src"
     git -C "$adrenotools_src" submodule update --init --recursive
     cmake -S "$adrenotools_src" -B "$adrenotools_build" \
         -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
