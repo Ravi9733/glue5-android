@@ -74,7 +74,7 @@ android_libs() {
         -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$(setting minSdk)" \
         -DANDROID_NDK="$ANDROID_NDK_HOME" -DBUILD_SHARED_LIBS=ON \
         -DGEN_INSTALL_TARGET=OFF -DCMAKE_BUILD_TYPE=Release
-    cmake --build "$adrenotools_build" --parallel 2
+    cmake --build "$adrenotools_build" --parallel 1
     for lib in libadrenotools.so libhook_impl.so libmain_hook.so libfile_redirect_hook.so libgsl_alloc_hook.so; do
         found=$(find "$adrenotools_build" -type f -name "$lib" -print -quit)
         [ -n "$found" ] || die "AdrenoTools build did not produce $lib"
