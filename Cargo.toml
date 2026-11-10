@@ -43,6 +43,14 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 opt-level = 1
 
+# RPF archive parsing/rebuilding is not on the render hot path. Keep this
+# large parser crate at low optimisation so LLVM does not exhaust the
+# 16-GiB GitHub-hosted build runner while producing the Android APK.
+[profile.release.package.rpf-archive]
+opt-level = 0
+codegen-units = 16
+debug = 0
+
 # wgpu, wgpu-core, wgpu-hal and sp-fidelity with our patches
 # (patches/<name>) on top of the releases, prepared by `mise run setup`.
 [patch.crates-io]
