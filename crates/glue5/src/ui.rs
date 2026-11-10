@@ -84,6 +84,8 @@ pub enum Action {
     ImportTurnip,
     /// Open Android's document picker to import an OIV or ZIP graphics archive.
     ImportGraphicsArchive,
+    /// Import a ReShade preset ZIP, retaining its original INI, FX, textures and folders.
+    ImportReshadeArchive,
     /// Remove installed graphics overlays and imported package folders.
     ClearGraphicsMods,
     /// The game's graphics settings back to the engine's defaults.
