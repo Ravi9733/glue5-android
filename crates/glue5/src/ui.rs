@@ -459,7 +459,8 @@ impl Ui {
                 self.repaint();
             }
             Some(Page::Settings) => self.show(self.home),
-            Some(Page::Credits | Page::Friends | Page::Servers | Page::Mods | Page::Reshade) => self.show(self.behind),
+            Some(Page::Credits | Page::Friends | Page::Servers | Page::Mods) => self.show(self.behind),
+            Some(Page::Reshade) => self.show(None),
             _ => {}
         }
     }
