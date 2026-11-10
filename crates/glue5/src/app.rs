@@ -75,13 +75,7 @@ pub fn run() -> Result<()> {
         }
     }
     #[cfg(target_os = "android")]
-    unsafe {
-        if settings.reshade_enabled {
-            std::env::set_var("GLUE5_VULKAN_RESHADE", "1");
-        } else {
-            std::env::remove_var("GLUE5_VULKAN_RESHADE");
-        }
-    }
+    prepare_reshade(&user_dir, settings.reshade_enabled);
     if settings.online_name.trim().is_empty() {
         settings.online_name = settings::default_online_name();
     }
@@ -226,6 +220,74 @@ pub fn run() -> Result<()> {
         }
     }
     app.run()
+}
+
+/// Prepare vkBasalt's ReShade-FX config from the selected original preset.
+/// The Vulkan layer is opt-in and is enabled before wgpu creates its instance.
+#[cfg(target_os = "android")]
+fn prepare_reshade(user_dir: &Path, enabled: bool) {
+    use std::os::unix::ffi::OsStrExt;
+
+    unsafe {
+        std::env::remove_var("GLUE5_VULKAN_RESHADE");
+        std::env::remove_var("ENABLE_VKBASALT");
+        std::env::remove_var("VKBASALT_CONFIG_FILE");
+    }
+    if !enabled {
+        return;
+    }
+
+    let root = std::env::var_os("GLUE5_RESHADE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| user_dir.join("reshade"));
+    let active_file = root.join("active-preset.txt");
+    let preset_path = match std::fs::read_to_string(&active_file) {
+        Ok(path) => PathBuf::from(path.trim()),
+        Err(error) => {
+            log::warn!("ReShade is enabled but no preset is selected: {error}");
+            return;
+        }
+    };
+    let canonical_root = match root.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            log::warn!("ReShade folder is unavailable: {error}");
+            return;
+        }
+    };
+    let canonical_preset = match preset_path.canonicalize() {
+        Ok(path) if path.starts_with(&canonical_root) && path.is_file() => path,
+        Ok(_) => {
+            log::warn!("ReShade preset path is outside its imported folder");
+            return;
+        }
+        Err(error) => {
+            log::warn!("Cannot read selected ReShade preset: {error}");
+            return;
+        }
+    };
+    let preset_text = match std::fs::read_to_string(&canonical_preset) {
+        Ok(text) => text,
+        Err(error) => {
+            log::warn!("Cannot read ReShade INI: {error}");
+            return;
+        }
+    };
+    let preset = glue5_gpu::reshade::Preset::parse(&preset_text);
+    let preset_dir = canonical_preset.parent().unwrap_or(&canonical_root);
+    let config = preset.to_vkbasalt_config(preset_dir);
+    let config_path = canonical_root.join("vkBasalt.conf");
+    if let Err(error) = std::fs::write(&config_path, config) {
+        log::warn!("Cannot write ReShade FX runtime config: {error}");
+        return;
+    }
+
+    unsafe {
+        std::env::set_var("GLUE5_VULKAN_RESHADE", "1");
+        std::env::set_var("ENABLE_VKBASALT", "1");
+        std::env::set_var("VKBASALT_CONFIG_FILE", config_path.as_os_str().as_bytes());
+    }
+    log::info!("ReShade preset loaded for vkBasalt: {}", canonical_preset.display());
 }
 
 /// The command line (desktop): `glue5 [--play] [game folder]`; the start
