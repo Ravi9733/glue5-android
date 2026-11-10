@@ -1,7 +1,7 @@
 diff --git a/src/basalt.cpp b/src/basalt.cpp
 --- a/src/basalt.cpp
 +++ b/src/basalt.cpp
-@@ -909,1 +909,40 @@
+@@ -990,1 +990,40 @@
  } // extern "C"
 +
 +// Android's Vulkan loader discovers app-packaged layers by loading
