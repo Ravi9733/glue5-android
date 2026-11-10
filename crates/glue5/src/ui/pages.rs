@@ -750,6 +750,76 @@ pub(super) fn settings_page(
     })
 }
 
+/// ReShade's native FX preset manager. The original INI/FX files stay untouched;
+/// effect switches are written to vkBasalt's live-reloaded config.
+pub(super) fn reshade_page(
+    ctx: &egui::Context,
+    settings: &mut Settings,
+    actions: &mut Vec<Action>,
+) -> bool {
+    sheet(ctx, "reshade-window", "RESHADE", |ui| {
+        let scale = theme::density(ui);
+        ui.label(RichText::new("ReShade FX runtime").strong());
+        ui.label(RichText::new(
+            "This manager controls the imported ReShade .fx effects through the Android Vulkan runtime.",
+        ).small());
+        setting(
+            ui,
+            "Enable ReShade at launch",
+            Control::Toggle,
+            Some("The Vulkan layer is loaded on the next full app restart"),
+            |ui| toggle(ui, &mut settings.reshade_enabled),
+        );
+        setting(
+            ui,
+            "Import preset ZIP",
+            Control::Action,
+            Some("Keep original .ini, .fx, include and texture files"),
+            |ui| {
+                let response = action_button(ui, "Import ReShade ZIP");
+                if response.clicked() {
+                    actions.push(Action::ImportReshadeArchive);
+                }
+                response
+            },
+        );
+        ui.add_space(8.0 * scale);
+        let root = std::env::var_os("GLUE5_RESHADE_DIR").map(std::path::PathBuf::from);
+        let active = root.as_ref().and_then(|dir| {
+            std::fs::read_to_string(dir.join("active-preset.txt")).ok()
+        });
+        if let (Some(root), Some(active)) = (root, active) {
+            let preset_path = std::path::PathBuf::from(active.trim());
+            if let (Ok(root), Ok(preset_path)) = (root.canonicalize(), preset_path.canonicalize()) {
+                if preset_path.starts_with(&root) {
+                    if let Ok(text) = std::fs::read_to_string(&preset_path) {
+                        let preset = glue5_gpu::reshade::Preset::parse(&text);
+                        let dir = preset_path.parent().unwrap_or(&root);
+                        let effects: Vec<_> = preset.effect_files(dir).into_iter()
+                            .filter(|effect| effect.path.is_file())
+                            .collect();
+                        ui.label(RichText::new(format!("Preset: {}", preset_path.file_name().unwrap_or_default().to_string_lossy())).strong());
+                        if effects.is_empty() {
+                            ui.label("No compatible .fx files were found in this preset.");
+                        }
+                        for effect in effects {
+                            let mut enabled = effect.enabled;
+                            if ui.checkbox(&mut enabled, &effect.section).changed() {
+                                actions.push(Action::SetReshadeEffect {
+                                    effect: effect.section,
+                                    enabled,
+                                });
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+        ui.label("No ReShade preset imported yet. Import the original ZIP to list its effects.");
+    })
+}
+
 /// A window over the start page or the game, centred in the safe area: a
 /// title and a close button, then what `add` adds, scrolling. True when
 /// closed.
