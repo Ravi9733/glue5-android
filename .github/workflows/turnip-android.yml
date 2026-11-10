@@ -148,6 +148,9 @@ jobs:
           kill "$monitor_pid" 2>/dev/null || true
           trap - EXIT
           cp target/android/gradle/outputs/apk/release/Glue5-release.apk Glue5-android-turnip-test.apk
+          # Fail the build if Gradle did not package the actual ARM64 Vulkan layer.
+          unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libVKLayer_VKBASALT_post_processing.so'
+          unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libglue5.so'
           cp ~/.android/debug.keystore Glue5-android.keystore
 
       - name: Package the JSON Placement Test Mod
