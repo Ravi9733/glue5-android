@@ -170,7 +170,7 @@ impl Preset {
             if effect.enabled {
                 enabled.push(alias.clone());
             }
-            mappings.push(format!("{alias} = {}", effect.path.display()));
+            mappings.push(format!("{alias} = \"{}\"", effect.path.display()));
 
             if let Some(section) = find_section(&self.sections, &effect.section) {
                 for (name, value) in section {
@@ -202,8 +202,8 @@ impl Preset {
         let mut output = String::new();
         output.push_str("# Generated from the imported ReShade preset by Glue 5. Original files are preserved.\n");
         output.push_str(&format!("effects = {}\n", enabled.join(":")));
-        output.push_str(&format!("reshadeIncludePath = {}\n", shaders.display()));
-        output.push_str(&format!("reshadeTexturePath = {}\n", textures.display()));
+        output.push_str(&format!("reshadeIncludePath = \"{}\"\n", shaders.display()));
+        output.push_str(&format!("reshadeTexturePath = \"{}\"\n", textures.display()));
         output.push_str("enableOnLaunch = True\ndepthCapture = off\n");
         for line in mappings.into_iter().chain(parameters) {
             output.push_str(&line);
