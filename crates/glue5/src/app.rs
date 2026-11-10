@@ -75,7 +75,7 @@ pub fn run() -> Result<()> {
         }
     }
     #[cfg(target_os = "android")]
-    prepare_reshade(&user_dir, settings.reshade_enabled);
+    prepare_reshade(&user_dir, settings.reshade_enabled, settings.reshade_depth_capture);
     if settings.online_name.trim().is_empty() {
         settings.online_name = settings::default_online_name();
     }
@@ -225,7 +225,7 @@ pub fn run() -> Result<()> {
 /// Prepare vkBasalt's ReShade-FX config from the selected original preset.
 /// The Vulkan layer is opt-in and is enabled before wgpu creates its instance.
 #[cfg(target_os = "android")]
-fn prepare_reshade(user_dir: &Path, enabled: bool) {
+fn prepare_reshade(user_dir: &Path, enabled: bool, depth_capture: bool) {
     unsafe {
         std::env::remove_var("GLUE5_VULKAN_RESHADE");
         std::env::remove_var("GLUE5_VULKAN_RESHADE_LAYER_FOUND");
@@ -286,7 +286,7 @@ fn prepare_reshade(user_dir: &Path, enabled: bool) {
     };
     let preset = glue5_gpu::reshade::Preset::parse(&preset_text);
     let preset_dir = canonical_preset.parent().unwrap_or(&canonical_root);
-    let config = preset.to_vkbasalt_config(preset_dir);
+    let config = preset.to_vkbasalt_config(preset_dir, depth_capture);
     let config_path = canonical_root.join("vkBasalt.conf");
     if let Err(error) = std::fs::write(&config_path, config) {
         log::warn!("Cannot write ReShade FX runtime config: {error}");
@@ -303,7 +303,7 @@ fn prepare_reshade(user_dir: &Path, enabled: bool) {
 
 /// Change one effect in the generated vkBasalt config, leaving the original INI intact.
 /// vkBasalt's Android port watches this file and re-records its effect chain live.
-fn update_reshade_effect(effect: &str, enabled: bool) -> Result<()> {
+fn update_reshade_effect(effect: &str, enabled: bool, depth_capture: bool) -> Result<()> {
     let root = std::env::var_os("GLUE5_RESHADE_DIR")
         .map(PathBuf::from)
         .ok_or_else(|| anyhow!("ReShade folder is unavailable"))?;
@@ -319,7 +319,7 @@ fn update_reshade_effect(effect: &str, enabled: bool) -> Result<()> {
     );
     preset.techniques.insert(effect.to_owned(), enabled);
     let preset_dir = preset_path.parent().unwrap_or(&canonical_root);
-    let config = preset.to_vkbasalt_config(preset_dir);
+    let config = preset.to_vkbasalt_config(preset_dir, depth_capture);
     std::fs::write(canonical_root.join("vkBasalt.conf"), config)?;
     Ok(())
 }
@@ -876,7 +876,7 @@ impl App {
                     }
                 }
                 Action::SetReshadeEffect { effect, enabled } => {
-                    match update_reshade_effect(&effect, enabled) {
+                    match update_reshade_effect(&effect, enabled, self.settings.reshade_depth_capture) {
                         Ok(()) => self.ui.note(format!("{} {}", if enabled { "Enabled" } else { "Disabled" }, effect)),
                         Err(error) => self.ui.note(format!("Cannot update ReShade effect: {error}")),
                     }
