@@ -55,6 +55,8 @@ jobs:
           git -C third_party/vkbasalt checkout 4f97f09
           git -C third_party/vkbasalt apply --check patches/vkbasalt/vkbasalt-android-livereload.patch
           git -C third_party/vkbasalt apply patches/vkbasalt/vkbasalt-android-livereload.patch
+          git -C third_party/vkbasalt apply --check patches/vkbasalt/0002-android-loader-entrypoints.patch
+          git -C third_party/vkbasalt apply patches/vkbasalt/0002-android-loader-entrypoints.patch
 
       - name: Configure Android arm64 build
         run: |
@@ -77,11 +79,13 @@ jobs:
           JSON=$(find build/vkbasalt -name 'vkBasalt.json' -type f | head -1)
           test -n "$SO"
           test -n "$JSON"
-          cp "$SO" out/reshade/libvkbasalt.so
+          # Android's production loader discovers packaged layer libraries by
+          # the libVkLayer_*.so filename convention; it does not read vkBasalt.json.
+          cp "$SO" out/reshade/libVkLayer_VKBASALT_post_processing.so
           cp "$JSON" out/reshade/vkBasalt.json
-          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h out/reshade/libvkbasalt.so
-          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D out/reshade/libvkbasalt.so | grep -E 'vkBasalt_Get(Instance|Device)ProcAddr'
-          file out/reshade/libvkbasalt.so
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h out/reshade/libVkLayer_VKBASALT_post_processing.so
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D out/reshade/libVkLayer_VKBASALT_post_processing.so | grep -E 'vkEnumerateInstanceLayerProperties|vkEnumerateInstanceExtensionProperties|vkGetInstanceProcAddr|vkGetDeviceProcAddr'
+          file out/reshade/libVkLayer_VKBASALT_post_processing.so
           cat out/reshade/vkBasalt.json
 
       - uses: actions/upload-artifact@v4
