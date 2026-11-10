@@ -784,6 +784,10 @@ pub(super) fn reshade_page(
             },
         );
         ui.add_space(8.0 * scale);
+        if std::env::var_os("GLUE5_VULKAN_RESHADE").is_none() {
+            ui.label("Enable ReShade at launch and restart Glue 5 to load the Android Vulkan layer. Live effect switches are available after restart.");
+            return;
+        }
         let root = std::env::var_os("GLUE5_RESHADE_DIR").map(std::path::PathBuf::from);
         let active = root.as_ref().and_then(|dir| {
             std::fs::read_to_string(dir.join("active-preset.txt")).ok()
