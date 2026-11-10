@@ -139,6 +139,78 @@ impl Preset {
         let section = find_section(&self.sections, effect)?;
         find_value(section, name)
     }
+
+    /// Translate a parsed preset into vkBasalt's ReShade-FX config format.
+    /// This preserves the original preset/effect files; the generated config
+    /// only maps enabled effects and their tunable uniform values.
+    pub fn to_vkbasalt_config(&self, preset_dir: &Path) -> String {
+        let effects = self.effect_files(preset_dir);
+        let mut used = std::collections::BTreeSet::new();
+        let mut enabled = Vec::new();
+        let mut mappings = Vec::new();
+        let mut parameters = Vec::new();
+
+        for effect in effects {
+            if !effect.path.is_file() {
+                continue;
+            }
+            let stem = effect.path.file_stem().and_then(|s| s.to_str()).unwrap_or("effect");
+            let mut alias: String = stem.chars()
+                .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+                .collect();
+            if alias.is_empty() || alias.as_bytes()[0].is_ascii_digit() {
+                alias.insert_str(0, "fx_");
+            }
+            let base = alias.clone();
+            let mut suffix = 2;
+            while !used.insert(alias.to_ascii_lowercase()) {
+                alias = format!("{base}_{suffix}");
+                suffix += 1;
+            }
+            if effect.enabled {
+                enabled.push(alias.clone());
+            }
+            mappings.push(format!("{alias} = {}", effect.path.display()));
+
+            if let Some(section) = find_section(&self.sections, &effect.section) {
+                for (name, value) in section {
+                    if name.eq_ignore_ascii_case("Enabled") {
+                        continue;
+                    }
+                    let parts: Vec<_> = value.split(',').map(str::trim).filter(|v| !v.is_empty()).collect();
+                    if parts.len() > 1 {
+                        for (index, part) in parts.iter().enumerate() {
+                            parameters.push(format!("{alias}_{name}_{index} = {part}"));
+                        }
+                    } else if let Some(value) = parts.first() {
+                        parameters.push(format!("{alias}_{name} = {value}"));
+                    }
+                }
+            }
+        }
+
+        let shaders = if preset_dir.join("Shaders").is_dir() {
+            preset_dir.join("Shaders")
+        } else {
+            preset_dir.to_path_buf()
+        };
+        let textures = if preset_dir.join("Textures").is_dir() {
+            preset_dir.join("Textures")
+        } else {
+            preset_dir.to_path_buf()
+        };
+        let mut output = String::new();
+        output.push_str("# Generated from the imported ReShade preset by Glue 5. Original files are preserved.\n");
+        output.push_str(&format!("effects = {}\n", enabled.join(":")));
+        output.push_str(&format!("reshadeIncludePath = {}\n", shaders.display()));
+        output.push_str(&format!("reshadeTexturePath = {}\n", textures.display()));
+        output.push_str("enableOnLaunch = True\ndepthCapture = off\n");
+        for line in mappings.into_iter().chain(parameters) {
+            output.push_str(&line);
+            output.push('\n');
+        }
+        output
+    }
 }
 
 /// Extract the effect filename from either Effect.fx or Technique@Effect.fx.
@@ -230,5 +302,21 @@ Exposure=0.5
         let p = Preset::parse("bad line\n[NewFeature]\nMode=fast\n");
         assert_eq!(p.parameter("NewFeature", "Mode"), Some("fast"));
         assert_eq!(p.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn converts_enabled_effects_and_uniforms_to_vkbasalt_config() {
+        let root = std::env::temp_dir().join(format!("glue5-reshade-test-{}", std::process::id()));
+        let shaders = root.join("Shaders");
+        std::fs::create_dir_all(&shaders).unwrap();
+        std::fs::write(shaders.join("Bloom.fx"), "// fixture").unwrap();
+        let preset = Preset::parse("[GENERAL]\nTechniqueSorting=Bloom@Shaders/Bloom.fx\n[TECHNIQUES]\nBloom@Shaders/Bloom.fx=1\n[Shaders/Bloom.fx]\nEnabled=1\nThreshold=1.25\nTint=1.0, 0.8, 0.6\n");
+        let config = preset.to_vkbasalt_config(&root);
+        assert!(config.contains("effects = Bloom"));
+        assert!(config.contains("Bloom = "));
+        assert!(config.contains("Bloom_Threshold = 1.25"));
+        assert!(config.contains("Bloom_Tint_0 = 1.0"));
+        assert!(config.contains("Bloom_Tint_2 = 0.6"));
+        let _ = std::fs::remove_dir_all(root);
     }
 }
