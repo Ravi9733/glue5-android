@@ -380,9 +380,9 @@ public class Glue5Activity extends SDLActivity {
                 throw e;
             }
         }
-        if (!sawIni || !sawFx) {
+        if (!sawIni) {
             deleteTree(staging);
-            throw new Exception("ZIP must contain a ReShade .ini preset and at least one .fx effect file, or only .fx dependencies for an active preset");
+            throw new Exception("ZIP must contain a ReShade .ini preset or .fx shader dependencies for an active preset");
         }
         if (!staging.renameTo(destination)) {
             deleteTree(staging);
@@ -397,7 +397,8 @@ public class Glue5Activity extends SDLActivity {
             output.write(presetIni.getCanonicalPath().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
         return "ReShade preset files installed: " + destination.getAbsolutePath()
-                + " (original INI/FX files preserved; selected " + presetIni.getName() + ")";
+                + " (original files preserved; selected " + presetIni.getName()
+                + (sawFx ? "; included FX files retained)" : "; import its FX dependency ZIPs next)");
     }
 
     private static String readTextFile(File file) throws Exception {
