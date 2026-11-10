@@ -82,18 +82,21 @@ jobs:
 
       - name: Download the verified Android ReShade FX layer
         run: |
-          runs=$(curl -fsSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/build-reshade-runtime.yml/runs?branch=$GITHUB_REF_NAME&per_page=20")
-          run_id=$(echo "$runs" | jq -r '.workflow_runs[] | select(.status == "completed" and .conclusion == "success") | .id' | head -n 1)
+          runs=$(gh run list --workflow build-reshade-runtime.yml --branch "$GITHUB_REF_NAME" --limit 20 --json databaseId,status,conclusion,headSha)
+          same_commit=$(echo "$runs" | jq -r --arg sha "$GITHUB_SHA" '.[] | select(.headSha == $sha) | .databaseId' | head -n 1)
+          if [ -n "$same_commit" ]; then
+            gh run watch "$same_commit" --exit-status
+            run_id="$same_commit"
+          else
+            run_id=$(echo "$runs" | jq -r '.[] | select(.status == "completed" and .conclusion == "success") | .databaseId' | head -n 1)
+          fi
           test -n "$run_id" || { echo "No successful ARM64 ReShade runtime build exists yet"; exit 1; }
           mkdir -p "$RUNNER_TEMP/reshade-layer"
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name glue5-reshade-fx-arm64 --dir "$RUNNER_TEMP/reshade-layer"
-          test -s "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so"
+          test -s "$RUNNER_TEMP/reshade-layer/libVKLayer_VKBASALT_post_processing.so"
           mkdir -p target/android/reshade-layer
-          cp "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so" target/android/reshade-layer/
-          file target/android/reshade-layer/libVkLayer_VKBASALT_post_processing.so
+          cp "$RUNNER_TEMP/reshade-layer/libVKLayer_VKBASALT_post_processing.so" target/android/reshade-layer/
+          file target/android/reshade-layer/libVKLayer_VKBASALT_post_processing.so
 
       - name: Android signing key
         run: |
