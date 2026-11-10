@@ -290,6 +290,29 @@ fn prepare_reshade(user_dir: &Path, enabled: bool) {
     log::info!("ReShade preset loaded for vkBasalt: {}", canonical_preset.display());
 }
 
+/// Change one effect in the generated vkBasalt config, leaving the original INI intact.
+/// vkBasalt's Android port watches this file and re-records its effect chain live.
+fn update_reshade_effect(effect: &str, enabled: bool) -> Result<()> {
+    let root = std::env::var_os("GLUE5_RESHADE_DIR")
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow!("ReShade folder is unavailable"))?;
+    let canonical_root = root.canonicalize()?;
+    let active = std::fs::read_to_string(canonical_root.join("active-preset.txt"))?;
+    let preset_path = PathBuf::from(active.trim()).canonicalize()?;
+    anyhow::ensure!(preset_path.starts_with(&canonical_root), "ReShade preset path is outside its imported folder");
+    let source = std::fs::read_to_string(&preset_path)?;
+    let mut preset = glue5_gpu::reshade::Preset::parse(&source);
+    anyhow::ensure!(
+        preset.sections.keys().any(|section| section.eq_ignore_ascii_case(effect)),
+        "ReShade effect section was not found in the selected INI"
+    );
+    preset.techniques.insert(effect.to_owned(), enabled);
+    let preset_dir = preset_path.parent().unwrap_or(&canonical_root);
+    let config = preset.to_vkbasalt_config(preset_dir);
+    std::fs::write(canonical_root.join("vkBasalt.conf"), config)?;
+    Ok(())
+}
+
 /// The command line (desktop): `glue5 [--play] [game folder]`; the start
 /// page is skipped only with `--play` (a folder alone is where the game is:
 /// a game that fails is not started again by itself).
