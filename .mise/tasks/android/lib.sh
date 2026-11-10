@@ -94,7 +94,7 @@ launch() {
         extras+=(--es "$key" "'${!key//\'/\'\\\'\'}'")
     done
     since=$(adb shell date +%s.000)
-    adb shell am start -W -S -n "$package/.Glue5Activity" ${extras[@]+" ${extras[@]}"} >/dev/null
+    adb shell am start -W -S -n "$package/.Glue5Activity" ${extras[@]+"${extras[@]}"} >/dev/null
     pid=$(adb shell pidof -s "$package") || die "the app did not start"
     adb logcat -v brief --pid="$pid" &
     logcat=$!
