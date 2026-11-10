@@ -29,13 +29,16 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
       MISE_TASK_RUN_AUTO_INSTALL: "false"
-      # Native compilation takes longer than mise's common five-minute task limit.
+      # Keep long native compilation within the hosted runner's resource limits.
       MISE_TASK_TIMEOUT: "45m"
-      # Match the successful hosted-runner Rust parallelism; native CMake remains single-job.
-      CARGO_BUILD_JOBS: "4"
-      CMAKE_BUILD_PARALLEL_LEVEL: "1"
+      CARGO_BUILD_JOBS: "1"
       CARGO_PROFILE_RELEASE_DEBUG: "0"
-      GRADLE_OPTS: "-Dorg.gradle.workers.max=1"
+      # Limit LLVM's per-crate parallel code generation as well as Cargo's job count.
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+      RAYON_NUM_THREADS: "1"
+      CMAKE_BUILD_PARALLEL_LEVEL: "1"
+      MAKEFLAGS: "-j1"
+      GRADLE_OPTS: "-Dorg.gradle.workers.max=1 -Dorg.gradle.parallel=false -XX:ActiveProcessorCount=2"
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
@@ -48,7 +51,6 @@ jobs:
         with:
           workspaces: ". -> target"
           cache-on-failure: true
-          # Share compiled Rust artifacts across workflow runs instead of isolating each job.
           add-job-id-key: false
 
       - name: Fetch game.wasm from the draft release
@@ -89,16 +91,38 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Diagnose runner resources
+      - name: Diagnose runner resource limits
         run: |
           free -h
           df -h "$GITHUB_WORKSPACE" "$RUNNER_TEMP"
-          sed -n "1,12p" /proc/meminfo
+          printf '\n--- cgroup limits ---\n'
+          for f in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events /sys/fs/cgroup/cpu.max; do
+            if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
+          done
+          printf '\n--- CPU ---\n'
+          nproc
+          lscpu | sed -n '1,18p'
           ulimit -a
 
       - name: Build Turnip-enabled APK
         run: |
+          set -o pipefail
+          echo "Build parallelism: Cargo=$CARGO_BUILD_JOBS, codegen=$CARGO_PROFILE_RELEASE_CODEGEN_UNITS, CMake=$CMAKE_BUILD_PARALLEL_LEVEL, Gradle workers=1"
+          (
+            while sleep 30; do
+              echo "--- resource sample $(date -u +%FT%TZ) ---"
+              awk '/MemAvailable|MemTotal/ {print}' /proc/meminfo
+              for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events; do
+                if [ -r "$f" ]; then echo "$f"; cat "$f"; fi
+              done
+              ps -eo pid,comm,%cpu,%mem --sort=-%cpu | head -n 8
+            done
+          ) &
+          monitor_pid=$!
+          trap 'echo "--- build interrupted; final cgroup state ---"; cat /sys/fs/cgroup/memory.events 2>/dev/null || true; kill "$monitor_pid" 2>/dev/null || true' EXIT
           mise run --timeout 45m android:build
+          kill "$monitor_pid" 2>/dev/null || true
+          trap - EXIT
           cp target/android/gradle/outputs/apk/release/Glue5-release.apk Glue5-android-turnip-test.apk
           cp ~/.android/debug.keystore Glue5-android.keystore
 
