@@ -857,6 +857,15 @@ fn settings_items(
                 });
             }
             if cfg!(target_os = "android") {
+                setting(
+                    ui,
+                    "ReShade FX layer",
+                    Control::Toggle,
+                    Some("Enable the app-packaged ReShade-compatible Vulkan layer on next launch"),
+                    |ui| toggle(ui, &mut settings.reshade_enabled),
+                );
+            }
+            if cfg!(target_os = "android") {
                 setting(ui, "Turnip driver file", Control::Action, Some("Choose a compatible Turnip ZIP"), |ui| {
                     let response = action_button(ui, "Import ZIP");
                     if response.clicked() {
