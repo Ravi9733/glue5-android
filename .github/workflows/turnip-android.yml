@@ -33,8 +33,9 @@ jobs:
       MISE_TASK_TIMEOUT: "45m"
       CARGO_BUILD_JOBS: "1"
       CARGO_PROFILE_RELEASE_DEBUG: "0"
-      # Limit LLVM's per-crate parallel code generation as well as Cargo's job count.
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+      # Keep Cargo serial, but use Rust's normal release codegen partitioning.
+      # rpf-archive has a low-optimisation package override in Cargo.toml.
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
       RAYON_NUM_THREADS: "1"
       CMAKE_BUILD_PARALLEL_LEVEL: "1"
       MAKEFLAGS: "-j1"
