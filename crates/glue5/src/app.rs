@@ -228,9 +228,22 @@ pub fn run() -> Result<()> {
 fn prepare_reshade(user_dir: &Path, enabled: bool) {
     unsafe {
         std::env::remove_var("GLUE5_VULKAN_RESHADE");
+        std::env::remove_var("GLUE5_VULKAN_RESHADE_LAYER_FOUND");
         std::env::remove_var("ENABLE_VKBASALT");
         std::env::remove_var("VKBASALT_CONFIG_FILE");
     }
+
+    // Confirm the packaged ARM64 Vulkan layer exists before exposing its
+    // effect manager. The Android loader searches this native library folder.
+    let layer_present = std::env::var_os("GLUE5_NATIVE_LIB_DIR")
+        .map(PathBuf::from)
+        .is_some_and(|dir| dir.join("libVKLayer_VKBASALT_post_processing.so").is_file());
+    if layer_present {
+        unsafe { std::env::set_var("GLUE5_VULKAN_RESHADE_LAYER_FOUND", "1") };
+    } else {
+        log::warn!("Android ReShade Vulkan layer is not packaged in this APK");
+    }
+
     if !enabled {
         return;
     }
