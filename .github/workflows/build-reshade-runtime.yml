@@ -8,6 +8,8 @@ on:
     paths:
       - "patches/vkbasalt/**"
       - ".github/workflows/build-reshade-runtime.yml"
+      - ".github/workflows/turnip-android.yml"
+      - ".mise/tasks/android/lib.sh"
 
 permissions:
   contents: read
