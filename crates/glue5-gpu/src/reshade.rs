@@ -146,8 +146,9 @@ impl Preset {
     pub fn to_vkbasalt_config(&self, preset_dir: &Path) -> String {
         let effects = self.effect_files(preset_dir);
         let mut used = std::collections::BTreeSet::new();
-        let mut enabled = Vec::new();
+        let mut ordered_effects = Vec::new();
         let mut mappings = Vec::new();
+        let mut effect_states = Vec::new();
         let mut parameters = Vec::new();
 
         for effect in effects {
@@ -167,9 +168,8 @@ impl Preset {
                 alias = format!("{base}_{suffix}");
                 suffix += 1;
             }
-            if effect.enabled {
-                enabled.push(alias.clone());
-            }
+            ordered_effects.push(alias.clone());
+            effect_states.push(format!("{alias}_enabled = {}", if effect.enabled { "True" } else { "False" }));
             mappings.push(format!("{alias} = \"{}\"", effect.path.display()));
 
             if let Some(section) = find_section(&self.sections, &effect.section) {
@@ -201,11 +201,11 @@ impl Preset {
         };
         let mut output = String::new();
         output.push_str("# Generated from the imported ReShade preset by Glue 5. Original files are preserved.\n");
-        output.push_str(&format!("effects = {}\n", enabled.join(":")));
+        output.push_str(&format!("effects = {}\n", ordered_effects.join(":")));
         output.push_str(&format!("reshadeIncludePath = \"{}\"\n", shaders.display()));
         output.push_str(&format!("reshadeTexturePath = \"{}\"\n", textures.display()));
         output.push_str("enableOnLaunch = True\ndepthCapture = off\n");
-        for line in mappings.into_iter().chain(parameters) {
+        for line in mappings.into_iter().chain(effect_states).chain(parameters) {
             output.push_str(&line);
             output.push('\n');
         }
