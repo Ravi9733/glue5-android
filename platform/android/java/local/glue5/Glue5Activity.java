@@ -373,7 +373,13 @@ public class Glue5Activity extends SDLActivity {
                         throw new Exception("Unsupported OIV package: expected a GTA V (Five) assembly.xml");
                     }
                 }
-                File sourceRoot = standardOiv ? new File(staging, "content") : staging;
+                // OIV archives are sometimes wrapped in folders. Resolve content
+                // relative to the directory that actually contains assembly.xml.
+                File packageRoot = installXml.getParentFile();
+                File sourceRoot = standardOiv ? new File(packageRoot, "content") : packageRoot;
+                if (standardOiv && !sourceRoot.isDirectory()) {
+                    throw new Exception("OIV package is missing its content/ folder beside assembly.xml");
+                }
                 NodeList archives = document.getElementsByTagName("archive");
                 File gameDataRoot = new File(Environment.getExternalStorageDirectory(),
                         "GTA5/game/data");
@@ -482,8 +488,10 @@ public class Glue5Activity extends SDLActivity {
                     if (wholeRpf) installedRpf++;
                 }
             } else {
+                // Many graphics ZIPs contain a wrapper folder (ModName/common/...).
+                File looseRoot = findLooseGameRoot(staging);
                 int[] zipRpfCount = new int[1];
-                installed = importLooseZipFiles(staging, overlay, installedOutputs, zipRpfCount);
+                installed = importLooseZipFiles(looseRoot, overlay, installedOutputs, zipRpfCount);
                 installedRpf += zipRpfCount[0];
             }
         } catch (Exception e) {
@@ -653,6 +661,34 @@ public class Glue5Activity extends SDLActivity {
             output.delete();
             throw e;
         }
+    }
+
+    /**
+     * Locate common/, x64/ or update/ beneath a ZIP's optional wrapper
+     * directory. Only select a directory directly containing a recognized
+     * GTA V data root; arbitrary leading folders are never mapped into game paths.
+     */
+    private static File findLooseGameRoot(File packageRoot) throws Exception {
+        java.util.ArrayDeque<File> pending = new java.util.ArrayDeque<>();
+        pending.add(packageRoot);
+        while (!pending.isEmpty()) {
+            File dir = pending.removeFirst();
+            File[] children = dir.listFiles();
+            if (children == null) continue;
+            for (File child : children) {
+                if (child.isDirectory() && (child.getName().equalsIgnoreCase("common")
+                        || child.getName().equalsIgnoreCase("x64")
+                        || child.getName().equalsIgnoreCase("update"))) {
+                    return dir;
+                }
+            }
+            for (File child : children) {
+                if (child.isDirectory() && !java.nio.file.Files.isSymbolicLink(child.toPath())) {
+                    pending.addLast(child);
+                }
+            }
+        }
+        return packageRoot;
     }
 
     private static int importLooseZipFiles(File packageRoot, File overlay,
