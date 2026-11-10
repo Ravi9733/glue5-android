@@ -315,13 +315,14 @@ Exposure=0.5
         let shaders = root.join("Shaders");
         std::fs::create_dir_all(&shaders).unwrap();
         std::fs::write(shaders.join("Bloom.fx"), "// fixture").unwrap();
-        let preset = Preset::parse("[GENERAL]\nTechniqueSorting=Bloom@Shaders/Bloom.fx\n[TECHNIQUES]\nBloom@Shaders/Bloom.fx=1\n[Shaders/Bloom.fx]\nEnabled=1\nThreshold=1.25\nTint=1.0, 0.8, 0.6\n");
+        let preset = Preset::parse("[GENERAL]\nTechniqueSorting=Bloom@Shaders/Bloom.fx\nPreprocessorDefinitions=USE_LUT=1,QUALITY=2\n[TECHNIQUES]\nBloom@Shaders/Bloom.fx=1\n[Shaders/Bloom.fx]\nEnabled=1\nThreshold=1.25\nTint=1.0, 0.8, 0.6\n");
         let config = preset.to_vkbasalt_config(&root);
         assert!(config.contains("effects = Bloom"));
         assert!(config.contains("Bloom = "));
         assert!(config.contains("Bloom_Threshold = 1.25"));
         assert!(config.contains("Bloom_Tint_0 = 1.0"));
         assert!(config.contains("Bloom_Tint_2 = 0.6"));
+        assert!(config.contains("reshadePreprocessorDefinitions = \"QUALITY=2,USE_LUT=1\""));
         let _ = std::fs::remove_dir_all(root);
     }
 }
