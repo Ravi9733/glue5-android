@@ -762,6 +762,18 @@ impl App {
                         None => self.ui.note("Android app storage path is unavailable"),
                     }
                 }
+                Action::ImportReshadeArchive => {
+                    match std::env::var_os("GLUE5_APP_FILES_DIR") {
+                        Some(directory) => {
+                            let request = PathBuf::from(directory).join("reshade-import-request");
+                            match std::fs::write(request, b"1") {
+                                Ok(()) => self.ui.note("Choose the original ReShade preset ZIP…"),
+                                Err(e) => self.ui.note(format!("Cannot request ReShade ZIP picker: {e}")),
+                            }
+                        }
+                        None => self.ui.note("Android app storage path is unavailable"),
+                    }
+                }
                 Action::ClearGraphicsMods => {
                     match std::env::var_os("GLUE5_APP_FILES_DIR") {
                         Some(directory) => {
