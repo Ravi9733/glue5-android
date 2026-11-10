@@ -209,7 +209,7 @@ impl Preset {
             .collect::<Vec<_>>()
             .join(",");
         output.push_str(&format!("reshadePreprocessorDefinitions = \"{definitions}\"\n"));
-        output.push_str(&format!("enableOnLaunch = True\\ndepthCapture = {}\\n", if depth_capture { "on" } else { "off" }));
+        output.push_str(&format!("enableOnLaunch = True\ndepthCapture = {}\n", if depth_capture { "on" } else { "off" }));
         for line in mappings.into_iter().chain(effect_states).chain(parameters) {
             output.push_str(&line);
             output.push('\n');
