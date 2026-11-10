@@ -1,6 +1,6 @@
-diff --git a/wgpu-hal/src/vulkan/instance.rs b/wgpu-hal/src/vulkan/instance.rs
---- a/wgpu-hal/src/vulkan/instance.rs
-+++ b/wgpu-hal/src/vulkan/instance.rs
+diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
+--- a/src/vulkan/instance.rs
++++ b/src/vulkan/instance.rs
 @@ -689,2 +689,15 @@
          let mut layers: Vec<&'static CStr> = Vec::new();
  
