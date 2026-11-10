@@ -540,6 +540,11 @@ impl App {
             return false;
         }
         if let Event::FingerDown { x, y, .. } = event {
+            // The dedicated ReShade button opens its manager over the game.
+            if !self.ui.is_open() && self.ui.reshade_hit(x, y, &self.window) {
+                self.ui.open_reshade();
+                return false;
+            }
             // The settings button takes its finger before the touch controls
             // see it (or they would show, taking pad 0 from a controller).
             if !self.ui.is_open() && self.ui.gear_hit(x, y, &self.window) {
@@ -834,6 +839,12 @@ impl App {
                             }
                         }
                         None => self.ui.note("Android app storage path is unavailable"),
+                    }
+                }
+                Action::SetReshadeEffect { effect, enabled } => {
+                    match update_reshade_effect(&effect, enabled) {
+                        Ok(()) => self.ui.note(format!("{} {}", if enabled { "Enabled" } else { "Disabled" }, effect)),
+                        Err(error) => self.ui.note(format!("Cannot update ReShade effect: {error}")),
                     }
                 }
                 Action::ClearGraphicsMods => {
