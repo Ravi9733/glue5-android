@@ -772,6 +772,13 @@ pub(super) fn reshade_page(
         );
         setting(
             ui,
+            "Experimental depth capture",
+            Control::Toggle,
+            Some("Required by RTGI/DOF. vkBasalt marks this WIP and it may be unstable on Adreno GPUs."),
+            |ui| toggle(ui, &mut settings.reshade_depth_capture),
+        );
+        setting(
+            ui,
             "Import preset ZIP",
             Control::Action,
             Some("Keep original .ini, .fx, include and texture files"),
