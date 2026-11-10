@@ -53,9 +53,22 @@ android_libs() {
         rustc --release -p glue5 --lib --crate-type cdylib
     rm -rf "$out/jniLibs" "$out/res"
     mkdir -p "$out/jniLibs/$abi" "$out/res/drawable-nodpi"
-    # sdl3-sys puts libSDL3.so next to the crate's library; Luau (the mods'
-    # language) is C++, built against the NDK's shared libc++.
-    ln -f "target/$target/release/libglue5.so" "target/$target/release/libSDL3.so" "$out/jniLibs/$abi/"
+
+    # Cargo build scripts place SDL's shared library in the dependency's
+    # build output directory (OUT_DIR), not reliably beside libglue5.so.
+    # Locate the Android-target artifact explicitly before packaging it.
+    local glue_lib="target/$target/release/libglue5.so"
+    [ -f "$glue_lib" ] || die "Android glue5 library was not produced: $glue_lib"
+    local sdl_lib
+    sdl_lib=$(find "target/$target/release" -type f -name 'libSDL3.so' -print -quit)
+    [ -n "$sdl_lib" ] || {
+        echo "SDL3 shared library not found under target/$target/release." >&2
+        echo "Matching SDL artifacts:" >&2
+        find "target/$target" -type f \( -iname '*sdl3*' -o -iname 'libSDL*' \) -print | head -n 80 >&2
+        die "sdl3-sys did not produce the Android libSDL3.so required by SDL's Java loader"
+    }
+    cp "$glue_lib" "$out/jniLibs/$abi/libglue5.so"
+    cp "$sdl_lib" "$out/jniLibs/$abi/libSDL3.so"
     cp "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/sysroot/usr/lib/"$target"/libc++_shared.so "$out/jniLibs/$abi/"
 
     # Build the Android Vulkan loader hooks needed by optional AdrenoTools
@@ -107,7 +120,7 @@ launch() {
         extras+=(--es "$key" "'${!key//\'/\'\\\'\'}'")
     done
     since=$(adb shell date +%s.000)
-    adb shell am start -W -S -n "$package/.Glue5Activity" ${extras[@]+"${extras[@]}"} >/dev/null
+    adb shell am start -W -S -n "$package/.Glue5Activity" ${extras[@]+" ${extras[@]}"} >/dev/null
     pid=$(adb shell pidof -s "$package") || die "the app did not start"
     adb logcat -v brief --pid="$pid" &
     logcat=$!
