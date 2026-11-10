@@ -52,6 +52,12 @@ android_libs() {
     cp "$sdl_lib" "$out/jniLibs/$abi/libSDL3.so"
     cp "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/sysroot/usr/lib/"$target"/libc++_shared.so "$out/jniLibs/$abi/"
 
+    # Package the separately built, verified Android ReShade FX Vulkan layer.
+    # The Android loader discovers app-bundled layers by libVkLayer_*.so name.
+    local reshade_layer="$out/reshade-layer/libVkLayer_VKBASALT_post_processing.so"
+    [ -s "$reshade_layer" ] || die "Android ReShade FX layer artifact is missing: $reshade_layer"
+    cp "$reshade_layer" "$out/jniLibs/$abi/libVkLayer_VKBASALT_post_processing.so"
+
     # Build the Android Vulkan loader hooks needed by optional AdrenoTools
     # custom-driver support. Packaging alone does not activate Turnip.
     local adrenotools_src="$out/adrenotools-src"
