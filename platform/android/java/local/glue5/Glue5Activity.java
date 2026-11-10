@@ -364,8 +364,32 @@ public class Glue5Activity extends SDLActivity {
             deleteTree(staging);
             throw new Exception("Cannot finish installing ReShade preset folder");
         }
+        File presetIni = findFirstFile(destination, ".ini");
+        if (presetIni == null) {
+            deleteTree(destination);
+            throw new Exception("No ReShade .ini preset was found after extraction");
+        }
+        File activePreset = new File(root, "active-preset.txt");
+        try (FileOutputStream output = new FileOutputStream(activePreset, false)) {
+            output.write(presetIni.getCanonicalPath().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
         return "ReShade preset files installed: " + destination.getAbsolutePath()
-                + " (original INI/FX files preserved)";
+                + " (original INI/FX files preserved; selected " + presetIni.getName() + ")";
+    }
+
+    private static File findFirstFile(File directory, String extension) {
+        File[] children = directory.listFiles();
+        if (children == null) return null;
+        java.util.Arrays.sort(children, (left, right) -> left.getName().compareToIgnoreCase(right.getName()));
+        for (File child : children) {
+            if (child.isDirectory()) {
+                File found = findFirstFile(child, extension);
+                if (found != null) return found;
+            } else if (child.getName().toLowerCase(java.util.Locale.ROOT).endsWith(extension)) {
+                return child;
+            }
+        }
+        return null;
     }
 
     /**
