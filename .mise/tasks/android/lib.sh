@@ -3,29 +3,18 @@ set -euo pipefail
 
 package=local.glue5
 project=platform/android
-# What the build generates for the Gradle project (see its build.gradle.kts).
 out=$PWD/target/android
 apk=$out/gradle/outputs/apk/release/Glue5-release.apk
 abi=arm64-v8a
 target=aarch64-linux-android
 
-die() {
-    echo "$*" >&2
-    exit 1
-}
+die() { echo "$*" >&2; exit 1; }
 
-# A setting of the Gradle project (glue5.<name> in its gradle.properties).
-setting() {
-    sed -n "s/^glue5\.$1=//p" "$project/gradle.properties"
-}
+setting() { sed -n "s/^glue5\.$1=//p" "$project/gradle.properties"; }
 
-# The SDK packages the build uses, in ANDROID_HOME (the android-sdk tool's
-# directory): sdkmanager installs the missing ones, asking to accept their
-# licences the first time.
 sdk_packages() {
     [ -n "${ANDROID_HOME:-}" ] || die "ANDROID_HOME is not set: run the task through mise"
-    local packages=("platforms;android-$(setting compileSdk)" "build-tools;$(setting buildTools)"
-        "ndk;$(setting ndk)" platform-tools)
+    local packages=("platforms;android-$(setting compileSdk)" "build-tools;$(setting buildTools)" "ndk;$(setting ndk)" platform-tools)
     local missing=() package
     for package in "${packages[@]}"; do
         [ -d "$ANDROID_HOME/${package//;//}" ] || missing+=("$package")
@@ -36,44 +25,35 @@ sdk_packages() {
         "$sdkmanager_bin" --sdk_root="$ANDROID_HOME" --install "${missing[@]}"
     fi
     export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$(setting ndk)
-    # cargo-ndk prefers ANDROID_NDK_ROOT when both variables are set. Keep
-    # both names pinned to the same mise-managed NDK, not the runner SDK.
     export ANDROID_NDK_ROOT=$ANDROID_NDK_HOME
-    # adb, also when platform-tools came just now.
     PATH=$ANDROID_HOME/platform-tools:$PATH
 }
 
-# The app's libraries (the glue5 crate as a shared library and SDL's) and
-# the icon's layers, where the Gradle project takes them.
 android_libs() {
-    # SDL's CMake build (cmake crate) with the NDK's toolchain file: cargo-ndk
-    # sets up the compilers for cc and rustc, not for CMake.
     export CMAKE_TOOLCHAIN_FILE_${target//-/_}=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
-    cargo ndk --target "$abi" --platform "$(setting minSdk)" \
-        rustc --release -p glue5 --lib --crate-type cdylib
+    cargo ndk --target "$abi" --platform "$(setting minSdk)" rustc --release -p glue5 --lib --crate-type cdylib
+
     rm -rf "$out/jniLibs" "$out/res"
     mkdir -p "$out/jniLibs/$abi" "$out/res/drawable-nodpi"
 
-    # Cargo build scripts place SDL's shared library in the dependency's
-    # build output directory (OUT_DIR), not reliably beside libglue5.so.
-    # Locate the Android-target artifact explicitly before packaging it.
+    # SDL3's build script places libSDL3.so in its Cargo OUT_DIR, not beside
+    # libglue5.so. Search the Android target's release artifacts recursively.
     local glue_lib="target/$target/release/libglue5.so"
     [ -f "$glue_lib" ] || die "Android glue5 library was not produced: $glue_lib"
     local sdl_lib
     sdl_lib=$(find "target/$target/release" -type f -name 'libSDL3.so' -print -quit)
-    [ -n "$sdl_lib" ] || {
+    if [ -z "$sdl_lib" ]; then
         echo "SDL3 shared library not found under target/$target/release." >&2
         echo "Matching SDL artifacts:" >&2
         find "target/$target" -type f \( -iname '*sdl3*' -o -iname 'libSDL*' \) -print | head -n 80 >&2
         die "sdl3-sys did not produce the Android libSDL3.so required by SDL's Java loader"
-    }
+    fi
     cp "$glue_lib" "$out/jniLibs/$abi/libglue5.so"
     cp "$sdl_lib" "$out/jniLibs/$abi/libSDL3.so"
     cp "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/sysroot/usr/lib/"$target"/libc++_shared.so "$out/jniLibs/$abi/"
 
     # Build the Android Vulkan loader hooks needed by optional AdrenoTools
-    # custom-driver support. The runtime selector/loader is a separate step;
-    # packaging these libraries alone does not activate Turnip.
+    # custom-driver support. Packaging alone does not activate Turnip.
     local adrenotools_src="$out/adrenotools-src"
     local adrenotools_build="$out/adrenotools-build"
     if [ ! -d "$adrenotools_src/.git" ]; then
@@ -97,9 +77,7 @@ android_libs() {
     cp platform/shared/Glue5.icon/Assets/02-five.png "$out/res/drawable-nodpi/glue5_five.png"
 }
 
-# The APK, signed with the debug key; it ends up in $apk.
 android_apk() {
-    # SDL's Java side, from the sdl3-src crate the libraries were built with.
     local sdl
     sdl=$(cargo metadata --format-version 1 --locked |
         grep -o '"manifest_path":"[^"]*/sdl3-src-[^"/]*/Cargo.toml"' | head -1 | cut -d'"' -f4)
@@ -108,15 +86,11 @@ android_apk() {
         "-Pglue5.sdlJava=${sdl%/Cargo.toml}/SDL/android-project/app/src/main/java" assembleRelease
 }
 
-# Launches the installed app and follows its log until it ends; then shows
-# a crash's report, if any. It gets the same switches as a desktop run:
-# RUST_LOG and the GLUE5_* variables, as the launch intent's extras.
 launch() {
     local since pid logcat key extras=()
     for key in RUST_LOG $(compgen -e | grep '^GLUE5_'); do
         case $key in GLUE5_TEAM | GLUE5_GAME_DIR) continue ;; esac
         [ -n "${!key:-}" ] || continue
-        # adb shell joins its arguments into one command line: quoted for it.
         extras+=(--es "$key" "'${!key//\'/\'\\\'\'}'")
     done
     since=$(adb shell date +%s.000)
@@ -125,7 +99,6 @@ launch() {
     adb logcat -v brief --pid="$pid" &
     logcat=$!
     trap 'kill ${logcat:-} 2>/dev/null' EXIT
-    # Waits on the device (polling through adb would log a line per call).
     adb shell "while [ -d /proc/$pid ]; do sleep 1; done"
     sleep 1
     adb logcat -d -b crash -v brief -T "$since"
