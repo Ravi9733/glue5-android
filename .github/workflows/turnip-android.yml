@@ -79,6 +79,21 @@ jobs:
           test -d "$ANDROID_HOME/platforms/android-36"
           test -d "$ANDROID_HOME/build-tools/36.0.0"
 
+      - name: Download the verified Android ReShade FX layer
+        run: |
+          runs=$(curl -fsSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/build-reshade-runtime.yml/runs?branch=$GITHUB_REF_NAME&per_page=20")
+          run_id=$(echo "$runs" | jq -r '.workflow_runs[] | select(.status == "completed" and .conclusion == "success") | .id' | head -n 1)
+          test -n "$run_id" || { echo "No successful ARM64 ReShade runtime build exists yet"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/reshade-layer"
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name glue5-reshade-fx-arm64 --dir "$RUNNER_TEMP/reshade-layer"
+          test -s "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so"
+          mkdir -p target/android/reshade-layer
+          cp "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so" target/android/reshade-layer/
+          file target/android/reshade-layer/libVkLayer_VKBASALT_post_processing.so
+
       - name: Android signing key
         run: |
           mkdir -p ~/.android
