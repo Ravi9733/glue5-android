@@ -1,0 +1,31 @@
+diff --git a/src/effect_reshade.cpp b/src/effect_reshade.cpp
+--- a/src/effect_reshade.cpp
++++ b/src/effect_reshade.cpp
+@@ -1230,6 +1230,22 @@
+         preprocessor.add_macro_definition("__RESHADE_PERFORMANCE_MODE__", "1");
+         preprocessor.add_macro_definition("__RENDERER__", "0x20000");
+         // TODO add more macros
+ 
++        // Glue 5: honour the preset's original [GENERAL] PreprocessorDefinitions.
++        const std::string definitions = pConfig->getOption<std::string>("reshadePreprocessorDefinitions", "");
++        auto trimDefinition = [](std::string value) {
++            const auto first = value.find_first_not_of(" \t\r\n");
++            if (first == std::string::npos) return std::string{};
++            const auto last = value.find_last_not_of(" \t\r\n");
++            return value.substr(first, last - first + 1);
++        };
++        size_t definitionStart = 0;
++        while (definitionStart < definitions.size()) {
++            const size_t comma = definitions.find(',', definitionStart);
++            const std::string item = definitions.substr(definitionStart, comma == std::string::npos ? std::string::npos : comma - definitionStart);
++            const size_t equals = item.find('=');
++            if (equals != std::string::npos) {
++                const std::string name = trimDefinition(item.substr(0, equals));
++                const std::string value = trimDefinition(item.substr(equals + 1));
++                if (!name.empty()) preprocessor.add_macro_definition(name, value);
++            }
++            if (comma == std::string::npos) break;
++            definitionStart = comma + 1;
++        }
++
+         preprocessor.add_macro_definition("BUFFER_WIDTH", std::to_string(imageExtent.width));
