@@ -324,6 +324,8 @@ Exposure=0.5
         assert!(config.contains("Bloom_Tint_2 = 0.6"));
         assert!(config.contains("reshadePreprocessorDefinitions = \"QUALITY=2,USE_LUT=1\""));
         assert!(config.contains("depthCapture = off"));
+        let depth_config = preset.to_vkbasalt_config(&root, true);
+        assert!(depth_config.contains("depthCapture = on"));
         let _ = std::fs::remove_dir_all(root);
     }
 }
