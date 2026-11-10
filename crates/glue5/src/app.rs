@@ -226,8 +226,6 @@ pub fn run() -> Result<()> {
 /// The Vulkan layer is opt-in and is enabled before wgpu creates its instance.
 #[cfg(target_os = "android")]
 fn prepare_reshade(user_dir: &Path, enabled: bool) {
-    use std::os::unix::ffi::OsStrExt;
-
     unsafe {
         std::env::remove_var("GLUE5_VULKAN_RESHADE");
         std::env::remove_var("ENABLE_VKBASALT");
@@ -285,7 +283,7 @@ fn prepare_reshade(user_dir: &Path, enabled: bool) {
     unsafe {
         std::env::set_var("GLUE5_VULKAN_RESHADE", "1");
         std::env::set_var("ENABLE_VKBASALT", "1");
-        std::env::set_var("VKBASALT_CONFIG_FILE", config_path.as_os_str().as_bytes());
+        std::env::set_var("VKBASALT_CONFIG_FILE", config_path.as_os_str());
     }
     log::info!("ReShade preset loaded for vkBasalt: {}", canonical_preset.display());
 }
