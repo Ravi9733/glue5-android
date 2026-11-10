@@ -29,6 +29,9 @@ mod prepare;
 mod present;
 mod profile;
 mod recycle;
+
+/// ReShade preset parsing and effect discovery for the Android Vulkan presenter.
+pub mod reshade;
 mod scene;
 mod shader;
 mod slabs;
