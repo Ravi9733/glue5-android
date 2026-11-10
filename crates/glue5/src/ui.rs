@@ -34,7 +34,7 @@ use credits::credits_page;
 use friends::{FriendsPage, friends_page};
 use mods::{ModsPage, mods_page};
 pub use mods::StudioInfo;
-use pages::{settings_page, start_page};
+use pages::{reshade_page, settings_page, start_page};
 use servers::{ServersPage, servers_page};
 
 use crate::touch::Touch;
@@ -54,6 +54,7 @@ pub enum Page {
     Servers,
     /// The mods, GLUE 5 Studio, the mods' log.
     Mods,
+    Reshade,
 }
 
 /// How the game starts.
@@ -86,6 +87,7 @@ pub enum Action {
     ImportGraphicsArchive,
     /// Import a ReShade preset ZIP, retaining its original INI, FX, textures and folders.
     ImportReshadeArchive,
+    SetReshadeEffect { effect: String, enabled: bool },
     /// Remove installed graphics overlays and imported package folders.
     ClearGraphicsMods,
     /// The game's graphics settings back to the engine's defaults.
@@ -270,6 +272,7 @@ pub struct Ui {
     gear: Option<(Pos2, f32)>,
     /// The mods' menus button, likewise.
     menus_button: Option<(Pos2, f32)>,
+    reshade_button: Option<(Pos2, f32)>,
     /// When egui wants to draw again (before the game, frames are drawn
     /// only for input or for this).
     repaint_at: Option<Instant>,
@@ -342,6 +345,7 @@ impl Ui {
             controls: Vec::new(),
             chip: Default::default(),
             menus_button: None,
+            reshade_button: None,
             text_rect: None,
             gear_icon,
         }
@@ -455,7 +459,7 @@ impl Ui {
                 self.repaint();
             }
             Some(Page::Settings) => self.show(self.home),
-            Some(Page::Credits | Page::Friends | Page::Servers | Page::Mods) => self.show(self.behind),
+            Some(Page::Credits | Page::Friends | Page::Servers | Page::Mods | Page::Reshade) => self.show(self.behind),
             _ => {}
         }
     }
@@ -528,6 +532,17 @@ impl Ui {
     pub fn menus_hit(&self, x: f32, y: f32, window: &Window) -> bool {
         let size = screen_size(window);
         self.menus_button.is_some_and(|(c, r)| c.distance(pos2(x * size.x, y * size.y)) <= r * 1.4)
+    }
+
+    /// Whether a finger at x, y (0..1) is on the ReShade button.
+    pub fn reshade_hit(&self, x: f32, y: f32, window: &Window) -> bool {
+        let size = screen_size(window);
+        self.reshade_button.is_some_and(|(c, r)| c.distance(pos2(x * size.x, y * size.y)) <= r * 1.4)
+    }
+
+    /// Open the ReShade FX manager over the running game.
+    pub fn open_reshade(&mut self) {
+        self.show(Some(Page::Reshade));
     }
 
     /// Whether a finger at `x`, `y` (0..1) is on the stream's sign.
@@ -679,6 +694,7 @@ impl Ui {
             && gear.is_none()
             && alert.is_none()
             && self.toasts.is_empty()
+            && self.reshade_button.is_none()
             && (!hud || !self.perf.due(settings.overlay_detail))
         {
             if self.drawn && !hud {
@@ -688,6 +704,7 @@ impl Ui {
             self.events.clear();
             self.gear = None;
             self.menus_button = None;
+            self.reshade_button = None;
             self.chip = Default::default();
             return actions;
         }
@@ -726,12 +743,14 @@ impl Ui {
         // script has registered a menu; tapping it can open the Mods page and
         // reveal load errors or let the user inspect the installed mods.
         self.menus_button = gear.filter(|_| status.mods).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha));
+        self.reshade_button = (cfg!(target_os = "android") && status.started.is_some() && self.page.is_none())
+            .then(|| draw_reshade_button(&ctx, safe, scale, gear.unwrap_or(1.0).max(0.75)));
         let overlay = hud.then(|| self.perf.draw(&ctx, safe, settings, status));
         // The notifications and the stream's sign keep off everything else
         // drawn over the game.
         self.controls = touch.map_or_else(Vec::new, Touch::occupied);
         let mut taken = self.controls.clone();
-        taken.extend(self.gear.into_iter().chain(self.menus_button).map(|(c, r)| Rect::from_center_size(c, Vec2::splat(2.0 * r))));
+        taken.extend(self.gear.into_iter().chain(self.menus_button).chain(self.reshade_button).map(|(c, r)| Rect::from_center_size(c, Vec2::splat(2.0 * r))));
         taken.extend(overlay);
         // Under the settings button when it shows.
         // Under the top's buttons (the touch controls' camera view and
@@ -765,6 +784,7 @@ impl Ui {
             }
             Some(Page::Servers) => back = servers_page(&ctx, &mut self.servers, settings, status, &mut actions),
             Some(Page::Mods) => back = mods_page(&ctx, &mut self.mods, settings, status),
+            Some(Page::Reshade) => back = reshade_page(&ctx, settings, &mut actions),
             None => {}
         }
         let mut output = ctx.end_pass();
@@ -941,6 +961,17 @@ fn draw_menus_button(ctx: &egui::Context, safe: Rect, scale: f32, alpha: f32) ->
         painter.line_segment([pos2(c.x - 0.48 * r, y), pos2(c.x + 0.48 * r, y)], stroke);
         painter.circle_filled(pos2(c.x + knob * r, y), r * 0.15, look.icon);
     }
+    (c, r)
+}
+
+/// ReShade FX manager button beside the settings and Mods buttons.
+fn draw_reshade_button(ctx: &egui::Context, safe: Rect, scale: f32, alpha: f32) -> (Pos2, f32) {
+    let c = gear_center(safe, scale) + vec2(108.0 * scale, 0.0);
+    let r = GEAR_RADIUS * scale;
+    let look = crate::touch::Look::new(alpha, scale, glue5_runtime::input::Character::Other);
+    let painter = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("reshade-button")));
+    painter.circle(c, r, look.fill(false), look.stroke(false));
+    painter.text(c, Align2::CENTER_CENTER, "R", FontId::proportional(r * 0.9), look.icon);
     (c, r)
 }
 
