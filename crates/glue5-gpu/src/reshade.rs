@@ -204,6 +204,11 @@ impl Preset {
         output.push_str(&format!("effects = {}\n", ordered_effects.join(":")));
         output.push_str(&format!("reshadeIncludePath = \"{}\"\n", shaders.display()));
         output.push_str(&format!("reshadeTexturePath = \"{}\"\n", textures.display()));
+        let definitions = self.preprocessor_definitions.iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        output.push_str(&format!("reshadePreprocessorDefinitions = \"{definitions}\"\n"));
         output.push_str("enableOnLaunch = True\ndepthCapture = off\n");
         for line in mappings.into_iter().chain(effect_states).chain(parameters) {
             output.push_str(&line);
