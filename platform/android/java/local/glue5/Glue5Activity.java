@@ -260,8 +260,14 @@ public class Glue5Activity extends SDLActivity {
         if (!root.isDirectory() && !root.mkdirs()) {
             throw new Exception("Cannot create GTA5/GraphicsMods; enable Glue 5 all-files access");
         }
+        // Allow importing the same ZIP again without deleting or overwriting
+        // the user's previous package. Give repeated imports a stable suffix.
         File destination = new File(root, folderName);
-        if (destination.exists()) throw new Exception("A graphics package with this name already exists; rename the ZIP and retry");
+        int duplicateIndex = 2;
+        while (destination.exists()) {
+            destination = new File(root, folderName + "_" + duplicateIndex++);
+        }
+        folderName = destination.getName();
         File staging = new File(root, "." + folderName + ".installing");
         deleteTree(staging);
         if (!staging.mkdirs()) throw new Exception("Cannot create temporary graphics package folder");
