@@ -808,7 +808,7 @@ pub(super) fn reshade_page(
                         }
                         for effect in effects {
                             let mut enabled = effect.enabled;
-                            if ui.checkbox(&mut enabled, &effect.section).changed() {
+                            if ui.checkbox(&mut enabled, effect.section.as_str()).changed() {
                                 actions.push(Action::SetReshadeEffect {
                                     effect: effect.section,
                                     enabled,
