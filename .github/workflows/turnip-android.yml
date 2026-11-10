@@ -98,9 +98,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/reshade-layer"
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name glue5-reshade-fx-arm64 --dir "$RUNNER_TEMP/reshade-layer"
           test -s "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so"
-          mkdir -p target/android/reshade-layer
-          cp "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so" target/android/reshade-layer/
-          file target/android/reshade-layer/libVkLayer_VKBASALT_post_processing.so
+          mkdir -p target/android/jniLibs/arm64-v8a
+          cp "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so" target/android/jniLibs/arm64-v8a/
+          file target/android/jniLibs/arm64-v8a/libVkLayer_VKBASALT_post_processing.so
 
       - name: Android signing key
         run: |
