@@ -806,11 +806,14 @@ pub(super) fn reshade_page(
                     if let Ok(text) = std::fs::read_to_string(&preset_path) {
                         let preset = glue5_gpu::reshade::Preset::parse(&text);
                         let dir = preset_path.parent().unwrap_or(&root);
-                        let effects: Vec<_> = preset.effect_files(dir).into_iter()
-                            .filter(|effect| effect.path.is_file())
-                            .collect();
+                        let effects = preset.effect_files(dir);
+                        let installed_count = effects.iter().filter(|effect| effect.path.is_file()).count();
+                        let missing_count = effects.len().saturating_sub(installed_count);
                         ui.label(RichText::new(format!("Preset: {}", preset_path.file_name().unwrap_or_default().to_string_lossy())).strong());
-                        ui.label(RichText::new(format!("{} shader files found", effects.len())).small());
+                        ui.label(RichText::new(format!(
+                            "{} installed · {} missing",
+                            installed_count, missing_count
+                        )).small());
                         let filter_id = Id::new("reshade-effect-filter");
                         let mut filter = ctx.data_mut(|data| data.get_temp::<String>(filter_id).unwrap_or_default());
                         ui.add(
@@ -831,13 +834,23 @@ pub(super) fn reshade_page(
                                         {
                                             continue;
                                         }
+                                        let exists = effect.path.is_file();
                                         let mut enabled = effect.enabled;
-                                        if ui.checkbox(&mut enabled, effect.section.as_str()).changed() {
-                                            actions.push(Action::SetReshadeEffect {
-                                                effect: effect.section,
-                                                enabled,
-                                            });
-                                        }
+                                        ui.horizontal(|ui| {
+                                            let response = ui.add_enabled(
+                                                exists,
+                                                egui::Checkbox::new(&mut enabled, effect.section.as_str()),
+                                            );
+                                            if response.changed() {
+                                                actions.push(Action::SetReshadeEffect {
+                                                    effect: effect.section.clone(),
+                                                    enabled,
+                                                });
+                                            }
+                                            let status = if exists { "Installed" } else { "Missing file" };
+                                            let color = if exists { theme::MUTED } else { WARN };
+                                            ui.label(RichText::new(status).small().color(color));
+                                        });
                                     }
                                 });
                         }
