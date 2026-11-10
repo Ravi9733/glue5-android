@@ -88,7 +88,7 @@ jobs:
           cp "$SO" out/reshade/libVkLayer_VKBASALT_post_processing.so
           cp "$JSON" out/reshade/vkBasalt.json
           "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h out/reshade/libVkLayer_VKBASALT_post_processing.so
-          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D out/reshade/libVkLayer_VKBASALT_post_processing.so | grep -E 'vkEnumerateInstanceLayerProperties|vkEnumerateInstanceExtensionProperties|vkGetInstanceProcAddr|vkGetDeviceProcAddr'
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D out/reshade/libVkLayer_VKBASALT_post_processing.so | grep -E 'vkEnumerateInstanceLayerProperties|vkEnumerateInstanceExtensionProperties|vkEnumerateDeviceLayerProperties|vkGetInstanceProcAddr|vkGetDeviceProcAddr'
           file out/reshade/libVkLayer_VKBASALT_post_processing.so
           cat out/reshade/vkBasalt.json
 
