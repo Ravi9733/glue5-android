@@ -1,7 +1,7 @@
 diff --git a/src/effect_reshade.cpp b/src/effect_reshade.cpp
 --- a/src/effect_reshade.cpp
 +++ b/src/effect_reshade.cpp
-@@ -1230,6 +1230,22 @@
+@@ -1230,5 +1230,27 @@
          preprocessor.add_macro_definition("__RESHADE_PERFORMANCE_MODE__", "1");
          preprocessor.add_macro_definition("__RENDERER__", "0x20000");
          // TODO add more macros
