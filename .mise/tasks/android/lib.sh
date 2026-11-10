@@ -59,8 +59,8 @@ android_libs() {
     if [ ! -d "$adrenotools_src/.git" ]; then
         git clone https://github.com/Bylaws/libadrenotools.git "$adrenotools_src"
     fi
-    git -C "$adrenotools_src" fetch --depth 1 origin 8fae8ce254dfc1344527e05301e43f37dea2df80
-    git -C "$adrenotools_src" checkout --detach 8fae8ce254dfc1344527e05301e43f37dea2df80
+    git -C "$adrenotools_src" fetch --depth 1 origin master
+    git -C "$adrenotools_src" checkout --detach FETCH_HEAD
     git -C "$adrenotools_src" submodule update --init --recursive
     cmake -S "$adrenotools_src" -B "$adrenotools_build" \
         -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
