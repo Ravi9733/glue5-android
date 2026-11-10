@@ -97,10 +97,10 @@ jobs:
           test -n "$run_id" || { echo "No successful ARM64 ReShade runtime build exists yet"; exit 1; }
           mkdir -p "$RUNNER_TEMP/reshade-layer"
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name glue5-reshade-fx-arm64 --dir "$RUNNER_TEMP/reshade-layer"
-          test -s "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so"
+          test -s "$RUNNER_TEMP/reshade-layer/libVKLayer_VKBASALT_post_processing.so"
           mkdir -p target/android/reshade-layer
-          cp "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so" target/android/reshade-layer/
-          file target/android/reshade-layer/libVkLayer_VKBASALT_post_processing.so
+          cp "$RUNNER_TEMP/reshade-layer/libVKLayer_VKBASALT_post_processing.so" target/android/reshade-layer/
+          file target/android/reshade-layer/libVKLayer_VKBASALT_post_processing.so
 
       - name: Android signing key
         run: |
@@ -149,7 +149,7 @@ jobs:
           trap - EXIT
           cp target/android/gradle/outputs/apk/release/Glue5-release.apk Glue5-android-turnip-test.apk
           # Fail the build if Gradle did not package the actual ARM64 Vulkan layer.
-          unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libVkLayer_VKBASALT_post_processing.so'
+          unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libVKLayer_VKBASALT_post_processing.so'
           unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libglue5.so'
           cp ~/.android/debug.keystore Glue5-android.keystore
 
