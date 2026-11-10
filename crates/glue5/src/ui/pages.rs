@@ -781,7 +781,7 @@ pub(super) fn reshade_page(
             ui,
             "Import preset ZIP",
             Control::Action,
-            Some("Keep original .ini, .fx, include and texture files"),
+            Some("Install a preset ZIP or add shader-only dependency ZIPs such as RTGI without overwriting existing files"),
             |ui| {
                 let response = action_button(ui, "Import ReShade ZIP");
                 if response.clicked() {
@@ -951,7 +951,7 @@ fn settings_items(
                     ui,
                     "ReShade preset ZIP",
                     Control::Action,
-                    Some("Import original .ini, .fx, textures and dependency files without changing GTA V data"),
+                    Some("Import original preset files or add shader dependency ZIPs without changing GTA V data"),
                     |ui| {
                         let response = action_button(ui, "Import ReShade ZIP");
                         if response.clicked() {
