@@ -1,0 +1,44 @@
+diff --git a/src/basalt.cpp b/src/basalt.cpp
+--- a/src/basalt.cpp
++++ b/src/basalt.cpp
+@@ -1,1 +1,34 @@
+ } // extern "C"
++
++// Android's Vulkan loader discovers app-packaged layers by loading
++// libVkLayer_*.so and resolving these standard introspection/dispatch names.
++// Desktop vkBasalt normally maps its private vkBasalt_* entry points through
++// vkBasalt.json; Android does not read that manifest, so export the aliases.
++extern "C"
++{
++    VK_BASALT_EXPORT VkResult VKAPI_CALL vkEnumerateInstanceLayerProperties(
++        uint32_t* pPropertyCount, VkLayerProperties* pProperties)
++    {
++        return vkBasalt::vkBasalt_EnumerateInstanceLayerProperties(pPropertyCount, pProperties);
++    }
++
++    VK_BASALT_EXPORT VkResult VKAPI_CALL vkEnumerateInstanceExtensionProperties(
++        const char* pLayerName, uint32_t* pPropertyCount, VkExtensionProperties* pProperties)
++    {
++        return vkBasalt::vkBasalt_EnumerateInstanceExtensionProperties(
++            pLayerName, pPropertyCount, pProperties);
++    }
++
++    VK_BASALT_EXPORT VkResult VKAPI_CALL vkEnumerateDeviceLayerProperties(
++        VkPhysicalDevice physicalDevice, uint32_t* pPropertyCount, VkLayerProperties* pProperties)
++    {
++        return vkBasalt::vkBasalt_EnumerateDeviceLayerProperties(
++            physicalDevice, pPropertyCount, pProperties);
++    }
++
++    VK_BASALT_EXPORT PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(
++        VkInstance instance, const char* pName)
++    {
++        return vkBasalt_GetInstanceProcAddr(instance, pName);
++    }
++
++    VK_BASALT_EXPORT PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(
++        VkDevice device, const char* pName)
++    {
++        return vkBasalt_GetDeviceProcAddr(device, pName);
++    }
++}
