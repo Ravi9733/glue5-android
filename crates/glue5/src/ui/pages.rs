@@ -784,7 +784,7 @@ pub(super) fn reshade_page(
             },
         );
         ui.add_space(8.0 * scale);
-        if std::env::var_os("GLUE5_VULKAN_RESHADE").is_none() {
+        if std::env::var_os("GLUE5_VULKAN_RESHADE_LAYER_FOUND").is_none() {
             ui.label("Enable ReShade at launch and restart Glue 5 to load the Android Vulkan layer. Live effect switches are available after restart.");
             return;
         }
