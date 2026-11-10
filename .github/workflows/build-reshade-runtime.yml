@@ -59,6 +59,8 @@ jobs:
           git -C third_party/vkbasalt apply "$GITHUB_WORKSPACE/patches/vkbasalt/vkbasalt-android-livereload.patch"
           git -C third_party/vkbasalt apply --check "$GITHUB_WORKSPACE/patches/vkbasalt/0002-android-loader-entrypoints.patch"
           git -C third_party/vkbasalt apply "$GITHUB_WORKSPACE/patches/vkbasalt/0002-android-loader-entrypoints.patch"
+          git -C third_party/vkbasalt apply --check "$GITHUB_WORKSPACE/patches/vkbasalt/0003-reshade-preprocessor-definitions.patch"
+          git -C third_party/vkbasalt apply "$GITHUB_WORKSPACE/patches/vkbasalt/0003-reshade-preprocessor-definitions.patch"
 
       - name: Configure Android arm64 build
         run: |
