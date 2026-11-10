@@ -284,10 +284,27 @@ public class Glue5Activity extends SDLActivity {
                 if (name != null && !name.trim().isEmpty()) displayName = name.trim();
             }
         }
-        if (!displayName.toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) {
-            throw new Exception("Select a ReShade .zip archive");
+        // Android document providers often omit the .zip suffix from DISPLAY_NAME
+        // even when the selected document is a valid ZIP. Validate the archive
+        // signature instead of rejecting it based only on the displayed filename.
+        try (InputStream probe = getContentResolver().openInputStream(uri)) {
+            if (probe == null) throw new Exception("Cannot read selected ReShade archive");
+            byte[] signature = new byte[4];
+            int read = 0;
+            while (read < signature.length) {
+                int count = probe.read(signature, read, signature.length - read);
+                if (count < 0) break;
+                read += count;
+            }
+            boolean zipSignature = read == 4 && signature[0] == 'P' && signature[1] == 'K'
+                    && ((signature[2] == 3 && signature[3] == 4)
+                    || (signature[2] == 5 && signature[3] == 6)
+                    || (signature[2] == 7 && signature[3] == 8));
+            if (!zipSignature) {
+                throw new Exception("Selected file is not a valid ZIP archive (choose the original .zip file)");
+            }
         }
-        String folderName = displayName.replaceFirst("(?i)\\.zip$", "")
+        String folderName = displayName.replaceFirst("(?i)\\.(zip|zipx)$", "")
                 .replaceAll("[^A-Za-z0-9._ -]", "_").trim();
         if (folderName.isEmpty() || folderName.equals(".") || folderName.equals("..")) folderName = "ReShadePreset";
 
