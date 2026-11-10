@@ -355,8 +355,8 @@ public class Glue5Activity extends SDLActivity {
                 factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
                 factory.setXIncludeAware(false);
                 factory.setExpandEntityReferences(false);
-                try { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, ""); } catch (Exception ignored) {}
-                try { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, ""); } catch (Exception ignored) {}
+                try { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", ""); } catch (Exception ignored) {}
+                try { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", ""); } catch (Exception ignored) {}
                 org.w3c.dom.Document document;
                 try (InputStream xml = new java.io.FileInputStream(installXml)) {
                     document = factory.newDocumentBuilder().parse(xml);
@@ -464,8 +464,6 @@ public class Glue5Activity extends SDLActivity {
                         skippedUnsupported++;
                         continue;
                     }
-                    File gameDataRoot = new File(Environment.getExternalStorageDirectory(),
-                            "GTA5/game/data");
                     File original = safePackageFile(gameDataRoot, relative);
                     if (original == null || !original.isFile()
                             || original.length() != sourceFile.length()) {
