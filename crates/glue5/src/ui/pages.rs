@@ -810,17 +810,36 @@ pub(super) fn reshade_page(
                             .filter(|effect| effect.path.is_file())
                             .collect();
                         ui.label(RichText::new(format!("Preset: {}", preset_path.file_name().unwrap_or_default().to_string_lossy())).strong());
+                        ui.label(RichText::new(format!("{} shader files found", effects.len())).small());
+                        let filter_id = Id::new("reshade-effect-filter");
+                        let mut filter = ctx.data_mut(|data| data.get_temp::<String>(filter_id).unwrap_or_default());
+                        ui.add(
+                            egui::TextEdit::singleline(&mut filter)
+                                .hint_text("Search installed effects...")
+                                .desired_width(f32::INFINITY),
+                        );
+                        ctx.data_mut(|data| data.insert_temp(filter_id, filter.clone()));
                         if effects.is_empty() {
                             ui.label("No compatible .fx files were found in this preset.");
-                        }
-                        for effect in effects {
-                            let mut enabled = effect.enabled;
-                            if ui.checkbox(&mut enabled, effect.section.as_str()).changed() {
-                                actions.push(Action::SetReshadeEffect {
-                                    effect: effect.section,
-                                    enabled,
+                        } else {
+                            egui::ScrollArea::vertical()
+                                .max_height(ui.available_height().max(120.0))
+                                .show(ui, |ui| {
+                                    for effect in effects {
+                                        if !filter.is_empty()
+                                            && !effect.section.to_lowercase().contains(&filter.to_lowercase())
+                                        {
+                                            continue;
+                                        }
+                                        let mut enabled = effect.enabled;
+                                        if ui.checkbox(&mut enabled, effect.section.as_str()).changed() {
+                                            actions.push(Action::SetReshadeEffect {
+                                                effect: effect.section,
+                                                enabled,
+                                            });
+                                        }
+                                    }
                                 });
-                            }
                         }
                         return;
                     }
