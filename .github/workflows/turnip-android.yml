@@ -83,10 +83,14 @@ jobs:
       - name: Download the verified Android ReShade FX layer
         run: |
           runs=$(gh run list --workflow build-reshade-runtime.yml --branch "$GITHUB_REF_NAME" --limit 20 --json databaseId,status,conclusion,headSha)
-          same_commit=$(echo "$runs" | jq -r --arg sha "$GITHUB_SHA" '.[] | select(.headSha == $sha) | .databaseId' | head -n 1)
-          if [ -n "$same_commit" ]; then
-            gh run watch "$same_commit" --exit-status
-            run_id="$same_commit"
+          latest_id=$(echo "$runs" | jq -r '.[0].databaseId // empty')
+          latest_status=$(echo "$runs" | jq -r '.[0].status // empty')
+          latest_conclusion=$(echo "$runs" | jq -r '.[0].conclusion // empty')
+          if [ "$latest_status" = "in_progress" ] || [ "$latest_status" = "queued" ]; then
+            gh run watch "$latest_id" --exit-status
+            run_id="$latest_id"
+          elif [ "$latest_status" = "completed" ] && [ "$latest_conclusion" = "success" ]; then
+            run_id="$latest_id"
           else
             run_id=$(echo "$runs" | jq -r '.[] | select(.status == "completed" and .conclusion == "success") | .databaseId' | head -n 1)
           fi
