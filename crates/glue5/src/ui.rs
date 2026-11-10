@@ -696,6 +696,7 @@ impl Ui {
             && alert.is_none()
             && self.toasts.is_empty()
             && self.reshade_button.is_none()
+            && !(cfg!(target_os = "android") && status.started.is_some())
             && (!hud || !self.perf.due(settings.overlay_detail))
         {
             if self.drawn && !hud {
