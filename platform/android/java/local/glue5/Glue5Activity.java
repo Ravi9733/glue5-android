@@ -357,9 +357,32 @@ public class Glue5Activity extends SDLActivity {
             deleteTree(staging);
             throw e;
         }
+        File activePreset = new File(root, "active-preset.txt");
+        if (!sawIni && sawFx) {
+            // Extra effect packs (for example RTGI) are imported into the
+            // active preset's folder so its relative include/texture paths
+            // remain intact. Existing files are never overwritten.
+            try {
+                String activePath = java.nio.file.Files.readString(activePreset.toPath()).trim();
+                File activeIni = new File(activePath).getCanonicalFile();
+                File canonicalRoot = root.getCanonicalFile();
+                if (!activeIni.isFile() || !activeIni.getPath().startsWith(canonicalRoot.getPath() + File.separator)) {
+                    throw new Exception("Import a ReShade preset ZIP before adding shader dependencies");
+                }
+                File presetDirectory = activeIni.getParentFile();
+                ensureNoMergeCollisions(staging, presetDirectory);
+                mergeReShadeFiles(staging, presetDirectory);
+                deleteTree(staging);
+                return "ReShade shader dependencies added to " + presetDirectory.getAbsolutePath()
+                        + " (existing preset files were preserved)";
+            } catch (Exception e) {
+                deleteTree(staging);
+                throw e;
+            }
+        }
         if (!sawIni || !sawFx) {
             deleteTree(staging);
-            throw new Exception("ZIP must contain at least one ReShade .ini preset and one .fx effect file");
+            throw new Exception("ZIP must contain a ReShade .ini preset and at least one .fx effect file, or only .fx dependencies for an active preset");
         }
         if (!staging.renameTo(destination)) {
             deleteTree(staging);
@@ -368,14 +391,46 @@ public class Glue5Activity extends SDLActivity {
         File presetIni = findPresetIni(destination);
         if (presetIni == null) {
             deleteTree(destination);
-            throw new Exception("No ReShade .ini preset was found after extraction");
+            throw new Exception("No ReShade preset INI with TechniqueSorting or [TECHNIQUES] was found");
         }
-        File activePreset = new File(root, "active-preset.txt");
         try (FileOutputStream output = new FileOutputStream(activePreset, false)) {
             output.write(presetIni.getCanonicalPath().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
         return "ReShade preset files installed: " + destination.getAbsolutePath()
                 + " (original INI/FX files preserved; selected " + presetIni.getName() + ")";
+    }
+
+    private static void ensureNoMergeCollisions(File source, File target) throws Exception {
+        File[] children = source.listFiles();
+        if (children == null) throw new Exception("Cannot inspect imported shader files");
+        for (File child : children) {
+            File existing = new File(target, child.getName());
+            if (!existing.exists()) continue;
+            if (child.isDirectory() && existing.isDirectory()) {
+                ensureNoMergeCollisions(child, existing);
+            } else {
+                throw new Exception("Shader dependency would overwrite an existing file: " + existing.getName());
+            }
+        }
+    }
+
+    private static void mergeReShadeFiles(File source, File target) throws Exception {
+        if (!target.isDirectory() && !target.mkdirs()) throw new Exception("Cannot create ReShade dependency folder");
+        File[] children = source.listFiles();
+        if (children == null) throw new Exception("Cannot read imported shader files");
+        for (File child : children) {
+            File output = new File(target, child.getName());
+            if (child.isDirectory()) {
+                mergeReShadeFiles(child, output);
+            } else {
+                try (InputStream input = new FileInputStream(child);
+                     FileOutputStream stream = new FileOutputStream(output, false)) {
+                    byte[] buffer = new byte[32768];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) stream.write(buffer, 0, count);
+                }
+            }
+        }
     }
 
     private static File findPresetIni(File directory) {
