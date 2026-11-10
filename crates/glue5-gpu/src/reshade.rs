@@ -98,10 +98,10 @@ impl Preset {
         let mut names = Vec::new();
         for item in &self.technique_sorting {
             let Some(name) = effect_from_technique(item) else { continue };
-            if find_section(&self.sections, name).is_some()
-                && !names.iter().any(|n: &String| n.eq_ignore_ascii_case(name))
-            {
-                names.push(name.to_owned());
+            if let Some(section) = self.sections.keys().find(|section| effect_name_eq(section, name)) {
+                if !names.iter().any(|n: &String| effect_name_eq(n, section)) {
+                    names.push(section.clone());
+                }
             }
         }
         for section in self.sections.keys() {
@@ -126,7 +126,7 @@ impl Preset {
             }
             let path = preset_dir.join(relative);
             let enabled = self.techniques.iter()
-                .find(|(name, _)| name.eq_ignore_ascii_case(&section))
+                .find(|(name, _)| effect_name_eq(name, &section))
                 .map(|(_, enabled)| *enabled)
                 .unwrap_or(true);
             Some(EffectFile { section, path, enabled })
@@ -145,6 +145,10 @@ impl Preset {
 fn effect_from_technique(value: &str) -> Option<&str> {
     let effect = value.rsplit_once('@').map_or(value, |(_, effect)| effect).trim();
     effect.to_ascii_lowercase().ends_with(".fx").then_some(effect)
+}
+
+fn effect_name_eq(left: &str, right: &str) -> bool {
+    left.replace('\\', "/").eq_ignore_ascii_case(&right.replace('\\', "/"))
 }
 
 fn find_section<'a>(
