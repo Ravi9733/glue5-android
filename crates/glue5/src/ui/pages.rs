@@ -750,6 +750,36 @@ pub(super) fn settings_page(
     })
 }
 
+/// Discover additional installed FX files without following symlinks.
+fn discover_unreferenced_reshade_effects(
+    directory: &std::path::Path,
+    referenced: &[glue5_gpu::reshade::EffectFile],
+) -> Vec<std::path::PathBuf> {
+    fn visit(directory: &std::path::Path, output: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(directory) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_dir() {
+                visit(&path, output);
+            } else if kind.is_file()
+                && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("fx"))
+            {
+                output.push(path);
+            }
+        }
+    }
+
+    let mut discovered = Vec::new();
+    visit(directory, &mut discovered);
+    discovered.retain(|path| {
+        let candidate = path.to_string_lossy().to_lowercase();
+        !referenced.iter().any(|effect| effect.path.to_string_lossy().to_lowercase() == candidate)
+    });
+    discovered.sort();
+    discovered
+}
+
 /// ReShade's native FX preset manager. The original INI/FX files stay untouched;
 /// effect switches are written to vkBasalt's live-reloaded config.
 pub(super) fn reshade_page(
@@ -807,8 +837,12 @@ pub(super) fn reshade_page(
                         let preset = glue5_gpu::reshade::Preset::parse(&text);
                         let dir = preset_path.parent().unwrap_or(&root);
                         let effects = preset.effect_files(dir);
-                        let installed_count = effects.iter().filter(|effect| effect.path.is_file()).count();
-                        let missing_count = effects.len().saturating_sub(installed_count);
+                        let additional_effects = discover_unreferenced_reshade_effects(dir, &effects);
+                        let installed_count = effects.iter().filter(|effect| effect.path.is_file()).count()
+                            + additional_effects.len();
+                        let missing_count = effects.len().saturating_sub(
+                            effects.iter().filter(|effect| effect.path.is_file()).count()
+                        );
                         ui.label(RichText::new(format!("Preset: {}", preset_path.file_name().unwrap_or_default().to_string_lossy())).strong());
                         ui.label(RichText::new(format!(
                             "{} installed · {} missing",
@@ -822,8 +856,8 @@ pub(super) fn reshade_page(
                                 .desired_width(f32::INFINITY),
                         );
                         ctx.data_mut(|data| data.insert_temp(filter_id, filter.clone()));
-                        if effects.is_empty() {
-                            ui.label("No compatible .fx files were found in this preset.");
+                        if effects.is_empty() && additional_effects.is_empty() {
+                            ui.label("No compatible .fx files were found in this preset folder.");
                         } else {
                             egui::ScrollArea::vertical()
                                 .max_height(ui.available_height().max(120.0))
@@ -851,6 +885,19 @@ pub(super) fn reshade_page(
                                             let color = if exists { theme::MUTED } else { WARN };
                                             ui.label(RichText::new(status).small().color(color));
                                         });
+                                    }
+                                    if !additional_effects.is_empty() {
+                                        ui.separator();
+                                        ui.label(RichText::new("Other installed effects (not listed in this preset)").strong());
+                                        for path in &additional_effects {
+                                            let label = path.strip_prefix(dir).unwrap_or(path).to_string_lossy();
+                                            if filter.is_empty() || label.to_lowercase().contains(&filter.to_lowercase()) {
+                                                ui.horizontal(|ui| {
+                                                    ui.label(label.as_ref());
+                                                    ui.label(RichText::new("Not in preset").small().color(theme::MUTED));
+                                                });
+                                            }
+                                        }
                                     }
                                 });
                         }
