@@ -48,6 +48,8 @@ jobs:
         with:
           workspaces: ". -> target"
           cache-on-failure: true
+          # Share compiled Rust artifacts across workflow runs instead of isolating each job.
+          add-job-id-key: false
 
       - name: Fetch game.wasm from the draft release
         id: game
