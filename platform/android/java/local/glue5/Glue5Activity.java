@@ -364,7 +364,7 @@ public class Glue5Activity extends SDLActivity {
             deleteTree(staging);
             throw new Exception("Cannot finish installing ReShade preset folder");
         }
-        File presetIni = findFirstFile(destination, ".ini");
+        File presetIni = findPresetIni(destination);
         if (presetIni == null) {
             deleteTree(destination);
             throw new Exception("No ReShade .ini preset was found after extraction");
@@ -377,19 +377,36 @@ public class Glue5Activity extends SDLActivity {
                 + " (original INI/FX files preserved; selected " + presetIni.getName() + ")";
     }
 
-    private static File findFirstFile(File directory, String extension) {
+    private static File findPresetIni(File directory) {
+        java.util.ArrayList<File> candidates = new java.util.ArrayList<>();
+        collectIniFiles(directory, candidates);
+        File fallback = null;
+        for (File candidate : candidates) {
+            String name = candidate.getName().toLowerCase(java.util.Locale.ROOT);
+            if (name.equals("reshade.ini") || name.equals("dxgi.ini") || name.equals("d3d11.ini")) continue;
+            if (fallback == null) fallback = candidate;
+            try (InputStream input = new FileInputStream(candidate)) {
+                byte[] header = new byte[256 * 1024];
+                int count = input.read(header);
+                if (count <= 0) continue;
+                String text = new String(header, 0, count, java.nio.charset.StandardCharsets.UTF_8)
+                        .toUpperCase(java.util.Locale.ROOT);
+                if (text.contains("[TECHNIQUES]") || text.contains("TECHNIQUESORTING=")) {
+                    return candidate;
+                }
+            } catch (Exception ignored) {}
+        }
+        return fallback;
+    }
+
+    private static void collectIniFiles(File directory, java.util.List<File> output) {
         File[] children = directory.listFiles();
-        if (children == null) return null;
+        if (children == null) return;
         java.util.Arrays.sort(children, (left, right) -> left.getName().compareToIgnoreCase(right.getName()));
         for (File child : children) {
-            if (child.isDirectory()) {
-                File found = findFirstFile(child, extension);
-                if (found != null) return found;
-            } else if (child.getName().toLowerCase(java.util.Locale.ROOT).endsWith(extension)) {
-                return child;
-            }
+            if (child.isDirectory()) collectIniFiles(child, output);
+            else if (child.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".ini")) output.add(child);
         }
-        return null;
     }
 
     /**
