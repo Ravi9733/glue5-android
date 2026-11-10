@@ -363,7 +363,7 @@ public class Glue5Activity extends SDLActivity {
             // active preset's folder so its relative include/texture paths
             // remain intact. Existing files are never overwritten.
             try {
-                String activePath = java.nio.file.Files.readString(activePreset.toPath()).trim();
+                String activePath = readTextFile(activePreset).trim();
                 File activeIni = new File(activePath).getCanonicalFile();
                 File canonicalRoot = root.getCanonicalFile();
                 if (!activeIni.isFile() || !activeIni.getPath().startsWith(canonicalRoot.getPath() + File.separator)) {
@@ -398,6 +398,16 @@ public class Glue5Activity extends SDLActivity {
         }
         return "ReShade preset files installed: " + destination.getAbsolutePath()
                 + " (original INI/FX files preserved; selected " + presetIni.getName() + ")";
+    }
+
+    private static String readTextFile(File file) throws Exception {
+        try (InputStream input = new FileInputStream(file);
+             java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            return output.toString(java.nio.charset.StandardCharsets.UTF_8.name());
+        }
     }
 
     private static void ensureNoMergeCollisions(File source, File target) throws Exception {
