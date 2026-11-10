@@ -143,7 +143,7 @@ impl Preset {
     /// Translate a parsed preset into vkBasalt's ReShade-FX config format.
     /// This preserves the original preset/effect files; the generated config
     /// only maps enabled effects and their tunable uniform values.
-    pub fn to_vkbasalt_config(&self, preset_dir: &Path) -> String {
+    pub fn to_vkbasalt_config(&self, preset_dir: &Path, depth_capture: bool) -> String {
         let effects = self.effect_files(preset_dir);
         let mut used = std::collections::BTreeSet::new();
         let mut ordered_effects = Vec::new();
@@ -209,7 +209,7 @@ impl Preset {
             .collect::<Vec<_>>()
             .join(",");
         output.push_str(&format!("reshadePreprocessorDefinitions = \"{definitions}\"\n"));
-        output.push_str("enableOnLaunch = True\ndepthCapture = off\n");
+        output.push_str(&format!("enableOnLaunch = True\\ndepthCapture = {}\\n", if depth_capture { "on" } else { "off" }));
         for line in mappings.into_iter().chain(effect_states).chain(parameters) {
             output.push_str(&line);
             output.push('\n');
@@ -316,13 +316,14 @@ Exposure=0.5
         std::fs::create_dir_all(&shaders).unwrap();
         std::fs::write(shaders.join("Bloom.fx"), "// fixture").unwrap();
         let preset = Preset::parse("[GENERAL]\nTechniqueSorting=Bloom@Shaders/Bloom.fx\nPreprocessorDefinitions=USE_LUT=1,QUALITY=2\n[TECHNIQUES]\nBloom@Shaders/Bloom.fx=1\n[Shaders/Bloom.fx]\nEnabled=1\nThreshold=1.25\nTint=1.0, 0.8, 0.6\n");
-        let config = preset.to_vkbasalt_config(&root);
+        let config = preset.to_vkbasalt_config(&root, false);
         assert!(config.contains("effects = Bloom"));
         assert!(config.contains("Bloom = "));
         assert!(config.contains("Bloom_Threshold = 1.25"));
         assert!(config.contains("Bloom_Tint_0 = 1.0"));
         assert!(config.contains("Bloom_Tint_2 = 0.6"));
         assert!(config.contains("reshadePreprocessorDefinitions = \"QUALITY=2,USE_LUT=1\""));
+        assert!(config.contains("depthCapture = off"));
         let _ = std::fs::remove_dir_all(root);
     }
 }
