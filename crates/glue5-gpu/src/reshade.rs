@@ -1,9 +1,7 @@
 //! ReShade preset (.ini) parsing and safe effect-file discovery.
 //!
-//! This module deliberately parses the preset format independently of the
-//! effect compiler. A preset is configuration, not executable shader code:
-//! callers must compile the referenced .fx files before reporting an effect
-//! as active.
+//! A preset is configuration, not executable shader code. Callers must
+//! compile and execute the referenced effects before reporting them active.
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
@@ -13,17 +11,15 @@ pub struct Preset {
     pub sections: BTreeMap<String, BTreeMap<String, String>>,
     pub technique_sorting: Vec<String>,
     pub preprocessor_definitions: BTreeMap<String, String>,
+    /// Enabled state keyed by effect filename (for example, "Bloom.fx").
     pub techniques: BTreeMap<String, bool>,
     pub diagnostics: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EffectFile {
-    /// Section name as written in the preset, normally a .fx filename.
     pub section: String,
-    /// Resolved path relative to the preset directory.
     pub path: PathBuf,
-    /// Whether the matching technique is enabled in the preset.
     pub enabled: bool,
 }
 
@@ -78,19 +74,16 @@ impl Preset {
         }
 
         for (section, values) in &preset.sections {
-            if section.eq_ignore_ascii_case("GENERAL") || section.eq_ignore_ascii_case("TECHNIQUES") {
+            if section.eq_ignore_ascii_case("TECHNIQUES") {
+                // ReShade keys are commonly TechniqueName@EffectFile.fx.
                 for (name, value) in values {
-                    if let Some(enabled) = parse_bool(value) {
-                        preset.techniques.insert(name.clone(), enabled);
+                    if let (Some(effect), Some(enabled)) = (effect_from_technique(name), parse_bool(value)) {
+                        preset.techniques.insert(effect.to_owned(), enabled);
                     }
                 }
             } else if section.to_ascii_lowercase().ends_with(".fx") {
-                for (name, value) in values {
-                    if name.eq_ignore_ascii_case("Enabled") {
-                        if let Some(enabled) = parse_bool(value) {
-                            preset.techniques.insert(section.clone(), enabled);
-                        }
-                    }
+                if let Some(value) = find_value(values, "Enabled").and_then(parse_bool) {
+                    preset.techniques.insert(section.clone(), value);
                 }
             }
         }
@@ -99,39 +92,44 @@ impl Preset {
     }
 
     /// Return referenced .fx sections in preset order, then remaining .fx
-    /// sections. Paths are constrained to the preset folder (no ../ escape).
+    /// sections. Both slash styles are accepted, but paths may not escape the
+    /// preset directory or refer to absolute/drive-qualified locations.
     pub fn effect_files(&self, preset_dir: &Path) -> Vec<EffectFile> {
         let mut names = Vec::new();
-        for name in &self.technique_sorting {
-            if name.to_ascii_lowercase().ends_with(".fx")
-                && self.sections.keys().any(|s| s.eq_ignore_ascii_case(name))
+        for item in &self.technique_sorting {
+            let Some(name) = effect_from_technique(item) else { continue };
+            if find_section(&self.sections, name).is_some()
                 && !names.iter().any(|n: &String| n.eq_ignore_ascii_case(name))
             {
-                names.push(name.clone());
+                names.push(name.to_owned());
             }
         }
         for section in self.sections.keys() {
             if section.to_ascii_lowercase().ends_with(".fx")
-                && !names.iter().any(|n| n.eq_ignore_ascii_case(section))
+                && !names.iter().any(|n: &String| n.eq_ignore_ascii_case(section))
             {
                 names.push(section.clone());
             }
         }
 
         names.into_iter().filter_map(|section| {
-            let relative = Path::new(&section);
+            let normalized = section.replace('\\', "/");
+            if normalized.starts_with('/')
+                || normalized.starts_with("//")
+                || normalized.as_bytes().get(1) == Some(&b':')
+            {
+                return None;
+            }
+            let relative = Path::new(&normalized);
             if relative.components().any(|c| !matches!(c, Component::Normal(_))) {
                 return None;
             }
             let path = preset_dir.join(relative);
-            Some(EffectFile {
-                enabled: self.techniques.iter()
-                    .find(|(name, _)| name.eq_ignore_ascii_case(&section))
-                    .map(|(_, enabled)| *enabled)
-                    .unwrap_or(true),
-                section,
-                path,
-            })
+            let enabled = self.techniques.iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(&section))
+                .map(|(_, enabled)| *enabled)
+                .unwrap_or(true);
+            Some(EffectFile { section, path, enabled })
         }).collect()
     }
 
@@ -141,6 +139,12 @@ impl Preset {
         let section = find_section(&self.sections, effect)?;
         find_value(section, name)
     }
+}
+
+/// Extract the effect filename from either Effect.fx or Technique@Effect.fx.
+fn effect_from_technique(value: &str) -> Option<&str> {
+    let effect = value.rsplit_once('@').map_or(value, |(_, effect)| effect).trim();
+    effect.to_ascii_lowercase().ends_with(".fx").then_some(effect)
 }
 
 fn find_section<'a>(
@@ -170,7 +174,7 @@ mod tests {
 ; ReShade preset
 [GENERAL]
 PreprocessorDefinitions=USE_LUT=1,QUALITY=2
-TechniqueSorting=Bloom.fx, Tonemap.fx
+TechniqueSorting=Bloom@Bloom.fx, Tonemap@Tonemap.fx
 [TECHNIQUES]
 Bloom@Bloom.fx=1
 Tonemap@Tonemap.fx=0
@@ -186,7 +190,7 @@ Exposure=0.5
     #[test]
     fn parses_general_order_definitions_and_parameters() {
         let p = Preset::parse(SAMPLE);
-        assert_eq!(p.technique_sorting, ["Bloom.fx", "Tonemap.fx"]);
+        assert_eq!(p.technique_sorting, ["Bloom@Bloom.fx", "Tonemap@Tonemap.fx"]);
         assert_eq!(p.preprocessor_definitions.get("USE_LUT").map(String::as_str), Some("1"));
         assert_eq!(p.preprocessor_definitions.get("QUALITY").map(String::as_str), Some("2"));
         assert_eq!(p.parameter("Bloom.fx", "threshold"), Some("1.25"));
@@ -204,8 +208,16 @@ Exposure=0.5
     }
 
     #[test]
-    fn rejects_parent_traversal_effect_paths() {
-        let p = Preset::parse("[../outside.fx]\nEnabled=1\n");
+    fn accepts_windows_relative_effect_paths() {
+        let p = Preset::parse("[GENERAL]\nTechniqueSorting=Color\u{5c}Grade@Shaders\u{5c}ColorGrade.fx\n[Shaders/ColorGrade.fx]\nEnabled=1\n");
+        let effects = p.effect_files(Path::new("/presets"));
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].path, PathBuf::from("/presets/Shaders/ColorGrade.fx"));
+    }
+
+    #[test]
+    fn rejects_parent_and_absolute_effect_paths() {
+        let p = Preset::parse("[../outside.fx]\nEnabled=1\n[C:/outside.fx]\nEnabled=1\n[/root.fx]\nEnabled=1\n");
         assert!(p.effect_files(Path::new("/presets")).is_empty());
     }
 
