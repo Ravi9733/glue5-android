@@ -1,7 +1,7 @@
 diff --git a/wgpu-hal/src/vulkan/instance.rs b/wgpu-hal/src/vulkan/instance.rs
 --- a/wgpu-hal/src/vulkan/instance.rs
 +++ b/wgpu-hal/src/vulkan/instance.rs
-@@ -689,6 +689,19 @@
+@@ -689,2 +689,15 @@
          let mut layers: Vec<&'static CStr> = Vec::new();
  
 +        // Glue 5: opt in to the app-packaged Android ReShade FX Vulkan layer.
