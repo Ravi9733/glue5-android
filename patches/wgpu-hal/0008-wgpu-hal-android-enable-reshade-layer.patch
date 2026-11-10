@@ -1,14 +1,11 @@
 diff --git a/wgpu-hal/src/vulkan/instance.rs b/wgpu-hal/src/vulkan/instance.rs
-index 0000000..0000000 100644
 --- a/wgpu-hal/src/vulkan/instance.rs
 +++ b/wgpu-hal/src/vulkan/instance.rs
-@@ -724,6 +724,19 @@
+@@ -689,6 +689,19 @@
          let mut layers: Vec<&'static CStr> = Vec::new();
-
+ 
 +        // Glue 5: opt in to the app-packaged Android ReShade FX Vulkan layer.
-+        // The Android loader only exposes app-packaged layers when they are
-+        // explicitly enabled at vkCreateInstance. Keep this opt-in so the
-+        // renderer remains unchanged when ReShade is disabled or unavailable.
++        // Keep the renderer unchanged when ReShade is disabled or unavailable.
 +        #[cfg(target_os = "android")]
 +        if std::env::var_os("GLUE5_VULKAN_RESHADE").is_some() {
 +            const RESHADE_LAYER: &CStr = c"VK_LAYER_VKBASALT_post_processing";
