@@ -837,7 +837,26 @@ pub(super) fn reshade_page(
                         let preset = glue5_gpu::reshade::Preset::parse(&text);
                         let dir = preset_path.parent().unwrap_or(&root);
                         let effects = preset.effect_files(dir);
-                        let additional_effects = discover_unreferenced_reshade_effects(dir, &effects);
+                        let cache_id = Id::new("reshade-additional-fx-cache");
+                        let directory_key = dir.to_string_lossy().to_string();
+                        let cached = ctx.data_mut(|data| data.get_temp::<(String, Vec<std::path::PathBuf>)>(cache_id));
+                        let mut additional_effects = cached
+                            .filter(|(key, _)| key == &directory_key)
+                            .map(|(_, files)| files)
+                            .unwrap_or_else(|| discover_unreferenced_reshade_effects(dir, &effects));
+                        ui.horizontal(|ui| {
+                            if ui.small_button("Refresh effect files").clicked() {
+                                additional_effects = discover_unreferenced_reshade_effects(dir, &effects);
+                                ctx.data_mut(|data| data.insert_temp(
+                                    cache_id,
+                                    (directory_key.clone(), additional_effects.clone()),
+                                ));
+                            }
+                        });
+                        ctx.data_mut(|data| data.insert_temp(
+                            cache_id,
+                            (directory_key.clone(), additional_effects.clone()),
+                        ));
                         let installed_count = effects.iter().filter(|effect| effect.path.is_file()).count()
                             + additional_effects.len();
                         let missing_count = effects.len().saturating_sub(
