@@ -34,11 +34,13 @@ import org.w3c.dom.NodeList;
 public class Glue5Activity extends SDLActivity {
     private static final int REQUEST_TURNIP_ZIP = 47112;
     private static final int REQUEST_GRAPHICS_ARCHIVE = 47113;
+    private static final int REQUEST_RESHADE_ARCHIVE = 47114;
     private static native String applyOivArchiveNative(String archivePath, String archiveXml,
             String contentRoot, String outputPath, String keysDir);
     private final Handler turnipHandler = new Handler(Looper.getMainLooper());
     private boolean turnipPickerOpen = false;
     private boolean graphicsPickerOpen = false;
+    private boolean reshadePickerOpen = false;
     private final Runnable turnipImportWatcher = new Runnable() {
         @Override public void run() { checkTurnipImportRequest(); }
     };
@@ -53,6 +55,8 @@ public class Glue5Activity extends SDLActivity {
             // separate overlay; the original GTA V data directory stays read-only.
             Os.setenv("GLUE5_GRAPHICS_MOD_DIR",
                     "/storage/emulated/0/GTA5/GraphicsMods/active", true);
+            Os.setenv("GLUE5_RESHADE_DIR",
+                    "/storage/emulated/0/GTA5/GraphicsMods/ReShade", true);
             // Activate the imported custom driver before SDL starts native code.
             // An explicit GLUE5_VULKAN_DRIVER launch extra below can override this
             // (for example, "system" to recover from a bad driver).
@@ -116,7 +120,7 @@ public class Glue5Activity extends SDLActivity {
     }
 
     private void checkTurnipImportRequest() {
-        if (isFinishing() || turnipPickerOpen || graphicsPickerOpen) return;
+        if (isFinishing() || turnipPickerOpen || graphicsPickerOpen || reshadePickerOpen) return;
         File clearGraphicsRequest = new File(getFilesDir(), "graphics-mod-clear-request");
         if (clearGraphicsRequest.isFile() && clearGraphicsRequest.delete()) {
             try {
@@ -132,6 +136,12 @@ public class Glue5Activity extends SDLActivity {
         if (graphicsRequest.isFile() && graphicsRequest.delete()) {
             graphicsPickerOpen = true;
             openGraphicsArchivePicker();
+            return;
+        }
+        File reshadeRequest = new File(getFilesDir(), "reshade-import-request");
+        if (reshadeRequest.isFile() && reshadeRequest.delete()) {
+            reshadePickerOpen = true;
+            openReshadeArchivePicker();
             return;
         }
         File request = new File(getFilesDir(), "turnip-import-request");
@@ -185,6 +195,19 @@ public class Glue5Activity extends SDLActivity {
         }
     }
 
+    private void openReshadeArchivePicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivityForResult(intent, REQUEST_RESHADE_ARCHIVE);
+        } catch (Exception e) {
+            reshadePickerOpen = false;
+            Toast.makeText(this, "Cannot open ReShade ZIP picker: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+        }
+    }
+
     private void openTurnipPicker() {
         try {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -218,6 +241,20 @@ public class Glue5Activity extends SDLActivity {
             }
             return;
         }
+        if (requestCode == REQUEST_RESHADE_ARCHIVE) {
+            reshadePickerOpen = false;
+            try {
+                if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                    String installedAt = importReshadeArchive(data.getData());
+                    Toast.makeText(this, installedAt, Toast.LENGTH_LONG).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(this, "ReShade ZIP import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            } finally {
+                turnipHandler.postDelayed(turnipImportWatcher, 500);
+            }
+            return;
+        }
         if (requestCode != REQUEST_TURNIP_ZIP) return;
         turnipPickerOpen = false;
         try {
@@ -232,6 +269,104 @@ public class Glue5Activity extends SDLActivity {
         }
     }
 
+
+    /**
+     * Preserve a ReShade preset ZIP intact in its own folder. No files are
+     * written into GTA V's data directory and no Windows DLL is executed.
+     */
+    private String importReshadeArchive(Uri uri) throws Exception {
+        String displayName = "ReShadePreset.zip";
+        try (android.database.Cursor cursor = getContentResolver().query(
+                uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                String name = cursor.getString(0);
+                if (name != null && !name.trim().isEmpty()) displayName = name.trim();
+            }
+        }
+        if (!displayName.toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) {
+            throw new Exception("Select a ReShade .zip archive");
+        }
+        String folderName = displayName.replaceFirst("(?i)\\.zip$", "")
+                .replaceAll("[^A-Za-z0-9._ -]", "_").trim();
+        if (folderName.isEmpty() || folderName.equals(".") || folderName.equals("..")) folderName = "ReShadePreset";
+
+        File root = new File(Environment.getExternalStorageDirectory(), "GTA5/GraphicsMods/ReShade");
+        if (!root.isDirectory() && !root.mkdirs()) {
+            throw new Exception("Cannot create GTA5/GraphicsMods/ReShade; enable Glue 5 all-files access");
+        }
+        File destination = new File(root, folderName);
+        int duplicateIndex = 2;
+        while (destination.exists()) destination = new File(root, folderName + "_" + duplicateIndex++);
+        folderName = destination.getName();
+        File staging = new File(root, "." + folderName + ".installing");
+        deleteTree(staging);
+        if (!staging.mkdirs()) throw new Exception("Cannot create temporary ReShade folder");
+
+        int entries = 0;
+        long totalExtracted = 0;
+        boolean sawIni = false;
+        boolean sawFx = false;
+        try (InputStream input = getContentResolver().openInputStream(uri)) {
+            if (input == null) throw new Exception("Cannot read selected ReShade archive");
+            try (ZipInputStream zip = new ZipInputStream(input)) {
+                ZipEntry entry;
+                byte[] buffer = new byte[32768];
+                java.util.HashSet<String> extractedFiles = new java.util.HashSet<>();
+                while ((entry = zip.getNextEntry()) != null) {
+                    if (++entries > 10000) throw new Exception("ReShade archive contains too many files");
+                    String raw = entry.getName().replace('\\', '/');
+                    if (raw.isEmpty() || raw.startsWith("/") || raw.matches("^[A-Za-z]:.*")) {
+                        throw new Exception("ReShade archive contains an unsafe absolute path");
+                    }
+                    for (String part : raw.split("/")) if (part.equals("..")) {
+                        throw new Exception("ReShade archive contains a path traversal entry");
+                    }
+                    File target = new File(staging, raw);
+                    String canonicalRoot = staging.getCanonicalPath() + File.separator;
+                    if (!target.getCanonicalPath().startsWith(canonicalRoot)) {
+                        throw new Exception("ReShade archive contains an unsafe output path");
+                    }
+                    if (entry.isDirectory()) {
+                        if (!target.isDirectory() && !target.mkdirs()) throw new Exception("Cannot create ReShade subfolder");
+                        continue;
+                    }
+                    if (!extractedFiles.add(raw.toLowerCase(java.util.Locale.ROOT))) {
+                        throw new Exception("ReShade archive contains duplicate paths: " + raw);
+                    }
+                    File parent = target.getParentFile();
+                    if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new Exception("Cannot create ReShade subfolder");
+                    long entrySize = 0;
+                    try (FileOutputStream output = new FileOutputStream(target)) {
+                        int count;
+                        while ((count = zip.read(buffer)) != -1) {
+                            entrySize += count;
+                            totalExtracted += count;
+                            if (entrySize > 512L * 1024L * 1024L || totalExtracted > 1536L * 1024L * 1024L) {
+                                throw new Exception("ReShade archive exceeds the 1.5 GB extraction limit");
+                            }
+                            output.write(buffer, 0, count);
+                        }
+                    }
+                    String lower = raw.toLowerCase(java.util.Locale.ROOT);
+                    if (lower.endsWith(".ini")) sawIni = true;
+                    if (lower.endsWith(".fx")) sawFx = true;
+                }
+            }
+        } catch (Exception e) {
+            deleteTree(staging);
+            throw e;
+        }
+        if (!sawIni || !sawFx) {
+            deleteTree(staging);
+            throw new Exception("ZIP must contain at least one ReShade .ini preset and one .fx effect file");
+        }
+        if (!staging.renameTo(destination)) {
+            deleteTree(staging);
+            throw new Exception("Cannot finish installing ReShade preset folder");
+        }
+        return "ReShade preset files installed: " + destination.getAbsolutePath()
+                + " (original INI/FX files preserved)";
+    }
 
     /**
      * Safely unpack an OpenIV OIV (ZIP container) or graphics ZIP into a
