@@ -31,8 +31,8 @@ jobs:
       MISE_TASK_RUN_AUTO_INSTALL: "false"
       # Native compilation takes longer than mise's common five-minute task limit.
       MISE_TASK_TIMEOUT: "45m"
-      # Keep native compilation below the hosted runner memory ceiling.
-      CARGO_BUILD_JOBS: "2"
+      # Match the successful hosted-runner Rust parallelism; native CMake remains single-job.
+      CARGO_BUILD_JOBS: "4"
       CMAKE_BUILD_PARALLEL_LEVEL: "1"
       CARGO_PROFILE_RELEASE_DEBUG: "0"
       GRADLE_OPTS: "-Dorg.gradle.workers.max=1"
@@ -42,8 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Preserve Cargo build artifacts between runner restarts so a
-      # transient hosted-runner shutdown does not force a full cold compile.
+      # Reuse Cargo artifacts between runs to reduce repeated Rust compilation.
       - name: Cache Rust and native build artifacts
         uses: Swatinem/rust-cache@v2
         with:
