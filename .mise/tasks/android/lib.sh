@@ -57,10 +57,15 @@ android_libs() {
     local adrenotools_src="$out/adrenotools-src"
     local adrenotools_build="$out/adrenotools-build"
     if [ ! -d "$adrenotools_src/.git" ]; then
-        git clone https://github.com/Bylaws/libadrenotools.git "$adrenotools_src"
+        # A fresh shallow clone already checks out the repository's advertised
+        # default branch. Avoid a second fetch: GitHub's upload-pack endpoint
+        # intermittently rejects the same public master ref despite the API
+        # exposing it, which previously stopped the APK build after Rust passed.
+        git clone --depth 1 https://github.com/Bylaws/libadrenotools.git "$adrenotools_src"
+    else
+        git -C "$adrenotools_src" rev-parse --verify HEAD >/dev/null ||
+            die "AdrenoTools source checkout is incomplete: $adrenotools_src"
     fi
-    git -C "$adrenotools_src" fetch --depth 1 origin master
-    git -C "$adrenotools_src" checkout --detach FETCH_HEAD
     git -C "$adrenotools_src" submodule update --init --recursive
     cmake -S "$adrenotools_src" -B "$adrenotools_build" \
         -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
