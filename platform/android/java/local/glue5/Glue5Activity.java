@@ -307,6 +307,7 @@ public class Glue5Activity extends SDLActivity {
         long totalExtracted = 0;
         boolean sawIni = false;
         boolean sawFx = false;
+        boolean sawDependencyFile = false;
         try (InputStream input = getContentResolver().openInputStream(uri)) {
             if (input == null) throw new Exception("Cannot read selected ReShade archive");
             try (ZipInputStream zip = new ZipInputStream(input)) {
@@ -351,6 +352,15 @@ public class Glue5Activity extends SDLActivity {
                     String lower = raw.toLowerCase(java.util.Locale.ROOT);
                     if (lower.endsWith(".ini")) sawIni = true;
                     if (lower.endsWith(".fx")) sawFx = true;
+                    // ReShade presets commonly split shaders, includes and
+                    // texture assets across separate dependency archives.
+                    if (lower.endsWith(".fx") || lower.endsWith(".fxh")
+                            || lower.endsWith(".h") || lower.endsWith(".dds")
+                            || lower.endsWith(".png") || lower.endsWith(".jpg")
+                            || lower.endsWith(".jpeg") || lower.endsWith(".bmp")
+                            || lower.endsWith(".tga")) {
+                        sawDependencyFile = true;
+                    }
                 }
             }
         } catch (Exception e) {
@@ -358,7 +368,7 @@ public class Glue5Activity extends SDLActivity {
             throw e;
         }
         File activePreset = new File(root, "active-preset.txt");
-        if (!sawIni && sawFx) {
+        if (!sawIni && sawDependencyFile) {
             // Extra effect packs (for example RTGI) are imported into the
             // active preset's folder so its relative include/texture paths
             // remain intact. Existing files are never overwritten.
@@ -382,7 +392,7 @@ public class Glue5Activity extends SDLActivity {
         }
         if (!sawIni) {
             deleteTree(staging);
-            throw new Exception("ZIP must contain a ReShade .ini preset or .fx shader dependencies for an active preset");
+            throw new Exception("ZIP must contain a ReShade .ini preset or shader/include/texture dependencies for an active preset");
         }
         if (!staging.renameTo(destination)) {
             deleteTree(staging);
