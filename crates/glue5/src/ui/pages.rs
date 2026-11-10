@@ -866,6 +866,21 @@ fn settings_items(
                 );
             }
             if cfg!(target_os = "android") {
+                setting(
+                    ui,
+                    "ReShade preset ZIP",
+                    Control::Action,
+                    Some("Import original .ini, .fx, textures and dependency files without changing GTA V data"),
+                    |ui| {
+                        let response = action_button(ui, "Import ReShade ZIP");
+                        if response.clicked() {
+                            actions.push(Action::ImportReshadeArchive);
+                        }
+                        response
+                    },
+                );
+            }
+            if cfg!(target_os = "android") {
                 setting(ui, "Turnip driver file", Control::Action, Some("Choose a compatible Turnip ZIP"), |ui| {
                     let response = action_button(ui, "Import ZIP");
                     if response.clicked() {
