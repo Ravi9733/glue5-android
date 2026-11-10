@@ -74,6 +74,14 @@ pub fn run() -> Result<()> {
             settings::VulkanDriver::Turnip => std::env::set_var("GLUE5_VULKAN_DRIVER", "turnip"),
         }
     }
+    #[cfg(target_os = "android")]
+    unsafe {
+        if settings.reshade_enabled {
+            std::env::set_var("GLUE5_VULKAN_RESHADE", "1");
+        } else {
+            std::env::remove_var("GLUE5_VULKAN_RESHADE");
+        }
+    }
     if settings.online_name.trim().is_empty() {
         settings.online_name = settings::default_online_name();
     }
