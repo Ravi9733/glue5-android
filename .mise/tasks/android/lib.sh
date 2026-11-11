@@ -48,7 +48,7 @@ android_libs() {
     if [ -z "$sdl_lib" ]; then
         echo "SDL3 shared library not found under target/$target/release." >&2
         echo "Matching SDL artifacts:" >&2
-        find "target/$target" -type f \( -iname '*sdl3*' -o -iname 'libSDL*' \) -print | head -n 80 >&2
+        find "target/$target" -type f \( -iname '*sdl3*' -o -iname 'libSDL*' \) -print | sed -n '1,80p' >&2
         die "sdl3-sys did not produce the Android libSDL3.so required by SDL's Java loader"
     fi
     cp "$glue_lib" "$out/jniLibs/$abi/libglue5.so"
