@@ -148,6 +148,11 @@ jobs:
           lscpu | sed -n '1,18p'
           ulimit -a
 
+      - name: Validate ReShade preset parser and Sharpy fallbacks
+        run: |
+          mise run setup
+          mise exec -- cargo test -p glue5-gpu reshade::tests --lib
+
       - name: Build Turnip-enabled APK
         run: |
           set -o pipefail
