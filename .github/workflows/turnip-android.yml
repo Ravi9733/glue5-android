@@ -111,6 +111,14 @@ jobs:
           cp -a "$RUNNER_TEMP/SweetFX/Shaders/SweetFX" target/android/assets/reshade-shaders/Shaders/
           cp -a "$RUNNER_TEMP/SweetFX/Textures/SweetFX" target/android/assets/reshade-shaders/Textures/
           cp "$RUNNER_TEMP/SweetFX/LICENSE" target/android/assets/reshade-shaders/LICENSE
+          # ReShade.fxh is explicitly CC0-1.0 upstream. SweetFX's UI header
+          # is replaced by Glue 5's own small compatibility shim (no PC GUI).
+          curl -fsSL "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShade.fxh" \
+            -o target/android/assets/reshade-shaders/Shaders/ReShade.fxh
+          cp platform/android/reshade-assets/Shaders/ReShadeUI.fxh \
+            target/android/assets/reshade-shaders/Shaders/ReShadeUI.fxh
+          test -s target/android/assets/reshade-shaders/Shaders/ReShade.fxh
+          test -s target/android/assets/reshade-shaders/Shaders/ReShadeUI.fxh
           test -s target/android/assets/reshade-shaders/Shaders/SweetFX/Vibrance.fx
           test -s target/android/assets/reshade-shaders/Shaders/SweetFX/Curves.fx
 
