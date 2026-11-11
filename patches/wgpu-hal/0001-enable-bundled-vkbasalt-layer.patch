@@ -1,8 +1,9 @@
 diff --git a/src/vulkan/instance.rs b/src/vulkan/instance.rs
-index 0000000..0000000 100644
 --- a/src/vulkan/instance.rs
 +++ b/src/vulkan/instance.rs
-@@ -686,6 +686,19 @@
+@@ -685,6 +685,19 @@
+         let has_nv_optimus = find_layer(&instance_layers, c"VK_LAYER_NV_optimus").is_some();
+ 
          let has_obs_layer = find_layer(&instance_layers, c"VK_LAYER_OBS_HOOK").is_some();
  
          let mut layers: Vec<&'static CStr> = Vec::new();
