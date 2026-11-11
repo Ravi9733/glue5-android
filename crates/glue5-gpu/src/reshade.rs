@@ -320,7 +320,18 @@ fn effect_from_technique(value: &str) -> Option<&str> {
 }
 
 fn effect_name_eq(left: &str, right: &str) -> bool {
-    left.replace('\\', "/").eq_ignore_ascii_case(&right.replace('\\', "/"))
+    let left = left.replace('\\', "/");
+    let right = right.replace('\\', "/");
+    if left.eq_ignore_ascii_case(&right) {
+        return true;
+    }
+    // Legacy [GENERAL] Techniques lists contain only effect names, while
+    // parameter sections and TechniqueSorting may include a Shaders/ prefix.
+    // Match a bare filename to a section path without weakening path matching
+    // when both sides specify directories.
+    !left.contains('/')
+        && Path::new(&right).file_name()
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case(&left))
 }
 
 fn find_section<'a>(
