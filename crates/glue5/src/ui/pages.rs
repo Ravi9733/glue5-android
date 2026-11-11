@@ -853,7 +853,7 @@ pub(super) fn reshade_page(
                         let cached = ctx.data_mut(|data| {
                             data.get_temp::<(String, Vec<glue5_gpu::reshade::EffectFile>, Vec<std::path::PathBuf>)>(cache_id)
                         });
-                        let (effects, mut additional_effects) = cached
+                        let (mut effects, mut additional_effects) = cached
                             .filter(|(key, _, _)| key == &cache_key)
                             .map(|(_, effects, additional)| (effects, additional))
                             .unwrap_or_else(|| {
