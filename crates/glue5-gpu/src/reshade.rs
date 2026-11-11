@@ -71,6 +71,16 @@ impl Preset {
                     }
                 }
             }
+            // Older ReShade presets (including legacy GTA V presets) store the
+            // enabled effect list as a comma-separated [GENERAL] Techniques key.
+            // It contains bare effect names such as "Vibrance", not filenames.
+            if let Some(techniques) = find_value(general, "Techniques") {
+                for item in techniques.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                    let effect = effect_from_technique(item).map(str::to_owned)
+                        .unwrap_or_else(|| format!("{}.fx", item.trim_end_matches(".fx")));
+                    preset.techniques.insert(effect, true);
+                }
+            }
         }
 
         for (section, values) in &preset.sections {
@@ -136,10 +146,16 @@ impl Preset {
                 // arbitrary same-named shader from another package.
                 .or_else(|| find_unique_effect_by_filename(preset_dir, relative.file_name()?))
                 .unwrap_or(expected);
+            // Never infer that every parameter section is enabled. ReShade
+            // INIs commonly retain settings for dozens of inactive effects;
+            // compiling all of them can load unsupported shaders at startup.
             let enabled = self.techniques.iter()
                 .find(|(name, _)| effect_name_eq(name, &section))
                 .map(|(_, enabled)| *enabled)
-                .unwrap_or(true);
+                .unwrap_or(false);
+            if !enabled {
+                return None;
+            }
             Some(EffectFile { section, path, enabled })
         }).collect()
     }
@@ -346,6 +362,26 @@ Tint=1.0, 0.8, 0.6
 Enabled=0
 Exposure=0.5
 "#;
+
+    #[test]
+    fn parses_legacy_general_techniques_and_ignores_inactive_parameter_sections() {
+        let root = std::env::temp_dir().join(format!("glue5-reshade-legacy-{}", std::process::id()));
+        let shaders = root.join("Shaders");
+        std::fs::create_dir_all(&shaders).unwrap();
+        for name in ["ColorMatrix.fx", "DPX.fx", "Vibrance.fx", "FakeHDR.fx"] {
+            std::fs::write(shaders.join(name), "// fixture").unwrap();
+        }
+        let preset = Preset::parse(
+            "[GENERAL]\nTechniques=ColorMatrix,DPX,Vibrance\nTechniqueSorting=ColorMatrix@Shaders/ColorMatrix.fx,DPX@Shaders/DPX.fx,Vibrance@Shaders/Vibrance.fx,FakeHDR@Shaders/FakeHDR.fx\n[Shaders/ColorMatrix.fx]\nStrength=1\n[Shaders/DPX.fx]\nStrength=1\n[Shaders/Vibrance.fx]\nVibrance=0.5\n[Shaders/FakeHDR.fx]\nHDRPower=1.3\n"
+        );
+        let effects = preset.effect_files(&root);
+        assert_eq!(
+            effects.iter().map(|effect| effect.section.as_str()).collect::<Vec<_>>(),
+            ["Shaders/ColorMatrix.fx", "Shaders/DPX.fx", "Shaders/Vibrance.fx"]
+        );
+        assert!(effects.iter().all(|effect| effect.enabled));
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn parses_general_order_definitions_and_parameters() {
