@@ -76,7 +76,16 @@ impl Preset {
             // It contains bare effect names such as "Vibrance", not filenames.
             if let Some(techniques) = find_value(general, "Techniques") {
                 for item in techniques.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-                    let effect = effect_from_technique(item).map(str::to_owned)
+                    // Legacy entries are technique names. TechniqueSorting maps
+                    // those names to the real effect filename (e.g.
+                    // DELC_Sharpen@qUINT_sharp.fx).
+                    let mapped = preset.technique_sorting.iter().find_map(|sorting| {
+                        let (technique, _) = sorting.split_once('@')?;
+                        technique.eq_ignore_ascii_case(item)
+                            .then(|| effect_from_technique(sorting).map(str::to_owned))
+                            .flatten()
+                    });
+                    let effect = mapped.or_else(|| effect_from_technique(item).map(str::to_owned))
                         .unwrap_or_else(|| format!("{}.fx", item.trim_end_matches(".fx")));
                     preset.techniques.insert(effect, true);
                 }
@@ -96,26 +105,6 @@ impl Preset {
                     preset.techniques.insert(section.clone(), value);
                 }
             }
-        }
-
-        // Sharpy enables FilmicAnamorphSharpen and DELC_Sharpen, but its
-        // distributed ZIP may omit those shader files. If its own LumaSharpen
-        // settings are present, use that known vkBasalt-compatible SweetFX
-        // shader as a conservative sharpening fallback rather than loading
-        // missing PC-only effects.
-        let needs_sharpen_fallback = preset.techniques.iter().any(|(name, enabled)| {
-            *enabled && (name.to_ascii_lowercase().contains("filmic") 
-                || name.to_ascii_lowercase().contains("delc_sharpen")
-                || name.eq_ignore_ascii_case("qUINT_sharp.fx"))
-        });
-        if needs_sharpen_fallback
-            && find_section(&preset.sections, "LumaSharpen.fx").is_some()
-            && !preset.techniques.keys().any(|name| name.eq_ignore_ascii_case("LumaSharpen.fx"))
-        {
-            preset.techniques.insert("LumaSharpen.fx".to_owned(), true);
-            preset.diagnostics.push(
-                "Sharpening fallback: using LumaSharpen.fx because the selected Sharpy sharpening shader is unavailable".to_owned()
-            );
         }
 
         preset
@@ -141,6 +130,27 @@ impl Preset {
                 names.push(section.clone());
             }
         }
+
+        // If the preset requests a sharpening shader that is absent from this
+        // package, use its included LumaSharpen settings only when that FX file
+        // is actually present. Do not stack a fallback on top of a working
+        // original sharpening shader.
+        let requested_sharpen = self.techniques.iter().any(|(name, enabled)| {
+            *enabled && name.to_ascii_lowercase().contains("sharp")
+        });
+        let requested_sharpen_available = self.techniques.iter().any(|(name, enabled)| {
+            if !enabled || !name.to_ascii_lowercase().contains("sharp") {
+                return false;
+            }
+            let relative = Path::new(&name.replace('\\', "/"));
+            resolve_case_insensitive(preset_dir, relative)
+                .or_else(|| relative.file_name().and_then(|file| find_unique_effect_by_filename(preset_dir, file)))
+                .is_some_and(|path| path.is_file())
+        });
+        let luma_sharpen_fallback = requested_sharpen && !requested_sharpen_available
+            && self.sections.keys().any(|section| section.eq_ignore_ascii_case("LumaSharpen.fx"))
+            && resolve_case_insensitive(preset_dir, Path::new("LumaSharpen.fx"))
+                .is_some_and(|path| path.is_file());
 
         names.into_iter().filter_map(|section| {
             let normalized = section.replace('\\', "/");
@@ -172,7 +182,8 @@ impl Preset {
             let enabled = self.techniques.iter()
                 .find(|(name, _)| effect_name_eq(name, &section))
                 .map(|(_, enabled)| *enabled)
-                .unwrap_or(false);
+                .unwrap_or(false)
+                || (luma_sharpen_fallback && section.eq_ignore_ascii_case("LumaSharpen.fx"));
             if !enabled {
                 return None;
             }
