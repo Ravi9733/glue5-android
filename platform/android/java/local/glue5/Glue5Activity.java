@@ -440,8 +440,13 @@ public class Glue5Activity extends SDLActivity {
 
     /** Add the bundled MIT SweetFX package without replacing user-provided files. */
     private void installBundledSweetFx(File presetDirectory) throws Exception {
+        File shaderDirectory = new File(presetDirectory, "Shaders");
+        copyBundledAssetTree("reshade-shaders/Shaders/ReShade.fxh",
+                new File(shaderDirectory, "ReShade.fxh"));
+        copyBundledAssetTree("reshade-shaders/Shaders/ReShadeUI.fxh",
+                new File(shaderDirectory, "ReShadeUI.fxh"));
         copyBundledAssetTree("reshade-shaders/Shaders/SweetFX",
-                new File(presetDirectory, "Shaders/SweetFX"));
+                new File(shaderDirectory, "SweetFX"));
         copyBundledAssetTree("reshade-shaders/Textures/SweetFX",
                 new File(presetDirectory, "Textures/SweetFX"));
     }
