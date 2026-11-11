@@ -80,6 +80,16 @@ jobs:
           test -d "$ANDROID_HOME/platforms/android-36"
           test -d "$ANDROID_HOME/build-tools/36.0.0"
 
+      - name: Prepare third-party Rust sources and host tools
+        run: |
+          # Cargo.toml patches point at generated, git-ignored third_party sources.
+          # Parser tests run before android:build, so prepare them before testing.
+          bash .mise/tasks/setup
+          test -f third_party/sp-fidelity/Cargo.toml
+          test -f third_party/wgpu/Cargo.toml
+          test -f third_party/wgpu-core/Cargo.toml
+          test -f third_party/wgpu-hal/Cargo.toml
+
       - name: Download the verified Android ReShade FX layer
         run: |
           runs=$(gh run list --workflow build-reshade-runtime.yml --branch "$GITHUB_REF_NAME" --limit 20 --json databaseId,status,conclusion,headSha)
