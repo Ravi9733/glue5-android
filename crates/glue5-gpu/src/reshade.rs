@@ -358,13 +358,17 @@ fn effect_name_eq(left: &str, right: &str) -> bool {
     if left.eq_ignore_ascii_case(&right) {
         return true;
     }
-    // Legacy [GENERAL] Techniques lists contain only effect names, while
-    // parameter sections and TechniqueSorting may include a Shaders/ prefix.
-    // Match a bare filename to a section path without weakening path matching
-    // when both sides specify directories.
-    !left.contains('/')
-        && Path::new(&right).file_name()
-            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case(&left))
+    // Legacy [GENERAL] Techniques lists contain bare effect names, while
+    // TechniqueSorting can map them to a nested path (e.g. Vibrance@Shaders/SweetFX/Vibrance.fx).
+    // INI parameter sections may use either spelling, so basename matching
+    // must work in both directions when exactly one side has a directory.
+    match (left.contains('/'), right.contains('/')) {
+        (false, true) => Path::new(&right).file_name()
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case(&left)),
+        (true, false) => Path::new(&left).file_name()
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case(&right)),
+        _ => false,
+    }
 }
 
 fn find_section<'a>(
