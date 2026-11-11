@@ -834,30 +834,46 @@ pub(super) fn reshade_page(
             if let (Ok(root), Ok(preset_path)) = (root.canonicalize(), preset_path.canonicalize()) {
                 if preset_path.starts_with(&root) {
                     if let Ok(text) = std::fs::read_to_string(&preset_path) {
-                        let preset = glue5_gpu::reshade::Preset::parse(&text);
                         let dir = preset_path.parent().unwrap_or(&root);
-                        let effects = preset.effect_files(dir);
-                        let cache_id = Id::new("reshade-additional-fx-cache");
-                        let directory_key = dir.to_string_lossy().to_string();
-                        let cached = ctx.data_mut(|data| data.get_temp::<(String, Vec<std::path::PathBuf>)>(cache_id));
-                        let mut additional_effects = cached
-                            .filter(|(key, _)| key == &directory_key)
-                            .map(|(_, files)| files)
-                            .unwrap_or_else(|| discover_unreferenced_reshade_effects(dir, &effects));
+                        // Directory traversal and INI parsing must not run on every egui frame.
+                        // Cache the resolved effect list until the preset file changes or the user refreshes.
+                        let metadata = std::fs::metadata(&preset_path).ok();
+                        let modified = metadata.as_ref()
+                            .and_then(|meta| meta.modified().ok())
+                            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|time| format!("{}:{}", time.as_secs(), time.subsec_nanos()))
+                            .unwrap_or_default();
+                        let cache_key = format!(
+                            "{}:{}:{}",
+                            preset_path.display(),
+                            metadata.as_ref().map(|meta| meta.len()).unwrap_or_default(),
+                            modified
+                        );
+                        let cache_id = Id::new("reshade-effects-cache");
+                        let cached = ctx.data_mut(|data| {
+                            data.get_temp::<(String, Vec<glue5_gpu::reshade::EffectFile>, Vec<std::path::PathBuf>)>(cache_id)
+                        });
+                        let (effects, mut additional_effects) = cached
+                            .filter(|(key, _, _)| key == &cache_key)
+                            .map(|(_, effects, additional)| (effects, additional))
+                            .unwrap_or_else(|| {
+                                let preset = glue5_gpu::reshade::Preset::parse(&text);
+                                let effects = preset.effect_files(dir);
+                                let additional = discover_unreferenced_reshade_effects(dir, &effects);
+                                (effects, additional)
+                            });
                         ui.horizontal(|ui| {
                             if ui.small_button("Refresh effect files").clicked() {
+                                let preset = glue5_gpu::reshade::Preset::parse(&text);
+                                effects = preset.effect_files(dir);
                                 additional_effects = discover_unreferenced_reshade_effects(dir, &effects);
-                                ctx.data_mut(|data| data.insert_temp(
-                                    cache_id,
-                                    (directory_key.clone(), additional_effects.clone()),
-                                ));
                             }
                         });
                         ctx.data_mut(|data| data.insert_temp(
                             cache_id,
-                            (directory_key.clone(), additional_effects.clone()),
+                            (cache_key.clone(), effects.clone(), additional_effects.clone()),
                         ));
-                        let installed_count = effects.iter().filter(|effect| effect.path.is_file()).count()
+                        let found_count = effects.iter().filter(|effect| effect.path.is_file()).count()
                             + additional_effects.len();
                         let missing_count = effects.len().saturating_sub(
                             effects.iter().filter(|effect| effect.path.is_file()).count()
@@ -900,7 +916,7 @@ pub(super) fn reshade_page(
                                                     enabled,
                                                 });
                                             }
-                                            let status = if exists { "Installed" } else { "Missing file" };
+                                            let status = if exists { "File found" } else { "Missing file" };
                                             let color = if exists { theme::MUTED } else { WARN };
                                             ui.label(RichText::new(status).small().color(color));
                                         });
