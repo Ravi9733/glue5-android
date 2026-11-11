@@ -128,7 +128,14 @@ impl Preset {
             // ZIP archives often differ only in path casing. Resolve each
             // component case-insensitively without following symlinks.
             let expected = preset_dir.join(relative);
-            let path = resolve_case_insensitive(preset_dir, relative).unwrap_or(expected);
+            let path = resolve_case_insensitive(preset_dir, relative)
+                // ReShade's Effect Search Paths are recursive in practice:
+                // presets often store "Shaders/Foo.fx" while ZIPs wrap the
+                // shader tree in an extra folder (or use a different root).
+                // Fall back only when the filename is unique, never to an
+                // arbitrary same-named shader from another package.
+                .or_else(|| find_unique_effect_by_filename(preset_dir, relative.file_name()?))
+                .unwrap_or(expected);
             let enabled = self.techniques.iter()
                 .find(|(name, _)| effect_name_eq(name, &section))
                 .map(|(_, enabled)| *enabled)
@@ -220,6 +227,39 @@ impl Preset {
         }
         output
     }
+}
+
+/// Search the imported package recursively for one unambiguous FX filename.
+/// ZIPs from Windows commonly add wrapper folders or place shaders under a
+/// different search root than the preset's original relative path.
+fn find_unique_effect_by_filename(root: &Path, filename: &std::ffi::OsStr) -> Option<PathBuf> {
+    fn visit(dir: &Path, filename: &std::ffi::OsStr, found: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_symlink() {
+                continue;
+            }
+            if kind.is_dir() {
+                visit(&path, filename, found);
+                if found.len() > 1 {
+                    return;
+                }
+            } else if kind.is_file()
+                && entry.file_name().to_string_lossy().eq_ignore_ascii_case(&filename.to_string_lossy())
+            {
+                found.push(path);
+                if found.len() > 1 {
+                    return;
+                }
+            }
+        }
+    }
+
+    let mut found = Vec::new();
+    visit(root, filename, &mut found);
+    (found.len() == 1).then(|| found.remove(0))
 }
 
 /// Resolve a relative shader path on case-sensitive filesystems while
@@ -349,6 +389,40 @@ Exposure=0.5
         assert_eq!(effects.len(), 1);
         assert_eq!(effects[0].path, actual);
         assert!(effects[0].path.is_file());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn finds_unique_effect_in_wrapped_shader_directory() {
+        let root = std::env::temp_dir().join(format!("glue5-reshade-wrapped-{}", std::process::id()));
+        let wrapped = root.join("Sharpy HD Graphics").join("reshade-shaders").join("Shaders");
+        std::fs::create_dir_all(&wrapped).unwrap();
+        let actual = wrapped.join("Vibrance.fx");
+        std::fs::write(&actual, "// fixture").unwrap();
+        let preset = Preset::parse(
+            "[GENERAL]\nTechniqueSorting=Vibrance@Shaders/Vibrance.fx\n[Shaders/Vibrance.fx]\nEnabled=1\n"
+        );
+        let effects = preset.effect_files(&root);
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].path, actual);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn does_not_guess_when_effect_filename_is_ambiguous() {
+        let root = std::env::temp_dir().join(format!("glue5-reshade-ambiguous-{}", std::process::id()));
+        for folder in ["one/Shaders", "two/Shaders"] {
+            let dir = root.join(folder);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("Vibrance.fx"), "// fixture").unwrap();
+        }
+        let preset = Preset::parse(
+            "[GENERAL]\nTechniqueSorting=Vibrance@Shaders/Vibrance.fx\n[Shaders/Vibrance.fx]\nEnabled=1\n"
+        );
+        let effects = preset.effect_files(&root);
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].path, root.join("Shaders/Vibrance.fx"));
+        assert!(!effects[0].path.is_file());
         let _ = std::fs::remove_dir_all(root);
     }
 
