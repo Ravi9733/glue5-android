@@ -464,12 +464,13 @@ Exposure=0.5
     }
 
     #[test]
-    fn discovers_effects_in_sorting_order_and_keeps_disabled_state() {
+    fn discovers_only_enabled_effects_in_sorting_order() {
         let p = Preset::parse(SAMPLE);
         let effects = p.effect_files(Path::new("/presets/example"));
-        assert_eq!(effects.iter().map(|e| e.section.as_str()).collect::<Vec<_>>(), ["Bloom.fx", "Tonemap.fx"]);
+        // Inactive ReShade sections often reference shaders that are not
+        // installed. Do not compile them during Vulkan layer startup.
+        assert_eq!(effects.iter().map(|e| e.section.as_str()).collect::<Vec<_>>(), ["Bloom.fx"]);
         assert!(effects[0].enabled);
-        assert!(!effects[1].enabled);
         assert_eq!(effects[0].path, PathBuf::from("/presets/example/Bloom.fx"));
     }
 
