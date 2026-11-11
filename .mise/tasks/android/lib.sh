@@ -94,8 +94,12 @@ android_libs() {
 
 android_apk() {
     local sdl
-    sdl=$(cargo metadata --format-version 1 --locked |
-        grep -o '"manifest_path":"[^"]*/sdl3-src-[^"/]*/Cargo.toml"' | head -1 | cut -d'"' -f4)
+    # Capture metadata before filtering: with pipefail, `head -1` can close
+    # the pipe early and make cargo metadata exit with SIGPIPE (141).
+    local metadata
+    metadata=$(cargo metadata --format-version 1 --locked)
+    sdl=$(printf '%s\\n' "$metadata" |
+        grep -o '"manifest_path":"[^"]*/sdl3-src-[^"/]*/Cargo.toml"' | sed -n '1p' | cut -d'"' -f4)
     [ -n "$sdl" ] || die "sdl3-src is not among the dependencies"
     gradle -p "$project" --project-cache-dir "$out/gradle-cache" --quiet \
         "-Pglue5.sdlJava=${sdl%/Cargo.toml}/SDL/android-project/app/src/main/java" assembleRelease
