@@ -102,6 +102,18 @@ jobs:
           cp "$RUNNER_TEMP/reshade-layer/libVKLayer_VKBASALT_post_processing.so" target/android/reshade-layer/
           file target/android/reshade-layer/libVKLayer_VKBASALT_post_processing.so
 
+          # Bundle the MIT-licensed SweetFX effect pack so common preset
+          # references (Curves, Vibrance, Tonemap, Levels, LumaSharpen, etc.)
+          # do not show Missing immediately after importing an INI-only ZIP.
+          git clone --filter=blob:none --no-checkout https://github.com/CeeJayDK/SweetFX.git "$RUNNER_TEMP/SweetFX"
+          git -C "$RUNNER_TEMP/SweetFX" checkout --detach 93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361
+          mkdir -p target/android/assets/reshade-shaders/Shaders target/android/assets/reshade-shaders/Textures
+          cp -a "$RUNNER_TEMP/SweetFX/Shaders/SweetFX" target/android/assets/reshade-shaders/Shaders/
+          cp -a "$RUNNER_TEMP/SweetFX/Textures/SweetFX" target/android/assets/reshade-shaders/Textures/
+          cp "$RUNNER_TEMP/SweetFX/LICENSE" target/android/assets/reshade-shaders/LICENSE
+          test -s target/android/assets/reshade-shaders/Shaders/SweetFX/Vibrance.fx
+          test -s target/android/assets/reshade-shaders/Shaders/SweetFX/Curves.fx
+
       - name: Android signing key
         run: |
           mkdir -p ~/.android
