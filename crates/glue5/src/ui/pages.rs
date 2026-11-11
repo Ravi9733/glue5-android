@@ -880,8 +880,8 @@ pub(super) fn reshade_page(
                         );
                         ui.label(RichText::new(format!("Preset: {}", preset_path.file_name().unwrap_or_default().to_string_lossy())).strong());
                         ui.label(RichText::new(format!(
-                            "{} installed · {} missing",
-                            installed_count, missing_count
+                            "{} found · {} missing",
+                            found_count, missing_count
                         )).small());
                         let filter_id = Id::new("reshade-effect-filter");
                         let mut filter = ctx.data_mut(|data| data.get_temp::<String>(filter_id).unwrap_or_default());
