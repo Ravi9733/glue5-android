@@ -428,6 +428,28 @@ Exposure=0.5
     }
 
     #[test]
+    fn maps_legacy_technique_aliases_and_falls_back_for_missing_sharpen_shader() {
+        let root = std::env::temp_dir().join(format!("glue5-reshade-sharpy-{}", std::process::id()));
+        let shaders = root.join("Shaders").join("SweetFX");
+        std::fs::create_dir_all(&shaders).unwrap();
+        let luma = shaders.join("LumaSharpen.fx");
+        std::fs::write(&luma, "// compatible fallback").unwrap();
+        std::fs::write(shaders.join("Vibrance.fx"), "// compatible effect").unwrap();
+
+        let preset = Preset::parse(
+            "[GENERAL]\nTechniques=DELC_Sharpen,Vibrance\nTechniqueSorting=DELC_Sharpen@Shaders/qUINT_sharp.fx,Vibrance@Shaders/SweetFX/Vibrance.fx\n[LumaSharpen.fx]\nsharp_strength=1.0\n[Vibrance.fx]\nVibrance=0.5\n"
+        );
+        let effects = preset.effect_files(&root);
+        assert!(effects.iter().any(|effect| effect.section == "LumaSharpen.fx" && effect.path == luma && effect.enabled));
+        assert!(effects.iter().any(|effect| effect.section == "Vibrance.fx" && effect.path.ends_with("Vibrance.fx") && effect.enabled));
+        assert!(!effects.iter().any(|effect| effect.path.to_string_lossy().contains("qUINT_sharp.fx")));
+        let config = preset.to_vkbasalt_config(&root, false);
+        assert!(config.contains("effects = LumaSharpen:Vibrance") || config.contains("effects = Vibrance:LumaSharpen"));
+        assert!(config.contains("LumaSharpen = "));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn parses_general_order_definitions_and_parameters() {
         let p = Preset::parse(SAMPLE);
         assert_eq!(p.technique_sorting, ["Bloom@Bloom.fx", "Tonemap@Tonemap.fx"]);
