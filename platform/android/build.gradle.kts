@@ -45,6 +45,7 @@ android {
         java.srcDirs("java", setting("sdlJava"))
         res.srcDirs("res", generated.resolve("res"))
         jniLibs.srcDirs(generated.resolve("jniLibs"))
+        assets.srcDirs(generated.resolve("assets"))
     }
 
     lint {
