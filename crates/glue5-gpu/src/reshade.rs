@@ -98,6 +98,25 @@ impl Preset {
             }
         }
 
+        // Sharpy enables FilmicAnamorphSharpen and DELC_Sharpen, but its
+        // distributed ZIP may omit those shader files. If its own LumaSharpen
+        // settings are present, use that known vkBasalt-compatible SweetFX
+        // shader as a conservative sharpening fallback rather than loading
+        // missing PC-only effects.
+        let needs_sharpen_fallback = preset.techniques.iter().any(|(name, enabled)| {
+            *enabled && (name.eq_ignore_ascii_case("FilmicAnamorphSharpen.fx")
+                || name.eq_ignore_ascii_case("qUINT_sharp.fx"))
+        });
+        if needs_sharpen_fallback
+            && find_section(&preset.sections, "LumaSharpen.fx").is_some()
+            && !preset.techniques.keys().any(|name| name.eq_ignore_ascii_case("LumaSharpen.fx"))
+        {
+            preset.techniques.insert("LumaSharpen.fx".to_owned(), true);
+            preset.diagnostics.push(
+                "Sharpening fallback: using LumaSharpen.fx because the selected Sharpy sharpening shader is unavailable".to_owned()
+            );
+        }
+
         preset
     }
 
