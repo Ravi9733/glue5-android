@@ -22,6 +22,9 @@ sdk_packages() {
     if [ ${#missing[@]} -gt 0 ]; then
         local sdkmanager_bin
         sdkmanager_bin="$(command -v sdkmanager)" || die "sdkmanager is not on PATH"
+        # GitHub Actions is non-interactive: accept Android SDK package licenses
+        # before sdkmanager installs missing platform/build-tools/NDK packages.
+        yes | "$sdkmanager_bin" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
         "$sdkmanager_bin" --sdk_root="$ANDROID_HOME" --install "${missing[@]}"
     fi
     export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$(setting ndk)
