@@ -139,10 +139,11 @@ impl Preset {
             *enabled && name.to_ascii_lowercase().contains("sharp")
         });
         let requested_sharpen_available = self.techniques.iter().any(|(name, enabled)| {
-            if !enabled || !name.to_ascii_lowercase().contains("sharp") {
+            if !*enabled || !name.to_ascii_lowercase().contains("sharp") {
                 return false;
             }
-            let relative = Path::new(&name.replace('\\', "/"));
+            let normalized = name.replace('\\', "/");
+            let relative = Path::new(&normalized);
             resolve_case_insensitive(preset_dir, relative)
                 .or_else(|| relative.file_name().and_then(|file| find_unique_effect_by_filename(preset_dir, file)))
                 .is_some_and(|path| path.is_file())
@@ -150,6 +151,7 @@ impl Preset {
         let luma_sharpen_fallback = requested_sharpen && !requested_sharpen_available
             && self.sections.keys().any(|section| section.eq_ignore_ascii_case("LumaSharpen.fx"))
             && resolve_case_insensitive(preset_dir, Path::new("LumaSharpen.fx"))
+                .or_else(|| find_unique_effect_by_filename(preset_dir, std::ffi::OsStr::new("LumaSharpen.fx")))
                 .is_some_and(|path| path.is_file());
 
         names.into_iter().filter_map(|section| {
