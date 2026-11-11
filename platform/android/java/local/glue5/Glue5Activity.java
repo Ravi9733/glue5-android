@@ -400,8 +400,9 @@ public class Glue5Activity extends SDLActivity {
                 ensureNoMergeCollisions(staging, presetDirectory);
                 mergeReShadeFiles(staging, presetDirectory);
                 deleteTree(staging);
+                installBundledSweetFx(presetDirectory);
                 return "ReShade shader dependencies added to " + presetDirectory.getAbsolutePath()
-                        + " (existing preset files were preserved)";
+                        + " (existing files preserved; bundled SweetFX effects added)";
             } catch (Exception e) {
                 deleteTree(staging);
                 throw e;
@@ -420,12 +421,53 @@ public class Glue5Activity extends SDLActivity {
             deleteTree(destination);
             throw new Exception("No ReShade preset INI with TechniqueSorting or [TECHNIQUES] was found");
         }
+        boolean bundledSweetFx = false;
+        try {
+            installBundledSweetFx(presetIni.getParentFile());
+            bundledSweetFx = true;
+        } catch (Exception ignored) {
+            // Keep the user's preset import intact even if an APK asset is absent.
+        }
         try (FileOutputStream output = new FileOutputStream(activePreset, false)) {
             output.write(presetIni.getCanonicalPath().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
         return "ReShade preset files installed: " + destination.getAbsolutePath()
                 + " (original files preserved; selected " + presetIni.getName()
-                + (sawFx ? "; included FX files retained)" : "; import its FX dependency ZIPs next)");
+                + (sawFx ? "; included FX files retained"
+                    : bundledSweetFx ? "; bundled SweetFX effects installed"
+                    : "; FX dependencies still need to be imported") + ")";
+    }
+
+    /** Add the bundled MIT SweetFX package without replacing user-provided files. */
+    private void installBundledSweetFx(File presetDirectory) throws Exception {
+        copyBundledAssetTree("reshade-shaders/Shaders/SweetFX",
+                new File(presetDirectory, "Shaders/SweetFX"));
+        copyBundledAssetTree("reshade-shaders/Textures/SweetFX",
+                new File(presetDirectory, "Textures/SweetFX"));
+    }
+
+    private void copyBundledAssetTree(String assetPath, File destination) throws Exception {
+        String[] children = getAssets().list(assetPath);
+        if (children != null && children.length > 0) {
+            if (!destination.isDirectory() && !destination.mkdirs()) {
+                throw new Exception("Cannot create bundled ReShade folder: " + destination);
+            }
+            for (String child : children) {
+                copyBundledAssetTree(assetPath + "/" + child, new File(destination, child));
+            }
+            return;
+        }
+        if (destination.isFile()) return; // Never overwrite a user's shader or texture.
+        File parent = destination.getParentFile();
+        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+            throw new Exception("Cannot create bundled ReShade folder: " + parent);
+        }
+        try (InputStream input = getAssets().open(assetPath);
+             FileOutputStream output = new FileOutputStream(destination, false)) {
+            byte[] buffer = new byte[16384];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+        }
     }
 
     private static String readTextFile(File file) throws Exception {
