@@ -104,7 +104,8 @@ impl Preset {
         // shader as a conservative sharpening fallback rather than loading
         // missing PC-only effects.
         let needs_sharpen_fallback = preset.techniques.iter().any(|(name, enabled)| {
-            *enabled && (name.eq_ignore_ascii_case("FilmicAnamorphSharpen.fx")
+            *enabled && (name.to_ascii_lowercase().contains("filmic") 
+                || name.to_ascii_lowercase().contains("delc_sharpen")
                 || name.eq_ignore_ascii_case("qUINT_sharp.fx"))
         });
         if needs_sharpen_fallback
