@@ -124,7 +124,11 @@ impl Preset {
             if relative.components().any(|c| !matches!(c, Component::Normal(_))) {
                 return None;
             }
-            let path = preset_dir.join(relative);
+            // Android storage is case-sensitive, while ReShade presets and
+            // ZIP archives often differ only in path casing. Resolve each
+            // component case-insensitively without following symlinks.
+            let expected = preset_dir.join(relative);
+            let path = resolve_case_insensitive(preset_dir, relative).unwrap_or(expected);
             let enabled = self.techniques.iter()
                 .find(|(name, _)| effect_name_eq(name, &section))
                 .map(|(_, enabled)| *enabled)
@@ -218,6 +222,41 @@ impl Preset {
     }
 }
 
+/// Resolve a relative shader path on case-sensitive filesystems while
+/// accepting the case-insensitive paths commonly stored in Windows presets.
+/// Symlinks are deliberately not followed.
+fn resolve_case_insensitive(root: &Path, relative: &Path) -> Option<PathBuf> {
+    let mut current = root.to_path_buf();
+    let components: Vec<_> = relative.components().collect();
+    for (index, component) in components.iter().enumerate() {
+        let Component::Normal(wanted) = component else { return None };
+        let wanted = wanted.to_string_lossy();
+        let exact = current.join(wanted.as_ref());
+        let is_last = index + 1 == components.len();
+        let candidate = if exact.exists() {
+            exact
+        } else {
+            std::fs::read_dir(&current).ok()?.flatten().find_map(|entry| {
+                let kind = entry.file_type().ok()?;
+                if kind.is_symlink() || !entry.file_name().to_string_lossy().eq_ignore_ascii_case(&wanted) {
+                    return None;
+                }
+                if (is_last && kind.is_file()) || (!is_last && kind.is_dir()) {
+                    Some(entry.path())
+                } else {
+                    None
+                }
+            })?
+        };
+        let kind = std::fs::symlink_metadata(&candidate).ok()?.file_type();
+        if kind.is_symlink() || (is_last && !kind.is_file()) || (!is_last && !kind.is_dir()) {
+            return None;
+        }
+        current = candidate;
+    }
+    current.is_file().then_some(current)
+}
+
 /// Extract the effect filename from either Effect.fx or Technique@Effect.fx.
 fn effect_from_technique(value: &str) -> Option<&str> {
     let effect = value.rsplit_once('@').map_or(value, |(_, effect)| effect).trim();
@@ -294,6 +333,23 @@ Exposure=0.5
         let effects = p.effect_files(Path::new("/presets"));
         assert_eq!(effects.len(), 1);
         assert_eq!(effects[0].path, PathBuf::from("/presets/Shaders/ColorGrade.fx"));
+    }
+
+    #[test]
+    fn resolves_effect_paths_case_insensitively_on_android_filesystems() {
+        let root = std::env::temp_dir().join(format!("glue5-reshade-case-{}", std::process::id()));
+        let shaders = root.join("shaders");
+        std::fs::create_dir_all(&shaders).unwrap();
+        let actual = shaders.join("Bloom.FX");
+        std::fs::write(&actual, "// fixture").unwrap();
+        let preset = Preset::parse(
+            "[GENERAL]\\nTechniqueSorting=Bloom@Shaders/Bloom.fx\\n[Shaders/Bloom.fx]\\nEnabled=1\\n"
+        );
+        let effects = preset.effect_files(&root);
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].path, actual);
+        assert!(effects[0].path.is_file());
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
