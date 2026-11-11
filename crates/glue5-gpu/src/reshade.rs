@@ -343,7 +343,7 @@ Exposure=0.5
         let actual = shaders.join("Bloom.FX");
         std::fs::write(&actual, "// fixture").unwrap();
         let preset = Preset::parse(
-            "[GENERAL]\\nTechniqueSorting=Bloom@Shaders/Bloom.fx\\n[Shaders/Bloom.fx]\\nEnabled=1\\n"
+            "[GENERAL]\nTechniqueSorting=Bloom@Shaders/Bloom.fx\n[Shaders/Bloom.fx]\nEnabled=1\n"
         );
         let effects = preset.effect_files(&root);
         assert_eq!(effects.len(), 1);
