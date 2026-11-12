@@ -124,3 +124,40 @@ non-ELF and wrong-machine libraries, nested WASM, and malformed library lists.
 These are structural checks only: a correctly shaped ELF file can still be the
 wrong engine build, have unresolved dependencies, or fail at runtime. Exact
 XHYN host identity, load order, and real-device launch remain separate gates.
+
+
+## First installable native host package
+
+A first separate APK has now been produced by
+`.github/workflows/native-xhyn-launcher-build.yml`. The build downloads the
+hash-pinned XHYN-V 0.3 Preview 2 APK, decodes it with pinned Apktool, changes
+the application ID to `local.glue5.nativeapp`, adds a small Glue 5 Native
+launcher Activity, and keeps XHYN's original `StoragePermissionActivity`
+and `GTAVActivity` as the storage-preparation and SDL engine host.
+
+The new launcher starts the existing storage/game-root flow; it does not call
+`SDL_main` itself. The existing engine Activity still owns SDL3, DXVK,
+`libgtav.so`, its GameSurface and XHYN runtime managers. The provider
+authority is changed to `local.glue5.nativeapp.modspawn` to avoid colliding
+with an installed XHYN package.
+
+CI verification for the produced APK:
+- application ID and new launcher Activity verified;
+- original `GTAVActivity` retained in the manifest;
+- APK signature verified with a generated development key;
+- all 169 original `assets/` files and all 27 ARM64 native libraries are
+  byte-identical to Preview 2;
+- `libSDL3.so` and `libgtav.so` present;
+- no `.wasm` file present;
+- default external game root `/storage/emulated/0/Games/GTAV` preserved by
+  the patcher.
+
+This is an installable **native host bootstrap**, not yet the finished
+Glue 5 Rust/egui UI integration. The visible launcher is a lightweight
+Android Activity; the XHYN storage/game menu and engine Activity remain the
+actual game flow. The APK has not been installed or run on the iQOO device,
+and no gameplay, FPS, audio, surface-recreation or crash-stability claim is
+made. The user must supply compatible game files; none are included.
+
+The build artifact is short-lived (3 days) and development-signed. It is
+separate from `local.glue5` and does not alter `Documents/Glue5`.
