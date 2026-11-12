@@ -152,3 +152,19 @@ The implementation route can now be split cleanly: preserve the existing
 package identity for native mode; keep the reusable shell UI independent;
 and wait for exact XHYN host/ABI evidence before adding a real engine adapter.
 
+## Native shell CI verification
+
+The isolated native-shell test job has now passed on commit
+`728d0dbaf748697541c74c50f5155fbcf91e4f8e`. GitHub Actions completed
+formatting, Cargo workspace metadata, reusable-UI dependency-boundary checks,
+and compilation plus unit tests for the native shell in an isolated package
+pinned to egui 0.36.2. The earlier formatting failure on commit
+`5825cf0` was corrected before this passing run.
+
+This is a real source-level compile/test result for the isolated shell crate,
+not a build of the full Glue 5 workspace, not an Android Gradle build, and
+not a native game launch. The full workspace remains blocked by missing
+prepared third-party patch directories in the repository checkout; Android
+engine packaging also remains blocked by the unpublished XHYN-V 0.3 host
+implementation and unverified SDL/ABI contract.
+
