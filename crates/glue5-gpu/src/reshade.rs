@@ -181,6 +181,7 @@ impl Preset {
                 // shader tree in an extra folder (or use a different root).
                 // Fall back only when the filename is unique, never to an
                 // arbitrary same-named shader from another package.
+                .or_else(|| find_effect_by_relative_suffix(preset_dir, relative))
                 .or_else(|| find_unique_effect_by_filename(preset_dir, relative.file_name()?))
                 .unwrap_or(expected);
             // Do not activate a technique whose shader is absent. In
@@ -330,6 +331,62 @@ fn find_unique_effect_by_filename(root: &Path, filename: &std::ffi::OsStr) -> Op
 
     let mut found = Vec::new();
     visit(root, filename, &mut found);
+    (found.len() == 1).then(|| found.remove(0))
+}
+
+/// Resolve a preset-relative shader path beneath ZIP wrapper folders.
+///
+/// ReShade archives often keep the INI at the package root while placing the
+/// shader tree below a wrapper such as "reshade-shaders/Shaders". Prefer the
+/// longest exact path suffix before falling back to a basename-only search;
+/// this avoids treating a valid Vibrance.fx as missing just because another
+/// package folder also contains a file with that basename.
+fn find_effect_by_relative_suffix(root: &Path, relative: &Path) -> Option<PathBuf> {
+    let wanted: Vec<String> = relative.components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part.to_string_lossy().to_ascii_lowercase()),
+            _ => None,
+        })
+        .collect();
+    if wanted.is_empty() {
+        return None;
+    }
+
+    fn visit(dir: &Path, root: &Path, wanted: &[String], found: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_symlink() {
+                continue;
+            }
+            if kind.is_dir() {
+                visit(&path, root, wanted, found);
+                if found.len() > 1 {
+                    return;
+                }
+            } else if kind.is_file() {
+                let Ok(relative_path) = path.strip_prefix(root) else { continue };
+                let parts: Vec<String> = relative_path.components()
+                    .filter_map(|component| match component {
+                        Component::Normal(part) => Some(part.to_string_lossy().to_ascii_lowercase()),
+                        _ => None,
+                    })
+                    .collect();
+                if parts.len() >= wanted.len()
+                    && parts[parts.len() - wanted.len()..] == wanted[..]
+                {
+                    found.push(path);
+                    if found.len() > 1 {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    let mut found = Vec::new();
+    visit(root, root, &wanted, &mut found);
     (found.len() == 1).then(|| found.remove(0))
 }
 
@@ -545,6 +602,27 @@ Exposure=0.5
         assert_eq!(effects.len(), 1);
         assert_eq!(effects[0].path, actual);
         assert!(effects[0].path.is_file());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_nested_effect_path_under_zip_wrapper_even_with_duplicate_basename() {
+        let root = std::env::temp_dir().join(format!("glue5-reshade-suffix-{}", std::process::id()));
+        let wrapped = root.join("reshade-shaders").join("Shaders").join("SweetFX");
+        let unrelated = root.join("OtherPack").join("Shaders").join("SweetFX");
+        std::fs::create_dir_all(&wrapped).unwrap();
+        std::fs::create_dir_all(&unrelated).unwrap();
+        let expected = wrapped.join("Vibrance.fx");
+        std::fs::write(&expected, "// preset effect").unwrap();
+        std::fs::write(unrelated.join("Vibrance.fx"), "// unrelated effect").unwrap();
+
+        let preset = Preset::parse(
+            "[GENERAL]\\nTechniqueSorting=Vibrance@Shaders/SweetFX/Vibrance.fx\\n[TECHNIQUES]\\nVibrance@Shaders/SweetFX/Vibrance.fx=1\\n"
+        );
+        let effects = preset.effect_files(&root);
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].path, expected);
+        assert!(effects[0].enabled);
         let _ = std::fs::remove_dir_all(root);
     }
 
