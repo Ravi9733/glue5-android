@@ -117,10 +117,15 @@ impl Preset {
         let mut names = Vec::new();
         for item in &self.technique_sorting {
             let Some(name) = effect_from_technique(item) else { continue };
-            if let Some(section) = self.sections.keys().find(|section| effect_name_eq(section, name)) {
-                if !names.iter().any(|n: &String| effect_name_eq(n, section)) {
-                    names.push(section.clone());
-                }
+            // Some valid presets keep the enabled technique list and sorting
+            // but omit per-effect parameter sections. The effect filename in
+            // TechniqueSorting is still authoritative; resolve it directly.
+            let candidate = self.sections.keys()
+                .find(|section| effect_name_eq(section, name))
+                .cloned()
+                .unwrap_or_else(|| name.to_owned());
+            if !names.iter().any(|n: &String| effect_name_eq(n, &candidate)) {
+                names.push(candidate);
             }
         }
         for section in self.sections.keys() {
@@ -191,6 +196,17 @@ impl Preset {
             }
             Some(EffectFile { section, path, enabled })
         }).collect()
+    }
+
+    /// Whether any enabled effect explicitly requires the game's depth buffer.
+    /// RTGI and common ambient-occlusion/depth effects cannot produce their
+    /// intended result with vkBasalt depth capture disabled.
+    pub fn requires_depth_capture(&self, preset_dir: &Path) -> bool {
+        self.effect_files(preset_dir).iter().any(|effect| {
+            let name = effect.path.file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase();
+            ["rtgi", "mxao", "ssao", "gtao", "hbao", "depth", "dof"]
+                .iter().any(|needle| name.contains(needle))
+        })
     }
 
     /// Read a parameter from an effect section without losing its original
