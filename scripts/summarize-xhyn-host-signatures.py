@@ -6,12 +6,13 @@ import re
 from pathlib import Path
 
 TARGET_CLASS_NAMES = (
-    "GTAVActivity", "GameSurface", "GameDirectories",
-    "StoragePermissionActivity", "ModSpawnProvider", "ArtworkGuardApplication",
+    "GTAVActivity", "GameSurface", "GameDirectories", "GameRoot",
+    "StoragePermissionActivity", "GameMenuActivity", "ModSpawnProvider",
+    "ArtworkGuardApplication",
 )
 DECLARATIONS = (
     re.compile(r"^\s*(?:public|protected|private)?\s*(?:static\s+)?(?:final\s+)?(?:class|interface)\s+\w+\b"),
-    re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:loadLibraries|onCreate|onResume|onPause|onDestroy|getLibraries|getMainFunction|nativeRunMain|gameRoot|start)\s*\([^;]*\)"),
+    re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:loadLibraries|onCreate|onResume|onPause|onDestroy|getLibraries|getMainFunction|nativeRunMain|gameRoot|start|resolve|current)\s*\([^;]*\)"),
     re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:surfaceCreated|surfaceChanged|surfaceDestroyed)\s*\([^;]*\)"),
 )
 SAFE_HOST_LINES = re.compile(
@@ -24,7 +25,9 @@ SAFE_HOST_LINES = re.compile(
     r"gameRoot\(|game_root|getExternalFilesDir|getFilesDir|getExternalStorageDirectory|"
     r"Environment|Documents|ACTION_OPEN_DOCUMENT_TREE|StoragePermissionActivity|"
     r"ModSpawnProvider|\.modspawn|getPackageName\(|authority|content://|"
-    r"GameDirectories|ArtworkGuardApplication"
+    r"GameDirectories|GameRoot|resolve\(|takePersistableUriPermission|"
+    r"DocumentsContract|Uri|File\(|Android/data|ArtworkGuardApplication|"
+    r"CLIENT|CERT"
 )
 
 def main() -> int:
