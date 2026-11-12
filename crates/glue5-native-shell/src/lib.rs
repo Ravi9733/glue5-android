@@ -72,6 +72,37 @@ pub struct NativeShell {
 }
 
 impl NativeShell {
+    /// Request a launch only from a state in which a fresh engine session is valid.
+    /// Keeping this guard outside the egui click handler also protects other frontends.
+    pub fn start_game(&mut self, engine: &mut impl NativeEngine) {
+        if !matches!(engine.state(), EngineState::Ready | EngineState::Stopped) {
+            self.last_error = Some(format!(
+                "Cannot start the native engine while it is {:?}.",
+                engine.state()
+            ));
+            return;
+        }
+
+        self.last_error = self
+            .options
+            .validate()
+            .and_then(|()| engine.start(&self.options))
+            .err();
+    }
+
+    /// Request shutdown only while an engine session is active or starting.
+    pub fn stop_game(&mut self, engine: &mut impl NativeEngine) {
+        if !matches!(engine.state(), EngineState::Running | EngineState::Starting) {
+            self.last_error = Some(format!(
+                "Cannot stop the native engine while it is {:?}.",
+                engine.state()
+            ));
+            return;
+        }
+
+        self.last_error = engine.stop().err();
+    }
+
     pub fn show(&mut self, ctx: &Context, engine: &mut impl NativeEngine) {
         CentralPanel::default().show(ctx, |ui| self.show_contents(ui, engine));
     }
@@ -105,16 +136,12 @@ impl NativeShell {
         match engine.state() {
             EngineState::Ready | EngineState::Stopped => {
                 if ui.button("Start game").clicked() {
-                    self.last_error = self
-                        .options
-                        .validate()
-                        .and_then(|()| engine.start(&self.options))
-                        .err();
+                    self.start_game(engine);
                 }
             }
             EngineState::Running | EngineState::Starting => {
                 if ui.button("Stop game").clicked() {
-                    self.last_error = engine.stop().err();
+                    self.stop_game(engine);
                 }
             }
             EngineState::NotAttached => {
@@ -140,6 +167,31 @@ impl NativeShell {
 mod tests {
     use super::*;
 
+    #[derive(Default)]
+    struct MockEngine {
+        state: EngineState,
+        starts: usize,
+        stops: usize,
+    }
+
+    impl NativeEngine for MockEngine {
+        fn state(&self) -> EngineState {
+            self.state
+        }
+
+        fn start(&mut self, _options: &LaunchOptions) -> Result<(), String> {
+            self.starts += 1;
+            self.state = EngineState::Starting;
+            Ok(())
+        }
+
+        fn stop(&mut self) -> Result<(), String> {
+            self.stops += 1;
+            self.state = EngineState::Stopped;
+            Ok(())
+        }
+    }
+
     #[test]
     fn defaults_are_conservative_and_clear() {
         let options = LaunchOptions::default();
@@ -162,6 +214,42 @@ mod tests {
     fn invalid_fps_is_rejected() {
         let options = LaunchOptions { max_fps: 144, ..Default::default() };
         assert_eq!(options.validate(), Err("FPS limit must be between 30 and 120"));
+    }
+
+    #[test]
+    fn start_is_forwarded_only_from_ready_or_stopped() {
+        let mut shell = NativeShell::default();
+        let mut engine = MockEngine { state: EngineState::Ready, ..Default::default() };
+        shell.start_game(&mut engine);
+        assert_eq!(engine.starts, 1);
+        assert_eq!(engine.state, EngineState::Starting);
+    }
+
+    #[test]
+    fn start_is_rejected_when_engine_is_not_attached() {
+        let mut shell = NativeShell::default();
+        let mut engine = MockEngine::default();
+        shell.start_game(&mut engine);
+        assert_eq!(engine.starts, 0);
+        assert!(shell.last_error.as_deref().unwrap().contains("NotAttached"));
+    }
+
+    #[test]
+    fn stop_is_forwarded_only_for_active_engine() {
+        let mut shell = NativeShell::default();
+        let mut engine = MockEngine { state: EngineState::Running, ..Default::default() };
+        shell.stop_game(&mut engine);
+        assert_eq!(engine.stops, 1);
+        assert_eq!(engine.state, EngineState::Stopped);
+    }
+
+    #[test]
+    fn stop_is_rejected_when_engine_is_not_running() {
+        let mut shell = NativeShell::default();
+        let mut engine = MockEngine { state: EngineState::Ready, ..Default::default() };
+        shell.stop_game(&mut engine);
+        assert_eq!(engine.stops, 0);
+        assert!(shell.last_error.as_deref().unwrap().contains("Ready"));
     }
 
     #[test]
