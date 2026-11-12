@@ -21,9 +21,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: android-actions/setup-android@v3
       - name: Install Android signing tools
-        run: sdkmanager "build-tools;36.0.0" "platforms;android-36"
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort | tail -n 1)"
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "build-tools;36.0.0" "platforms;android-36"
       - name: Download and verify XHYN Preview 2 engine APK
         run: |
           curl --fail --location --retry 3 \
@@ -54,8 +59,9 @@ jobs:
       - name: Verify package, launcher, engine and no-WASM boundary
         run: |
           BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
-          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id /tmp/Glue5-Native-XHYN-Preview2.apk | grep -Fx "local.glue5.nativeapp"
-          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print /tmp/Glue5-Native-XHYN-Preview2.apk > /tmp/native-manifest.xml
+          APKANALYZER="$(find "$ANDROID_HOME" -name apkanalyzer -type f | sort | tail -n 1)"
+          "$APKANALYZER" manifest application-id /tmp/Glue5-Native-XHYN-Preview2.apk | grep -Fx "local.glue5.nativeapp"
+          "$APKANALYZER" manifest print /tmp/Glue5-Native-XHYN-Preview2.apk > /tmp/native-manifest.xml
           grep -F "local.glue5.nativeapp.LauncherActivity" /tmp/native-manifest.xml
           grep -F "com.gtavsource.android.GTAVActivity" /tmp/native-manifest.xml
           python3 - <<'PY'
