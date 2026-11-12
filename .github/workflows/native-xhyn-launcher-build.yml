@@ -6,6 +6,8 @@ on:
     branches: [native-android-engine-backend]
     paths:
       - "scripts/patch-xhyn-native-launcher.py"
+      - "scripts/restore-opaque-apk-resources.py"
+      - "scripts/test-restore-opaque-apk-resources.py"
       - ".github/workflows/native-xhyn-launcher-build.yml"
 
 permissions:
@@ -78,6 +80,12 @@ jobs:
           assert "lib/arm64-v8a/libSDL3.so" in libs
           assert "lib/arm64-v8a/libgtav.so" in libs
           assert "res/drawable/titanium_full_fire.bin" in names, "startup artwork missing from final APK"
+          with zipfile.ZipFile("/tmp/XHYN-V-0.3-Preview2.apk") as original, zipfile.ZipFile(apk) as rebuilt:
+              assert original.read("resources.arsc") == rebuilt.read("resources.arsc"), "compiled resource table changed"
+              original_res = {n: original.read(n) for n in original.namelist() if n.startswith("res/") and not n.endswith("/")}
+              rebuilt_res = {n: rebuilt.read(n) for n in rebuilt.namelist() if n.startswith("res/") and not n.endswith("/")}
+              assert original_res == rebuilt_res, "original res/ tree was not preserved byte-for-byte"
+              print(f"compiled resource table + {len(original_res)} res/ files preserved byte-for-byte")
           assert len(libs) == 27, f"expected 27 ARM64 libraries, got {len(libs)}"
           assert not any(n.endswith(".wasm") for n in names), "WASM payload found"
           with zipfile.ZipFile("/tmp/XHYN-V-0.3-Preview2.apk") as original, zipfile.ZipFile(apk) as rebuilt:
