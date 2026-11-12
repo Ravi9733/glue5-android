@@ -93,3 +93,20 @@ lifecycle transition guards, but have not been executed in this environment.
 The source/metadata CI checks are not a Rust compile, Android APK build,
 native-engine launch, FPS measurement, or device crash test. Those remain
 pending until the adapter inputs and build environment are present.
+
+## 0.3 lifecycle touch points found in the published patch script
+
+The 0.3 `apply_runtime.py` patch script names the host-side methods it wraps:
+`GTAVActivity.loadLibraries()`, `onResume()`, `onPause()`, `onDestroy()`,
+and the nested `GTAVActivity$GameSurface.surfaceCreated()` /
+`surfaceChanged()` callbacks. It also patches menu lifecycle methods. This
+is useful evidence that the engine is hosted by a specific SDL-backed Activity
+and that surface recreation and pause/resume are part of its integration.
+
+These are patch-script target names, not a complete Activity implementation or
+a public API. They do not prove that a second Activity can be instantiated,
+that a different SDL version is ABI-compatible, or that the engine can safely
+run inside Glue 5's existing SDL3 process. The actual 0.3 Activity bytecode,
+SDL version, native library loading list/order, and JNI/native entry contract
+must still be inspected from the exact APK before writing an adapter.
+
