@@ -100,3 +100,12 @@ is test-only: it is not a real engine, host manifest, or APK. No production
 `native-package.json` is checked in until the exact XHYN 0.3 Activity and
 matching library inventory are verified. This guard is a structural packaging
 check, not a compatibility, signing, launch or performance test.
+
+
+The follow-up source audit is in
+`docs/xhyn-v03-host-compatibility-audit.md`. It explicitly distinguishes the
+throwing `GTAVActivity` compile stub and isolated Vulkan probe Activity from
+the real game launcher. The native package preflight also recursively rejects
+WASM files anywhere under the staging tree and validates the package ID,
+Activity name and declared ARM64 library filenames. Its fixture is test-only;
+it does not create or qualify a production APK.
