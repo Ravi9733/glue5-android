@@ -24,7 +24,12 @@ sdk_packages() {
         sdkmanager_bin="$(command -v sdkmanager)" || die "sdkmanager is not on PATH"
         # GitHub Actions is non-interactive: accept Android SDK package licenses
         # before sdkmanager installs missing platform/build-tools/NDK packages.
+        # sdkmanager exits after the final license prompt; yes may receive
+        # SIGPIPE (141) even though licenses were accepted successfully.
+        # Preserve the sdkmanager status rather than yes's expected SIGPIPE.
+        set +o pipefail
         yes | "$sdkmanager_bin" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
+        set -o pipefail
         "$sdkmanager_bin" --sdk_root="$ANDROID_HOME" --install "${missing[@]}"
     fi
     export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$(setting ndk)
