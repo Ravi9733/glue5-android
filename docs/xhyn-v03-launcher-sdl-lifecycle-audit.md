@@ -46,6 +46,24 @@ decompilation or proprietary libraries.
    DT_NEEDED dependency list. This is static ELF validation, not yet a full
    Android runtime dependency-closure or symbol-compatibility proof.
 
+## Verified manifest and application components
+
+The decoded manifest reports package `com.xhynph.xhynv.reborn174`, version
+`0.3-preview2` (code 301), minSdk 30, targetSdk 36, and
+`ArtworkGuardApplication`. Native libraries are extracted by Android
+(`extractNativeLibs=true`); backup is disabled. The launcher intent filter
+is on `StoragePermissionActivity`, not directly on `GTAVActivity`.
+`GTAVActivity` is non-exported and must be launched from inside the app.
+The manifest also declares `ResourceTaskService`, `GameMenuActivity`,
+diagnostic activities/services, and `ModSpawnProvider`.
+
+The provider authority is currently
+`com.xhynph.xhynv.reborn174.modspawn`. A distinct package ID therefore
+requires a deliberate authority rewrite and verification of any code that
+constructs or queries that authority. The original application/launcher
+chain and storage preparation flow must be preserved; simply making
+`GTAVActivity` the new exported launcher would bypass required preparation.
+
 ## What is still not established
 
 - The exact SDL3 Java source revision and native SDL ABI compatibility with
@@ -53,8 +71,9 @@ decompilation or proprietary libraries.
 - Whether the XHYN Activity's private lifecycle logic can be safely reused
   as a separate app host, and which parts depend on XHYN-specific services,
   preferences, overlay UI or managers.
-- The full behavior of XHYN-specific manager/service dependencies and the
-  exact SDL nativeRunMain arguments after `getMainFunction() = SDL_main`.
+- The full behavior of XHYN-specific manager/service dependencies, all
+  manifest provider authority references, and the exact SDL nativeRunMain
+  arguments after `getMainFunction() = SDL_main`.
 - Whether the 26 original native libraries and their DT_NEEDED dependencies
   can be packaged with Glue 5's selected NDK/runtime without symbol conflicts.
 - Device-tested pause/resume, surface recreation, input, audio focus,
@@ -102,6 +121,7 @@ XHYN host's dependencies on its app-specific managers/services are mapped.
   **verified at Java host level**.
 - XHYN-specific DXVK, frame-generation, game-root and storage-activity
   dependencies: **identified; integration still needs mapping**.
+- Manifest package, launcher and provider authority: **verified**.
 - 27 ARM64 libraries (26 original + helper): **count discrepancy explained**.
 - Per-library ELF/DT_NEEDED inventory: **passed** (27 AArch64 ELF64 libraries;
   26 original plus `libxhyn_v02.so`).
