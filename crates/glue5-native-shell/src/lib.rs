@@ -76,7 +76,7 @@ impl NativeShell {
             return;
         }
 
-        self.last_error = self.options.validate().and_then(|()| engine.start(&self.options)).err();
+        self.last_error = self.options.validate().map_err(str::to_owned).and_then(|()| engine.start(&self.options)).err();
     }
 
     /// Request shutdown only while an engine session is active or starting.
@@ -89,8 +89,8 @@ impl NativeShell {
         self.last_error = engine.stop().err();
     }
 
-    pub fn show(&mut self, ctx: &Context, engine: &mut impl NativeEngine) {
-        CentralPanel::default().show(ctx, |ui| self.show_contents(ui, engine));
+    pub fn show(&mut self, ui: &mut Ui, engine: &mut impl NativeEngine) {
+        CentralPanel::default().show_inside(ui, |ui| self.show_contents(ui, engine));
     }
 
     fn show_contents(&mut self, ui: &mut Ui, engine: &mut impl NativeEngine) {
