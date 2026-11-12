@@ -124,3 +124,31 @@ The native-shell workflow now runs cargo test --locked -p glue5-native-shell --l
 
 
 The subsequent workspace test attempt was blocked before Rust compilation because the repository-wide Cargo patch points at third_party/sp-fidelity, which is absent in the GitHub checkout. The workflow now copies the native-shell source into a temporary isolated Cargo package pinned to egui 0.36.2, so its unit tests can run without resolving unrelated Glue 5 workspace patches. This isolated test does not validate the full Android workspace.
+
+## Glue 5 Android host confirmed from the repository tree
+
+The existing Android app is now located at `platform/android`:
+
+- `platform/android/java/local/glue5/Glue5Activity.java` extends
+  `org.libsdl.app.SDLActivity` and returns the native library load order
+  `SDL3`, then `glue5`.
+- `platform/android/AndroidManifest.xml` declares
+  `local.glue5.Glue5Activity` as the launcher, fullscreen landscape, with
+  `singleInstance` launch mode and Vulkan 1.1 as a required device feature.
+- `platform/android/build.gradle.kts` uses application ID and namespace
+  `local.glue5`, ARM64-only packaging, SDL Java sources supplied through the
+  `glue5.sdlJava` Gradle property, and native libraries staged under
+  `target/android/jniLibs`.
+
+This corrects the earlier repository-path uncertainty: Glue 5's current host
+is a concrete SDL3 Activity, not an unidentified Gradle app. It still does
+not establish compatibility with XHYN-V's SDL-backed host. In particular,
+the XHYN-V Activity/SDL version and native library load order are not
+verified, so its game library must not be inserted into this SDL3 Activity
+or launched by guessing at JNI methods.
+
+The implementation route can now be split cleanly: preserve the existing
+`local.glue5` WASM target; prepare a separate Android application module and
+package identity for native mode; keep the reusable shell UI independent;
+and wait for exact XHYN host/ABI evidence before adding a real engine adapter.
+
