@@ -2,6 +2,21 @@
   "schema_version": 2,
   "source": "Exact XHYN-V 0.3 Preview 2 APK; SHA-256 verified and DEX inspected with JADX 1.5.2",
   "apk_sha256": "a681765d9aae1404c59e3570682f3078bf9062ff800abfc7c5e1972f2783309f",
+  "manifest": {
+    "package": "com.xhynph.xhynv.reborn174",
+    "version_code": 301,
+    "version_name": "0.3-preview2",
+    "min_sdk": 30,
+    "target_sdk": 36,
+    "application_class": "com.gtavsource.android.ArtworkGuardApplication",
+    "launcher_activity": "com.gtavsource.android.StoragePermissionActivity",
+    "engine_activity": "com.gtavsource.android.GTAVActivity",
+    "engine_activity_exported": false,
+    "mod_spawn_provider_authority": "com.xhynph.xhynv.reborn174.modspawn",
+    "native_libs_extracted": true,
+    "allow_backup": false,
+    "package_rename_requires_provider_authority_review": true
+  },
   "xhyn": {
     "architecture": "native-arm64-sdl3",
     "game_library": "libgtav.so",
@@ -87,6 +102,7 @@
   ],
   "remaining_evidence": [
     "SDL3 Activity nativeRunMain arguments and exact SDL3 source revision",
+    "Manifest provider authority references and package-renaming impact",
     "Complete XHYN-specific manager/service dependencies and game-root lifecycle",
     "All 27 ARM64 ELF DT_NEEDED dependencies and hashes",
     "Compare exact XHYN SDL Java classes against Glue 5 SDL Java sources",
