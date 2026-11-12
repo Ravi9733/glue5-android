@@ -88,11 +88,12 @@ fake successful launch.
 
 ## Validation status
 
-The native-shell unit tests cover defaults, invalid launch settings and
-lifecycle transition guards, but have not been executed in this environment.
-The source/metadata CI checks are not a Rust compile, Android APK build,
-native-engine launch, FPS measurement, or device crash test. Those remain
-pending until the adapter inputs and build environment are present.
+The native-shell unit tests cover defaults, invalid launch settings, lifecycle
+guards, rejection of invalid options before adapter calls, and propagation of
+adapter start/stop errors. The isolated CI compile/test is source-level only;
+it is not a full workspace or Android APK build, native-engine launch, FPS
+measurement, or device crash test. Those remain pending until the adapter
+inputs and build environment are present.
 
 ## 0.3 lifecycle touch points found in the published patch script
 
@@ -120,7 +121,7 @@ The published modifications/v0.3/native/xhyn_v02.c defines exactly three JNI ent
 
 ## CI scope update
 
-The native-shell workflow now runs cargo test --locked -p glue5-native-shell --lib in addition to formatting and metadata/dependency checks. The first attempt exposed malformed/missing lockfile records; the lockfile was corrected in commit ca60eee. The follow-up run must pass before the shell is called compile-verified. Even a passing shell test does not qualify the Android engine adapter or produce an APK.
+The native-shell workflow was first updated to run the workspace package test, but that path was blocked by an unrelated missing third-party workspace patch. The workflow was then changed to compile and test a temporary isolated package pinned to egui 0.36.2. Even a passing isolated shell test does not qualify the Android engine adapter or produce an APK.
 
 
 The subsequent workspace test attempt was blocked before Rust compilation because the repository-wide Cargo patch points at third_party/sp-fidelity, which is absent in the GitHub checkout. The workflow now copies the native-shell source into a temporary isolated Cargo package pinned to egui 0.36.2, so its unit tests can run without resolving unrelated Glue 5 workspace patches. This isolated test does not validate the full Android workspace.
