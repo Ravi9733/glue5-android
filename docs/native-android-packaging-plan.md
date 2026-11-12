@@ -82,3 +82,21 @@ its original Activity/DEX, SDL version and native library load order are not
 published in the modification layer. Adding guessed Activity classes, JNI
 symbols or a second launcher before those are known would create a misleading
 or non-buildable APK target. No APK build or device validation is claimed here.
+
+
+## Fail-closed packaging preflight
+
+`scripts/check-native-android-package.py` now validates a future native
+staging directory against a `native-package.json` contract. The contract
+requires schema version 1, a package ID other than `local.glue5`, the
+verified host Activity name, `arm64-v8a`, and an explicit list of native
+libraries including `libgtav.so`. Every declared library must exist in the
+staging directory. The preflight rejects `game.wasm`, `libglue5.so` and
+`libSDL3.so` in that directory.
+
+The CI self-test checks both a valid fixture and rejection of a WASM payload
+and the existing Glue 5 package ID. The fixture uses a placeholder library and
+is test-only: it is not a real engine, host manifest, or APK. No production
+`native-package.json` is checked in until the exact XHYN 0.3 Activity and
+matching library inventory are verified. This guard is a structural packaging
+check, not a compatibility, signing, launch or performance test.
