@@ -7,6 +7,8 @@ dependency is `egui`. It contains:
 
 - a Home/Settings page model;
 - conservative launch defaults (60 FPS, 1.0 render scale, audio enabled);
+- launch-option validation (FPS 30–120; finite render scale 0.5–1.0) before
+  options cross the engine adapter boundary;
 - a `NativeEngine` lifecycle trait (`state`, `start`, `stop`);
 - a UI that reports an unattached engine instead of pretending a game can launch.
 
@@ -58,6 +60,8 @@ successful launch.
 
 ## Validation status
 
-The source/metadata CI checks are not a Rust compile, Android APK build,
+The native-shell unit tests now cover defaults and invalid launch settings,
+but they have not yet been executed in this environment. The source/metadata
+CI checks are not a Rust compile, Android APK build,
 native-engine launch, FPS measurement, or device crash test. Those remain
 explicitly pending until the adapter inputs and build environment are present.
