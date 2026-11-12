@@ -123,23 +123,66 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Android 13, kept for broad device compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQUEST_FOLDER || resultCode != Activity.RESULT_OK) return
+        if (resultCode != Activity.RESULT_OK) return
         val uri = data?.data ?: return
-        val flags = data.flags and (
-            Intent.FLAG_GRANT_READ_URI_PERMISSION or
-            Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        )
-        contentResolver.takePersistableUriPermission(uri, flags)
-        output.text = "Scanning folder… please keep the app open."
-        worker.execute {
-            val report = scanTree(uri)
-            runOnUiThread {
-                latestReport = report
-                output.text = report
+        val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        try { contentResolver.takePersistableUriPermission(uri, flags) } catch (_: Exception) {}
+        when (requestCode) {
+            REQUEST_FOLDER -> worker.execute {
+                val report = scanTree(uri)
+                runOnUiThread { latestReport = report; output.text = report }
+            }
+            REQUEST_ARCHIVE -> {
+                selectedArchiveUri = uri
+                selectedArchiveName = DocumentFile.fromSingleUri(this, uri)?.name ?: "selected.rpf"
+                output.text = "Selected " + selectedArchiveName + ". Select output folder next."
+            }
+            REQUEST_DESTINATION -> {
+                outputTreeUri = uri
+                output.text = "Output folder selected. Tap EXTRACT SELECTED RPF."
             }
         }
     }
 
+    private fun extractSelectedArchive() {
+        val sourceUri = selectedArchiveUri
+        val destinationUri = outputTreeUri
+        if (sourceUri == null || destinationUri == null) { output.text = "Select an RPF and output folder first."; return }
+        if (!selectedArchiveName.endsWith(".rpf", true)) { output.text = "Choose a .rpf file."; return }
+        output.text = "Extracting. Keep the app open; this can take time."
+        worker.execute {
+            val result = try {
+                val work = java.io.File(cacheDir, "rpf-work")
+                work.deleteRecursively()
+                check(work.mkdirs()) { "Cannot create temporary folder" }
+                val safeName = selectedArchiveName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                val source = java.io.File(work, safeName)
+                contentResolver.openInputStream(sourceUri)?.use { input -> source.outputStream().use { out -> input.copyTo(out) } } ?: error("Cannot read archive")
+                val extracted = java.io.File(work, "extracted")
+                check(extracted.mkdir()) { "Cannot create extraction folder" }
+                val report = NativeRpf.extractArchive(source.absolutePath, extracted.absolutePath)
+                check(report.startsWith("Extraction complete")) { report }
+                val root = DocumentFile.fromTreeUri(this, destinationUri) ?: error("Cannot open destination")
+                val target = root.createDirectory("RPF_Extract_" + System.currentTimeMillis()) ?: error("Cannot create output folder")
+                copyExtractedTree(extracted, target)
+                report + " Output: " + target.name + ". Original archive unchanged."
+            } catch (e: Throwable) { "Extraction failed: " + (e.message ?: e.javaClass.simpleName) }
+            runOnUiThread { output.text = result }
+        }
+    }
+
+    private fun copyExtractedTree(source: java.io.File, destination: DocumentFile) {
+        val children = source.listFiles() ?: emptyArray()
+        for (child in children) {
+            if (child.isDirectory) {
+                val dir = destination.createDirectory(child.name ?: "folder") ?: error("Cannot create directory")
+                copyExtractedTree(child, dir)
+            } else if (child.isFile) {
+                val file = destination.createFile("application/octet-stream", child.name ?: "asset.bin") ?: error("Cannot create output file")
+                contentResolver.openOutputStream(file.uri, "w")?.use { out -> child.inputStream().use { it.copyTo(out) } } ?: error("Cannot write output file")
+            }
+        }
+    }
     private data class HeaderInfo(
         val description: String,
         val entryCount: Long? = null,
