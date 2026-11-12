@@ -74,13 +74,14 @@ jobs:
           assert "lib/arm64-v8a/libgtav.so" in libs
           assert len(libs) == 27, f"expected 27 ARM64 libraries, got {len(libs)}"
           assert not any(n.endswith(".wasm") for n in names), "WASM payload found"
-          with zipfile.ZipFile("/tmp/XHYN-V-0.3-Preview2.apk") as original:
+          with zipfile.ZipFile("/tmp/XHYN-V-0.3-Preview2.apk") as original, zipfile.ZipFile(apk) as rebuilt:
               original_names = original.namelist()
+              rebuilt_names = rebuilt.namelist()
               for prefix in ("assets/", "lib/arm64-v8a/"):
                   old = {n: __import__("hashlib").sha256(original.read(n)).hexdigest()
                          for n in original_names if n.startswith(prefix) and not n.endswith("/")}
-                  new = {n: __import__("hashlib").sha256(z.read(n)).hexdigest()
-                         for n in names if n.startswith(prefix) and not n.endswith("/")}
+                  new = {n: __import__("hashlib").sha256(rebuilt.read(n)).hexdigest()
+                         for n in rebuilt_names if n.startswith(prefix) and not n.endswith("/")}
                   assert old == new, f"{prefix} contents changed during repackaging"
                   print(f"{prefix} preserved byte-for-byte: {len(old)} files")
           print(f"APK structure PASS: {len(libs)} ARM64 native libraries; no WASM")
