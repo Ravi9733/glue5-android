@@ -24,10 +24,20 @@ decompilation or proprietary libraries.
    `surfaceChanged`, and `surfaceDestroyed`. The wrappers preserve the
    superclass SDL callbacks; XHYN's DriverManager also tracks surface
    readiness and destruction.
-6. The Activity overrides `onCreate`, `onResume`, `onPause`,
-   `onDestroy`, `loadLibraries`, and `getMainFunction`. The exact method
-   declarations and relevant SDL/surface call sites are captured in the
-   short-lived `xhyn-v03-host-evidence` CI artifact.
+6. `getMainFunction()` returns `SDL_main`. `loadLibraries()` calls
+   `super.loadLibraries()`, then, when the app owns the game root, calls
+   `DxvkManager.initialize(this, runtimeConfig)` followed by
+   `XhynV02Runtime.librariesLoaded(this)`.
+7. `onCreate()` registers controller-device observation, calls the SDL
+   superclass, prepares the game UI focus/surface, sets landscape orientation,
+   reads runtime configuration, applies prepared DXVK/frame-generation state,
+   and initializes SDL. A preparation-needed state routes through
+   `StoragePermissionActivity` with the game-root path and auto-start flag.
+8. Pause/resume and destroy are custom XHYN wrappers, not bare SDL callbacks.
+   Surface-created/changed/destroyed callbacks update XHYN DriverManager state
+   while preserving the SDL superclass callbacks.
+9. The exact method declarations and selected SDL/surface call sites are
+   captured in the short-lived `xhyn-v03-host-evidence` CI artifact.
 7. The APK contains 27 ARM64 shared libraries in total. The published
    verification count of 26 refers to the original engine/companion set;
    the additional `libxhyn_v02.so` is the XHYN runtime helper. CI confirmed
@@ -43,9 +53,8 @@ decompilation or proprietary libraries.
 - Whether the XHYN Activity's private lifecycle logic can be safely reused
   as a separate app host, and which parts depend on XHYN-specific services,
   preferences, overlay UI or managers.
-- The full body/ordering of custom library setup around
-  `DxvkManager.initialize`, exact SDL main function return, and all
-  native entry arguments.
+- The full behavior of XHYN-specific manager/service dependencies and the
+  exact SDL nativeRunMain arguments after `getMainFunction() = SDL_main`.
 - Whether the 26 original native libraries and their DT_NEEDED dependencies
   can be packaged with Glue 5's selected NDK/runtime without symbol conflicts.
 - Device-tested pause/resume, surface recreation, input, audio focus,
@@ -89,6 +98,10 @@ XHYN host's dependencies on its app-specific managers/services are mapped.
 - Actual Activity class and SDLActivity superclass: **verified**.
 - Native SDL library order `SDL3 → gtav`: **verified**.
 - SDL surface subclass and create/change/destroy overrides: **verified**.
+- SDL entry function `SDL_main` and XHYN library-init ordering:
+  **verified at Java host level**.
+- XHYN-specific DXVK, frame-generation, game-root and storage-activity
+  dependencies: **identified; integration still needs mapping**.
 - 27 ARM64 libraries (26 original + helper): **count discrepancy explained**.
 - Per-library ELF/DT_NEEDED inventory: **passed** (27 AArch64 ELF64 libraries;
   26 original plus `libxhyn_v02.so`).
