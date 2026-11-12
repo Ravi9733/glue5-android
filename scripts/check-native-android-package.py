@@ -13,8 +13,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REQUIRED_FIELDS = {"schema_version", "application_id", "activity", "abi", "libraries"}
-PACKAGE_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+$")
-ACTIVITY = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)+$")
+PACKAGE_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
+ACTIVITY = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)+$")
 FORBIDDEN_NAMES = {"game.wasm", "libglue5.so", "libSDL3.so"}
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 
@@ -26,7 +26,7 @@ def elf_problem(path: Path) -> str | None:
             header = stream.read(64)
     except OSError as exc:
         return f"cannot read native library {path.name}: {exc}"
-    if len(header) < 20 or header[:4] != b"\\x7fELF":
+    if len(header) < 20 or header[:4] != b"\x7fELF":
         return f"native library is not ELF: {path.name}"
     if header[4] != 2:
         return f"native library is not ELF64: {path.name}"
@@ -117,7 +117,7 @@ def validate(root: Path) -> list[str]:
 
 def write_arm64_elf(path: Path) -> None:
     header = bytearray(64)
-    header[:7] = b"\\x7fELF\\x02\\x01\\x01"
+    header[:7] = b"\x7fELF\x02\x01\x01"
     struct.pack_into("<H", header, 18, 183)  # EM_AARCH64
     path.write_bytes(header)
 
@@ -164,7 +164,7 @@ def self_test() -> None:
         assert any("not ELF" in error for error in validate(root))
 
         (root / "libgtav.so").unlink()
-        (root / "libgtav.so").write_bytes(b"\\x7fELF\\x02\\x01\\x01" + bytes(11) + struct.pack("<H", 62) + bytes(44))
+        (root / "libgtav.so").write_bytes(b"\x7fELF\x02\x01\x01" + bytes(11) + struct.pack("<H", 62) + bytes(44))
         assert any("not AArch64" in error for error in validate(root))
 
         (root / "libgtav.so").unlink()
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     elif len(sys.argv) == 2:
         failures = validate(Path(sys.argv[1]))
         if failures:
-            print("\\n".join(f"BLOCKED: {failure}" for failure in failures), file=sys.stderr)
+            print("\n".join(f"BLOCKED: {failure}" for failure in failures), file=sys.stderr)
             raise SystemExit(1)
         print("Native Android packaging inputs: structurally valid")
     else:
