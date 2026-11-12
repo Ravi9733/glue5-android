@@ -123,29 +123,19 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Android 13, kept for broad device compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != Activity.RESULT_OK) return
+        if (requestCode != REQUEST_FOLDER || resultCode != Activity.RESULT_OK) return
         val uri = data?.data ?: return
         val flags = data.flags and (
             Intent.FLAG_GRANT_READ_URI_PERMISSION or
             Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         )
-        try { contentResolver.takePersistableUriPermission(uri, flags) } catch (_: Exception) {}
-        when (requestCode) {
-            REQUEST_FOLDER -> {
-                output.text = "Scanning folder… please keep the app open."
-                worker.execute {
-                    val report = scanTree(uri)
-                    runOnUiThread { latestReport = report; output.text = report }
-                }
-            }
-            REQUEST_ARCHIVE -> {
-                selectedArchiveUri = uri
-                selectedArchiveName = DocumentFile.fromSingleUri(this, uri)?.name ?: "selected.rpf"
-                output.text = "Selected archive: " + selectedArchiveName + "\nSelect an output folder, then tap EXTRACT SELECTED RPF."
-            }
-            REQUEST_DESTINATION -> {
-                outputTreeUri = uri
-                output.text = "Output folder selected. Choose one .rpf archive and tap EXTRACT SELECTED RPF."
+        contentResolver.takePersistableUriPermission(uri, flags)
+        output.text = "Scanning folder… please keep the app open."
+        worker.execute {
+            val report = scanTree(uri)
+            runOnUiThread {
+                latestReport = report
+                output.text = report
             }
         }
     }
