@@ -1,0 +1,23 @@
+name: Native UI source checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [native-android-engine-backend]
+
+permissions:
+  contents: read
+
+jobs:
+  rustfmt:
+    name: Rust formatting
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install stable Rust with rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
