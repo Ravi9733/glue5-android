@@ -42,6 +42,20 @@ impl Default for LaunchOptions {
     }
 }
 
+impl LaunchOptions {
+    /// Reject unsafe or nonsensical values before crossing the platform boundary.
+    /// UI widgets constrain these values too, but adapters may be called directly.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if !(30..=120).contains(&self.max_fps) {
+            return Err("FPS limit must be between 30 and 120");
+        }
+        if !self.render_scale.is_finite() || !(0.5..=1.0).contains(&self.render_scale) {
+            return Err("Render scale must be between 0.5 and 1.0");
+        }
+        Ok(())
+    }
+}
+
 /// Narrow boundary between the reusable shell and a build-specific engine host.
 /// Implementations must be supplied by a verified Android/SDL adapter.
 pub trait NativeEngine {
@@ -91,7 +105,11 @@ impl NativeShell {
         match engine.state() {
             EngineState::Ready | EngineState::Stopped => {
                 if ui.button("Start game").clicked() {
-                    self.last_error = engine.start(&self.options).err();
+                    self.last_error = self
+                        .options
+                        .validate()
+                        .and_then(|()| engine.start(&self.options))
+                        .err();
                 }
             }
             EngineState::Running | EngineState::Starting => {
@@ -133,5 +151,27 @@ mod tests {
     #[test]
     fn shell_starts_on_home() {
         assert_eq!(NativeShell::default().screen, Screen::Home);
+    }
+
+    #[test]
+    fn default_options_pass_validation() {
+        assert!(LaunchOptions::default().validate().is_ok());
+    }
+
+    #[test]
+    fn invalid_fps_is_rejected() {
+        let options = LaunchOptions { max_fps: 144, ..Default::default() };
+        assert_eq!(options.validate(), Err("FPS limit must be between 30 and 120"));
+    }
+
+    #[test]
+    fn invalid_render_scale_is_rejected() {
+        for render_scale in [0.0, 1.1, f32::NAN, f32::INFINITY] {
+            let options = LaunchOptions { render_scale, ..Default::default() };
+            assert_eq!(
+                options.validate(),
+                Err("Render scale must be between 0.5 and 1.0")
+            );
+        }
     }
 }
