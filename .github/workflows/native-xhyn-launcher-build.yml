@@ -1,0 +1,79 @@
+name: Build Glue 5 Native XHYN launcher APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [native-android-engine-backend]
+    paths:
+      - "scripts/patch-xhyn-native-launcher.py"
+      - ".github/workflows/native-xhyn-launcher-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-native-launcher:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android signing tools
+        run: sdkmanager "build-tools;36.0.0" "platforms;android-36"
+      - name: Download and verify XHYN Preview 2 engine APK
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/XHYN-PH/XHYN-V-reborn/releases/download/v0.3-preview2/XHYN-V-0.3-Preview2.apk \
+            --output /tmp/XHYN-V-0.3-Preview2.apk
+          echo "a681765d9aae1404c59e3570682f3078bf9062ff800abfc7c5e1972f2783309f  /tmp/XHYN-V-0.3-Preview2.apk" | sha256sum --check
+      - name: Download pinned Apktool
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar \
+            --output /tmp/apktool.jar
+      - name: Decode and add isolated Glue 5 Native launcher
+        run: |
+          java -jar /tmp/apktool.jar d -f /tmp/XHYN-V-0.3-Preview2.apk -o /tmp/xhyn-decoded
+          python3 scripts/patch-xhyn-native-launcher.py /tmp/xhyn-decoded
+      - name: Rebuild the independent native APK
+        run: |
+          java -jar /tmp/apktool.jar b /tmp/xhyn-decoded -o /tmp/glue5-native-unsigned.apk
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          "$BUILD_TOOLS/zipalign" -f -p 4 /tmp/glue5-native-unsigned.apk /tmp/glue5-native-aligned.apk
+          keytool -genkeypair -keystore /tmp/glue5-native-debug.jks -storepass android \
+            -keypass android -alias glue5native -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Glue 5 Native, OU=Development, O=Ravi9733, C=IN"
+          "$BUILD_TOOLS/apksigner" sign --ks /tmp/glue5-native-debug.jks \
+            --ks-key-alias glue5native --ks-pass pass:android --key-pass pass:android \
+            --out /tmp/Glue5-Native-XHYN-Preview2.apk /tmp/glue5-native-aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Glue5-Native-XHYN-Preview2.apk
+      - name: Verify package, launcher, engine and no-WASM boundary
+        run: |
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id /tmp/Glue5-Native-XHYN-Preview2.apk | grep -Fx "local.glue5.nativeapp"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print /tmp/Glue5-Native-XHYN-Preview2.apk > /tmp/native-manifest.xml
+          grep -F "local.glue5.nativeapp.LauncherActivity" /tmp/native-manifest.xml
+          grep -F "com.gtavsource.android.GTAVActivity" /tmp/native-manifest.xml
+          python3 - <<'PY'
+          import zipfile
+          apk = "/tmp/Glue5-Native-XHYN-Preview2.apk"
+          with zipfile.ZipFile(apk) as z:
+              names = z.namelist()
+          libs = [n for n in names if n.startswith("lib/arm64-v8a/") and n.endswith(".so")]
+          assert "lib/arm64-v8a/libSDL3.so" in libs
+          assert "lib/arm64-v8a/libgtav.so" in libs
+          assert len(libs) == 27, f"expected 27 ARM64 libraries, got {len(libs)}"
+          assert not any(n.endswith(".wasm") for n in names), "WASM payload found"
+          print(f"APK structure PASS: {len(libs)} ARM64 native libraries; no WASM")
+          PY
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glue5-Native-XHYN-Preview2
+          path: /tmp/Glue5-Native-XHYN-Preview2.apk
+          if-no-files-found: error
+          retention-days: 3
