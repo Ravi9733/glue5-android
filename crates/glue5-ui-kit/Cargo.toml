@@ -1,0 +1,10 @@
+[package]
+name = "glue5-ui-kit"
+description = "Reusable egui controls shared by Glue 5 frontends"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+egui.workspace = true
