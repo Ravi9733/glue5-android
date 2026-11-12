@@ -28,16 +28,26 @@ An RPF archive being readable or writable is not the same as converting PC asset
 6. Build output archives in a separate folder and validate them.
 7. Runtime test in the target Android port.
 
-## Candidate format libraries
+## Engineering work in progress: real extraction and conversion
 
-- https://github.com/RatPrez/ragekit
-- https://github.com/VIRUXE/rpf-archive-rs
-- https://github.com/VIRUXE/rage-formats
+The next implementation uses the public-domain Rust libraries below rather than extending the prototype's hand-written TOC parser:
 
-These are parser/format libraries, not proof of compatibility with the specific Android port. Review their licenses and build feasibility for Android/ARM64 before integrating.
+- `rpf-archive` 0.10.x (Unlicense): RPF7 directory/file entry parsing, OPEN archive extraction, nested RPF traversal, decompression and RPF7 writing.
+- `rage-formats` 0.5.x (Unlicense): RSC7 resource parsing and format-specific readers/writers for YTD, YDR, YDD, YFT, YBN, YMAP, YTYP and related data.
 
-## Build
+The Android integration will use an ARM64 native library (JNI) with Android Storage Access Framework streams. It must not require a desktop PC or copy the whole GTA V installation into app-private storage. Files will be read in bounded chunks and converted outputs will be written to a separate user-selected destination; originals remain untouched.
 
-Open this directory in Android Studio with JDK 17 and Android SDK 35, or use the repository GitHub Actions workflow.
+### Conversion rules and release gates
 
-This prototype inventories OPEN RPF7 asset names only. It does not extract, transform, repack, or convert assets. AES/NG TOCs are not inspected without valid keys. No game data is included. No game data is included.
+1. Replace the prototype TOC reader with the upstream RPF parser and test it against real OPEN RPF7 archives, nested archives, compressed entries, empty files and malformed offsets.
+2. Add extraction preview and per-archive progress/cancellation before enabling bulk extraction.
+3. Identify each asset's RSC7 resource version/page flags and edition. Preserve byte-identical resources when compatible; never relabel a PC asset as Android-compatible without a target-runtime test.
+4. Implement only conversions with a verified source/target layout. The current upstream research reports YTD Gen9-to-Legacy conversion as implemented; YDR/YDD/YFT conversion is not yet implemented. Those formats must be reported as unsupported rather than silently rewritten.
+5. Build output RPFs only from validated converted assets, then reopen each output with the archive parser and verify every entry hash/size and extracted payload.
+6. Run the resulting packs in the selected Android GTA V port. A successful APK build alone is not proof that the generated game assets work.
+
+AES/NG archives remain locked unless the user supplies legitimate matching key material. The app will not recover keys from game executables or bypass encryption. No proprietary GTA V game data will be bundled in the APK.
+
+### Current status
+
+The 0.3 prototype APK builds successfully and performs inventory only. The native parser/converter bridge and actual asset conversion are not yet implemented. Do not treat this prototype as the finished converter.
