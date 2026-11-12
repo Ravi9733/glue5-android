@@ -1,0 +1,138 @@
+name: Build Glue 5 Native XHYN launcher APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [native-android-engine-backend]
+    paths:
+      - "scripts/patch-xhyn-native-launcher.py"
+      - "scripts/restore-opaque-apk-resources.py"
+      - "scripts/test-restore-opaque-apk-resources.py"
+      - ".github/workflows/native-xhyn-launcher-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-native-launcher:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install Android signing tools
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort | tail -n 1)"
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "build-tools;36.0.0" "platforms;android-36"
+      - name: Test native launcher and opaque-resource restoration
+        run: |
+          python3 scripts/test-patch-xhyn-native-launcher.py
+          python3 scripts/test-restore-opaque-apk-resources.py
+      - name: Download and verify XHYN Preview 2 engine APK
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/XHYN-PH/XHYN-V-reborn/releases/download/v0.3-preview2/XHYN-V-0.3-Preview2.apk \
+            --output /tmp/XHYN-V-0.3-Preview2.apk
+          echo "a681765d9aae1404c59e3570682f3078bf9062ff800abfc7c5e1972f2783309f  /tmp/XHYN-V-0.3-Preview2.apk" | sha256sum --check
+      - name: Download pinned Apktool
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar \
+            --output /tmp/apktool.jar
+      - name: Decode and add isolated Glue 5 Native launcher
+        run: |
+          java -jar /tmp/apktool.jar d -f /tmp/XHYN-V-0.3-Preview2.apk -o /tmp/xhyn-decoded
+          python3 scripts/patch-xhyn-native-launcher.py /tmp/xhyn-decoded
+      - name: Rebuild the independent native APK
+        run: |
+          java -jar /tmp/apktool.jar b /tmp/xhyn-decoded -o /tmp/glue5-native-unsigned.apk
+          python3 scripts/restore-opaque-apk-resources.py /tmp/XHYN-V-0.3-Preview2.apk /tmp/glue5-native-unsigned.apk
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          "$BUILD_TOOLS/zipalign" -f -p 4 /tmp/glue5-native-unsigned.apk /tmp/glue5-native-aligned.apk
+          keytool -genkeypair -keystore /tmp/glue5-native-debug.jks -storepass android \
+            -keypass android -alias glue5native -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Glue 5 Native, OU=Development, O=Ravi9733, C=IN"
+          "$BUILD_TOOLS/apksigner" sign --ks /tmp/glue5-native-debug.jks \
+            --ks-key-alias glue5native --ks-pass pass:android --key-pass pass:android \
+            --out /tmp/Glue5-Native-XHYN-Preview2.apk /tmp/glue5-native-aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Glue5-Native-XHYN-Preview2.apk
+      - name: Verify package, launcher, engine and no-WASM boundary
+        run: |
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          APKANALYZER="$(find "$ANDROID_HOME" -name apkanalyzer -type f | sort | tail -n 1)"
+          "$APKANALYZER" manifest application-id /tmp/Glue5-Native-XHYN-Preview2.apk | grep -Fx "local.glue5.nativeapp"
+          "$APKANALYZER" manifest print /tmp/Glue5-Native-XHYN-Preview2.apk > /tmp/native-manifest.xml
+          grep -F "local.glue5.nativeapp.LauncherActivity" /tmp/native-manifest.xml
+          grep -F "com.gtavsource.android.GTAVActivity" /tmp/native-manifest.xml
+          python3 - <<'PY'
+          import zipfile
+          apk = "/tmp/Glue5-Native-XHYN-Preview2.apk"
+          with zipfile.ZipFile(apk) as z:
+              names = z.namelist()
+          libs = [n for n in names if n.startswith("lib/arm64-v8a/") and n.endswith(".so")]
+          assert "lib/arm64-v8a/libSDL3.so" in libs
+          assert "lib/arm64-v8a/libgtav.so" in libs
+          assert "res/drawable/titanium_full_fire.bin" in names, "startup artwork missing from final APK"
+          with zipfile.ZipFile("/tmp/XHYN-V-0.3-Preview2.apk") as original, zipfile.ZipFile(apk) as rebuilt:
+              assert original.read("resources.arsc") == rebuilt.read("resources.arsc"), "compiled resource table changed"
+              original_res = {n: original.read(n) for n in original.namelist() if n.startswith("res/") and not n.endswith("/")}
+              rebuilt_res = {n: rebuilt.read(n) for n in rebuilt.namelist() if n.startswith("res/") and not n.endswith("/")}
+              assert original_res == rebuilt_res, "original res/ tree was not preserved byte-for-byte"
+              print(f"compiled resource table + {len(original_res)} res/ files preserved byte-for-byte")
+          assert len(libs) == 27, f"expected 27 ARM64 libraries, got {len(libs)}"
+          assert not any(n.endswith(".wasm") for n in names), "WASM payload found"
+          with zipfile.ZipFile("/tmp/XHYN-V-0.3-Preview2.apk") as original, zipfile.ZipFile(apk) as rebuilt:
+              original_names = original.namelist()
+              rebuilt_names = rebuilt.namelist()
+              for prefix in ("assets/", "lib/arm64-v8a/"):
+                  old = {n: __import__("hashlib").sha256(original.read(n)).hexdigest()
+                         for n in original_names if n.startswith(prefix) and not n.endswith("/")}
+                  new = {n: __import__("hashlib").sha256(rebuilt.read(n)).hexdigest()
+                         for n in rebuilt_names if n.startswith(prefix) and not n.endswith("/")}
+                  assert old == new, f"{prefix} contents changed during repackaging"
+                  print(f"{prefix} preserved byte-for-byte: {len(old)} files")
+          print(f"APK structure PASS: {len(libs)} ARM64 native libraries; no WASM")
+          PY
+      - name: Download pinned JADX for final DEX verification
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/skylot/jadx/releases/download/v1.5.2/jadx-1.5.2.zip \
+            --output /tmp/jadx.zip
+          mkdir -p /tmp/jadx
+          unzip -q /tmp/jadx.zip -d /tmp/jadx
+          chmod +x /tmp/jadx/bin/jadx
+      - name: Verify launcher DEX and preserved engine host
+        run: |
+          /tmp/jadx/bin/jadx --no-imports -d /tmp/final-jadx /tmp/Glue5-Native-XHYN-Preview2.apk >/tmp/final-jadx.log 2>&1 || true
+          LAUNCHER=/tmp/final-jadx/sources/local/glue5/nativeapp/LauncherActivity.java
+          test -s "$LAUNCHER"
+          grep -F "START GAME" "$LAUNCHER"
+          grep -F "GAME SETTINGS" "$LAUNCHER"
+          grep -F "StoragePermissionActivity" "$LAUNCHER"
+          grep -F "GameMenuActivity" "$LAUNCHER"
+          grep -F 'extends org.libsdl.app.SDLActivity' /tmp/final-jadx/sources/com/gtavsource/android/GTAVActivity.java
+          grep -F 'new java.lang.String[]{"SDL3", "gtav"}' /tmp/final-jadx/sources/com/gtavsource/android/GTAVActivity.java
+          grep -F 'SDL_main' /tmp/final-jadx/sources/com/gtavsource/android/GTAVActivity.java
+          grep -F '/storage/emulated/0/Games/GTAV' /tmp/final-jadx/sources/com/gtavsource/android/GameRoot.java
+          if grep -R -F --exclude="R.java" "com.xhynph.xhynv.reborn174" /tmp/final-jadx/sources; then
+            echo "Old package ID remains in DEX source"
+            exit 1
+          fi
+      - name: Generate APK checksum
+        run: sha256sum /tmp/Glue5-Native-XHYN-Preview2.apk | tee /tmp/Glue5-Native-XHYN-Preview2.apk.sha256
+      - name: Upload installable APK and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glue5-Native-XHYN-Preview2
+          path: |
+            /tmp/Glue5-Native-XHYN-Preview2.apk
+            /tmp/Glue5-Native-XHYN-Preview2.apk.sha256
+          if-no-files-found: error
+          retention-days: 3

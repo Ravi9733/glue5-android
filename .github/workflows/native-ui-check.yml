@@ -1,0 +1,47 @@
+name: Native UI source checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [native-android-engine-backend]
+
+permissions:
+  contents: read
+
+jobs:
+  source-checks:
+    name: Native shell source checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install stable Rust with rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check extracted native UI formatting
+        run: rustfmt --check --edition 2024 crates/glue5/src/ui/kit.rs crates/glue5-ui-kit/src/lib.rs crates/glue5-native-shell/src/lib.rs
+      - name: Validate Cargo workspace metadata
+        run: cargo metadata --no-deps --format-version 1 > /tmp/glue5-metadata.json
+      - name: Ensure reusable UI crates stay engine-independent
+        run: python3 scripts/check-native-ui-deps.py /tmp/glue5-metadata.json
+      - name: Compile and test the WASM-independent native shell in isolation
+        run: |
+          mkdir -p /tmp/glue5-native-shell-test/src
+          cp crates/glue5-native-shell/src/lib.rs /tmp/glue5-native-shell-test/src/lib.rs
+          cat > /tmp/glue5-native-shell-test/Cargo.toml <<'EOF'
+          [package]
+          name = "glue5-native-shell-test"
+          version = "0.1.0"
+          edition = "2024"
+
+          [dependencies]
+          egui = "=0.36.2"
+          EOF
+          cargo test --manifest-path /tmp/glue5-native-shell-test/Cargo.toml --lib
+      - name: Validate fail-closed native Android packaging preflight
+        run: python3 scripts/check-native-android-package.py --self-test
+      - name: Validate read-only native host APK inventory tool
+        run: python3 scripts/audit-native-host-apk.py --self-test
+      - name: Validate native host APK evidence extractor
+        run: python3 scripts/extract-native-host-evidence.py --self-test

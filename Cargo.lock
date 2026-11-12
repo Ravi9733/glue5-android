@@ -1021,6 +1021,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "glue5-native-shell"
+version = "0.1.0"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "glue5-runtime"
 version = "0.1.0"
 dependencies = [
@@ -1052,6 +1059,13 @@ dependencies = [
  "socket2",
  "windows-sys",
  "zstd",
+]
+
+[[package]]
+name = "glue5-ui-kit"
+version = "0.1.0"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

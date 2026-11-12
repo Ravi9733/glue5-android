@@ -1,0 +1,113 @@
+{
+  "schema_version": 2,
+  "source": "Exact XHYN-V 0.3 Preview 2 APK; SHA-256 verified and DEX inspected with JADX 1.5.2",
+  "apk_sha256": "a681765d9aae1404c59e3570682f3078bf9062ff800abfc7c5e1972f2783309f",
+  "manifest": {
+    "package": "com.xhynph.xhynv.reborn174",
+    "version_code": 301,
+    "version_name": "0.3-preview2",
+    "min_sdk": 30,
+    "target_sdk": 36,
+    "application_class": "com.gtavsource.android.ArtworkGuardApplication",
+    "launcher_activity": "com.gtavsource.android.StoragePermissionActivity",
+    "engine_activity": "com.gtavsource.android.GTAVActivity",
+    "engine_activity_exported": false,
+    "mod_spawn_provider_authority": "com.xhynph.xhynv.reborn174.modspawn",
+    "native_libs_extracted": true,
+    "allow_backup": false,
+    "package_rename_requires_provider_authority_review": true
+  },
+  "xhyn": {
+    "architecture": "native-arm64-sdl3",
+    "game_library": "libgtav.so",
+    "documented_native_entry": "SDL_main",
+    "helper_library": "libxhyn_v02.so",
+    "activity_class": "com.gtavsource.android.GTAVActivity",
+    "activity_superclass": "org.libsdl.app.SDLActivity",
+    "activity_status": "verified-from-exact-preview2-dex",
+    "sdl_java_package": "org.libsdl.app",
+    "sdl_version": "SDL3 (native library name and SDL3 Java package verified; exact SDL source revision not yet pinned)",
+    "native_getLibraries_order": ["SDL3", "gtav"],
+    "getMainFunction_return": "SDL_main",
+    "loadLibraries_order": [
+      "SDLActivity.super.loadLibraries() loads SDL3 then gtav",
+      "when ownsGameRoot is true: DxvkManager.initialize(this, runtimeConfig)",
+      "then XhynV02Runtime.librariesLoaded(this)"
+    ],
+    "onCreate_observed": [
+      "register controller input-device listener",
+      "call SDLActivity.super.onCreate",
+      "prepare GameUiFocus with layout and surface",
+      "set landscape orientation",
+      "read RuntimeConfig from gameRoot",
+      "apply prepared DXVK and frame-generation configuration",
+      "initialize SDLActivity",
+      "route preparation-required state to StoragePermissionActivity with game_root and auto_start"
+    ],
+    "surface_class": "com.gtavsource.android.GTAVActivity$GameSurface",
+    "surface_superclass": "org.libsdl.app.SDLSurface",
+    "surface_callbacks": {
+      "surfaceCreated": "override calls XHYN original SDL surface callback; DriverManager tracks not-ready/created state",
+      "surfaceChanged": "override calls original SDL surface callback; stable frame profile and DriverManager receive surface state",
+      "surfaceDestroyed": "override marks DriverManager surface not ready and calls SDL superclass surfaceDestroyed"
+    },
+    "lifecycle_hooks": [
+      {"method": "loadLibraries()V", "status": "verified-method-override"},
+      {"method": "getLibraries()[Ljava/lang/String;", "status": "verified-returns-SDL3-then-gtav"},
+      {"method": "getMainFunction()Ljava/lang/String;", "status": "verified-returns-SDL_main"},
+      {"method": "onCreate(Bundle)V", "status": "verified-method-override"},
+      {"method": "onResume()V", "status": "verified-method-override"},
+      {"method": "onPause()V", "status": "verified-method-override"},
+      {"method": "onDestroy()V", "status": "verified-method-override"},
+      {"method": "createSDLSurface(Context)", "status": "verified-creates-XHYN-GameSurface"}
+    ],
+    "native_library_inventory": {
+      "total_arm64_shared_libraries": 27,
+      "original_engine_and_companion_libraries": 26,
+      "xhyn_helper_library_count": 1,
+      "helper_library_filename": "libxhyn_v02.so",
+      "elf_dependency_audit": "passed-static-inventory-27-aarch64-elf64-little-endian-and-recorded-DT_NEEDED"
+    },
+    "surface_destroy_contract": "verified-to-call-SDL-superclass-and-mark-DriverManager-not-ready",
+    "game_start_api": "SDLActivity-host-path with getMainFunction returning SDL_main; nativeRunMain arguments are delegated to the SDL3 Activity implementation",
+    "input_audio_bridge": null,
+    "xhyn_helper_jni": {
+      "install": "requires libgtav.so already loaded; installs build-specific controlled-stop patch; not a launcher",
+      "identity": "diagnostic",
+      "probe": "standalone Vulkan probe; not game compatibility proof"
+    }
+  },
+  "glue5": {
+    "activity": "local.glue5.Glue5Activity",
+    "superclass": "org.libsdl.app.SDLActivity",
+    "sdl_library": "SDL3",
+    "native_library_load_order": ["SDL3", "glue5"],
+    "application_id": "local.glue5"
+  },
+  "compatibility_assessment": {
+    "shared_sdl_family": true,
+    "same_sdl_java_package": true,
+    "same_native_sdl_library_name": true,
+    "exact_sdl_source_revision_match": null,
+    "jni_abi_match": null,
+    "safe_same_process_dual_engine": false
+  },
+  "adapter_decision": "separate-native-application-target-required; reuse-XHYN-SDL3-host-only-after-source-revision-and-native-dependency-validation",
+  "prohibited_assumptions": [
+    "Do not load gtav into the existing local.glue5 process",
+    "Do not manually invoke SDL_main as a guessed launch method",
+    "Do not call XhynV02Native.install as a game-start method",
+    "Do not reuse fixed native patch offsets",
+    "Do not forward Surface ownership without the exact XHYN SDL host"
+  ],
+  "remaining_evidence": [
+    "SDL3 Activity nativeRunMain arguments and exact SDL3 source revision",
+    "Manifest provider authority references and package-renaming impact",
+    "Complete XHYN-specific manager/service dependencies and game-root lifecycle",
+    "All 27 ARM64 ELF DT_NEEDED dependencies and hashes",
+    "Compare exact XHYN SDL Java classes against Glue 5 SDL Java sources",
+    "Check for app-specific service/overlay/preferences dependencies",
+    "Build a distinct native Android module and test lifecycle/input/audio",
+    "Device launch, gameplay and performance validation"
+  ]
+}
