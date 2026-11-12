@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the reusable UI kit against accidental engine/runtime dependencies."""
+"""Guard reusable Glue 5 UI crates against engine/runtime dependencies."""
 import json
 import sys
 from pathlib import Path
@@ -7,16 +7,22 @@ from pathlib import Path
 metadata = json.loads(Path(sys.argv[1]).read_text())
 packages = {package["name"]: package for package in metadata["packages"]}
 
-kit = packages["glue5-ui-kit"]
-kit_dependencies = {dependency["name"] for dependency in kit["dependencies"]}
-if kit_dependencies != {"egui"}:
-    raise SystemExit(
-        "glue5-ui-kit must depend only on egui; found: "
-        + ", ".join(sorted(kit_dependencies))
-    )
+def dependencies(name):
+    return {dependency["name"] for dependency in packages[name]["dependencies"]}
 
-app_dependencies = {dependency["name"] for dependency in packages["glue5"]["dependencies"]}
+for name in ("glue5-ui-kit", "glue5-native-shell"):
+    actual = dependencies(name)
+    if actual != {"egui"}:
+        raise SystemExit(
+            f"{name} must depend only on egui; found: "
+            + ", ".join(sorted(actual))
+        )
+
+app_dependencies = dependencies("glue5")
 if "glue5-ui-kit" not in app_dependencies:
     raise SystemExit("glue5 must consume the standalone glue5-ui-kit crate")
 
-print("UI kit dependency boundary: OK (egui only)")
+if "glue5-native-shell" not in packages:
+    raise SystemExit("glue5-native-shell is missing from the Cargo workspace")
+
+print("Native UI dependency boundaries: OK (egui only)")
