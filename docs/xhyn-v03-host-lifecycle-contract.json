@@ -35,7 +35,7 @@
       "original_engine_and_companion_libraries": 26,
       "xhyn_helper_library_count": 1,
       "helper_library_filename": "libxhyn_v02.so",
-      "elf_dependency_audit": "pending-current-CI-run"
+      "elf_dependency_audit": "passed-static-inventory-27-aarch64-elf64-little-endian-and-recorded-DT_NEEDED"
     },
     "surface_destroy_contract": "verified-to-call-SDL-superclass-and-mark-DriverManager-not-ready",
     "game_start_api": "SDLActivity-host-path; exact getMainFunction return and arguments still need confirmation",
