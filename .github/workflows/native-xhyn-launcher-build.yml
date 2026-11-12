@@ -86,6 +86,31 @@ jobs:
                   print(f"{prefix} preserved byte-for-byte: {len(old)} files")
           print(f"APK structure PASS: {len(libs)} ARM64 native libraries; no WASM")
           PY
+      - name: Download pinned JADX for final DEX verification
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/skylot/jadx/releases/download/v1.5.2/jadx-1.5.2.zip \
+            --output /tmp/jadx.zip
+          mkdir -p /tmp/jadx
+          unzip -q /tmp/jadx.zip -d /tmp/jadx
+          chmod +x /tmp/jadx/bin/jadx
+      - name: Verify launcher DEX and preserved engine host
+        run: |
+          /tmp/jadx/bin/jadx --no-imports -d /tmp/final-jadx /tmp/Glue5-Native-XHYN-Preview2.apk >/tmp/final-jadx.log 2>&1 || true
+          LAUNCHER=/tmp/final-jadx/sources/local/glue5/nativeapp/LauncherActivity.java
+          test -s "$LAUNCHER"
+          grep -F "START GAME" "$LAUNCHER"
+          grep -F "GAME SETTINGS" "$LAUNCHER"
+          grep -F "StoragePermissionActivity" "$LAUNCHER"
+          grep -F "GameMenuActivity" "$LAUNCHER"
+          grep -F 'extends org.libsdl.app.SDLActivity' /tmp/final-jadx/sources/com/gtavsource/android/GTAVActivity.java
+          grep -F 'new java.lang.String[]{"SDL3", "gtav"}' /tmp/final-jadx/sources/com/gtavsource/android/GTAVActivity.java
+          grep -F 'SDL_main' /tmp/final-jadx/sources/com/gtavsource/android/GTAVActivity.java
+          grep -F '/storage/emulated/0/Games/GTAV' /tmp/final-jadx/sources/com/gtavsource/android/GameRoot.java
+          if grep -R -F "com.xhynph.xhynv.reborn174" /tmp/final-jadx/sources; then
+            echo "Old package ID remains in DEX source"
+            exit 1
+          fi
       - name: Generate APK checksum
         run: sha256sum /tmp/Glue5-Native-XHYN-Preview2.apk | tee /tmp/Glue5-Native-XHYN-Preview2.apk.sha256
       - name: Upload installable APK and checksum
