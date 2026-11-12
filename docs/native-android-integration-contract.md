@@ -192,3 +192,10 @@ literal host strings. It deliberately does not decode the binary manifest or
 decompile DEX; those remain required from the exact, hash-matched Preview 2
 APK before an adapter can be implemented. CI exercises the helper using a
 synthetic fixture only, not the proprietary game APK.
+
+
+## Dedicated launcher / SDL lifecycle audit
+
+The source-level comparison is recorded in `docs/xhyn-v03-launcher-sdl-lifecycle-audit.md`. It identifies the exact 0.3 patch touchpoints (`GTAVActivity.loadLibraries`, resume/pause/destroy and `GameSurface.surfaceCreated/surfaceChanged`) and confirms that the public runtime helper is injected only after the original Activity has loaded its libraries. It also distinguishes the helper JNI methods from a game-start API: `install` requires an already-loaded `libgtav.so`, while `identity`/`probe` are diagnostics.
+
+This narrows the blocker: XHYN's broad SDL/native architecture and lifecycle hooks are now known from public source, but its original 0.3 Activity body, exact SDL version, launch arguments, complete ordered library list, surface-destroy semantics and input/audio ownership remain unavailable without inspecting the exact Preview 2 APK. Glue 5 uses SDL3 and loads `SDL3` then `glue5`; that is not evidence of ABI compatibility. Therefore no JNI adapter, manual `SDL_main` call, shared-process game-library load, or fake launcher has been added. A separate host remains the target, with `local.glue5` and existing Documents/Glue5 data protected.
