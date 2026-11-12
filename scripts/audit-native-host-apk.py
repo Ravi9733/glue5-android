@@ -39,12 +39,42 @@ def elf_info(data: bytes) -> dict:
     }
 
 
+def file_digest(path: Path) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            size += len(chunk)
+            digest.update(chunk)
+    return size, digest.hexdigest()
+
+
+def member_digest(archive: zipfile.ZipFile, name: str, scan_tokens: bool = False) -> dict:
+    digest = hashlib.sha256()
+    size = 0
+    prefix = b""
+    found = set()
+    overlap = b""
+    with archive.open(name) as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            if len(prefix) < 20:
+                prefix += chunk[:20 - len(prefix)]
+            size += len(chunk)
+            digest.update(chunk)
+            if scan_tokens:
+                window = overlap + chunk
+                found.update(token.decode("ascii") for token in HOST_TOKENS if token in window)
+                overlap = window[-max(map(len, HOST_TOKENS)):]
+    return {"size_bytes": size, "sha256": digest.hexdigest(), "prefix": prefix,
+            "host_strings_found": found}
+
+
 def inspect(apk: Path) -> dict:
-    raw = apk.read_bytes()
+    size, apk_hash = file_digest(apk)
     result = {
         "file": apk.name,
-        "size_bytes": len(raw),
-        "sha256": sha256(raw),
+        "size_bytes": size,
+        "sha256": apk_hash,
         "manifest": None,
         "dex_files": [],
         "arm64_libraries": [],
@@ -63,23 +93,21 @@ def inspect(apk: Path) -> dict:
         if len(names) > 100000:
             raise ValueError("APK has an unreasonable number of ZIP entries")
         if "AndroidManifest.xml" in names:
-            data = archive.read("AndroidManifest.xml")
-            result["manifest"] = {"size_bytes": len(data), "sha256": sha256(data)}
+            info = member_digest(archive, "AndroidManifest.xml")
+            result["manifest"] = {"size_bytes": info["size_bytes"], "sha256": info["sha256"]}
         tokens = set()
         for name in names:
             if re.fullmatch(r"classes(?:[0-9]+)?\.dex", Path(name).name):
-                data = archive.read(name)
-                result["dex_files"].append({"path": name, "size_bytes": len(data), "sha256": sha256(data)})
-                for token in HOST_TOKENS:
-                    if token in data:
-                        tokens.add(token.decode("ascii"))
+                info = member_digest(archive, name, scan_tokens=True)
+                result["dex_files"].append({"path": name, "size_bytes": info["size_bytes"], "sha256": info["sha256"]})
+                tokens.update(info["host_strings_found"])
             if name.startswith("lib/arm64-v8a/") and name.endswith(".so"):
-                data = archive.read(name)
+                info = member_digest(archive, name)
                 result["arm64_libraries"].append({
                     "path": name,
-                    "size_bytes": len(data),
-                    "sha256": sha256(data),
-                    **elf_info(data),
+                    "size_bytes": info["size_bytes"],
+                    "sha256": info["sha256"],
+                    **elf_info(info["prefix"]),
                 })
         result["host_strings_found"] = sorted(tokens)
     result["arm64_libraries"].sort(key=lambda item: item["path"])
