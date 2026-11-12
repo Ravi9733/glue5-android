@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print a minimal XHYN 0.3 host contract from local JADX output, not full source."""
+"""Print minimal XHYN host declarations and SDL call evidence from JADX output."""
 from __future__ import annotations
 import argparse
 import re
@@ -7,15 +7,16 @@ from pathlib import Path
 
 DECLARATIONS = (
     re.compile(r"^\s*(?:public|protected|private)?\s*(?:static\s+)?(?:final\s+)?(?:class|interface)\s+GTAVActivity\b"),
-    re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:loadLibraries|onCreate|onResume|onPause|onDestroy|getLibraries|nativeRunMain)\s*\([^;]*\)"),
+    re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:loadLibraries|onCreate|onResume|onPause|onDestroy|getLibraries|getMainFunction|nativeRunMain)\s*\([^;]*\)"),
     re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:surfaceCreated|surfaceChanged|surfaceDestroyed)\s*\([^;]*\)"),
 )
 SAFE_HOST_LINES = re.compile(
-    r"SDLActivity|nativeRunMain|loadLibrary|getLibraries|new String\[\]|"
+    r"SDLActivity|nativeRunMain|SDL_main|loadLibraries|getLibraries|getMainFunction|"
+    r"System\.loadLibrary|loadLibrary\(|new String\[\]|"
     r"surfaceCreated|surfaceChanged|surfaceDestroyed|SurfaceHolder|"
-    r"super\.(?:onCreate|onResume|onPause|onDestroy)|"
+    r"super\.(?:onCreate|onResume|onPause|onDestroy|loadLibraries)|"
     r"onCreate\(|onResume\(|onPause\(|onDestroy\(|"
-    r"GameSurface|setMainReady|mSDLThread|mSurface"
+    r"GameSurface|setMainReady|mSDLThread|mSurface|DxvkManager"
 )
 
 def main() -> int:
