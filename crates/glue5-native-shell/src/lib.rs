@@ -258,11 +258,15 @@ mod tests {
     fn adapter_start_errors_are_preserved() {
         struct FailingEngine;
         impl NativeEngine for FailingEngine {
-            fn state(&self) -> EngineState { EngineState::Ready }
+            fn state(&self) -> EngineState {
+                EngineState::Ready
+            }
             fn start(&mut self, _options: &LaunchOptions) -> Result<(), String> {
                 Err("native host failed to initialize".into())
             }
-            fn stop(&mut self) -> Result<(), String> { Ok(()) }
+            fn stop(&mut self) -> Result<(), String> {
+                Ok(())
+            }
         }
 
         let mut shell = NativeShell::default();
@@ -274,8 +278,12 @@ mod tests {
     fn adapter_stop_errors_are_preserved() {
         struct FailingEngine;
         impl NativeEngine for FailingEngine {
-            fn state(&self) -> EngineState { EngineState::Running }
-            fn start(&mut self, _options: &LaunchOptions) -> Result<(), String> { Ok(()) }
+            fn state(&self) -> EngineState {
+                EngineState::Running
+            }
+            fn start(&mut self, _options: &LaunchOptions) -> Result<(), String> {
+                Ok(())
+            }
             fn stop(&mut self) -> Result<(), String> {
                 Err("native host shutdown failed".into())
             }
