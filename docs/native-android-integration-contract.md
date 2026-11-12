@@ -65,3 +65,25 @@ but they have not yet been executed in this environment. The source/metadata
 CI checks are not a Rust compile, Android APK build,
 native-engine launch, FPS measurement, or device crash test. Those remain
 explicitly pending until the adapter inputs and build environment are present.
+
+## Exact-build compatibility gate (confirmed against XHYN-V source)
+
+The XHYN-V repository's `verification/native-runtime.json` explicitly labels
+its evidence as static inspection of the shipped **0.1 APK**, not a runtime
+trace or reconstruction of the original host source. It records
+`SDLActivity.nativeRunMain` and an ARM64 engine library hash. The XHYN-V
+`docs/SOURCE.md` separately states that its 0.1 and 1.7.4 modification layers
+target different engine builds and their fixed native offsets are not
+interchangeable.
+
+The published `GTAVActivity.java` under `modifications/stubs` is only a
+compile stub, not the original Activity. The published `RebornNative.java`
+also says it must be called after SDL loads `libgtav` and before
+`nativeRunMain`; its native language bridge is not a general-purpose engine
+launcher API.
+
+Therefore the 0.1 static entry-point record cannot be treated as the verified
+host contract for the user's XHYN-V 0.3 Preview 2 APK. Do not copy its JNI
+symbol, package, activity, native offsets, or companion-library list into a
+new application until the exact Preview 2 host and matching base build are
+identified. This is a hard compatibility gate, not a minor missing detail.
