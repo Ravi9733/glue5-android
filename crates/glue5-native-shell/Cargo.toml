@@ -1,0 +1,10 @@
+[package]
+name = "glue5-native-shell"
+description = "WASM-independent Glue 5 shell contract for native Android engine backends"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+egui.workspace = true
