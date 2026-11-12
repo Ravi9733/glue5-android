@@ -58,3 +58,21 @@ A backend trait or JNI symbol must not be invented until the matching XHYN-V And
 - No existing user game-data directory is deleted or migrated by the build.
 
 This document is an implementation map, not a build artifact or APK.
+
+## Phase 2 dependency check (file-level)
+
+A second pass inspected the actual candidate modules rather than relying only on their filenames:
+
+- `ui/theme.rs` depends on egui, PNG decoding, logging, and compile-time UI assets. Its layout/style helpers are generic, but `background()` embeds `assets/ui/home.png`; moving this file unchanged would also require moving the assets and preserving their relative include paths.
+- `ui/widgets.rs` is **not yet engine-independent**. Its `text_field()` uses `crate::paths::TOUCH`, `TextKind`, and the parent UI's SDL clipboard helper. Other controls (buttons, sliders, segmented choices, label painting) are reusable once the text-field/clipboard boundary is split.
+- `ui/chip.rs` is **not a generic widget**: it consumes the UI's `StreamAlert` type and its tests import `crate::touch::Touch` and `glue5_runtime::input`. It belongs with the streaming overlay until that feature is deliberately removed or adapted.
+- `ui.rs` also exposes runtime-shaped page/status types: `Started`, `FoundServer`, `StreamAlert`, settings upscalers, benchmark results, sharing state, and mods/studio state. These must not leak into a native-only shell API.
+
+### Revised extraction order
+
+1. Extract the pure visual controls from `widgets.rs` (buttons, slider, segmented choice, choice selector, and label painter) behind a small UI-kit API; leave `text_field` and clipboard behavior in the host.
+2. Extract theme colors, font/style installation, and responsive scale helpers separately from the home-background asset loader. Keep the current embedded background path unchanged until asset ownership is settled.
+3. Keep `chip.rs`, streaming pages, friends, mods, and server pages outside the first native shell.
+4. Only after the shell's page model no longer references Glue 5 runtime types should the app event loop/backend split begin.
+
+This is a dependency audit only. No source files were moved and no compilation or device test is claimed. The first attempted extraction is intentionally narrowed to avoid dragging SDL clipboard, streaming, or WASM runtime types into a supposedly portable UI crate.
