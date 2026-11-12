@@ -505,21 +505,30 @@ Exposure=0.5
 
     #[test]
     fn discovers_only_enabled_effects_in_sorting_order() {
+        let root = std::env::temp_dir().join(format!("glue5-reshade-order-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("Bloom.fx"), "// enabled fixture").unwrap();
         let p = Preset::parse(SAMPLE);
-        let effects = p.effect_files(Path::new("/presets/example"));
+        let effects = p.effect_files(&root);
         // Inactive ReShade sections often reference shaders that are not
         // installed. Do not compile them during Vulkan layer startup.
         assert_eq!(effects.iter().map(|e| e.section.as_str()).collect::<Vec<_>>(), ["Bloom.fx"]);
         assert!(effects[0].enabled);
-        assert_eq!(effects[0].path, PathBuf::from("/presets/example/Bloom.fx"));
+        assert_eq!(effects[0].path, root.join("Bloom.fx"));
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn accepts_windows_relative_effect_paths() {
+        let root = std::env::temp_dir().join(format!("glue5-reshade-windows-{}", std::process::id()));
+        let shaders = root.join("Shaders");
+        std::fs::create_dir_all(&shaders).unwrap();
+        std::fs::write(shaders.join("ColorGrade.fx"), "// fixture").unwrap();
         let p = Preset::parse("[GENERAL]\nTechniqueSorting=Color\u{5c}Grade@Shaders\u{5c}ColorGrade.fx\n[Shaders/ColorGrade.fx]\nEnabled=1\n");
-        let effects = p.effect_files(Path::new("/presets"));
+        let effects = p.effect_files(&root);
         assert_eq!(effects.len(), 1);
-        assert_eq!(effects[0].path, PathBuf::from("/presets/Shaders/ColorGrade.fx"));
+        assert_eq!(effects[0].path, shaders.join("ColorGrade.fx"));
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -567,9 +576,8 @@ Exposure=0.5
             "[GENERAL]\nTechniqueSorting=Vibrance@Shaders/Vibrance.fx\n[Shaders/Vibrance.fx]\nEnabled=1\n"
         );
         let effects = preset.effect_files(&root);
-        assert_eq!(effects.len(), 1);
-        assert_eq!(effects[0].path, root.join("Shaders/Vibrance.fx"));
-        assert!(!effects[0].path.is_file());
+        // Ambiguous basename matches must not resolve to a guessed/nonexistent path.
+        assert!(effects.is_empty());
         let _ = std::fs::remove_dir_all(root);
     }
 
