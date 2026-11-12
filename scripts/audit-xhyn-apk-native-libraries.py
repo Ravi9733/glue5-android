@@ -11,6 +11,8 @@ import zipfile
 from pathlib import Path
 
 EXPECTED_APK_SHA256 = "a681765d9aae1404c59e3570682f3078bf9062ff800abfc7c5e1972f2783309f"
+HELPER_LIBRARIES = {"libxhyn_v02.so"}
+EXPECTED_ENGINE_LIBRARY_COUNT = 26
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -32,8 +34,6 @@ def main() -> int:
     with zipfile.ZipFile(args.apk) as archive, tempfile.TemporaryDirectory() as temp:
         names = sorted(n for n in archive.namelist()
                        if n.startswith("lib/arm64-v8a/") and n.endswith(".so"))
-        if len(names) != 26:
-            raise SystemExit(f"Expected 26 ARM64 libraries, found {len(names)}")
         items = []
         for name in names:
             target = Path(temp) / Path(name).name
@@ -56,12 +56,24 @@ def main() -> int:
                           "machine": machine, "needed": needed})
     bad = [x["file"] for x in items if x["elf_class"] != "ELF64" or
            "little endian" not in x["endianness"].lower() or "aarch64" not in x["machine"].lower()]
-    report = {"apk_sha256": apk_hash, "arm64_library_count": len(items),
-              "java_getLibraries_order": ["SDL3", "gtav"],
-              "all_libraries_are_aarch64_elf64_little_endian": not bad,
-              "invalid_libraries": bad, "libraries": items}
+    engine_names = {x["file"] for x in items} - HELPER_LIBRARIES
+    missing_helpers = HELPER_LIBRARIES - {x["file"] for x in items}
+    count_ok = len(engine_names) == EXPECTED_ENGINE_LIBRARY_COUNT and not missing_helpers
+    report = {
+        "apk_sha256": apk_hash,
+        "arm64_library_count_total_including_xhyn_helper": len(items),
+        "expected_original_engine_library_count": EXPECTED_ENGINE_LIBRARY_COUNT,
+        "observed_engine_library_count_excluding_helper": len(engine_names),
+        "xhyn_helper_libraries": sorted(HELPER_LIBRARIES & {x["file"] for x in items}),
+        "java_getLibraries_order": ["SDL3", "gtav"],
+        "all_libraries_are_aarch64_elf64_little_endian": not bad,
+        "engine_library_count_matches_and_helper_present": count_ok,
+        "invalid_libraries": bad,
+        "missing_helpers": sorted(missing_helpers),
+        "libraries": items,
+    }
     print(json.dumps(report, indent=2))
-    return 1 if bad else 0
+    return 1 if bad or not count_ok else 0
 
 if __name__ == "__main__":
     raise SystemExit(main())
