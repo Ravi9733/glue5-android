@@ -22,6 +22,7 @@ class MainActivity : Activity() {
     private var selectedArchiveUri: Uri? = null
     private var selectedArchiveName: String = "selected.rpf"
     private var outputTreeUri: Uri? = null
+    private var selectedFolderUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,6 +105,11 @@ class MainActivity : Activity() {
             setOnClickListener { extractSelectedArchive() }
         }
         root.addView(extract)
+        val bulkExtract = Button(this).apply {
+            text = "EXTRACT ALL OPEN RPF FROM SELECTED GTA V FOLDER"
+            setOnClickListener { extractAllOpenArchives() }
+        }
+        root.addView(bulkExtract)
 
         root.addView(share)
 
@@ -128,9 +134,12 @@ class MainActivity : Activity() {
         val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         try { contentResolver.takePersistableUriPermission(uri, flags) } catch (_: Exception) {}
         when (requestCode) {
-            REQUEST_FOLDER -> worker.execute {
-                val report = scanTree(uri)
-                runOnUiThread { latestReport = report; output.text = report }
+            REQUEST_FOLDER -> {
+                selectedFolderUri = uri
+                worker.execute {
+                    val report = scanTree(uri)
+                    runOnUiThread { latestReport = report; output.text = report }
+                }
             }
             REQUEST_ARCHIVE -> {
                 selectedArchiveUri = uri
@@ -168,6 +177,82 @@ class MainActivity : Activity() {
                 report + " Output: " + target.name + ". Original archive unchanged."
             } catch (e: Throwable) { "Extraction failed: " + (e.message ?: e.javaClass.simpleName) }
             runOnUiThread { output.text = result }
+        }
+    }
+
+
+    private fun extractAllOpenArchives() {
+        val sourceTree = selectedFolderUri
+        val destinationUri = outputTreeUri
+        if (sourceTree == null || destinationUri == null) {
+            output.text = "First select the GTA V folder, then select an output folder."
+            return
+        }
+        output.text = "Bulk extraction started. Only unencrypted archives supported by the native parser will extract."
+        worker.execute {
+            val sourceRoot = DocumentFile.fromTreeUri(this, sourceTree)
+            val destination = DocumentFile.fromTreeUri(this, destinationUri)
+            val report = StringBuilder()
+            var done = 0
+            var failed = 0
+            var skipped = 0
+            var totalBytes = 0L
+            try {
+                check(sourceRoot != null && destination != null) { "Cannot open selected folders" }
+                val archives = mutableListOf<DocumentFile>()
+                val stack = ArrayDeque<DocumentFile>()
+                stack.add(sourceRoot!!)
+                while (stack.isNotEmpty()) {
+                    val dir = stack.removeLast()
+                    for (child in dir.listFiles()) {
+                        if (child.isDirectory) stack.add(child)
+                        else if (child.isFile && child.name?.endsWith(".rpf", true) == true) archives.add(child)
+                    }
+                }
+                if (archives.size > MAX_BULK_ARCHIVES) error("Found ${archives.size} RPF files; safety limit is $MAX_BULK_ARCHIVES. Select a smaller folder.")
+                report.appendLine("RPF archives discovered: ${archives.size}")
+                for ((index, archive) in archives.withIndex()) {
+                    val name = archive.name ?: "archive_$index.rpf"
+                    val info = inspectHeader(archive.uri)
+                    if (!info.isGtaV || !(info.encryption.startsWith("OPEN") || info.encryption == "None")) {
+                        skipped++
+                        report.appendLine("SKIP $name — ${info.encryption}; not a confirmed open RPF7")
+                        continue
+                    }
+                    try {
+                        val work = java.io.File(cacheDir, "bulk-rpf-work")
+                        work.deleteRecursively()
+                        check(work.mkdirs()) { "Cannot create temporary folder" }
+                        val safeName = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                        val source = java.io.File(work, safeName)
+                        contentResolver.openInputStream(archive.uri)?.use { input ->
+                            source.outputStream().use { out -> input.copyTo(out) }
+                        } ?: error("Cannot read source")
+                        val extracted = java.io.File(work, "extracted")
+                        check(extracted.mkdir()) { "Cannot create extraction folder" }
+                        val nativeReport = NativeRpf.extractArchive(source.absolutePath, extracted.absolutePath)
+                        check(nativeReport.startsWith("Extraction complete")) { nativeReport }
+                        val outputName = safeName.removeSuffix(".rpf") + "_extracted"
+                        val target = destination!!.createDirectory(outputName) ?: error("Cannot create output folder")
+                        copyExtractedTree(extracted, target)
+                        done++
+                        totalBytes += extracted.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                        report.appendLine("OK $name → ${target.name}")
+                    } catch (e: Throwable) {
+                        failed++
+                        report.appendLine("FAIL $name — ${e.message ?: e.javaClass.simpleName}")
+                    }
+                    val status = "Bulk extraction ${index + 1}/${archives.size}\nSuccess: $done • Failed: $failed • Skipped: $skipped"
+                    runOnUiThread { output.text = status + "\n\n" + report.toString().takeLast(12000) }
+                }
+                report.appendLine()
+                report.appendLine("Finished. Success=$done, Failed=$failed, Skipped=$skipped")
+                report.appendLine("Extracted bytes copied: $totalBytes")
+                report.appendLine("Original RPF archives were not modified. This is extraction only, not PC-to-Android conversion.")
+            } catch (e: Throwable) {
+                report.appendLine("Bulk operation stopped: ${e.message ?: e.javaClass.simpleName}")
+            }
+            runOnUiThread { latestReport = report.toString(); output.text = latestReport }
         }
     }
 
@@ -348,7 +433,7 @@ class MainActivity : Activity() {
             appendLine("Read-only scan. No source files were changed.")
             appendLine("OPEN/unencrypted RPF7 TOCs are inspected for YTD/YDR/YFT/YMAP and related asset names. AES/NG TOCs need the matching key material.")
             appendLine("RPF7 detection is not proof that the archive's assets are compatible with a specific Android game port.")
-            appendLine("This build inventories asset names only; it does not extract, transform or convert assets.")
+            appendLine("Bulk extraction is available for OPEN archives supported by the native parser. Extraction does not convert PC assets to Android formats.")
         }
     }
 
@@ -363,6 +448,7 @@ class MainActivity : Activity() {
         private const val REQUEST_DESTINATION = 1003
         private const val MAX_NAMES_BYTES = 64L * 1024L * 1024L
         private const val MAX_TOC_BYTES = 80L * 1024L * 1024L
+        private const val MAX_BULK_ARCHIVES = 500
         private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ysc", "awc", "rel", "dat")
     }
 }
