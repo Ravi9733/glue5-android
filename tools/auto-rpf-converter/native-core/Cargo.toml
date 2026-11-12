@@ -15,3 +15,6 @@ rpf-archive = "0.10.0"
 
 [dev-dependencies]
 tempfile = "3.10"
+
+# Keep this standalone crate outside the repository's root Cargo workspace.
+[workspace]
