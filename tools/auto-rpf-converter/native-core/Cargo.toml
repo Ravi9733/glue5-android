@@ -1,0 +1,17 @@
+[package]
+name = "gta-rpf-native-core"
+version = "0.1.0"
+edition = "2021"
+license = "Unlicense"
+description = "Bounded, read-only GTA V RPF7 extraction core for the Android converter"
+
+[lib]
+name = "gta_rpf_native_core"
+crate-type = ["rlib"]
+
+[dependencies]
+anyhow = "1.0"
+rpf-archive = "0.10.0"
+
+[dev-dependencies]
+tempfile = "3.10"
