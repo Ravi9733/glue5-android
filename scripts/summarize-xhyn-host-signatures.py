@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Print minimal XHYN host declarations and lifecycle call evidence from JADX output."""
+"""Print selected XHYN launcher, data-path and SDL lifecycle evidence from JADX output."""
 from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
 
+TARGET_CLASS_NAMES = (
+    "GTAVActivity", "GameSurface", "GameDirectories",
+    "StoragePermissionActivity", "ModSpawnProvider", "ArtworkGuardApplication",
+)
 DECLARATIONS = (
-    re.compile(r"^\s*(?:public|protected|private)?\s*(?:static\s+)?(?:final\s+)?(?:class|interface)\s+GTAVActivity\b"),
-    re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:loadLibraries|onCreate|onResume|onPause|onDestroy|getLibraries|getMainFunction|nativeRunMain|gameRoot)\s*\([^;]*\)"),
+    re.compile(r"^\s*(?:public|protected|private)?\s*(?:static\s+)?(?:final\s+)?(?:class|interface)\s+\w+\b"),
+    re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:loadLibraries|onCreate|onResume|onPause|onDestroy|getLibraries|getMainFunction|nativeRunMain|gameRoot|start)\s*\([^;]*\)"),
     re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:surfaceCreated|surfaceChanged|surfaceDestroyed)\s*\([^;]*\)"),
 )
 SAFE_HOST_LINES = re.compile(
@@ -17,8 +21,10 @@ SAFE_HOST_LINES = re.compile(
     r"super\.(?:onCreate|onResume|onPause|onDestroy|loadLibraries)|"
     r"onCreate\(|onResume\(|onPause\(|onDestroy\(|"
     r"GameSurface|setMainReady|mSDLThread|mSurface|DxvkManager|"
-    r"gameRoot\(|getExternalFilesDir|getFilesDir|StoragePermissionActivity|"
-    r"ModSpawnProvider|\.modspawn|getPackageName\("
+    r"gameRoot\(|game_root|getExternalFilesDir|getFilesDir|getExternalStorageDirectory|"
+    r"Environment|Documents|ACTION_OPEN_DOCUMENT_TREE|StoragePermissionActivity|"
+    r"ModSpawnProvider|\.modspawn|getPackageName\(|authority|content://|"
+    r"GameDirectories|ArtworkGuardApplication"
 )
 
 def main() -> int:
@@ -29,7 +35,7 @@ def main() -> int:
         parser.error("JADX sources directory does not exist")
     found = 0
     for path in sorted(args.jadx_sources.rglob("*.java")):
-        if "GTAVActivity" not in path.name and "GameSurface" not in path.name:
+        if not any(name in path.name for name in TARGET_CLASS_NAMES):
             continue
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         selected: set[int] = set()
