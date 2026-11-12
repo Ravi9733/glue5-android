@@ -37,9 +37,13 @@ jobs:
           chmod +x /tmp/jadx/bin/jadx
       - name: Decompile locally and print only host signatures
         run: |
-          if ! /tmp/jadx/bin/jadx --no-imports -d /tmp/xhyn-jadx /tmp/XHYN-V-0.3-Preview2.apk >/tmp/jadx.log 2>&1; then
+          /tmp/jadx/bin/jadx --no-imports -d /tmp/xhyn-jadx /tmp/XHYN-V-0.3-Preview2.apk >/tmp/jadx.log 2>&1 || true
+          if [ ! -d /tmp/xhyn-jadx/sources ]; then
             tail -n 120 /tmp/jadx.log
             exit 1
+          fi
+          if grep -q "ERROR - finished with errors" /tmp/jadx.log; then
+            echo "JADX reported recoverable decode errors; extracting available host declarations."
           fi
           find /tmp/xhyn-jadx -maxdepth 3 -type d -print
           python3 scripts/summarize-xhyn-host-signatures.py /tmp/xhyn-jadx/sources | tee /tmp/xhyn-host-signatures.txt
