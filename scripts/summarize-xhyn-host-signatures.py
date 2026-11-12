@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
-"""Print minimal XHYN 0.3 host declarations from a local JADX output."""
+"""Print a minimal XHYN 0.3 host contract from local JADX output, not full source."""
 from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
 
-PATTERNS = (
-    re.compile(
-        r"^\s*(?:public|protected|private)?\s*(?:static\s+)?"
-        r"(?:final\s+)?(?:class|interface)\s+GTAVActivity\b"
-    ),
-    re.compile(
-        r"^\s*(?:public|protected|private)\s+[^=;]+\b"
-        r"(?:loadLibraries|onResume|onPause|onDestroy|getLibraries|nativeRunMain)\s*\([^;]*\)\s*(?:throws [^{]+)?\{?"
-    ),
-    re.compile(
-        r"^\s*(?:public|protected|private)\s+[^=;]+\b"
-        r"(?:surfaceCreated|surfaceChanged|surfaceDestroyed)\s*\([^;]*\)\s*(?:throws [^{]+)?\{?"
-    ),
+DECLARATIONS = (
+    re.compile(r"^\s*(?:public|protected|private)?\s*(?:static\s+)?(?:final\s+)?(?:class|interface)\s+GTAVActivity\b"),
+    re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:loadLibraries|onCreate|onResume|onPause|onDestroy|getLibraries|nativeRunMain)\s*\([^;]*\)"),
+    re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:surfaceCreated|surfaceChanged|surfaceDestroyed)\s*\([^;]*\)"),
+)
+SAFE_HOST_LINES = re.compile(
+    r"SDLActivity|nativeRunMain|loadLibrary|getLibraries|new String\[\]|"
+    r"surfaceCreated|surfaceChanged|surfaceDestroyed|SurfaceHolder|"
+    r"super\.(?:onCreate|onResume|onPause|onDestroy)|"
+    r"onCreate\(|onResume\(|onPause\(|onDestroy\(|"
+    r"GameSurface|setMainReady|mSDLThread|mSurface"
 )
 
 def main() -> int:
@@ -30,12 +28,24 @@ def main() -> int:
     for path in sorted(args.jadx_sources.rglob("*.java")):
         if "GTAVActivity" not in path.name and "GameSurface" not in path.name:
             continue
-        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if any(pattern.search(line) for pattern in PATTERNS):
-                print(f"{path.name}:{number}: {line.strip()[:300]}")
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        selected: set[int] = set()
+        for index, line in enumerate(lines):
+            if any(pattern.search(line) for pattern in DECLARATIONS):
+                selected.add(index)
+            if SAFE_HOST_LINES.search(line):
+                selected.add(index)
+                if index > 0:
+                    selected.add(index - 1)
+                if index + 1 < len(lines):
+                    selected.add(index + 1)
+        if selected:
+            print(f"## {path.name}")
+            for index in sorted(selected):
+                print(f"{index + 1}: {lines[index].strip()[:300]}")
                 found += 1
     if not found:
-        print("No matching host declarations found; inspect JADX package/class naming locally.")
+        print("No matching host declarations found; inspect JADX package/class naming.")
     return 0
 
 if __name__ == "__main__":
