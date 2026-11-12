@@ -30,17 +30,18 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
       MISE_TASK_RUN_AUTO_INSTALL: "false"
-      # Keep long native compilation within the hosted runner's resource limits.
+      # Use two build workers on the 4-vCPU / 15-GiB hosted runner.
+      # This avoids the previous single-worker 34-minute parser-test compile
+      # while leaving headroom for linkers and Android packaging.
       MISE_TASK_TIMEOUT: "45m"
-      CARGO_BUILD_JOBS: "1"
+      CARGO_BUILD_JOBS: "2"
       CARGO_PROFILE_RELEASE_DEBUG: "0"
-      # Keep Cargo serial, but use Rust's normal release codegen partitioning.
-      # rpf-archive has a low-optimisation package override in Cargo.toml.
+      CARGO_PROFILE_TEST_DEBUG: "0"
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
-      RAYON_NUM_THREADS: "1"
-      CMAKE_BUILD_PARALLEL_LEVEL: "1"
-      MAKEFLAGS: "-j1"
-      GRADLE_OPTS: "-Dorg.gradle.workers.max=1 -Dorg.gradle.parallel=false -XX:ActiveProcessorCount=2"
+      RAYON_NUM_THREADS: "2"
+      CMAKE_BUILD_PARALLEL_LEVEL: "2"
+      MAKEFLAGS: "-j2"
+      GRADLE_OPTS: "-Dorg.gradle.workers.max=2 -Dorg.gradle.parallel=false -XX:ActiveProcessorCount=4"
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
