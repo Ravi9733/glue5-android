@@ -19,6 +19,9 @@ class MainActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var output: TextView
     private var latestReport: String = "No scan has been run yet."
+    private var selectedArchiveUri: Uri? = null
+    private var selectedArchiveName: String = "selected.rpf"
+    private var outputTreeUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,6 +77,34 @@ class MainActivity : Activity() {
                 startActivity(Intent.createChooser(send, "Share report"))
             }
         }
+        val chooseArchive = Button(this).apply {
+            text = "SELECT ONE .RPF ARCHIVE"
+            setOnClickListener {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                }
+                startActivityForResult(intent, REQUEST_ARCHIVE)
+            }
+        }
+        root.addView(chooseArchive)
+        val chooseDestination = Button(this).apply {
+            text = "SELECT EXTRACTION OUTPUT FOLDER"
+            setOnClickListener {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                }
+                startActivityForResult(intent, REQUEST_DESTINATION)
+            }
+        }
+        root.addView(chooseDestination)
+        val extract = Button(this).apply {
+            text = "EXTRACT SELECTED RPF"
+            setOnClickListener { extractSelectedArchive() }
+        }
+        root.addView(extract)
+
         root.addView(share)
 
         output = TextView(this).apply {
@@ -285,6 +316,8 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_FOLDER = 1001
+        private const val REQUEST_ARCHIVE = 1002
+        private const val REQUEST_DESTINATION = 1003
         private const val MAX_NAMES_BYTES = 64L * 1024L * 1024L
         private const val MAX_TOC_BYTES = 80L * 1024L * 1024L
         private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ysc", "awc", "rel", "dat")
