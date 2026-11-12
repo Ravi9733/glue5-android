@@ -191,11 +191,19 @@ def main() -> int:
     provider_files = [p for base in smali_roots for p in base.rglob("ModSpawnProvider.smali")]
     if not provider_files:
         raise SystemExit("ModSpawnProvider.smali not found; refusing incomplete authority patch")
+    patched_package_refs = 0
+    for base in smali_roots:
+        for path in base.rglob("*.smali"):
+            data = path.read_text(encoding="utf-8")
+            if OLD_PACKAGE in data:
+                path.write_text(data.replace(OLD_PACKAGE, NEW_PACKAGE), encoding="utf-8")
+                patched_package_refs += 1
     for path in provider_files:
         data = path.read_text(encoding="utf-8")
-        if OLD_AUTHORITY not in data:
-            raise SystemExit(f"expected authority constant missing from {path}")
-        path.write_text(data.replace(OLD_AUTHORITY, NEW_AUTHORITY), encoding="utf-8")
+        if NEW_AUTHORITY not in data:
+            raise SystemExit(f"provider authority was not rewritten in {path}")
+    if any(OLD_PACKAGE in p.read_text(encoding="utf-8") for base in smali_roots for p in base.rglob("*.smali")):
+        raise SystemExit("old application ID remains in decoded DEX strings")
 
     smali = smali_roots[0] / "local" / "glue5" / "nativeapp"
     smali.mkdir(parents=True, exist_ok=True)
@@ -212,6 +220,7 @@ def main() -> int:
     print(f"launcherActivity={NEW_PACKAGE}.LauncherActivity")
     print(f"gameDataDefault=/storage/emulated/0/Games/GTAV (preserved)")
     print(f"modProviderAuthority={NEW_AUTHORITY}")
+    print(f"patchedPackageStringFiles={patched_package_refs}")
     return 0
 
 if __name__ == "__main__":
