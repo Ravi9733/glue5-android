@@ -1068,19 +1068,6 @@ dependencies = [
  "egui",
 ]
 
-dependencies = [
- "anyhow",
- "crc32fast",
- "env_logger",
- "libc",
- "log",
- "serde_json",
- "sha2",
- "socket2",
- "windows-sys",
- "zstd",
-]
-
 [[package]]
 name = "glutin_wgl_sys"
 version = "0.6.1"
