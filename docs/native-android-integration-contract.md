@@ -110,3 +110,14 @@ run inside Glue 5's existing SDL3 process. The actual 0.3 Activity bytecode,
 SDL version, native library loading list/order, and JNI/native entry contract
 must still be inspected from the exact APK before writing an adapter.
 
+
+
+## Additional 0.3 native-code audit: JNI symbols are not a game-launch API
+
+The published modifications/v0.3/native/xhyn_v02.c defines exactly three JNI entry points: XhynV02Native.install, .identity, and .probe. identity and probe run a standalone Vulkan triangle/presentation probe; the result string explicitly says it does not certify game compatibility. install requires an already-loaded libgtav.so, resolves its SDL_main, then validates and patches a fixed ARM64 code offset before installing a controlled-stop hook. It does not start the game, create the SDL Activity, or provide a reusable host lifecycle API.
+
+**Safety decision:** do not call XhynV02Native.install, copy its fixed offset/expected bytes, or reuse its JNI symbols as Glue 5's engine adapter. The published 0.3 java patch directory has no Java source implementation for a general-purpose host adapter; the original GTAVActivity remains unpublished. The next integration gate is the exact APK's decompiled Activity/manifest/DEX and native-library inventory, not an invented nativeRunMain wrapper.
+
+## CI scope update
+
+The native-shell workflow now runs cargo test --locked -p glue5-native-shell --lib in addition to formatting and metadata/dependency checks. The first attempt exposed malformed/missing lockfile records; the lockfile was corrected in commit ca60eee. The follow-up run must pass before the shell is called compile-verified. Even a passing shell test does not qualify the Android engine adapter or produce an APK.
