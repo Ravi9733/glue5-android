@@ -243,4 +243,46 @@ mod tests {
             assert_eq!(options.validate(), Err("Render scale must be between 0.5 and 1.0"));
         }
     }
+
+    #[test]
+    fn invalid_options_never_reach_engine_adapter() {
+        let mut shell = NativeShell::default();
+        shell.options.max_fps = 144;
+        let mut engine = MockEngine { state: EngineState::Ready, ..Default::default() };
+        shell.start_game(&mut engine);
+        assert_eq!(engine.starts, 0);
+        assert_eq!(shell.last_error.as_deref(), Some("FPS limit must be between 30 and 120"));
+    }
+
+    #[test]
+    fn adapter_start_errors_are_preserved() {
+        struct FailingEngine;
+        impl NativeEngine for FailingEngine {
+            fn state(&self) -> EngineState { EngineState::Ready }
+            fn start(&mut self, _options: &LaunchOptions) -> Result<(), String> {
+                Err("native host failed to initialize".into())
+            }
+            fn stop(&mut self) -> Result<(), String> { Ok(()) }
+        }
+
+        let mut shell = NativeShell::default();
+        shell.start_game(&mut FailingEngine);
+        assert_eq!(shell.last_error.as_deref(), Some("native host failed to initialize"));
+    }
+
+    #[test]
+    fn adapter_stop_errors_are_preserved() {
+        struct FailingEngine;
+        impl NativeEngine for FailingEngine {
+            fn state(&self) -> EngineState { EngineState::Running }
+            fn start(&mut self, _options: &LaunchOptions) -> Result<(), String> { Ok(()) }
+            fn stop(&mut self) -> Result<(), String> {
+                Err("native host shutdown failed".into())
+            }
+        }
+
+        let mut shell = NativeShell::default();
+        shell.stop_game(&mut FailingEngine);
+        assert_eq!(shell.last_error.as_deref(), Some("native host shutdown failed"));
+    }
 }
