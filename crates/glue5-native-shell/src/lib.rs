@@ -76,7 +76,8 @@ impl NativeShell {
             return;
         }
 
-        self.last_error = self.options.validate().map_err(str::to_owned).and_then(|()| engine.start(&self.options)).err();
+        self.last_error =
+            self.options.validate().map_err(str::to_owned).and_then(|()| engine.start(&self.options)).err();
     }
 
     /// Request shutdown only while an engine session is active or starting.
