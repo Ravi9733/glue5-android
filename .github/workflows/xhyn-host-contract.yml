@@ -1,0 +1,49 @@
+name: Inspect published XHYN 0.3 host contract
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [native-android-engine-backend]
+    paths:
+      - "scripts/summarize-xhyn-host-signatures.py"
+      - ".github/workflows/xhyn-host-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-release-host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Download and verify exact public Preview 2 APK
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/XHYN-PH/XHYN-V-reborn/releases/download/v0.3-preview2/XHYN-V-0.3-Preview2.apk \
+            --output /tmp/XHYN-V-0.3-Preview2.apk
+          echo "a681765d9aae1404c59e3570682f3078bf9062ff800abfc7c5e1972f2783309f  /tmp/XHYN-V-0.3-Preview2.apk" | sha256sum --check
+      - name: Download pinned JADX
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/skylot/jadx/releases/download/v1.5.2/jadx-1.5.2.zip \
+            --output /tmp/jadx.zip
+          mkdir -p /tmp/jadx
+          unzip -q /tmp/jadx.zip -d /tmp/jadx
+          chmod +x /tmp/jadx/bin/jadx
+      - name: Decompile locally and print only host signatures
+        run: |
+          /tmp/jadx/bin/jadx --no-imports -d /tmp/xhyn-jadx /tmp/XHYN-V-0.3-Preview2.apk >/tmp/jadx.log 2>&1
+          python3 scripts/summarize-xhyn-host-signatures.py /tmp/xhyn-jadx/sources | tee /tmp/xhyn-host-signatures.txt
+          echo "APK hash verified; only matching Java declaration lines are emitted."
+      - name: Upload minimal host signature report
+        uses: actions/upload-artifact@v4
+        with:
+          name: xhyn-v03-host-signatures
+          path: /tmp/xhyn-host-signatures.txt
+          if-no-files-found: error
+          retention-days: 3
