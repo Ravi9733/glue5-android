@@ -39,3 +39,5 @@ jobs:
           egui = "=0.36.2"
           EOF
           cargo test --manifest-path /tmp/glue5-native-shell-test/Cargo.toml --lib
+      - name: Validate fail-closed native Android packaging preflight
+        run: python3 scripts/check-native-android-package.py --self-test
