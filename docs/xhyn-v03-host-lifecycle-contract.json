@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "source": "XHYN-V 0.3 Preview 2 public modification source; not exact APK decompilation",
+  "xhyn": {
+    "architecture": "native-arm64-sdl",
+    "game_library": "libgtav.so",
+    "documented_native_entry": "SDL_main",
+    "helper_library": "libxhyn_v02.so",
+    "activity_class": "com.gtavsource.android.GTAVActivity",
+    "activity_class_status": "patch-target-only-original-implementation-not-published",
+    "sdl_version": null,
+    "native_library_load_order": null,
+    "lifecycle_hooks": [
+      {
+        "method": "loadLibraries()V",
+        "evidence": "apply_runtime.py injects librariesLoaded after DxvkManager.initialize",
+        "status": "source-confirmed-patch-target"
+      },
+      {
+        "method": "onResume()V",
+        "evidence": "wrapper invokes XhynV02Runtime.resumeGame",
+        "status": "source-confirmed-patch-target"
+      },
+      {
+        "method": "onPause()V",
+        "evidence": "wrapper invokes XhynV02Runtime.pauseGame",
+        "status": "source-confirmed-patch-target"
+      },
+      {
+        "method": "onDestroy()V",
+        "evidence": "wrapper invokes XhynV02Runtime.gameStopped",
+        "status": "source-confirmed-patch-target"
+      },
+      {
+        "method": "GameSurface.surfaceCreated(SurfaceHolder)V",
+        "evidence": "wrapper invokes XhynV02Runtime.surface(View)",
+        "status": "source-confirmed-patch-target"
+      },
+      {
+        "method": "GameSurface.surfaceChanged(SurfaceHolder;III)V",
+        "evidence": "wrapper invokes XhynV02Runtime.surface(View)",
+        "status": "source-confirmed-patch-target"
+      }
+    ],
+    "surface_destroy_contract": null,
+    "game_start_api": null,
+    "input_audio_bridge": null,
+    "xhyn_helper_jni": {
+      "install": "requires libgtav.so already loaded; installs build-specific controlled-stop patch; not a launcher",
+      "identity": "diagnostic",
+      "probe": "standalone Vulkan probe; not game compatibility proof",
+      "observe_metrics_capture_paused": "diagnostic/observer functions; not a general host lifecycle API"
+    }
+  },
+  "glue5": {
+    "activity": "local.glue5.Glue5Activity",
+    "superclass": "org.libsdl.app.SDLActivity",
+    "sdl_library": "SDL3",
+    "native_library_load_order": [
+      "SDL3",
+      "glue5"
+    ],
+    "application_id": "local.glue5"
+  },
+  "adapter_decision": "blocked-until-exact-preview2-apk-activity-sdl-abi-library-order-and-lifecycle-are-verified",
+  "prohibited_assumptions": [
+    "Do not invoke SDL_main manually",
+    "Do not load libgtav.so into Glue5 SDL3 process",
+    "Do not call XhynV02Native.install as a game-start method",
+    "Do not reuse fixed native patch offsets",
+    "Do not forward Surface ownership without verified contract"
+  ],
+  "next_evidence": [
+    "Exact APK SHA-256",
+    "Decoded AndroidManifest launcher declaration",
+    "Launcher Activity superclass and methods",
+    "SDL Java/native version",
+    "Ordered native library loading sequence",
+    "Native ELF DT_NEEDED dependencies and exported entrypoints",
+    "Surface create/change/destroy and pause/resume ordering",
+    "Input/audio ownership and game data path"
+  ]
+}
