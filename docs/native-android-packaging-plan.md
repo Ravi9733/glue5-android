@@ -22,18 +22,34 @@ APK target currently exists.
 The example native application ID is a proposal only; it must be checked
 against any installed package before release.
 
-## Required Gradle work (blocked on locating the actual Android project)
+## Verified Gradle layout and required work
 
-1. Identify the checked-in Android Gradle root, module names, manifest and
-   launcher Activity from the repository tree.
-2. Add a separate native application module or product flavor only after
-   confirming the existing packaging layout.
-3. Give the native variant its own application ID, label, version suffix and
-   APK output name.
+The checked-in Android Gradle project is `platform/android` (root project
+`Glue5`). Its application module uses `platform/android/build.gradle.kts`,
+`platform/android/settings.gradle.kts`, `platform/android/AndroidManifest.xml`
+and `platform/android/java/local/glue5/Glue5Activity.java`. The existing
+module currently has one application ID, `local.glue5`, and one launcher
+Activity that extends SDL3's `SDLActivity` and loads `SDL3` plus `glue5`.
+
+The safe packaging change is therefore a second Android application module
+(or a carefully isolated variant) with its own manifest, Activity, application
+ID, assets and native-library staging directory. Before choosing a variant,
+confirm that the XHYN host can be represented in this project without loading
+the existing SDL3/Glue5 native entrypoint. Do not simply append `libgtav.so`
+to the current `getLibraries()` list: the XHYN 0.3 Activity and lifecycle
+contract have not been verified as a reusable host API.
+
+Required work:
+
+1. Keep `local.glue5`, its existing SDL3 Activity, build tasks and output paths
+   unchanged.
+2. Add a separate native application target only after the exact XHYN 0.3
+   Activity/DEX/manifest and native library loading order are verified.
+3. Give that target a distinct application ID (proposed: `local.glue5.native`),
+   label, version suffix, APK output name and JNI library staging directory.
 4. Package only the exact ABI-compatible engine and companion libraries.
-5. Preserve the existing WASM application ID, build tasks and output paths.
-6. Keep game data external; do not copy, delete, migrate or clear
-   `Documents/Glue5` during install, update or uninstall.
+5. Keep game data external in a native-specific directory; do not copy, delete,
+   migrate or clear `Documents/Glue5` during install, update or uninstall.
 
 ## Native runtime requirements
 
@@ -60,8 +76,9 @@ surface contract is verified.
 
 ## Current limitation
 
-The repository's public native-engine material is a modification layer, not
-the original complete Android host project. Until the actual Gradle module and
-matching host implementation are located, adding guessed Gradle paths,
-Activity classes, JNI symbols or packaging rules would create a misleading or
-non-buildable APK target. No APK build or device validation is claimed here.
+The Glue 5 Android Gradle project is now located and its current launcher
+contract is verified. The missing piece is the exact XHYN-V 0.3 Android host:
+its original Activity/DEX, SDL version and native library load order are not
+published in the modification layer. Adding guessed Activity classes, JNI
+symbols or a second launcher before those are known would create a misleading
+or non-buildable APK target. No APK build or device validation is claimed here.
