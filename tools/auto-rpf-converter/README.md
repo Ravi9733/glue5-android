@@ -1,53 +1,45 @@
 # GTA V Auto RPF Converter
 
-Android prototype for selecting a GTA V folder and inventorying its RPF archives.
+Android ARM64 prototype for inventorying and extracting supported GTA V RPF7 archives directly from Android. No desktop PC is required for the app workflow.
 
-## Current prototype (0.3.0)
+## Current build
 
-- Uses Android's Storage Access Framework; the user selects the GTA V folder.
-- Recursively finds files ending in `.rpf`.
-- Reads and validates bounded RPF7 table-of-contents metadata (entry count and names-table bounds).
-- For OPEN/unencrypted archives, inventories recognized asset names such as YTD, YDR, YDD, YFT, YBN, YMAP and YTYP.
-- For AES/NG archives, reports that the TOC is encrypted and requires matching key material; it does not attempt key recovery.
-- Rejects TOCs above conservative safety limits (1,000,000 entries / 64 MiB names / 80 MiB total TOC).
-- Produces a shareable text report.
-- Does not alter, extract, repack, or convert any game files.
-- Marks AES/NG archives as requiring matching key material; it does not bypass encryption.
+- Select a GTA V folder using Android Storage Access Framework.
+- Recursively inventory .rpf files and inspect bounded RPF7 metadata / OPEN TOC asset names.
+- Select and extract one supported archive.
+- Bulk-extract up to 500 confirmed OPEN RPF7 archives from the selected folder.
+- Write extracted files to a separately selected destination folder; source archives are never modified.
+- Native Rust extraction uses rpf-archive 0.10.0, with path traversal and extraction-size limits.
+- AES/NG encrypted archives are skipped or rejected unless legitimate matching key support is supplied.
 
-## Important compatibility note
+## What this app does NOT do yet
 
-An RPF archive being readable or writable is not the same as converting PC assets to the format expected by a particular Android port. RPF7 is the outer archive; streamed resources inside it (for example YTD/YDR/YFT/YMAP and RSC7 payloads) may need target-engine-specific transformation. The target Android port's loader/version must be tested before any asset is labelled compatible.
+This is NOT yet a complete PC-to-Android RPF converter. Extraction only unpacks entries from archives the native parser can read. It does not transform RSC7 assets or create Android-ready RPF/DLC packs.
 
-## Planned stages
+Not implemented or not verified:
+- Nested RPF recursion as a conversion pipeline.
+- Gen9-to-Legacy YTD conversion (research only; not integrated).
+- YDR/YDD/YFT/YBN/YMAP/YTYP conversion.
+- RPF repacking / DLC pack generation.
+- Target Glue5 runtime compatibility validation and in-game tests.
+- Encrypted archive support without legitimate matching keys.
 
-1. RPF7 header and OPEN TOC inventory (prototype 0.3).
-2. Full archive parser integration and nested-RPF inventory.
-3. Asset-type inspection (YTD, YDR, YDD, YFT, YBN, YMAP, YTYP, etc.).
-4. Compare asset/resource versions and texture formats against the target Android engine.
-5. Convert only formats proven incompatible; preserve compatible files byte-for-byte.
-6. Build output archives in a separate folder and validate them.
-7. Runtime test in the target Android port.
+## Safe usage
 
-## Engineering work in progress: real extraction and conversion
+1. Select the GTA V root folder and wait for the inventory scan.
+2. Select a separate output folder with enough free space.
+3. Use single-archive extraction or bulk extraction.
+4. Keep the app open during extraction. Large archives need temporary internal storage approximately equal to the selected archive plus extracted payload.
+5. Check the report: failed or skipped archives are not treated as converted.
 
-The next implementation uses the public-domain Rust libraries below rather than extending the prototype's hand-written TOC parser:
+The app never changes source RPF files. Output is ordinary extracted content, not a replacement game installation. Keep backups and do not overwrite original game data.
 
-- `rpf-archive` 0.10.x (Unlicense): RPF7 directory/file entry parsing, OPEN archive extraction, nested RPF traversal, decompression and RPF7 writing.
-- `rage-formats` 0.5.x (Unlicense): RSC7 resource parsing and format-specific readers/writers for YTD, YDR, YDD, YFT, YBN, YMAP, YTYP and related data.
+## Build
 
-The Android integration will use an ARM64 native library (JNI) with Android Storage Access Framework streams. It must not require a desktop PC or copy the whole GTA V installation into app-private storage. Files will be read in bounded chunks and converted outputs will be written to a separate user-selected destination; originals remain untouched.
+GitHub Actions builds an Android debug APK and runs native Rust unit tests. A successful APK build verifies compilation only; it does not prove converted assets work in Glue5.
 
-### Conversion rules and release gates
+Workflow artifact: gta-v-auto-rpf-converter-debug.
 
-1. Replace the prototype TOC reader with the upstream RPF parser and test it against real OPEN RPF7 archives, nested archives, compressed entries, empty files and malformed offsets.
-2. Add extraction preview and per-archive progress/cancellation before enabling bulk extraction.
-3. Identify each asset's RSC7 resource version/page flags and edition. Preserve byte-identical resources when compatible; never relabel a PC asset as Android-compatible without a target-runtime test.
-4. Implement only conversions with a verified source/target layout. The current upstream research reports YTD Gen9-to-Legacy conversion as implemented; YDR/YDD/YFT conversion is not yet implemented. Those formats must be reported as unsupported rather than silently rewritten.
-5. Build output RPFs only from validated converted assets, then reopen each output with the archive parser and verify every entry hash/size and extracted payload.
-6. Run the resulting packs in the selected Android GTA V port. A successful APK build alone is not proof that the generated game assets work.
+## Licensing / game data
 
-AES/NG archives remain locked unless the user supplies legitimate matching key material. The app will not recover keys from game executables or bypass encryption. No proprietary GTA V game data will be bundled in the APK.
-
-### Current status
-
-The 0.3 prototype APK builds successfully and performs inventory only. The native parser/converter bridge and actual asset conversion are not yet implemented. Do not treat this prototype as the finished converter.
+The app contains no proprietary GTA V game assets. Users must provide their own legally obtained game files. Encrypted archives require legitimate matching key material; this app does not recover or bypass keys.
