@@ -305,4 +305,3 @@ pub(super) fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
     }
     focus(response)
 }
-
