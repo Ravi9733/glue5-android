@@ -193,7 +193,7 @@ class MainActivity : Activity() {
             } else {
                 (toc[off].toInt() and 0xFF) or ((toc[off + 1].toInt() and 0xFF) shl 8)
             }
-            if (nameOffset >= names.size) {
+            if (nameOffset >= names.size.toLong()) {
                 badOffsets++
                 continue
             }
