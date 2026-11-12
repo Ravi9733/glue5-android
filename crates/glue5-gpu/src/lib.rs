@@ -101,8 +101,79 @@ pub unsafe fn enable_metal_hud() {
     };
 }
 
+/// Prepare the imported ReShade preset before wgpu creates the Vulkan instance.
+/// Android's loader only enables the packaged layer when the preset has at least
+/// one installed, enabled effect and vkBasalt has a generated config to read.
+#[cfg(target_os = "android")]
+fn configure_android_reshade() {
+    use std::path::Path;
+
+    let disable_layer = || unsafe {
+        std::env::remove_var("GLUE5_VULKAN_RESHADE");
+        std::env::remove_var("VKBASALT_CONFIG_FILE");
+    };
+
+    let configured = (|| -> anyhow::Result<(PathBuf, usize)> {
+        let root = std::env::var_os("GLUE5_RESHADE_DIR")
+            .map(PathBuf::from)
+            .context("GLUE5_RESHADE_DIR is not set")?
+            .canonicalize()
+            .context("cannot resolve ReShade directory")?;
+        let active_file = root.join("active-preset.txt");
+        let preset_path = std::fs::read_to_string(&active_file)
+            .context("no active ReShade preset is selected")?;
+        let preset_path = Path::new(preset_path.trim()).canonicalize()
+            .context("cannot resolve active ReShade preset")?;
+        if !preset_path.is_file() || !preset_path.starts_with(&root) {
+            anyhow::bail!("active ReShade preset is outside the imported preset directory");
+        }
+
+        let source = std::fs::read_to_string(&preset_path)
+            .context("cannot read active ReShade INI")?;
+        let preset = reshade::Preset::parse(&source);
+        let preset_dir = preset_path.parent().context("preset has no parent directory")?;
+        let effect_count = preset.effect_files(preset_dir).into_iter()
+            .filter(|effect| effect.path.is_file())
+            .count();
+        if effect_count == 0 {
+            anyhow::bail!("active ReShade preset has no enabled, installed FX effects");
+        }
+
+        let app_files = std::env::var_os("GLUE5_APP_FILES_DIR")
+            .map(PathBuf::from)
+            .context("GLUE5_APP_FILES_DIR is not set")?;
+        std::fs::create_dir_all(&app_files)
+            .context("cannot create app-private ReShade config directory")?;
+        let config_path = app_files.join("vkbasalt-reshade.conf");
+        let config = preset.to_vkbasalt_config(preset_dir, false);
+        std::fs::write(&config_path, config)
+            .context("cannot write generated vkBasalt ReShade config")?;
+        Ok((config_path, effect_count))
+    })();
+
+    match configured {
+        Ok((config_path, effect_count)) => unsafe {
+            std::env::set_var("VKBASALT_CONFIG_FILE", &config_path);
+            std::env::set_var("GLUE5_VULKAN_RESHADE", "1");
+            log::info!(
+                "ReShade: configured Android Vulkan layer with {effect_count} enabled FX effect(s); config={}",
+                config_path.display()
+            );
+        },
+        Err(error) => {
+            disable_layer();
+            log::info!("ReShade: Vulkan layer remains disabled: {error:#}");
+        }
+    }
+}
+
 /// The wgpu instance for this platform (create surfaces with it).
 pub fn instance() -> wgpu::Instance {
+    // The Vulkan layer must be selected before wgpu asks the loader to create
+    // an instance. Generate its config from the currently imported preset now.
+    #[cfg(target_os = "android")]
+    configure_android_reshade();
+
     let backends = if cfg!(target_vendor = "apple") { wgpu::Backends::METAL } else { wgpu::Backends::VULKAN };
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
     desc.backends = backends;
