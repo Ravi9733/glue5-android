@@ -145,9 +145,15 @@ fn configure_android_reshade() {
         std::fs::create_dir_all(&app_files)
             .context("cannot create app-private ReShade config directory")?;
         let config_path = app_files.join("vkbasalt-reshade.conf");
-        let config = preset.to_vkbasalt_config(preset_dir, false);
+        let depth_capture = preset.requires_depth_capture(preset_dir);
+        let config = preset.to_vkbasalt_config(preset_dir, depth_capture);
         std::fs::write(&config_path, config)
             .context("cannot write generated vkBasalt ReShade config")?;
+        log::info!(
+            "ReShade: {} enabled effect(s), depth capture {}",
+            effect_count,
+            if depth_capture { "enabled" } else { "disabled" }
+        );
         Ok((config_path, effect_count))
     })();
 
