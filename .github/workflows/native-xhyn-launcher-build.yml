@@ -29,6 +29,8 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort | tail -n 1)"
           yes | "$SDKMANAGER" --licenses >/dev/null
           "$SDKMANAGER" --install "build-tools;36.0.0" "platforms;android-36"
+      - name: Test native launcher patcher
+        run: python3 scripts/test-patch-xhyn-native-launcher.py
       - name: Download and verify XHYN Preview 2 engine APK
         run: |
           curl --fail --location --retry 3 \
