@@ -7,6 +7,7 @@ on:
     paths:
       - "scripts/summarize-xhyn-host-signatures.py"
       - "scripts/audit-xhyn-apk-native-libraries.py"
+      - "scripts/summarize-xhyn-manifest.py"
       - "docs/xhyn-v03-host-lifecycle-contract.json"
       - "docs/xhyn-v03-launcher-sdl-lifecycle-audit.md"
       - ".github/workflows/xhyn-host-contract.yml"
@@ -51,16 +52,21 @@ jobs:
           find /tmp/xhyn-jadx -maxdepth 3 -type d -print
           python3 scripts/summarize-xhyn-host-signatures.py /tmp/xhyn-jadx/sources | tee /tmp/xhyn-host-signatures.txt
           echo "APK hash verified; only matching Java declaration lines are emitted."
+      - name: Summarize manifest package and components
+        run: |
+          python3 scripts/summarize-xhyn-manifest.py /tmp/xhyn-jadx > /tmp/xhyn-manifest-summary.json
+          cat /tmp/xhyn-manifest-summary.json
       - name: Audit all ARM64 ELF libraries and dependencies
         run: |
           python3 scripts/audit-xhyn-apk-native-libraries.py /tmp/XHYN-V-0.3-Preview2.apk > /tmp/xhyn-native-libraries.json
           cat /tmp/xhyn-native-libraries.json
-      - name: Upload minimal host and native-library evidence
+      - name: Upload minimal host, manifest and native-library evidence
         uses: actions/upload-artifact@v4
         with:
           name: xhyn-v03-host-evidence
           path: |
             /tmp/xhyn-host-signatures.txt
             /tmp/xhyn-native-libraries.json
+            /tmp/xhyn-manifest-summary.json
           if-no-files-found: error
           retention-days: 3
