@@ -191,7 +191,7 @@ class MainActivity : Activity() {
             val nameOffset = if (h2 == 0x7FFFFF00) {
                 ByteBuffer.wrap(toc, off, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
             } else {
-                (toc[off].toInt() and 0xFF) or ((toc[off + 1].toInt() and 0xFF) shl 8)
+                ((toc[off].toInt() and 0xFF) or ((toc[off + 1].toInt() and 0xFF) shl 8)).toLong()
             }
             if (nameOffset >= names.size.toLong()) {
                 badOffsets++
@@ -287,6 +287,6 @@ class MainActivity : Activity() {
         private const val REQUEST_FOLDER = 1001
         private const val MAX_NAMES_BYTES = 64L * 1024L * 1024L
         private const val MAX_TOC_BYTES = 80L * 1024L * 1024L
-        private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ysc", "awc", "awc", "rel", "dat")
+        private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ysc", "awc", "rel", "dat")
     }
 }
