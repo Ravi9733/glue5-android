@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  rustfmt:
-    name: Native UI module formatting
+  source-checks:
+    name: Native shell source checks
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -19,5 +19,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Check newly extracted UI module
+      - name: Check extracted UI module formatting
         run: rustfmt --check --edition 2024 crates/glue5/src/ui/kit.rs
+      - name: Validate Cargo workspace metadata
+        run: cargo metadata --no-deps --format-version 1 > /tmp/glue5-metadata.json
