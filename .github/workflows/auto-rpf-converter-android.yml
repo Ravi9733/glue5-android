@@ -8,6 +8,16 @@ on:
   workflow_dispatch:
 
 jobs:
+  native-core-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Test native RPF core
+        run: cargo test --manifest-path tools/auto-rpf-converter/native-core/Cargo.toml
+
   build-debug-apk:
     runs-on: ubuntu-latest
     defaults:
