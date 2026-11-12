@@ -5,7 +5,9 @@
 //! read, preserves originals, and rejects unsafe paths / oversized workloads.
 
 use anyhow::{bail, Context, Result};
-use rpf_archive::{build_directory_tree, list_all_files, RpfArchive, RpfEncryption};
+use rpf_archive::{build_directory_tree, list_all_files, RpfArchive};
+
+pub mod android_jni;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};

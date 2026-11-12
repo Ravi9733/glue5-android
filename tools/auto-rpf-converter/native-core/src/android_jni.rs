@@ -1,0 +1,35 @@
+//! JNI entry point for the Android application.
+//! The caller must copy a SAF-selected document to an app-private file first;
+//! the native core then extracts into an app-private destination directory.
+use jni::objects::{JClass, JString};
+use jni::sys::jstring;
+use jni::JNIEnv;
+use std::ptr;
+
+#[no_mangle]
+pub extern "system" fn Java_com_ravi9733_autorpconverter_NativeRpf_extractArchive(
+    mut env: JNIEnv,
+    _class: JClass,
+    source: JString,
+    destination: JString,
+) -> jstring {
+    let result = (|| -> anyhow::Result<String> {
+        let source: String = env.get_string(&source)?.into();
+        let destination: String = env.get_string(&destination)?.into();
+        let report = crate::extract_archive(source, destination, crate::Limits::default())?;
+        Ok(format!(
+            "Extraction complete\nFiles: {}\nBytes: {}\nOutput: {}",
+            report.files_written,
+            report.bytes_written,
+            report.output_dir.display()
+        ))
+    })();
+
+    let message = match result {
+        Ok(message) => message,
+        Err(error) => format!("Extraction failed: {error:#}"),
+    };
+    env.new_string(message)
+        .map(|value| value.into_raw())
+        .unwrap_or_else(|_| ptr::null_mut())
+}

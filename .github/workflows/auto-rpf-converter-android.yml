@@ -46,7 +46,16 @@ jobs:
             exit 1
           fi
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Build Android native library
+        run: |
+          cargo install cargo-ndk --locked
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release --manifest-path native-core/Cargo.toml
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - name: Upload APK
