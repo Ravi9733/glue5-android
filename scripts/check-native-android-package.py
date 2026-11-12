@@ -44,7 +44,7 @@ def validate(root: Path) -> list[str]:
         errors.append("abi must be arm64-v8a")
 
     libraries = manifest["libraries"]
-    if not isinstance(libraries, list) or not libraries or "libgtav.so" not in libraries:
+    if not isinstance(libraries, list) or not libraries:
         errors.append("libraries must be a non-empty list containing libgtav.so")
     elif any(not isinstance(name, str) or Path(name).name != name or not name.endswith(".so")
              for name in libraries):
@@ -52,6 +52,8 @@ def validate(root: Path) -> list[str]:
     elif len(libraries) != len(set(libraries)):
         errors.append("libraries must contain unique filenames")
     else:
+        if "libgtav.so" not in libraries:
+            errors.append("libraries must include libgtav.so")
         for name in libraries:
             if not (root / name).is_file():
                 errors.append(f"declared native library missing: {name}")
