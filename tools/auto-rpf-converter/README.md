@@ -2,11 +2,14 @@
 
 Android prototype for selecting a GTA V folder and inventorying its RPF archives.
 
-## Current prototype (0.2.0)
+## Current prototype (0.3.0)
 
 - Uses Android's Storage Access Framework; the user selects the GTA V folder.
 - Recursively finds files ending in `.rpf`.
-- Reads the 16-byte RPF7 header and reports the archive entry count and encryption marker (OPEN, AES, NG, or unknown).
+- Reads and validates bounded RPF7 table-of-contents metadata (entry count and names-table bounds).
+- For OPEN/unencrypted archives, inventories recognized asset names such as YTD, YDR, YDD, YFT, YBN, YMAP and YTYP.
+- For AES/NG archives, reports that the TOC is encrypted and requires matching key material; it does not attempt key recovery.
+- Rejects TOCs above conservative safety limits (1,000,000 entries / 64 MiB names / 80 MiB total TOC).
 - Produces a shareable text report.
 - Does not alter, extract, repack, or convert any game files.
 - Marks AES/NG archives as requiring matching key material; it does not bypass encryption.
@@ -17,8 +20,8 @@ An RPF archive being readable or writable is not the same as converting PC asset
 
 ## Planned stages
 
-1. RPF7 inventory, entry-count and encryption-marker detection (this prototype).
-2. Archive parser integration and nested-RPF inventory.
+1. RPF7 header and OPEN TOC inventory (prototype 0.3).
+2. Full archive parser integration and nested-RPF inventory.
 3. Asset-type inspection (YTD, YDR, YDD, YFT, YBN, YMAP, YTYP, etc.).
 4. Compare asset/resource versions and texture formats against the target Android engine.
 5. Convert only formats proven incompatible; preserve compatible files byte-for-byte.
@@ -37,4 +40,4 @@ These are parser/format libraries, not proof of compatibility with the specific 
 
 Open this directory in Android Studio with JDK 17 and Android SDK 35, or use the repository GitHub Actions workflow.
 
-The first release is a scanner, not yet an RPF converter. No game data is included.
+This prototype inventories OPEN RPF7 asset names only. It does not extract, transform, repack, or convert assets. AES/NG TOCs are not inspected without valid keys. No game data is included. No game data is included.
