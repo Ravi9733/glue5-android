@@ -1,10 +1,9 @@
 //! Glue 5-specific text entry and compatibility exports for the UI kit.
 use super::TextKind;
 use super::theme::{MUTED, density};
-use super::kit::focus;
 use egui::*;
 
-pub(super) use super::kit::{action_button, action_buttons, choice, close_button, segmented, setting, slider, toggle, Control, focus as focus_control, inline_button};
+pub(super) use super::kit::{action_button, action_buttons, choice, close_button, segmented, setting, slider, toggle, Control, focus, inline_button};
 
 /// A line of text in a field of its own, its name on the left (if any): the
 /// choice control's look. Anywhere on the field gives the text the focus.
