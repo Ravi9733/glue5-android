@@ -13,6 +13,22 @@
     "sdl_java_package": "org.libsdl.app",
     "sdl_version": "SDL3 (native library name and SDL3 Java package verified; exact SDL source revision not yet pinned)",
     "native_getLibraries_order": ["SDL3", "gtav"],
+    "getMainFunction_return": "SDL_main",
+    "loadLibraries_order": [
+      "SDLActivity.super.loadLibraries() loads SDL3 then gtav",
+      "when ownsGameRoot is true: DxvkManager.initialize(this, runtimeConfig)",
+      "then XhynV02Runtime.librariesLoaded(this)"
+    ],
+    "onCreate_observed": [
+      "register controller input-device listener",
+      "call SDLActivity.super.onCreate",
+      "prepare GameUiFocus with layout and surface",
+      "set landscape orientation",
+      "read RuntimeConfig from gameRoot",
+      "apply prepared DXVK and frame-generation configuration",
+      "initialize SDLActivity",
+      "route preparation-required state to StoragePermissionActivity with game_root and auto_start"
+    ],
     "surface_class": "com.gtavsource.android.GTAVActivity$GameSurface",
     "surface_superclass": "org.libsdl.app.SDLSurface",
     "surface_callbacks": {
@@ -23,7 +39,7 @@
     "lifecycle_hooks": [
       {"method": "loadLibraries()V", "status": "verified-method-override"},
       {"method": "getLibraries()[Ljava/lang/String;", "status": "verified-returns-SDL3-then-gtav"},
-      {"method": "getMainFunction()Ljava/lang/String;", "status": "verified-method-override-return-value-still-to-record"},
+      {"method": "getMainFunction()Ljava/lang/String;", "status": "verified-returns-SDL_main"},
       {"method": "onCreate(Bundle)V", "status": "verified-method-override"},
       {"method": "onResume()V", "status": "verified-method-override"},
       {"method": "onPause()V", "status": "verified-method-override"},
@@ -38,7 +54,7 @@
       "elf_dependency_audit": "passed-static-inventory-27-aarch64-elf64-little-endian-and-recorded-DT_NEEDED"
     },
     "surface_destroy_contract": "verified-to-call-SDL-superclass-and-mark-DriverManager-not-ready",
-    "game_start_api": "SDLActivity-host-path; exact getMainFunction return and arguments still need confirmation",
+    "game_start_api": "SDLActivity-host-path with getMainFunction returning SDL_main; nativeRunMain arguments are delegated to the SDL3 Activity implementation",
     "input_audio_bridge": null,
     "xhyn_helper_jni": {
       "install": "requires libgtav.so already loaded; installs build-specific controlled-stop patch; not a launcher",
@@ -70,8 +86,8 @@
     "Do not forward Surface ownership without the exact XHYN SDL host"
   ],
   "remaining_evidence": [
-    "Exact getMainFunction return value and SDL nativeRunMain arguments",
-    "Full loadLibraries body and XHYN-specific manager dependencies",
+    "SDL3 Activity nativeRunMain arguments and exact SDL3 source revision",
+    "Complete XHYN-specific manager/service dependencies and game-root lifecycle",
     "All 27 ARM64 ELF DT_NEEDED dependencies and hashes",
     "Compare exact XHYN SDL Java classes against Glue 5 SDL Java sources",
     "Check for app-specific service/overlay/preferences dependencies",
