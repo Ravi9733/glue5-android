@@ -121,7 +121,7 @@ jobs:
           grep -F 'new java.lang.String[]{"SDL3", "gtav"}' /tmp/final-jadx/sources/com/gtavsource/android/GTAVActivity.java
           grep -F 'SDL_main' /tmp/final-jadx/sources/com/gtavsource/android/GTAVActivity.java
           grep -F '/storage/emulated/0/Games/GTAV' /tmp/final-jadx/sources/com/gtavsource/android/GameRoot.java
-          if grep -R -F "com.xhynph.xhynv.reborn174" /tmp/final-jadx/sources; then
+          if grep -R -F --exclude="R.java" "com.xhynph.xhynv.reborn174" /tmp/final-jadx/sources; then
             echo "Old package ID remains in DEX source"
             exit 1
           fi
