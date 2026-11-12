@@ -1,6 +1,12 @@
 //! Engine-agnostic egui controls shared by Glue 5 shell frontends.
-use super::theme::{INK, MUTED, density};
 use egui::*;
+
+const INK: Color32 = Color32::from_rgb(14, 15, 17);
+const MUTED: Color32 = Color32::from_rgb(157, 160, 166);
+
+fn density(ui: &Ui) -> f32 {
+    ui.style().text_styles[&TextStyle::Body].size / 14.0
+}
 
 pub(super) fn focus(r: Response) -> Response {
     if r.gained_focus() {
