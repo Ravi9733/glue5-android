@@ -180,3 +180,15 @@ The detailed public-source review is recorded in
 a usable game host. The helper JNI declarations likewise do not expose a
 standalone SDL game-start API. Exact Preview 2 DEX/manifest/library-load
 inspection remains the required next gate.
+
+
+## Exact APK evidence collection tool
+
+A read-only inventory helper now exists at
+`scripts/audit-native-host-apk.py`, with the workflow documented in
+`docs/xhyn-preview2-apk-evidence-collection.md`. It records the APK SHA-256,
+manifest hash/size, DEX inventory, ARM64 library hashes/ELF architecture and
+literal host strings. It deliberately does not decode the binary manifest or
+decompile DEX; those remain required from the exact, hash-matched Preview 2
+APK before an adapter can be implemented. CI exercises the helper using a
+synthetic fixture only, not the proprietary game APK.
