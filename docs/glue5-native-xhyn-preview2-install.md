@@ -4,8 +4,8 @@
 
 The latest verified CI artifact is named `Glue5-Native-XHYN-Preview2`:
 
-- GitHub Actions run: https://github.com/Ravi9733/glue5-android/actions/runs/43243690761
-- APK SHA-256: `881a316fc6e343c504995f45c3002cc7ffd9f6a7451897c59ad0a21f86993615`
+- GitHub Actions run: https://github.com/Ravi9733/glue5-android/actions/runs/43244472959
+- APK SHA-256: `de5ad9599877e41765abfe19c9a9f0087e0ed3efb0dc6e15e826214347da45d0`
 - Artifact retention: 3 days from the build.
 
 Open the run's **Artifacts** section and download the ZIP. Extract the APK and checksum file. Verify the APK SHA-256 before installing.
