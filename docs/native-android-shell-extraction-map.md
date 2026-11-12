@@ -1,7 +1,7 @@
-# Glue 5 shell extraction map (Phase 1)
+# Glue 5 shell extraction map (Phases 1–3)
 
 **Branch:** `native-android-engine-backend`  
-**Status:** source map and dependency analysis; no application code changed in this phase.
+**Status:** dependency audit complete; generic egui controls now live in a standalone crate. The full launcher and native engine integration remain pending.
 
 This phase checks whether the existing Glue 5 launcher/settings/touch UI can be compiled independently from its WASM engine before introducing a native XHYN-V backend.
 
@@ -75,4 +75,24 @@ A second pass inspected the actual candidate modules rather than relying only on
 3. Keep `chip.rs`, streaming pages, friends, mods, and server pages outside the first native shell.
 4. Only after the shell's page model no longer references Glue 5 runtime types should the app event loop/backend split begin.
 
-This is a dependency audit only. No source files were moved and no compilation or device test is claimed. The first attempted extraction is intentionally narrowed to avoid dragging SDL clipboard, streaming, or WASM runtime types into a supposedly portable UI crate.
+## Phase 3 implementation: standalone UI kit
+
+The generic controls were moved into `crates/glue5-ui-kit`, a separate workspace crate whose only direct dependency is `egui`:
+
+- `crates/glue5-ui-kit/src/lib.rs` now owns buttons, settings rows, segmented controls, choices, sliders, toggles, and focus handling.
+- `crates/glue5/src/ui/kit.rs` is now a compatibility re-export, so existing UI call sites keep their current names and behavior.
+- `crates/glue5/Cargo.toml` consumes `glue5-ui-kit`; the root workspace declares it as a path dependency.
+- `ui/widgets.rs` retains only Glue 5-specific text editing, `TextKind`, touch checks, and SDL clipboard behavior.
+- `.github/workflows/native-ui-check.yml` checks formatting for both the compatibility module and standalone crate, then runs the workspace metadata/dependency-boundary guard in `scripts/check-native-ui-deps.py`.
+
+The dependency guard asserts that `glue5-ui-kit` depends directly on `egui` only and that the Glue 5 app consumes the new crate. This is a source/metadata boundary check, not a Rust compile, Android APK build, or device test. The existing app still depends on `glue5-runtime`, `glue5-gpu`, `glue5-mods`, and the WASM-derived `glue5-game` transitively; those are not yet removed from a native flavor.
+
+## Remaining native-shell blockers
+
+1. Extract theme/style/font setup from the embedded home-background PNG loader, keeping asset paths stable.
+2. Separate a small native shell page model from `ui.rs` runtime-shaped `Status`, `Started`, server, stream, mods, and benchmark types.
+3. Introduce a platform host lifecycle that can be backed by XHYN-V's real Android SDL activity without guessing JNI signatures.
+4. Add a distinct Android native-engine Gradle flavor/output directory; do not alter the existing WASM APK path.
+5. Only after the exact matching XHYN-V host contract is available, wire the native library and run ARM64 build/install/crash tests.
+
+No APK build or gameplay/device test is claimed.
