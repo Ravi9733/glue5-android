@@ -1,19 +1,41 @@
 #!/usr/bin/env python3
-"""Fail-closed preflight for a future, separately packaged native Android APK.
+"""Fail-closed preflight for a separately packaged native Android staging tree.
 
-This validates packaging inputs only; it does not prove engine compatibility or
-replace the real-device release gates documented in native-android-packaging-plan.md.
+Checks structure and ELF ABI only. It does not prove engine compatibility,
+JNI correctness, signing, launch, or gameplay.
 """
 import json
 import re
+import struct
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REQUIRED_FIELDS = {"schema_version", "application_id", "activity", "abi", "libraries"}
-PACKAGE_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
-ACTIVITY = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)+$")
+PACKAGE_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+$")
+ACTIVITY = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)+$")
 FORBIDDEN_NAMES = {"game.wasm", "libglue5.so", "libSDL3.so"}
+ANDROID = "{http://schemas.android.com/apk/res/android}"
+
+
+def elf_problem(path: Path) -> str | None:
+    """Return an error unless path is a 64-bit little-endian AArch64 ELF."""
+    try:
+        with path.open("rb") as stream:
+            header = stream.read(64)
+    except OSError as exc:
+        return f"cannot read native library {path.name}: {exc}"
+    if len(header) < 20 or header[:4] != b"\\x7fELF":
+        return f"native library is not ELF: {path.name}"
+    if header[4] != 2:
+        return f"native library is not ELF64: {path.name}"
+    if header[5] != 1:
+        return f"native library is not little-endian ELF: {path.name}"
+    machine = struct.unpack_from("<H", header, 18)[0]
+    if machine != 183:
+        return f"native library is not AArch64 (e_machine={machine}): {path.name}"
+    return None
 
 
 def validate(root: Path) -> list[str]:
@@ -30,8 +52,7 @@ def validate(root: Path) -> list[str]:
 
     missing = REQUIRED_FIELDS - manifest.keys()
     if missing:
-        errors.append("missing manifest fields: " + ", ".join(sorted(missing)))
-        return errors
+        return ["missing manifest fields: " + ", ".join(sorted(missing))]
     if manifest["schema_version"] != 1:
         errors.append("schema_version must be 1")
     package_id = manifest["application_id"]
@@ -42,6 +63,25 @@ def validate(root: Path) -> list[str]:
         errors.append("activity must be a fully qualified verified host Activity")
     if manifest["abi"] != "arm64-v8a":
         errors.append("abi must be arm64-v8a")
+
+    android_manifest = root / "AndroidManifest.xml"
+    if not android_manifest.is_file():
+        errors.append("missing staged AndroidManifest.xml")
+    else:
+        try:
+            xml = ET.parse(android_manifest).getroot()
+            if xml.tag != "manifest":
+                errors.append("AndroidManifest.xml root element must be <manifest>")
+            if xml.attrib.get("package") != package_id:
+                errors.append("AndroidManifest.xml package does not match application_id")
+            app = xml.find("application")
+            declared = set()
+            if app is not None:
+                declared = {node.attrib.get(ANDROID + "name") for node in app.findall("activity")}
+            if activity not in declared:
+                errors.append("AndroidManifest.xml does not declare the configured fully qualified Activity")
+        except (ET.ParseError, OSError) as exc:
+            errors.append(f"invalid AndroidManifest.xml: {exc}")
 
     libraries = manifest["libraries"]
     if not isinstance(libraries, list) or not libraries:
@@ -55,12 +95,19 @@ def validate(root: Path) -> list[str]:
         if "libgtav.so" not in libraries:
             errors.append("libraries must include libgtav.so")
         for name in libraries:
-            if not (root / name).is_file():
+            path = root / name
+            if not path.is_file():
                 errors.append(f"declared native library missing: {name}")
+            else:
+                problem = elf_problem(path)
+                if problem:
+                    errors.append(problem)
 
-    # Search the entire staging tree, not just its root, so a nested asset or
-    # ABI folder cannot silently reintroduce the WASM game or old Glue runtime.
+    # Search the entire staging tree so nested payloads cannot reintroduce WASM.
     for path in root.rglob("*"):
+        if path.is_symlink():
+            errors.append(f"symlinks are not allowed in native staging: {path.relative_to(root)}")
+            continue
         if not path.is_file():
             continue
         if path.name in FORBIDDEN_NAMES or path.suffix.lower() == ".wasm":
@@ -68,10 +115,23 @@ def validate(root: Path) -> list[str]:
     return errors
 
 
+def write_arm64_elf(path: Path) -> None:
+    header = bytearray(64)
+    header[:7] = b"\\x7fELF\\x02\\x01\\x01"
+    struct.pack_into("<H", header, 18, 183)  # EM_AARCH64
+    path.write_bytes(header)
+
+
 def self_test() -> None:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
-        (root / "libgtav.so").write_bytes(b"test-only-placeholder")
+        write_arm64_elf(root / "libgtav.so")
+        (root / "AndroidManifest.xml").write_text(
+            '<manifest xmlns:android="http://schemas.android.com/apk/res/android" '
+            'package="local.glue5.native"><application>'
+            '<activity android:name="com.example.verified.GTAVActivity"/>'
+            '</application></manifest>'
+        )
         manifest = {
             "schema_version": 1,
             "application_id": "local.glue5.native",
@@ -81,17 +141,37 @@ def self_test() -> None:
         }
         (root / "native-package.json").write_text(json.dumps(manifest))
         assert validate(root) == [], validate(root)
+
         nested = root / "assets" / "legacy"
         nested.mkdir(parents=True)
         (nested / "game.wasm").write_bytes(b"forbidden")
         assert any("assets/legacy/game.wasm" in error for error in validate(root))
         (nested / "game.wasm").unlink()
+
         manifest["application_id"] = "local.glue5"
         (root / "native-package.json").write_text(json.dumps(manifest))
         assert any("distinct from local.glue5" in error for error in validate(root))
+
+        manifest["application_id"] = "local.glue5.native"
         manifest["libraries"] = [{"unexpected": "object"}]
         (root / "native-package.json").write_text(json.dumps(manifest))
         assert any("plain .so filenames" in error for error in validate(root))
+
+        manifest["libraries"] = ["libgtav.so"]
+        write_arm64_elf(root / "libgtav.so")
+        (root / "libgtav.so").write_bytes(b"not an ELF")
+        (root / "native-package.json").write_text(json.dumps(manifest))
+        assert any("not ELF" in error for error in validate(root))
+
+        (root / "libgtav.so").unlink()
+        (root / "libgtav.so").write_bytes(b"\\x7fELF\\x02\\x01\\x01" + bytes(11) + struct.pack("<H", 62) + bytes(44))
+        assert any("not AArch64" in error for error in validate(root))
+
+        (root / "libgtav.so").unlink()
+        write_arm64_elf(root / "libgtav.so")
+        (root / "AndroidManifest.xml").write_text("<manifest><application/></manifest>")
+        assert any("does not match application_id" in error for error in validate(root))
+
     print("Native Android packaging preflight self-test: OK")
 
 
@@ -101,7 +181,7 @@ if __name__ == "__main__":
     elif len(sys.argv) == 2:
         failures = validate(Path(sys.argv[1]))
         if failures:
-            print("\n".join(f"BLOCKED: {failure}" for failure in failures), file=sys.stderr)
+            print("\\n".join(f"BLOCKED: {failure}" for failure in failures), file=sys.stderr)
             raise SystemExit(1)
         print("Native Android packaging inputs: structurally valid")
     else:
