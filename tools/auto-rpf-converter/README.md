@@ -2,13 +2,14 @@
 
 Android prototype for selecting a GTA V folder and inventorying its RPF archives.
 
-## Current prototype (0.1.0)
+## Current prototype (0.2.0)
 
 - Uses Android's Storage Access Framework; the user selects the GTA V folder.
 - Recursively finds files ending in `.rpf`.
-- Reads only the first 16 bytes of each archive and records size/header information.
+- Reads the 16-byte RPF7 header and reports the archive entry count and encryption marker (OPEN, AES, NG, or unknown).
 - Produces a shareable text report.
 - Does not alter, extract, repack, or convert any game files.
+- Marks AES/NG archives as requiring matching key material; it does not bypass encryption.
 
 ## Important compatibility note
 
@@ -16,7 +17,7 @@ An RPF archive being readable or writable is not the same as converting PC asset
 
 ## Planned stages
 
-1. RPF inventory and signature detection (this prototype).
+1. RPF7 inventory, entry-count and encryption-marker detection (this prototype).
 2. Archive parser integration and nested-RPF inventory.
 3. Asset-type inspection (YTD, YDR, YDD, YFT, YBN, YMAP, YTYP, etc.).
 4. Compare asset/resource versions and texture formats against the target Android engine.
