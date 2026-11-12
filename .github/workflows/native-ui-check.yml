@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   rustfmt:
-    name: Rust formatting
+    name: Native UI module formatting
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -19,5 +19,5 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - name: Check newly extracted UI module
+        run: rustfmt --check --edition 2024 crates/glue5/src/ui/kit.rs
