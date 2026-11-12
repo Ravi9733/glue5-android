@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print minimal XHYN host declarations and SDL call evidence from JADX output."""
+"""Print minimal XHYN host declarations and lifecycle call evidence from JADX output."""
 from __future__ import annotations
 import argparse
 import re
@@ -7,7 +7,7 @@ from pathlib import Path
 
 DECLARATIONS = (
     re.compile(r"^\s*(?:public|protected|private)?\s*(?:static\s+)?(?:final\s+)?(?:class|interface)\s+GTAVActivity\b"),
-    re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:loadLibraries|onCreate|onResume|onPause|onDestroy|getLibraries|getMainFunction|nativeRunMain)\s*\([^;]*\)"),
+    re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:loadLibraries|onCreate|onResume|onPause|onDestroy|getLibraries|getMainFunction|nativeRunMain|gameRoot)\s*\([^;]*\)"),
     re.compile(r"^\s*(?:public|protected|private)\s+[^=;]+\b(?:surfaceCreated|surfaceChanged|surfaceDestroyed)\s*\([^;]*\)"),
 )
 SAFE_HOST_LINES = re.compile(
@@ -16,7 +16,9 @@ SAFE_HOST_LINES = re.compile(
     r"surfaceCreated|surfaceChanged|surfaceDestroyed|SurfaceHolder|"
     r"super\.(?:onCreate|onResume|onPause|onDestroy|loadLibraries)|"
     r"onCreate\(|onResume\(|onPause\(|onDestroy\(|"
-    r"GameSurface|setMainReady|mSDLThread|mSurface|DxvkManager"
+    r"GameSurface|setMainReady|mSDLThread|mSurface|DxvkManager|"
+    r"gameRoot\(|getExternalFilesDir|getFilesDir|StoragePermissionActivity|"
+    r"ModSpawnProvider|\.modspawn|getPackageName\("
 )
 
 def main() -> int:
