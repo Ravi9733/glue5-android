@@ -169,3 +169,14 @@ prepared third-party patch directories in the repository checkout; Android
 engine packaging also remains blocked by the unpublished XHYN-V 0.3 host
 implementation and unverified SDL/ABI contract.
 
+
+
+## Follow-up XHYN 0.3 source audit
+
+The detailed public-source review is recorded in
+`docs/xhyn-v03-host-compatibility-audit.md`. It confirms that the 0.3
+`GTAVActivity.java` is a throwing compile stub and that
+`XhynV02ProbeActivity` is only a separate Vulkan triangle probe. Neither is
+a usable game host. The helper JNI declarations likewise do not expose a
+standalone SDL game-start API. Exact Preview 2 DEX/manifest/library-load
+inspection remains the required next gate.
