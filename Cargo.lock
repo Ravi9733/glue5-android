@@ -1002,6 +1002,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "glue5-native-shell"
+version = "0.1.0"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "glue5-mods"
 version = "0.1.0"
 dependencies = [
@@ -1040,6 +1047,13 @@ dependencies = [
 
 [[package]]
 name = "glue5-stream"
+[[package]]
+name = "glue5-ui-kit"
+version = "0.1.0"
+dependencies = [
+ "egui",
+]
+
 version = "0.1.0"
 dependencies = [
  "anyhow",
