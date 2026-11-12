@@ -20,6 +20,8 @@ jobs:
         with:
           components: rustfmt
       - name: Check extracted UI module formatting
-        run: rustfmt --check --edition 2024 crates/glue5/src/ui/kit.rs
+        run: rustfmt --check --edition 2024 crates/glue5/src/ui/kit.rs crates/glue5-ui-kit/src/lib.rs
       - name: Validate Cargo workspace metadata
         run: cargo metadata --no-deps --format-version 1 > /tmp/glue5-metadata.json
+      - name: Ensure the shared UI kit stays engine-independent
+        run: python3 scripts/check-native-ui-deps.py /tmp/glue5-metadata.json
