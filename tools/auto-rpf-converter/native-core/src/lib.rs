@@ -142,6 +142,9 @@ pub fn extract_archive(
 }
 
 fn safe_relative_path(raw: &str) -> Result<PathBuf> {
+    if raw.contains(':') {
+        bail!("drive-qualified archive path rejected: {raw}");
+    }
     let normalized = raw.replace('\\', "/");
     let path = Path::new(&normalized);
     let mut clean = PathBuf::new();
