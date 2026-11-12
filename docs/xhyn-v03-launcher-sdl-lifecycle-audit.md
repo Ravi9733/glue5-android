@@ -30,9 +30,11 @@ decompilation or proprietary libraries.
    short-lived `xhyn-v03-host-evidence` CI artifact.
 7. The APK contains 27 ARM64 shared libraries in total. The published
    verification count of 26 refers to the original engine/companion set;
-   the additional `libxhyn_v02.so` is the XHYN runtime helper. The
-   dependency audit now checks this distinction and records every library's
-   SHA-256, ELF header and DT_NEEDED entries.
+   the additional `libxhyn_v02.so` is the XHYN runtime helper. CI confirmed
+   exactly 26 non-helper libraries plus that helper, and all 27 are ELF64,
+   little-endian AArch64. The audit records every library SHA-256 and
+   DT_NEEDED dependency list. This is static ELF validation, not yet a full
+   Android runtime dependency-closure or symbol-compatibility proof.
 
 ## What is still not established
 
@@ -88,7 +90,8 @@ XHYN host's dependencies on its app-specific managers/services are mapped.
 - Native SDL library order `SDL3 → gtav`: **verified**.
 - SDL surface subclass and create/change/destroy overrides: **verified**.
 - 27 ARM64 libraries (26 original + helper): **count discrepancy explained**.
-- Per-library ELF/dependency audit: **running in CI; not yet accepted**.
+- Per-library ELF/DT_NEEDED inventory: **passed** (27 AArch64 ELF64 libraries;
+  26 original plus `libxhyn_v02.so`).
 - Glue 5 SDL3 source/ABI equivalence: **not yet proven**.
 - Native adapter and separate launcher implementation: **not yet implemented**.
 - Installable APK and device gameplay/performance tests: **not yet available**.
