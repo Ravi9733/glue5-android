@@ -183,6 +183,12 @@ impl Preset {
                 // arbitrary same-named shader from another package.
                 .or_else(|| find_unique_effect_by_filename(preset_dir, relative.file_name()?))
                 .unwrap_or(expected);
+            // Do not activate a technique whose shader is absent. In
+            // particular, this lets the compatible LumaSharpen fallback
+            // replace a missing qUINT_sharp.fx instead of loading a dead path.
+            if !path.is_file() {
+                return None;
+            }
             // Never infer that every parameter section is enabled. ReShade
             // INIs commonly retain settings for dozens of inactive effects;
             // compiling all of them can load unsupported shaders at startup.
@@ -477,7 +483,7 @@ Exposure=0.5
         let rtgi = shaders.join("qUINT_rtgi.fx");
         std::fs::write(&rtgi, "// depth effect").unwrap();
         let preset = Preset::parse(
-            "[GENERAL]\\nTechniqueSorting=RTGI@Shaders/qUINT_rtgi.fx\\n[TECHNIQUES]\\nRTGI@Shaders/qUINT_rtgi.fx=1\\n"
+            "[GENERAL]\nTechniqueSorting=RTGI@Shaders/qUINT_rtgi.fx\n[TECHNIQUES]\nRTGI@Shaders/qUINT_rtgi.fx=1\n"
         );
         let effects = preset.effect_files(&root);
         assert_eq!(effects.len(), 1);
