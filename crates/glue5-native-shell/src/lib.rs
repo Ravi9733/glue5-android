@@ -34,11 +34,7 @@ pub struct LaunchOptions {
 
 impl Default for LaunchOptions {
     fn default() -> Self {
-        Self {
-            max_fps: 60,
-            render_scale: 1.0,
-            audio_enabled: true,
-        }
+        Self { max_fps: 60, render_scale: 1.0, audio_enabled: true }
     }
 }
 
@@ -76,27 +72,17 @@ impl NativeShell {
     /// Keeping this guard outside the egui click handler also protects other frontends.
     pub fn start_game(&mut self, engine: &mut impl NativeEngine) {
         if !matches!(engine.state(), EngineState::Ready | EngineState::Stopped) {
-            self.last_error = Some(format!(
-                "Cannot start the native engine while it is {:?}.",
-                engine.state()
-            ));
+            self.last_error = Some(format!("Cannot start the native engine while it is {:?}.", engine.state()));
             return;
         }
 
-        self.last_error = self
-            .options
-            .validate()
-            .and_then(|()| engine.start(&self.options))
-            .err();
+        self.last_error = self.options.validate().and_then(|()| engine.start(&self.options)).err();
     }
 
     /// Request shutdown only while an engine session is active or starting.
     pub fn stop_game(&mut self, engine: &mut impl NativeEngine) {
         if !matches!(engine.state(), EngineState::Running | EngineState::Starting) {
-            self.last_error = Some(format!(
-                "Cannot stop the native engine while it is {:?}.",
-                engine.state()
-            ));
+            self.last_error = Some(format!("Cannot stop the native engine while it is {:?}.", engine.state()));
             return;
         }
 
@@ -155,10 +141,7 @@ impl NativeShell {
 
     fn show_settings(&mut self, ui: &mut Ui) {
         ui.add(egui::Slider::new(&mut self.options.max_fps, 30..=120).text("FPS limit"));
-        ui.add(
-            egui::Slider::new(&mut self.options.render_scale, 0.5..=1.0)
-                .text("Render scale"),
-        );
+        ui.add(egui::Slider::new(&mut self.options.render_scale, 0.5..=1.0).text("Render scale"));
         ui.checkbox(&mut self.options.audio_enabled, "Audio enabled");
     }
 }
@@ -256,10 +239,7 @@ mod tests {
     fn invalid_render_scale_is_rejected() {
         for render_scale in [0.0, 1.1, f32::NAN, f32::INFINITY] {
             let options = LaunchOptions { render_scale, ..Default::default() };
-            assert_eq!(
-                options.validate(),
-                Err("Render scale must be between 0.5 and 1.0")
-            );
+            assert_eq!(options.validate(), Err("Render scale must be between 0.5 and 1.0"));
         }
     }
 }
