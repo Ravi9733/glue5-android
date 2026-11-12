@@ -40,7 +40,7 @@ class MainActivity : Activity() {
         ))
 
         val subtitle = TextView(this).apply {
-            text = "Prototype 0.2 • RPF7 header and encryption inspection"
+            text = "Prototype 0.3 • OPEN RPF7 TOC and asset inventory"
             textSize = 13f
             setTextColor(0xFFB9C6B5.toInt())
             gravity = Gravity.CENTER
@@ -77,7 +77,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select your GTA V folder. The app checks RPF7 headers, archive entry counts and encryption markers.\n\nThis prototype is read-only and does not convert files."
+            text = "Select your GTA V folder. The app checks RPF7 headers, archive entry counts and encryption markers.\n\nThis prototype reads OPEN RPF7 tables of contents. It does not modify source archives or convert assets."
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)
@@ -113,7 +113,8 @@ class MainActivity : Activity() {
         val description: String,
         val entryCount: Long? = null,
         val encryption: String = "Unknown",
-        val isGtaV: Boolean = false
+        val isGtaV: Boolean = false,
+        val assetSummary: String = "TOC not inspected"
     )
 
     private fun inspectHeader(uri: Uri): HeaderInfo {
@@ -138,6 +139,7 @@ class MainActivity : Activity() {
 
         val bb = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
         val entries = bb.getInt(4).toLong() and 0xFFFFFFFFL
+        val namesLength = bb.getInt(8).toLong() and 0xFFFFFFFFL
         val encryptionWord = bb.getInt(12)
         val encryption = when (encryptionWord) {
             0x4E45504F -> "OPEN (no archive key needed)"
@@ -146,14 +148,76 @@ class MainActivity : Activity() {
             0 -> "None"
             else -> "Unknown marker 0x%08X".format(encryptionWord)
         }
-        val namesLength = bb.getInt(8).toLong() and 0x0FFFFFFFL
-        val tocEnd = 16L + entries * 16L + namesLength
-        val bounds = if (tocEnd <= (Long.MAX_VALUE / 2)) "TOC metadata present" else "Invalid TOC length"
+        val tocBytes = 16L + entries * 16L + namesLength
+        if (entries > 1_000_000L || namesLength > MAX_NAMES_BYTES ||
+            tocBytes > MAX_TOC_BYTES || tocBytes < 16L) {
+            return HeaderInfo(
+                "GTA V RPF7 • invalid or oversized TOC metadata",
+                entries, encryption, true, "TOC rejected by safety limits"
+            )
+        }
+
+        if (encryptionWord != 0x4E45504F && encryptionWord != 0) {
+            return HeaderInfo(
+                "GTA V RPF7 • encrypted TOC; key required",
+                entries, encryption, true, "Asset names unavailable without keys"
+            )
+        }
+
+        val toc = try {
+            contentResolver.openInputStream(uri)?.use { input ->
+                val bytes = ByteArray(tocBytes.toInt())
+                var offset = 0
+                while (offset < bytes.size) {
+                    val n = input.read(bytes, offset, bytes.size - offset)
+                    if (n <= 0) break
+                    offset += n
+                }
+                if (offset == bytes.size) bytes else null
+            }
+        } catch (_: Exception) { null } ?: return HeaderInfo(
+            "GTA V RPF7 • TOC could not be read",
+            entries, encryption, true, "Incomplete TOC read"
+        )
+
+        val entryCount = entries.toInt()
+        val namesStart = 16 + entryCount * 16
+        val names = toc.copyOfRange(namesStart, namesStart + namesLength.toInt())
+        val counts = linkedMapOf<String, Int>()
+        var badOffsets = 0
+        for (i in 0 until entryCount) {
+            val off = 16 + i * 16
+            val h2 = ByteBuffer.wrap(toc, off + 4, 4).order(ByteOrder.LITTLE_ENDIAN).int
+            val nameOffset = if (h2 == 0x7FFFFF00) {
+                ByteBuffer.wrap(toc, off, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
+            } else {
+                (toc[off].toInt() and 0xFF) or ((toc[off + 1].toInt() and 0xFF) shl 8)
+            }
+            if (nameOffset >= names.size) {
+                badOffsets++
+                continue
+            }
+            var nameEnd = nameOffset.toInt()
+            while (nameEnd < names.size && names[nameEnd].toInt() != 0) nameEnd++
+            if (nameEnd == names.size) {
+                badOffsets++
+                continue
+            }
+            val name = names.copyOfRange(nameOffset.toInt(), nameEnd)
+                .toString(Charsets.UTF_8).lowercase()
+            val ext = name.substringAfterLast('.', "")
+            if (ext in ASSET_EXTENSIONS) counts[ext] = (counts[ext] ?: 0) + 1
+        }
+        val summary = if (counts.isEmpty()) {
+            "No recognized asset extensions; invalid name offsets=$badOffsets"
+        } else {
+            counts.entries.sortedByDescending { it.value }
+                .joinToString(", ") { ".${it.key}: ${it.value}" } +
+                " • invalid name offsets=$badOffsets"
+        }
         return HeaderInfo(
-            "GTA V RPF7 • $bounds",
-            entries,
-            encryption,
-            true
+            "GTA V RPF7 • TOC validated",
+            entries, encryption, true, summary
         )
     }
 
@@ -189,7 +253,7 @@ class MainActivity : Activity() {
                     rows.add(
                         "${child.name} | ${"%.2f".format(size / 1048576.0)} MiB | " +
                         "${info.description} | entries=${info.entryCount ?: "?"} | " +
-                        "encryption=${info.encryption}"
+                        "encryption=${info.encryption} | assets=${info.assetSummary}"
                     )
                 }
             }
@@ -197,7 +261,7 @@ class MainActivity : Activity() {
 
         rows.sort()
         return buildString {
-            appendLine("GTA V RPF INVENTORY — PROTOTYPE 0.2")
+            appendLine("GTA V RPF INVENTORY — PROTOTYPE 0.3")
             appendLine("RPF files found: ${rows.size}")
             appendLine("GTA V RPF7 archives: $gtaVArchives")
             appendLine("OPEN archives: $openArchives")
@@ -208,9 +272,9 @@ class MainActivity : Activity() {
             rows.forEach { appendLine(it) }
             appendLine()
             appendLine("Read-only scan. No source files were changed.")
-            appendLine("Encrypted RPF contents cannot be inspected without the matching key material.")
+            appendLine("OPEN/unencrypted RPF7 TOCs are inspected for YTD/YDR/YFT/YMAP and related asset names. AES/NG TOCs need the matching key material.")
             appendLine("RPF7 detection is not proof that the archive's assets are compatible with a specific Android game port.")
-            appendLine("This build does not yet extract, transform or convert assets.")
+            appendLine("This build inventories asset names only; it does not extract, transform or convert assets.")
         }
     }
 
@@ -221,5 +285,8 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_FOLDER = 1001
+        private const val MAX_NAMES_BYTES = 64L * 1024L * 1024L
+        private const val MAX_TOC_BYTES = 80L * 1024L * 1024L
+        private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ysc", "awc", "awc", "rel", "dat")
     }
 }
