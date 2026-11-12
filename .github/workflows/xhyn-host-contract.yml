@@ -7,6 +7,8 @@ on:
     paths:
       - "scripts/summarize-xhyn-host-signatures.py"
       - "scripts/audit-xhyn-apk-native-libraries.py"
+      - "docs/xhyn-v03-host-lifecycle-contract.json"
+      - "docs/xhyn-v03-launcher-sdl-lifecycle-audit.md"
       - ".github/workflows/xhyn-host-contract.yml"
 
 permissions:
