@@ -4,7 +4,7 @@
 //! A platform adapter must implement NativeEngine using the exact host contract
 //! supplied by the selected engine build before gameplay can be started.
 
-use egui::{CentralPanel, Context, RichText, Ui};
+use egui::{RichText, Ui};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Screen {
@@ -91,7 +91,7 @@ impl NativeShell {
     }
 
     pub fn show(&mut self, ui: &mut Ui, engine: &mut impl NativeEngine) {
-        CentralPanel::default().show_inside(ui, |ui| self.show_contents(ui, engine));
+        self.show_contents(ui, engine);
     }
 
     fn show_contents(&mut self, ui: &mut Ui, engine: &mut impl NativeEngine) {
