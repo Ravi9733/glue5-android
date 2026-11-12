@@ -199,3 +199,42 @@ synthetic fixture only, not the proprietary game APK.
 The source-level comparison is recorded in `docs/xhyn-v03-launcher-sdl-lifecycle-audit.md`. It identifies the exact 0.3 patch touchpoints (`GTAVActivity.loadLibraries`, resume/pause/destroy and `GameSurface.surfaceCreated/surfaceChanged`) and confirms that the public runtime helper is injected only after the original Activity has loaded its libraries. It also distinguishes the helper JNI methods from a game-start API: `install` requires an already-loaded `libgtav.so`, while `identity`/`probe` are diagnostics.
 
 This narrows the blocker: XHYN's broad SDL/native architecture and lifecycle hooks are now known from public source, but its original 0.3 Activity body, exact SDL version, launch arguments, complete ordered library list, surface-destroy semantics and input/audio ownership remain unavailable without inspecting the exact Preview 2 APK. Glue 5 uses SDL3 and loads `SDL3` then `glue5`; that is not evidence of ABI compatibility. Therefore no JNI adapter, manual `SDL_main` call, shared-process game-library load, or fake launcher has been added. A separate host remains the target, with `local.glue5` and existing Documents/Glue5 data protected.
+
+
+## Exact Preview 2 host verification update
+
+The published Preview 2 APK was downloaded by CI and matched the expected
+SHA-256. DEX inspection verified that the actual launcher host is
+`com.gtavsource.android.GTAVActivity extends org.libsdl.app.SDLActivity`.
+Its ordered native library list is `SDL3` then `gtav`, and its SDL main
+function is `SDL_main`. It creates an XHYN-specific `GameSurface` extending
+`org.libsdl.app.SDLSurface`, with create/change/destroy overrides that retain
+SDL superclass callbacks and update XHYN surface state.
+
+The actual `loadLibraries()` path calls SDL's superclass loader, then
+initializes DXVK and calls `XhynV02Runtime.librariesLoaded(this)` when the
+Activity owns the game root. Its `onCreate()` also depends on XHYN runtime
+configuration, DXVK/frame-generation setup, game-root resolution,
+controller-device observation, game UI focus and a storage/preparation
+Activity. Recreating only the SDLActivity superclass would omit these
+dependencies.
+
+Static ELF inspection found 27 ARM64 libraries: 26 original engine/companion
+libraries plus `libxhyn_v02.so`. All 27 are ELF64, little-endian AArch64.
+Per-library SHA-256 and `DT_NEEDED` data are captured in the short-lived CI
+artifact. This does not yet prove the full Android runtime dependency closure
+or symbol compatibility with Glue 5's SDL3 build.
+
+### Updated integration direction
+
+The SDL family and Java package are now verified to be the same broad SDL3
+family as Glue 5. This is a stronger compatibility lead, not proof of exact
+SDL source/JNI ABI equivalence. A safe next route is to reuse the original
+XHYN Activity and its required Java classes/resources as the native engine
+host inside a separate application target, while adding a Glue 5-style
+launcher surface in front. Before implementing this, map all manifest
+components, package authorities, game-root paths and XHYN-specific runtime
+services. Keep the current `local.glue5` app and its data untouched.
+
+No native adapter, separate launcher APK, install test or device gameplay
+test is claimed by this audit.
