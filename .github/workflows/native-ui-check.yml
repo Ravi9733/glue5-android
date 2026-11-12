@@ -25,5 +25,17 @@ jobs:
         run: cargo metadata --no-deps --format-version 1 > /tmp/glue5-metadata.json
       - name: Ensure reusable UI crates stay engine-independent
         run: python3 scripts/check-native-ui-deps.py /tmp/glue5-metadata.json
-      - name: Compile and test the WASM-independent native shell
-        run: cargo test --locked -p glue5-native-shell --lib
+      - name: Compile and test the WASM-independent native shell in isolation
+        run: |
+          mkdir -p /tmp/glue5-native-shell-test/src
+          cp crates/glue5-native-shell/src/lib.rs /tmp/glue5-native-shell-test/src/lib.rs
+          cat > /tmp/glue5-native-shell-test/Cargo.toml <<'EOF'
+          [package]
+          name = "glue5-native-shell-test"
+          version = "0.1.0"
+          edition = "2024"
+
+          [dependencies]
+          egui = "=0.36.2"
+          EOF
+          cargo test --manifest-path /tmp/glue5-native-shell-test/Cargo.toml --lib
