@@ -99,7 +99,7 @@ if __name__ == "__main__":
     elif len(sys.argv) == 2:
         failures = validate(Path(sys.argv[1]))
         if failures:
-            print("\\n".join(f"BLOCKED: {failure}" for failure in failures), file=sys.stderr)
+            print("\n".join(f"BLOCKED: {failure}" for failure in failures), file=sys.stderr)
             raise SystemExit(1)
         print("Native Android packaging inputs: structurally valid")
     else:
