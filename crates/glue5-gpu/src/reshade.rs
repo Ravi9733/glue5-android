@@ -470,6 +470,24 @@ Exposure=0.5
     }
 
     #[test]
+    fn resolves_enabled_effects_without_parameter_sections_and_requests_depth() {
+        let root = std::env::temp_dir().join(format!("glue5-reshade-depth-{}", std::process::id()));
+        let shaders = root.join("Shaders");
+        std::fs::create_dir_all(&shaders).unwrap();
+        let rtgi = shaders.join("qUINT_rtgi.fx");
+        std::fs::write(&rtgi, "// depth effect").unwrap();
+        let preset = Preset::parse(
+            "[GENERAL]\\nTechniqueSorting=RTGI@Shaders/qUINT_rtgi.fx\\n[TECHNIQUES]\\nRTGI@Shaders/qUINT_rtgi.fx=1\\n"
+        );
+        let effects = preset.effect_files(&root);
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].path, rtgi);
+        assert!(preset.requires_depth_capture(&root));
+        assert!(preset.to_vkbasalt_config(&root, preset.requires_depth_capture(&root)).contains("depthCapture = on"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn parses_general_order_definitions_and_parameters() {
         let p = Preset::parse(SAMPLE);
         assert_eq!(p.technique_sorting, ["Bloom@Bloom.fx", "Tonemap@Tonemap.fx"]);
