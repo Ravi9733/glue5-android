@@ -25,3 +25,5 @@ jobs:
         run: cargo metadata --no-deps --format-version 1 > /tmp/glue5-metadata.json
       - name: Ensure reusable UI crates stay engine-independent
         run: python3 scripts/check-native-ui-deps.py /tmp/glue5-metadata.json
+      - name: Compile and test the WASM-independent native shell
+        run: cargo test --locked -p glue5-native-shell --lib
