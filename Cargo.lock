@@ -1002,13 +1002,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glue5-native-shell"
-version = "0.1.0"
-dependencies = [
- "egui",
-]
-
-[[package]]
 name = "glue5-mods"
 version = "0.1.0"
 dependencies = [
@@ -1025,6 +1018,13 @@ dependencies = [
  "sha2",
  "tungstenite",
  "wasm-bindgen-cli-support",
+]
+
+[[package]]
+name = "glue5-native-shell"
+version = "0.1.0"
+dependencies = [
+ "egui",
 ]
 
 [[package]]
@@ -1047,6 +1047,20 @@ dependencies = [
 
 [[package]]
 name = "glue5-stream"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "env_logger",
+ "libc",
+ "log",
+ "serde_json",
+ "sha2",
+ "socket2",
+ "windows-sys",
+ "zstd",
+]
+
 [[package]]
 name = "glue5-ui-kit"
 version = "0.1.0"
@@ -1054,7 +1068,6 @@ dependencies = [
  "egui",
 ]
 
-version = "0.1.0"
 dependencies = [
  "anyhow",
  "crc32fast",
