@@ -50,3 +50,17 @@ entrypoint, surface lifecycle, and data requirements are verified may the
 Android adapter implement `NativeEngine`. Until then the shell remains
 `NotAttached`. The inventory script's self-test runs in CI, but CI does not
 have the proprietary Preview 2 APK and does not claim to validate it.
+
+
+## Automated local evidence bundle
+
+For a fuller read-only evidence bundle, install Android SDK command-line tools (apkanalyzer or aapt), JADX, and NDK LLVM utilities (llvm-readelf and llvm-nm) on a trusted workstation, then run:
+
+```sh
+python3 scripts/extract-native-host-evidence.py \
+  /path/to/XHYN-V-0.3-Preview2.apk --out ./xhyn-preview2-evidence
+```
+
+The helper records the APK SHA-256, extracts only ARM64 shared libraries into the output folder, attempts manifest/DEX inspection, and records ELF headers, dynamic dependencies and exported symbols. Missing tools are reported explicitly; they are not silently treated as successful inspection. If JADX is available, inspect the generated `jadx/` directory for the exact launcher Activity and SDL lifecycle. The script never patches or repackages the APK.
+
+Keep this evidence bundle private. Do not upload proprietary libraries, game assets, signing material, or a full JADX decompilation to the public repository. Share only the APK hash, relevant Activity method signatures, manifest facts, SDL version and ordered library names needed to define the adapter contract.
