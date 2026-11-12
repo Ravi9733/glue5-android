@@ -96,3 +96,23 @@ The dependency guard asserts that `glue5-ui-kit` depends directly on `egui` only
 5. Only after the exact matching XHYN-V host contract is available, wire the native library and run ARM64 build/install/crash tests.
 
 No APK build or gameplay/device test is claimed.
+
+
+## Phase 4 implementation: WASM-independent native shell scaffold
+
+A separate `crates/glue5-native-shell` workspace crate now provides a minimal
+Home/Settings UI, launch options, engine state model, and the narrow
+`NativeEngine` trait. Its direct dependency is only `egui`; it does not
+depend on `glue5-game`, `glue5-runtime`, `glue5-mods`, or `glue5-gpu`.
+The shell remains a scaffold and is not yet connected to the current Android
+Activity or to XHYN-V.
+
+The UI deliberately shows an unattached state until a verified engine adapter
+exists. See [native Android integration contract](native-android-integration-contract.md)
+for the exact XHYN host facts, required adapter inputs, lifecycle requirements,
+and build/data-safety boundary.
+
+**Important:** the native shell crate's presence does not make the existing
+Glue 5 APK WASM-free. The existing `glue5` package still depends on the
+current WASM runtime and renderer. A separate Android target and verified
+XHYN host adapter remain necessary.
