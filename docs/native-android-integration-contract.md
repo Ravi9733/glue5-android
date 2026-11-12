@@ -1,4 +1,4 @@
-# Native shell integration contract (Phase 4)
+# Native shell integration contract (Phase 5)
 
 ## What exists now
 
@@ -16,36 +16,64 @@ The crate is intentionally not a JNI adapter and is not yet linked into the
 existing `glue5` Android cdylib. The current `glue5` package still links the
 WASM runtime, GPU, mods and streaming paths.
 
-## XHYN-V host facts verified from its public source
+## XHYN-V 0.3 Preview 2 facts now verified
 
-The XHYN-V modification source identifies the SDL launcher call as
-`SDLActivity.nativeRunMain`. Its `RebornNative.java` comment places that
-hook after SDL has loaded `libgtav` and before `nativeRunMain`. The public
-`GTAVActivity.java` files under `modifications/stubs` are compile stubs,
-not the original activity implementation.
+The public XHYN-V 0.3 project README describes its runtime path as Android/SDL
+loading a native ARM64 game engine and explicitly says the 64-bit
+`libgtav.so` is loaded through Android/SDL's native entry point. It also
+describes DXVK translating the engine's D3D11/DXGI calls to Vulkan. This
+establishes the broad architecture, but not the exact Java or JNI call
+signature needed to host that engine from a different application.
 
-Therefore, those files do not define a reusable Java host API, JNI method
-signature, native lifecycle, surface contract, or a safe way to create a
-second SDL activity from Glue 5. The exact matching host APK/source and
-native-library contract are still required. Do not copy guessed JNI names or
-call `SDL_main`/ `nativeRunMain` directly from this crate.
+The 0.3 Preview 2 `VERIFICATION.json` records:
+
+- package `com.xhynph.xhynv.reborn174`, version `0.3-preview2`, code 301;
+- ARM64 native library inventory count: 26;
+- the exact Preview 2 APK SHA-256:
+  `a681765d9aae1404c59e3570682f3078bf9062ff800abfc7c5e1972f2783309f`;
+- host Application/launcher startup tests on Android APIs 30 and 35;
+- no physical-device gameplay, Android UI execution, or physical GPU probe.
+
+The uploaded Preview 2 APK hash previously supplied by the user matches this
+published verification record. The exact-hash build driver in the same
+modification source expects a different original input/base APK hash
+(`93f7850751a6ca172ba3cc6c42ca9abe1557dea1bba7b9def9d0bef0c9cd894d)).
+That driver creates the published modification layer from its exact base; it
+does not compile or publish the original game engine.
+
+## What is still not established
+
+The XHYN-V modification source identifies `SDLActivity.nativeRunMain` as a
+launcher call in its earlier source history, and its `RebornNative.java`
+comment places a hook after SDL has loaded `libgtav` and before that call.
+However, the public `GTAVActivity.java` files under `modifications/stubs`
+are compile stubs, not the original Android Activity implementation. The
+0.1 `verification/native-runtime.json` is explicitly static inspection of
+the shipped 0.1 APK, not a 0.3 runtime trace.
+
+Thus the public material does not yet provide a verified 0.3 Java host API,
+JNI method signature, native lifecycle, Surface contract, or safe way to
+create a second SDL Activity from Glue 5. The 0.1 static entry-point record
+must not be treated as the verified 0.3 host contract. Do not copy guessed
+JNI names, offsets, Activity classes, or companion-library lists.
 
 ## Adapter contract required before implementation
 
 A verified Android adapter must establish all of the following from the exact
-engine build, not from an approximate release:
+0.3 engine build:
 
 1. exact ARM64 `libgtav.so` identity and exported/native entry contract;
 2. matching SDL Java package, Activity class and library-loading order;
 3. ownership and lifecycle of the SDL thread and Android Activity;
 4. Android Surface/window hand-off and recreation behavior;
 5. pause/resume, back, touch/controller input and audio-focus behavior;
-6. required companion libraries, assets and external game-data directory;
+6. all 26 native libraries, their dependencies, assets and external game-data
+   directory requirements;
 7. failure reporting and orderly shutdown.
 
-Only then should an Android-specific adapter implement `NativeEngine`. Until
-then the UI must remain in `NotAttached` state and must not offer a fake
-successful launch.
+Only then should an Android-specific adapter implement `NativeEngine`.
+Until then the UI must remain in `NotAttached` state and must not offer a
+fake successful launch.
 
 ## Build and data-safety boundary
 
@@ -60,30 +88,8 @@ successful launch.
 
 ## Validation status
 
-The native-shell unit tests now cover defaults and invalid launch settings,
-but they have not yet been executed in this environment. The source/metadata
-CI checks are not a Rust compile, Android APK build,
+The native-shell unit tests cover defaults, invalid launch settings and
+lifecycle transition guards, but have not been executed in this environment.
+The source/metadata CI checks are not a Rust compile, Android APK build,
 native-engine launch, FPS measurement, or device crash test. Those remain
-explicitly pending until the adapter inputs and build environment are present.
-
-## Exact-build compatibility gate (confirmed against XHYN-V source)
-
-The XHYN-V repository's `verification/native-runtime.json` explicitly labels
-its evidence as static inspection of the shipped **0.1 APK**, not a runtime
-trace or reconstruction of the original host source. It records
-`SDLActivity.nativeRunMain` and an ARM64 engine library hash. The XHYN-V
-`docs/SOURCE.md` separately states that its 0.1 and 1.7.4 modification layers
-target different engine builds and their fixed native offsets are not
-interchangeable.
-
-The published `GTAVActivity.java` under `modifications/stubs` is only a
-compile stub, not the original Activity. The published `RebornNative.java`
-also says it must be called after SDL loads `libgtav` and before
-`nativeRunMain`; its native language bridge is not a general-purpose engine
-launcher API.
-
-Therefore the 0.1 static entry-point record cannot be treated as the verified
-host contract for the user's XHYN-V 0.3 Preview 2 APK. Do not copy its JNI
-symbol, package, activity, native offsets, or companion-library list into a
-new application until the exact Preview 2 host and matching base build are
-identified. This is a hard compatibility gate, not a minor missing detail.
+pending until the adapter inputs and build environment are present.
