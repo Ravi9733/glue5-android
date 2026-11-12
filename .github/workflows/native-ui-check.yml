@@ -43,3 +43,5 @@ jobs:
         run: python3 scripts/check-native-android-package.py --self-test
       - name: Validate read-only native host APK inventory tool
         run: python3 scripts/audit-native-host-apk.py --self-test
+      - name: Validate native host APK evidence extractor
+        run: python3 scripts/extract-native-host-evidence.py --self-test
