@@ -29,8 +29,10 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort | tail -n 1)"
           yes | "$SDKMANAGER" --licenses >/dev/null
           "$SDKMANAGER" --install "build-tools;36.0.0" "platforms;android-36"
-      - name: Test native launcher patcher
-        run: python3 scripts/test-patch-xhyn-native-launcher.py
+      - name: Test native launcher and opaque-resource restoration
+        run: |
+          python3 scripts/test-patch-xhyn-native-launcher.py
+          python3 scripts/test-restore-opaque-apk-resources.py
       - name: Download and verify XHYN Preview 2 engine APK
         run: |
           curl --fail --location --retry 3 \
@@ -49,6 +51,7 @@ jobs:
       - name: Rebuild the independent native APK
         run: |
           java -jar /tmp/apktool.jar b /tmp/xhyn-decoded -o /tmp/glue5-native-unsigned.apk
+          python3 scripts/restore-opaque-apk-resources.py /tmp/XHYN-V-0.3-Preview2.apk /tmp/glue5-native-unsigned.apk
           BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
           "$BUILD_TOOLS/zipalign" -f -p 4 /tmp/glue5-native-unsigned.apk /tmp/glue5-native-aligned.apk
           keytool -genkeypair -keystore /tmp/glue5-native-debug.jks -storepass android \
@@ -74,6 +77,7 @@ jobs:
           libs = [n for n in names if n.startswith("lib/arm64-v8a/") and n.endswith(".so")]
           assert "lib/arm64-v8a/libSDL3.so" in libs
           assert "lib/arm64-v8a/libgtav.so" in libs
+          assert "res/drawable/titanium_full_fire.bin" in names, "startup artwork missing from final APK"
           assert len(libs) == 27, f"expected 27 ARM64 libraries, got {len(libs)}"
           assert not any(n.endswith(".wasm") for n in names), "WASM payload found"
           with zipfile.ZipFile("/tmp/XHYN-V-0.3-Preview2.apk") as original, zipfile.ZipFile(apk) as rebuilt:
