@@ -11,6 +11,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.documentfile.provider.DocumentFile
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -38,7 +40,7 @@ class MainActivity : Activity() {
         ))
 
         val subtitle = TextView(this).apply {
-            text = "Prototype 0.1 • Read-only folder scan"
+            text = "Prototype 0.2 • RPF7 header and encryption inspection"
             textSize = 13f
             setTextColor(0xFFB9C6B5.toInt())
             gravity = Gravity.CENTER
@@ -75,7 +77,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select your GTA V folder. The app will find .rpf archives and inspect their headers.\n\nThis first prototype does not modify or convert files."
+            text = "Select your GTA V folder. The app checks RPF7 headers, archive entry counts and encryption markers.\n\nThis prototype is read-only and does not convert files."
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)
@@ -84,7 +86,6 @@ class MainActivity : Activity() {
         root.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
         ))
-
         setContentView(root)
     }
 
@@ -108,12 +109,62 @@ class MainActivity : Activity() {
         }
     }
 
+    private data class HeaderInfo(
+        val description: String,
+        val entryCount: Long? = null,
+        val encryption: String = "Unknown",
+        val isGtaV: Boolean = false
+    )
+
+    private fun inspectHeader(uri: Uri): HeaderInfo {
+        val header = try {
+            contentResolver.openInputStream(uri)?.use { input ->
+                val bytes = ByteArray(16)
+                var offset = 0
+                while (offset < bytes.size) {
+                    val n = input.read(bytes, offset, bytes.size - offset)
+                    if (n <= 0) break
+                    offset += n
+                }
+                if (offset == 16) bytes else bytes.copyOf(offset)
+            } ?: ByteArray(0)
+        } catch (_: Exception) {
+            return HeaderInfo("Unreadable header")
+        }
+
+        if (header.size < 16) return HeaderInfo("Header shorter than 16 bytes")
+        val magic = header.copyOfRange(0, 4).toString(Charsets.US_ASCII)
+        if (magic != "RPF7") return HeaderInfo("Magic=$magic (not GTA V RPF7)")
+
+        val bb = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
+        val entries = bb.getInt(4).toLong() and 0xFFFFFFFFL
+        val encryptionWord = bb.getInt(12)
+        val encryption = when (encryptionWord) {
+            0x4E45504F -> "OPEN (no archive key needed)"
+            0x0FFFFFF9 -> "AES encrypted (key material required)"
+            0x0FEFFFFF -> "NG encrypted (key material required)"
+            0 -> "None"
+            else -> "Unknown marker 0x%08X".format(encryptionWord)
+        }
+        val namesLength = bb.getInt(8).toLong() and 0x0FFFFFFFL
+        val tocEnd = 16L + entries * 16L + namesLength
+        val bounds = if (tocEnd <= (Long.MAX_VALUE / 2)) "TOC metadata present" else "Invalid TOC length"
+        return HeaderInfo(
+            "GTA V RPF7 • $bounds",
+            entries,
+            encryption,
+            true
+        )
+    }
+
     private fun scanTree(rootUri: Uri): String {
         val root = DocumentFile.fromTreeUri(this, rootUri)
             ?: return "Could not open selected folder."
         val rows = mutableListOf<String>()
         var totalBytes = 0L
-        var recognized = 0
+        var gtaVArchives = 0
+        var openArchives = 0
+        var encryptedArchives = 0
         var unreadable = 0
         val stack = ArrayDeque<DocumentFile>()
         stack.add(root)
@@ -127,23 +178,18 @@ class MainActivity : Activity() {
                 } else if (child.isFile && child.name?.endsWith(".rpf", true) == true) {
                     val size = child.length()
                     totalBytes += size
-                    val header = try {
-                        contentResolver.openInputStream(child.uri)?.use { input ->
-                            val bytes = ByteArray(16)
-                            val count = input.read(bytes)
-                            if (count > 0) bytes.copyOf(count) else ByteArray(0)
-                        } ?: ByteArray(0)
-                    } catch (_: Exception) {
+                    val info = inspectHeader(child.uri)
+                    if (info.isGtaV) {
+                        gtaVArchives++
+                        if (info.encryption.startsWith("OPEN")) openArchives++
+                        if (info.encryption.contains("encrypted")) encryptedArchives++
+                    } else if (info.description.startsWith("Unreadable")) {
                         unreadable++
-                        ByteArray(0)
                     }
-                    val magic = header.take(4).toByteArray().toString(Charsets.US_ASCII)
-                    val looksLikeRpf = magic == "7FPR" || magic == "RPF7" || magic == "RPF8"
-                    if (looksLikeRpf) recognized++
                     rows.add(
                         "${child.name} | ${"%.2f".format(size / 1048576.0)} MiB | " +
-                        "header=${header.joinToString("") { "%02X".format(it) }} | " +
-                        if (looksLikeRpf) "RPF-like header" else "header needs format check"
+                        "${info.description} | entries=${info.entryCount ?: "?"} | " +
+                        "encryption=${info.encryption}"
                     )
                 }
             }
@@ -151,16 +197,20 @@ class MainActivity : Activity() {
 
         rows.sort()
         return buildString {
-            appendLine("GTA V RPF INVENTORY")
-            appendLine("Archives found: ${rows.size}")
-            appendLine("Total archive size: ${ "%.2f".format(totalBytes / 1073741824.0) } GiB")
-            appendLine("Recognized common RPF signatures: ${recognized}")
-            appendLine("Unreadable headers: ${unreadable}")
+            appendLine("GTA V RPF INVENTORY — PROTOTYPE 0.2")
+            appendLine("RPF files found: ${rows.size}")
+            appendLine("GTA V RPF7 archives: $gtaVArchives")
+            appendLine("OPEN archives: $openArchives")
+            appendLine("AES/NG encrypted archives: $encryptedArchives")
+            appendLine("Unreadable headers: $unreadable")
+            appendLine("Total RPF size: ${"%.2f".format(totalBytes / 1073741824.0)} GiB")
             appendLine()
             rows.forEach { appendLine(it) }
             appendLine()
             appendLine("Read-only scan. No source files were changed.")
-            appendLine("This prototype identifies archives only; it does not yet determine Android compatibility or convert assets.")
+            appendLine("Encrypted RPF contents cannot be inspected without the matching key material.")
+            appendLine("RPF7 detection is not proof that the archive's assets are compatible with a specific Android game port.")
+            appendLine("This build does not yet extract, transform or convert assets.")
         }
     }
 
