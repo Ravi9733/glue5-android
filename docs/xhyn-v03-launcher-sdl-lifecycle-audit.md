@@ -107,3 +107,6 @@ game assets or signing material.
 - Real native adapter: **blocked; not implemented**.
 - Separate launcher: **architecture specified; no misleading launch stub added**.
 - Android APK/gameplay/device validation: **not performed**.
+
+
+Machine-readable evidence and unknowns are also recorded in `docs/xhyn-v03-host-lifecycle-contract.json` so future adapter work can fail closed instead of relying on prose or inferred symbols.
