@@ -109,3 +109,18 @@ the real game launcher. The native package preflight also recursively rejects
 WASM files anywhere under the staging tree and validates the package ID,
 Activity name and declared ARM64 library filenames. Its fixture is test-only;
 it does not create or qualify a production APK.
+
+
+## Additional native staging validation
+
+The preflight now checks more than filenames: the staging tree must include a
+merged `AndroidManifest.xml` whose package ID and fully-qualified launcher
+Activity match `native-package.json`. Every declared native library is read
+through its ELF header and must be ELF64, little-endian, AArch64
+(`e_machine=183`). Symlinks are rejected, and the recursive scan still rejects
+WASM payloads and the existing Glue 5 SDL/runtime libraries. The synthetic
+self-test covers matching manifest metadata, wrong package/activity metadata,
+non-ELF and wrong-machine libraries, nested WASM, and malformed library lists.
+These are structural checks only: a correctly shaped ELF file can still be the
+wrong engine build, have unresolved dependencies, or fail at runtime. Exact
+XHYN host identity, load order, and real-device launch remain separate gates.
