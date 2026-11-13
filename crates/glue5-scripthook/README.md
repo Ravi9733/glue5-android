@@ -5,7 +5,7 @@ This crate establishes an Android-native ScriptHook-style plugin boundary. It di
 ## Current implementation
 
 - Deterministic discovery and loading of Android ARM64 `.so` plugins.
-- Versioned C ABI (v11), host logging, script-stack allocation/restore helpers, and hash-based GTA native dispatch against the generated metadata for this exact game build.
+- Versioned C ABI (v12), host logging, script-stack allocation/restore helpers, and hash-based GTA native dispatch against the generated metadata for this exact game build.
 - Plugins can register callbacks dispatched from the GTA script `WAIT` hook; callback dispatch is chained through Glue 5's existing mods hook when present.
 - Native metadata introspection exposes handler index, parameter count, return kind, and per-parameter kind/direction; plugins can also resolve a native by its exact GTA name (for example `CREATE_VEHICLE`).
 - Entity handles can be validated against the live script-guid pool and checked as any entity, ped, vehicle, or object before use.
@@ -60,4 +60,4 @@ The host exposes three non-blocking input helpers. Call them from the registered
 - `is_control_pressed(env, group, control)`: 1 while held, 0 otherwise, negative on error.
 - `get_control_normal(env, group, control, &bits)`: writes the raw IEEE-754 f32 bits returned by `GET_CONTROL_NORMAL`.
 
-The native C example uses GTA control IDs 172 (up), 173 (down), 176 (select), and 177 (back), in group 0. It demonstrates Adder vehicle and security-ped spawning/deletion with asynchronous model streaming and generated native-signature checks. It uses fixed sample coordinates (0, 0, 72); this is a plugin API example, not a Luau trainer or a complete Menyoo port. The model catalog currently resolves vehicles and peds, not object archetypes. Player-relative placement, touch overlay rendering, and a complete Menyoo menu are not implemented.
+The native C example uses GTA control IDs 172 (up), 173 (down), 176 (select), and 177 (back), in group 0. It demonstrates Adder vehicle and security-ped spawning/deletion with asynchronous model streaming and generated native-signature checks. The sample uses the host's player-relative spawn transform and cancels a spawn if that transform is unavailable. This is a plugin API example, not a Luau trainer or a complete Menyoo port. The model catalog currently resolves vehicles and peds, not object archetypes. Touch overlay rendering and a complete Menyoo menu are not implemented.
