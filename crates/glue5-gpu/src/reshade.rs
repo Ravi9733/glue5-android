@@ -617,7 +617,7 @@ Exposure=0.5
         std::fs::write(unrelated.join("Vibrance.fx"), "// unrelated effect").unwrap();
 
         let preset = Preset::parse(
-            "[GENERAL]\\nTechniqueSorting=Vibrance@Shaders/SweetFX/Vibrance.fx\\n[TECHNIQUES]\\nVibrance@Shaders/SweetFX/Vibrance.fx=1\\n"
+            "[GENERAL]\nTechniqueSorting=Vibrance@Shaders/SweetFX/Vibrance.fx\n[TECHNIQUES]\nVibrance@Shaders/SweetFX/Vibrance.fx=1\n"
         );
         let effects = preset.effect_files(&root);
         assert_eq!(effects.len(), 1);
