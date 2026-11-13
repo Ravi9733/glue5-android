@@ -19,6 +19,8 @@ pub struct Limits {
     pub max_entries: usize,
     pub max_entry_bytes: u64,
     pub max_total_output_bytes: u64,
+    /// Total input bytes accepted by the in-memory RPF7 writer.
+    pub max_total_pack_input_bytes: u64,
 }
 
 impl Default for Limits {
@@ -28,6 +30,9 @@ impl Default for Limits {
             max_entries: 1_000_000,
             max_entry_bytes: 512 * 1024 * 1024,
             max_total_output_bytes: 8 * 1024 * 1024 * 1024,
+            // rage-rpf's builder holds source buffers and a completed output buffer in memory.
+            // Keep the aggregate pack input conservative for 8 GB Android devices.
+            max_total_pack_input_bytes: 512 * 1024 * 1024,
         }
     }
 }
@@ -255,6 +260,20 @@ mod tests {
     }
 
     #[test]
+    fn enforces_the_in_memory_rpf7_pack_budget_before_building() {
+        let temp = tempfile::tempdir().unwrap();
+        let input = temp.path().join("input");
+        std::fs::create_dir_all(&input).unwrap();
+        std::fs::write(input.join("file.bin"), b"123456").unwrap();
+
+        let output = temp.path().join("over_budget.rpf");
+        let mut limits = Limits::default();
+        limits.max_total_pack_input_bytes = 5;
+        assert!(build_android_rpf7(&input, &output, limits).is_err());
+        assert!(!output.exists());
+    }
+
+    #[test]
     fn rejects_rsc7_files_with_inconsistent_header_version_and_page_flags() {
         let temp = tempfile::tempdir().unwrap();
         let input = temp.path().join("input");
@@ -329,7 +348,9 @@ pub fn build_android_rpf7(
             if count > limits.max_entries { bail!("file count exceeds conversion limit"); }
             if meta.len() > limits.max_entry_bytes { bail!("file exceeds conversion size limit: {}", path.display()); }
             total = total.checked_add(meta.len()).context("conversion size overflow")?;
-            if total > limits.max_total_output_bytes { bail!("conversion input exceeds total size limit"); }
+            if total > limits.max_total_pack_input_bytes {
+                bail!("RPF7 in-memory pack input exceeds the configured 512 MiB safety limit");
+            }
 
             let relative = path.strip_prefix(&root).context("file escaped input root")?;
             let archive_path = relative.to_string_lossy().replace('\\', "/");
@@ -374,8 +395,8 @@ pub fn build_android_rpf7(
     }
     if count == 0 { bail!("no files found to package"); }
     let archive_bytes = builder.build(None).context("build RPF7 archive")?;
-    if archive_bytes.len() as u64 > limits.max_total_output_bytes {
-        bail!("generated RPF exceeds output size limit");
+    if archive_bytes.len() as u64 > limits.max_archive_bytes {
+        bail!("generated RPF exceeds the configured archive size limit");
     }
     let parsed = RpfArchive::parse(&archive_bytes, "android-converted.rpf", None)
         .context("generated RPF failed validation")?;
