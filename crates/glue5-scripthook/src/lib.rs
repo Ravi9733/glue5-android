@@ -149,6 +149,7 @@ unsafe extern "C" fn call_native_marshaled(
                         Kind::Str => {
                             let pointer = unsafe { std::ptr::read_unaligned(data.add(arg.value as usize).cast::<u64>()) };
                             if pointer != 0 {
+                                check_range(pointer, 1)?;
                                 let mut end = pointer;
                                 while end < memory_size && unsafe { *data.add(end as usize) } != 0 { end += 1; }
                                 if end == memory_size { return Err(-7); }
@@ -182,13 +183,15 @@ unsafe extern "C" fn call_native_marshaled(
                         write_u32(target, if parameter.dir == Dir::InOut { read_u32(arg.value)? } else { arg.value as u32 })?;
                     }
                     Kind::Bool => {
-                        if arg.kind != 4 || arg.value > 1 { return Err(-14); }
-                        write_u32(target, if parameter.dir == Dir::InOut { read_u32(arg.value)? } else { arg.value as u32 })?;
+                        let value = if parameter.dir == Dir::InOut { read_u32(arg.value)? } else { arg.value as u32 };
+                        if arg.kind != 4 || value > 1 { return Err(-14); }
+                        write_u32(target, value)?;
                     }
                     Kind::Str => {
                         if arg.kind != 3 { return Err(-13); }
                         let pointer = if parameter.dir == Dir::InOut { unsafe { std::ptr::read_unaligned(data.add(arg.value as usize).cast::<u64>()) } } else { arg.value };
                         if pointer != 0 {
+                            check_range(pointer, 1)?;
                             let mut end = pointer;
                             while end < memory_size && unsafe { *data.add(end as usize) } != 0 { end += 1; }
                             if end == memory_size { return Err(-7); }
