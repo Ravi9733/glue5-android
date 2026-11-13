@@ -559,7 +559,7 @@ class MainActivity : Activity() {
 
         rows.sort()
         return buildString {
-            appendLine("GTA V RPF INVENTORY — PROTOTYPE 0.3")
+            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.2")
             appendLine("RPF files found: ${rows.size}")
             appendLine("GTA V RPF7 archives: $gtaVArchives")
             appendLine("OPEN archives: $openArchives")
@@ -571,8 +571,8 @@ class MainActivity : Activity() {
             appendLine()
             appendLine("Read-only scan. No source files were changed.")
             appendLine("OPEN/unencrypted RPF7 TOCs are inspected for YTD/YDR/YFT/YMAP and related asset names. AES/NG TOCs need the matching key material.")
-            appendLine("RPF7 detection is not proof that the archive's assets are compatible with a specific Android game port.")
-            appendLine("Bulk extraction is available for OPEN archives supported by the native parser. Extraction does not convert PC assets to Android formats.")
+            appendLine("RPF7 structure and resource conversion do not prove that the result will mount or run in a specific Android game port such as Glue5.")
+            appendLine("Bulk conversion is available for OPEN RPF7 archives. Supported Gen9 YTD/YDR/YDD/YFT/YPT resources are converted to Legacy before RPF7 repacking; other formats remain unchanged.")
         }
     }
 

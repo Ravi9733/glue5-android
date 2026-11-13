@@ -8,7 +8,7 @@ Android ARM64 converter prototype for unencrypted GTA V RPF7 archives. It extrac
 2. Extract supported unencrypted archives with the Rust rpf-archive parser.
 3. Convert Gen9 resources to Legacy with the pinned ragekit v0.3.1 C++ library:
    - .ytd texture dictionaries (Gen9 version 5 to Legacy version 13)
-   - .ydr drawables and .ydd drawable dictionaries (Gen9 version 159 to Legacy version 165)
+   - .ydr drawables and .ydd drawable dictionaries (Gen9 versions 154/159 to Legacy version 165)
    - .yft fragments (Gen9 version 171 to Legacy version 162)
    - .ypt particle dictionaries (Gen9 version 71 to Legacy version 68)
 4. Preserve already-Legacy versions byte-for-byte and leave other file types unchanged.
