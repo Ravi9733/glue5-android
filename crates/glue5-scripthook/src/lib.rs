@@ -454,7 +454,7 @@ unsafe extern "C" fn delete_entity(env: *mut c_void, handle: i32, expected_pool:
     if unsafe { validate_entity(env, handle, expected_pool) } != 1 { return -3; }
     let Some(native) = natives::NATIVES.iter().find(|n| n.name == native_name) else { return -4; };
     if native.params.len() != 1 || native.params[0].kind != Kind::Handle(kind) { return -5; }
-    let mut staged = 0u64;
+    let mut staged_top = None;
     let arg = match native.params[0].dir {
         Dir::In => NativeArg { kind: 0, reserved: 0, value: handle as u32 as u64 },
         Dir::InOut => {
@@ -471,15 +471,15 @@ unsafe extern "C" fn delete_entity(env: *mut c_void, handle: i32, expected_pool:
                 return -8;
             }
             unsafe { std::ptr::write_unaligned(data.add(at as usize).cast::<u32>(), handle as u32); }
-            staged = top;
+            staged_top = Some(top);
             NativeArg { kind: 0, reserved: 0, value: at }
         }
         Dir::Out => return -9,
     };
     let mut result = 0u64;
     let status = unsafe { call_native_marshaled(env, native.hash, &arg, 1, &mut result) };
-    if staged != 0 {
-        let _ = unsafe { exports::_emscripten_stack_restore(env.cast::<Env>(), staged) };
+    if let Some(top) = staged_top {
+        let _ = unsafe { exports::_emscripten_stack_restore(env.cast::<Env>(), top) };
     }
     if status == 0 { 0 } else { status }
 }
