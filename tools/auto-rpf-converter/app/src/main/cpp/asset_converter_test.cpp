@@ -44,6 +44,71 @@ int main() {
     require(unchanged == legacy, "Legacy YTD must be preserved byte-for-byte");
     require(stats.already_legacy == 1, "already-Legacy count must be one");
 
+    // Exercise the complete Gen9 -> Legacy writer path for every supported resource family.
+    // These synthetic, structurally valid resources prove the converter invokes the format readers
+    // and writers, rather than changing file extensions or copying the original bytes.
+    rk::Drawable empty_drawable;
+    empty_drawable.name = "converter_test_drawable";
+
+    gta_asset_converter::ConversionStats model_stats;
+    const auto gen9_ydr = rk::write_ydr(empty_drawable, rk::Game::Enhanced);
+    require(rk::rsc::Resource::load(gen9_ydr).version == 159, "synthetic YDR fixture must be Gen9");
+    const auto legacy_ydr = gta_asset_converter::convert_asset_bytes("ydr", gen9_ydr, model_stats);
+    require(rk::rsc::Resource::load(legacy_ydr).version == 165, "YDR converter must write Legacy version 165");
+    (void)rk::read_ydr(legacy_ydr);
+    require(model_stats.converted_ydr == 1, "Gen9 YDR conversion count must be one");
+
+    rk::DrawableDictionary drawable_dictionary;
+    drawable_dictionary.hashes.push_back(rk::joaat_lower("converter_test_drawable"));
+    drawable_dictionary.drawables.push_back(empty_drawable);
+    const auto gen9_ydd = rk::write_ydd(drawable_dictionary, rk::Game::Enhanced);
+    require(rk::rsc::Resource::load(gen9_ydd).version == 159, "synthetic YDD fixture must be Gen9");
+    const auto legacy_ydd = gta_asset_converter::convert_asset_bytes("ydd", gen9_ydd, model_stats);
+    require(rk::rsc::Resource::load(legacy_ydd).version == 165, "YDD converter must write Legacy version 165");
+    require(rk::read_ydd(legacy_ydd).drawables.size() == 1, "converted YDD must retain its drawable");
+    require(model_stats.converted_ydd == 1, "Gen9 YDD conversion count must be one");
+
+    rk::Fragment fragment;
+    fragment.name = "converter_test_fragment";
+    const auto gen9_yft = rk::write_yft(fragment, rk::Game::Enhanced);
+    require(rk::rsc::Resource::load(gen9_yft).version == 171, "synthetic YFT fixture must be Gen9");
+    const auto legacy_yft = gta_asset_converter::convert_asset_bytes("yft", gen9_yft, model_stats);
+    require(rk::rsc::Resource::load(legacy_yft).version == 162, "YFT converter must write Legacy version 162");
+    (void)rk::read_yft(legacy_yft);
+    require(model_stats.converted_yft == 1, "Gen9 YFT conversion count must be one");
+
+    rk::ParticleDictionary particles;
+    particles.name = "converter_test_particles";
+    const auto gen9_ypt = rk::write_ypt(particles, rk::Game::Enhanced);
+    require(rk::rsc::Resource::load(gen9_ypt).version == 71, "synthetic YPT fixture must be Gen9");
+    const auto legacy_ypt = gta_asset_converter::convert_asset_bytes("ypt", gen9_ypt, model_stats);
+    require(rk::rsc::Resource::load(legacy_ypt).version == 68, "YPT converter must write Legacy version 68");
+    (void)rk::read_ypt(legacy_ypt);
+    require(model_stats.converted_ypt == 1, "Gen9 YPT conversion count must be one");
+
+    // Legacy versions are recognized and preserved byte-for-byte for all five supported extensions.
+    const auto legacy_ydr_fixture = rk::write_ydr(empty_drawable, rk::Game::Legacy);
+    const auto legacy_ydd_fixture = rk::write_ydd(drawable_dictionary, rk::Game::Legacy);
+    const auto legacy_yft_fixture = rk::write_yft(fragment, rk::Game::Legacy);
+    const auto legacy_ypt_fixture = rk::write_ypt(particles, rk::Game::Legacy);
+    require(gta_asset_converter::convert_asset_bytes("ydr", legacy_ydr_fixture, model_stats) == legacy_ydr_fixture,
+            "Legacy YDR must be preserved byte-for-byte");
+    require(gta_asset_converter::convert_asset_bytes("ydd", legacy_ydd_fixture, model_stats) == legacy_ydd_fixture,
+            "Legacy YDD must be preserved byte-for-byte");
+    require(gta_asset_converter::convert_asset_bytes("yft", legacy_yft_fixture, model_stats) == legacy_yft_fixture,
+            "Legacy YFT must be preserved byte-for-byte");
+    require(gta_asset_converter::convert_asset_bytes("ypt", legacy_ypt_fixture, model_stats) == legacy_ypt_fixture,
+            "Legacy YPT must be preserved byte-for-byte");
+    require(model_stats.already_legacy == 4, "four already-Legacy model resources must be counted");
+
+    bool malformed_supported_resource_rejected = false;
+    try {
+        (void)gta_asset_converter::convert_asset_bytes("ydr", std::vector<std::uint8_t>{1, 2, 3, 4}, model_stats);
+    } catch (const std::exception&) {
+        malformed_supported_resource_rejected = true;
+    }
+    require(malformed_supported_resource_rejected, "malformed supported resources must fail instead of being copied");
+    
     const std::vector<std::uint8_t> opaque = {1, 2, 3, 4};
     const auto passthrough = gta_asset_converter::convert_asset_bytes("dat", opaque, stats);
     require(passthrough == opaque, "unsupported formats must be preserved unchanged");
