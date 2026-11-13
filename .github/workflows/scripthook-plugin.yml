@@ -29,7 +29,9 @@ jobs:
           unzip -q "$TOOLS_ZIP" -d "$SDK_ROOT/cmdline-tools"
           mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
           yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null
+          set -o pipefail
           "$SDKMANAGER" --sdk_root="$SDK_ROOT" "ndk;27.2.12479018"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
