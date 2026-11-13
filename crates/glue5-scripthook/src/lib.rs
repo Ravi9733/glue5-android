@@ -1,6 +1,6 @@
 //! Android-native ScriptHook host and game script-thread callback bridge.
 use glue5_game::{Env, Hooks, exports, orig};
-use glue5_mods::{natives::{Dir, Kind, NATIVES}, world::{self, Pool}};
+use glue5_mods::{natives::{self, Dir, Kind}, world::{self, Pool}};
 use libloading::Library;
 use std::ffi::{c_char, c_void, CStr};
 use std::path::{Path, PathBuf};
@@ -130,7 +130,7 @@ fn kind_code(kind: Option<Kind>) -> u32 {
         Some(Kind::Handle(_)) => 8 }
 }
 fn find_native(hash: u64) -> Option<&'static glue5_mods::natives::Native> {
-    NATIVES.iter().find(|native| native.hash == hash)
+    natives::by_hash(hash)
 }
 unsafe extern "C" fn native_metadata(hash: u64, output: *mut NativeMetadata) -> i32 {
     if output.is_null() { return -1; }
