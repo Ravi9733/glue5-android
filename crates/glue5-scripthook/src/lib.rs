@@ -33,6 +33,7 @@ pub struct HostApi {
     pub call_native: Option<unsafe extern "C" fn(env: *mut c_void, hash: u64, info: u64) -> i32>,
     /// Typed scalar call; result is returned as raw 64-bit bits.
     pub call_native_typed: Option<unsafe extern "C" fn(env: *mut c_void, hash: u64, args: *const NativeArg, count: u32, result: *mut u64) -> i32>,
+    pub call_native_marshaled: Option<unsafe extern "C" fn(env: *mut c_void, hash: u64, args: *const NativeArg, count: u32, result: *mut u64) -> i32>,
     pub native_metadata: Option<unsafe extern "C" fn(hash: u64, output: *mut NativeMetadata) -> i32>,
     pub native_parameter: Option<unsafe extern "C" fn(hash: u64, index: u32, kind: *mut u32, direction: *mut u32) -> i32>,
     pub enumerate_entities: Option<unsafe extern "C" fn(env: *mut c_void, pool: u32, output: *mut i32, capacity: u32) -> i32>,
@@ -77,6 +78,169 @@ unsafe extern "C" fn call_native(env: *mut c_void, hash: u64, info: u64) -> i32 
 
 /// Marshals scalar arguments into the scrThread::Info layout used by this game build.
 /// All addresses in the argument list are offsets in wasm memory, never host pointers.
+/// Signature-aware marshalling for generated native metadata.
+/// NativeArg.kind: 0=i32, 1=u32/hash, 2=f32 bits, 3=wasm-memory offset,
+/// 4=bool. For OUT parameters, kind 3 supplies the destination offset.
+unsafe extern "C" fn call_native_marshaled(
+    env: *mut c_void, hash: u64, args: *const NativeArg, count: u32, result: *mut u64,
+) -> i32 {
+    if env.is_null() || result.is_null() || (count != 0 && args.is_null()) || count > 64 { return -1; }
+    let Some(native) = natives::by_hash(hash) else { return -3; };
+    if native.params.len() != count as usize { return -10; }
+    let env = env.cast::<Env>();
+    let memory = unsafe { (*env).memory };
+    if memory.is_null() { return -4; }
+    let data = unsafe { (*memory).data };
+    let memory_size = unsafe { (*memory).size };
+    if data.is_null() || memory_size == 0 { return -4; }
+    let top = match unsafe { exports::emscripten_stack_get_current(env) } { Ok(v) => v, Err(_) => return -5 };
+    let outcome = (|| -> Result<u64, i32> {
+        let alloc = |size: u64| -> Result<u64, i32> {
+            let rounded = size.checked_add(15).ok_or(-6)? & !15;
+            let at = unsafe { exports::_emscripten_stack_alloc(env, rounded) }.map_err(|_| -5)?;
+            let end = at.checked_add(size).ok_or(-6)?;
+            if end > memory_size { return Err(-6); }
+            unsafe { std::ptr::write_bytes(data.add(at as usize), 0, size as usize); }
+            Ok(at)
+        };
+        let check_range = |offset: u64, size: u64| -> Result<(), i32> {
+            if offset.checked_add(size).is_some_and(|end| end <= memory_size) { Ok(()) } else { Err(-7) }
+        };
+        let read_u32 = |offset: u64| -> Result<u32, i32> {
+            check_range(offset, 4)?;
+            Ok(unsafe { std::ptr::read_unaligned(data.add(offset as usize).cast::<u32>()) })
+        };
+        let write_u32 = |offset: u64, value: u32| -> Result<(), i32> {
+            check_range(offset, 4)?;
+            unsafe { std::ptr::write_unaligned(data.add(offset as usize).cast::<u32>(), value); }
+            Ok(())
+        };
+        let info = alloc(128)?;
+        let slots: u64 = native.params.iter().map(|p| if p.kind == Kind::Vec3 && p.dir == Dir::In { 3 } else { 1 }).sum();
+        let params = alloc(slots.max(1) * 8)?;
+        let native_result = alloc(32)?;
+        let mut outputs: Vec<(u64, u64, Kind)> = Vec::new();
+        let mut slot = params;
+        for (index, parameter) in native.params.iter().enumerate() {
+            let arg = unsafe { *args.add(index) };
+            let target = if parameter.dir == Dir::In {
+                slot
+            } else {
+                if arg.kind != 3 { return Err(-13); }
+                let width = match parameter.kind { Kind::Vec3 => 24, Kind::Str => 8, _ => 4 };
+                check_range(arg.value, width)?;
+                let buffer = alloc(24)?;
+                if parameter.dir == Dir::InOut {
+                    match parameter.kind {
+                        Kind::Int | Kind::Any | Kind::Bool | Kind::Handle(_) | Kind::Hash | Kind::Float => {
+                            let expected = match parameter.kind {
+                                Kind::Hash => 1, Kind::Float => 2, Kind::Bool => 4, _ => 0,
+                            };
+                            if arg.kind == 3 { return Err(-13); }
+                            let _ = expected;
+                        }
+                        Kind::Str => {
+                            let mut end = arg.value;
+                            while end < memory_size && unsafe { *data.add(end as usize) } != 0 { end += 1; }
+                            if end == memory_size { return Err(-7); }
+                            unsafe { std::ptr::write_unaligned(data.add(buffer as usize).cast::<u64>(), arg.value); }
+                        }
+                        Kind::Vec3 => {
+                            check_range(arg.value, 12)?;
+                            for component in 0..3u64 {
+                                let bits = read_u32(arg.value + component * 4)?;
+                                write_u32(buffer + component * 8, bits)?;
+                            }
+                        }
+                    }
+                }
+                unsafe { std::ptr::write_unaligned(data.add(slot as usize).cast::<u64>(), buffer); }
+                outputs.push((buffer, arg.value, parameter.kind));
+                buffer
+            };
+            if parameter.dir != Dir::Out {
+                match parameter.kind {
+                    Kind::Int | Kind::Any | Kind::Handle(_) => {
+                        if arg.kind != 0 { return Err(-13); }
+                        write_u32(target, arg.value as u32)?;
+                    }
+                    Kind::Hash => {
+                        if arg.kind != 1 { return Err(-13); }
+                        write_u32(target, arg.value as u32)?;
+                    }
+                    Kind::Float => {
+                        if arg.kind != 2 { return Err(-13); }
+                        write_u32(target, arg.value as u32)?;
+                    }
+                    Kind::Bool => {
+                        if arg.kind != 4 || arg.value > 1 { return Err(-14); }
+                        write_u32(target, arg.value as u32)?;
+                    }
+                    Kind::Str => {
+                        if arg.kind != 3 { return Err(-13); }
+                        let mut end = arg.value;
+                        while end < memory_size && unsafe { *data.add(end as usize) } != 0 { end += 1; }
+                        if end == memory_size { return Err(-7); }
+                        unsafe { std::ptr::write_unaligned(data.add(target as usize).cast::<u64>(), arg.value); }
+                    }
+                    Kind::Vec3 => {
+                        if arg.kind != 3 { return Err(-13); }
+                        check_range(arg.value, 12)?;
+                        for component in 0..3u64 {
+                            let bits = read_u32(arg.value + component * 4)?;
+                            write_u32(target + component * 8, bits)?;
+                        }
+                    }
+                }
+            }
+            slot += if parameter.kind == Kind::Vec3 && parameter.dir == Dir::In { 24 } else { 8 };
+        }
+        if native.name.starts_with("CREATE_") || native.name.starts_with("CLONE_") {
+            let pool = match native.ret {
+                Some(Kind::Handle(glue5_mods::natives::Handle::Vehicle)) => Some(Pool::Vehicles),
+                Some(Kind::Handle(glue5_mods::natives::Handle::Ped)) => Some(Pool::Peds),
+                Some(Kind::Handle(glue5_mods::natives::Handle::Object)) => Some(Pool::Objects),
+                _ => None,
+            };
+            if let Some(pool) = pool {
+                if world::free(unsafe { glue5_runtime::memory::Mem::of(env) }, pool) < 8 { return Err(-16); }
+            }
+        }
+        unsafe {
+            std::ptr::write_unaligned(data.add(info as usize).cast::<u64>(), native_result);
+            std::ptr::write_unaligned(data.add((info + 8) as usize).cast::<u32>(), slots as u32);
+            std::ptr::write_unaligned(data.add((info + 16) as usize).cast::<u64>(), params);
+            std::ptr::write_unaligned(data.add((info + 24) as usize).cast::<i32>(), 0);
+        }
+        glue5_game::call_native(env, native.handler, info).map_err(|_| -8)?;
+        for (buffer, destination, kind) in outputs {
+            match kind {
+                Kind::Vec3 => {
+                    for component in 0..3u64 {
+                        let bits = read_u32(buffer + component * 8)?;
+                        write_u32(destination + component * 4, bits)?;
+                    }
+                }
+                Kind::Str => {
+                    check_range(destination, 8)?;
+                    let pointer = unsafe { std::ptr::read_unaligned(data.add(buffer as usize).cast::<u64>()) };
+                    unsafe { std::ptr::write_unaligned(data.add(destination as usize).cast::<u64>(), pointer); }
+                }
+                _ => {
+                    let bits = read_u32(buffer)?;
+                    write_u32(destination, bits)?;
+                }
+            }
+        }
+        Ok(unsafe { std::ptr::read_unaligned(data.add(native_result as usize).cast::<u64>()) })
+    })();
+    if unsafe { exports::_emscripten_stack_restore(env, top) }.is_err() { return -9; }
+    match outcome {
+        Ok(value) => { unsafe { result.write(value); } 0 }
+        Err(code) => code,
+    }
+}
+
 unsafe extern "C" fn call_native_typed(
     env: *mut c_void, hash: u64, args: *const NativeArg, count: u32, result: *mut u64,
 ) -> i32 {
@@ -173,7 +337,7 @@ static HOST_API: HostApi = HostApi {
     abi_version: ABI_VERSION, log: Some(host_log), register_script_callback: Some(register_script_callback),
     script_stack_top: Some(script_stack_top), script_stack_alloc: Some(script_stack_alloc),
     script_stack_restore: Some(script_stack_restore), call_native: Some(call_native),
-    call_native_typed: Some(call_native_typed), native_metadata: Some(native_metadata),
+    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata),
     native_parameter: Some(native_parameter), enumerate_entities: Some(enumerate_entities),
 };
 pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
