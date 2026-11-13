@@ -9,6 +9,7 @@ This crate establishes an Android-native ScriptHook-style plugin boundary. It di
 - Plugins can register callbacks dispatched from the GTA script `WAIT` hook; callback dispatch is chained through Glue 5's existing mods hook when present.
 - Native metadata introspection exposes handler index, parameter count, return kind, and per-parameter kind/direction; plugins can also resolve a native by its exact GTA name (for example `CREATE_VEHICLE`).
 - Entity handles can be validated against the live script-guid pool and checked as any entity, ped, vehicle, or object before use.
+- Model-name resolution checks the installed game's live vehicle/ped archetype catalog and returns the correct JOAAT model hash; it rejects unknown model names instead of blindly requesting them.
 - Live ped, vehicle, and object enumeration returns script handles from the game's entity pools (maximum 4096).
 - `call_native_typed` remains a scalar-only helper.
 - `call_native_marshaled` validates each argument against the generated native signature and supports integer/hash/float/bool scalars, NUL-terminated string input, Vec3 input, and OUT/INOUT buffers. OUT/INOUT arguments provide a wasm-memory destination offset; Vec3 destinations are 12 contiguous bytes, string destinations are an 8-byte wasm pointer slot, and scalar destinations are 4 bytes.
