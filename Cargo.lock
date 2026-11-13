@@ -944,6 +944,7 @@ dependencies = [
  "glue5-gpu",
  "glue5-mods",
  "glue5-runtime",
+ "glue5-scripthook",
  "glue5-stream",
  "log",
  "mimalloc",
@@ -1042,6 +1043,8 @@ dependencies = [
 name = "glue5-scripthook"
 version = "0.1.0"
 dependencies = [
+ "glue5-game",
+ "glue5-runtime",
  "libloading",
  "log",
 ]
