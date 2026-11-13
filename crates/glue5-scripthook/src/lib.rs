@@ -63,19 +63,31 @@ static HOST_API: HostApi = HostApi {
     register_script_callback: Some(register_script_callback),
 };
 
-/// Installs the game hook. Call before glue5_runtime::start.
-pub fn install() {
-    if INSTALLED.swap(true, Ordering::AcqRel) { return; }
-    glue5_runtime::add_hooks(hooks);
+/// Loads plugins and installs the WAIT hook when the Luau hook is absent.
+/// When the existing mods hook is active, it calls on_script_wait directly so
+/// the two systems share one engine hook rather than overwriting each other.
+pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
+    if !INSTALLED.swap(true, Ordering::AcqRel) && !mods_hook_installed {
+        glue5_runtime::add_hooks(hooks);
+    }
+    let report = load_directory(plugin_directory);
+    for path in &report.loaded { log::info!("ScriptHook plugin ready: {}", path.display()); }
+    for (path, error) in &report.rejected { log::warn!("ScriptHook plugin rejected {}: {}", path.display(), error); }
+    report
 }
 
 fn hooks(hooks: &mut Hooks) { hooks.script_wait = Some(script_wait); }
 
-unsafe extern "C" fn script_wait(env: *mut Env, info: u64) {
+/// Runs registered plugin callbacks from the game's script WAIT context.
+pub unsafe fn on_script_wait(env: *mut Env, info: u64) {
     let callbacks = CALLBACKS.lock().map(|items| items.clone()).unwrap_or_default();
     for callback in callbacks {
         unsafe { (callback.function)(env.cast(), info, callback.user as *mut c_void); }
     }
+}
+
+unsafe extern "C" fn script_wait(env: *mut Env, info: u64) {
+    unsafe { on_script_wait(env, info); }
     unsafe { orig::script_wait(env, info) };
 }
 
