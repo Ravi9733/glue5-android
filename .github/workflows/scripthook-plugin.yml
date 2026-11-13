@@ -16,17 +16,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # GitHub's Ubuntu runner image already provides the Android SDK.
-      # Avoid setup-android@v3 here: its implicit legacy "tools" package
-      # request is no longer published by Google's SDK repository.
-      - name: Install Android NDK
+      - name: Install Android command-line tools and NDK
         shell: bash
         run: |
           set -euo pipefail
-          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          yes | sdkmanager --sdk_root="$SDK_ROOT" --licenses >/dev/null
-          sdkmanager --sdk_root="$SDK_ROOT" "ndk;27.2.12479018"
+          SDK_ROOT="$RUNNER_TEMP/android-sdk"
+          TOOLS_ZIP="$RUNNER_TEMP/android-commandlinetools.zip"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl --fail --location --retry 3 \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+            --output "$TOOLS_ZIP"
+          unzip -q "$TOOLS_ZIP" -d "$SDK_ROOT/cmdline-tools"
+          mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" "ndk;27.2.12479018"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
       - name: Build native plugin sample
