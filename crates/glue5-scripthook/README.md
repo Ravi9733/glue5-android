@@ -5,11 +5,13 @@ This crate establishes an Android-native plugin boundary for the ScriptHook port
 ## Current implementation
 
 - Deterministic discovery and loading of Android `arm64-v8a` shared libraries.
-- Versioned C ABI and host logging callback.
+- Versioned C ABI, host logging, script-stack allocation/restore helpers, and hash-based GTA native dispatch to this game build's handler table.
 - Plugins can register callbacks dispatched from the GTA script `WAIT` hook.
 - Callback dispatch is chained through the existing Glue 5 mods hook when that feature is enabled, avoiding two systems overwriting the same game hook.
 - Loaded libraries remain resident so registered callbacks cannot point into unloaded code.
 - Windows `.asi` / `.dll` and managed .NET assemblies are not treated as Android-native plugins.
+
+The native call accepts a prepared game-memory `rage::scrThread::Info` offset; plugins must save/restore the script stack and construct the game's argument/result buffers correctly. It is a low-level ABI, not yet the typed ScriptHookV native wrapper or a compatibility guarantee for Windows plugins.
 
 The public C header is in `include/glue5_scripthook.h`; a minimal plugin example is in `examples/native-plugin/plugin.c`.
 
