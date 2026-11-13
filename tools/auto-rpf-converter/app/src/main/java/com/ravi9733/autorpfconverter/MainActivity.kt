@@ -91,7 +91,7 @@ class MainActivity : Activity() {
         }
         root.addView(chooseArchive)
         val chooseDestination = Button(this).apply {
-            text = "SELECT EXTRACTION OUTPUT FOLDER"
+            text = "SELECT ANDROID RPF OUTPUT FOLDER"
             setOnClickListener {
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
@@ -114,7 +114,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select one supported OPEN PC RPF and an output folder. The app extracts it, converts supported Gen9 YTD textures to Legacy, then rebuilds a new RPF7 archive. Other asset formats are preserved unchanged, not converted."
+            text = "Select one OPEN PC RPF or choose a GTA V folder for batch conversion. Supported Gen9 YTD, YDR, YDD, YFT and YPT resources are converted to Legacy before a new RPF7 is built. Other formats remain unchanged."
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)

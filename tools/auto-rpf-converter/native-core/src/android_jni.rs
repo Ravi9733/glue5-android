@@ -51,7 +51,7 @@ pub extern "system" fn Java_com_ravi9733_autorpconverter_NativeRpf_buildAndroidR
             crate::Limits::default(),
         )?;
         Ok(format!(
-            "RPF7 build complete\\nFiles: {}\\nArchive bytes: {}\\nGen9 YTD converted to Legacy: {}\\nOutput: {}\\nOther resource formats were preserved, not converted.",
+            "RPF7 build complete\nFiles: {}\nArchive bytes: {}\nAdditional YTD conversions during repacking: {}\nOutput: {}\nGen9 asset conversion was performed in the preceding ragekit stage.",
             files, bytes, ytd, output_file
         ))
     })();

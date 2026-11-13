@@ -12,7 +12,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ragekit)
 add_library(gta_asset_converter STATIC asset_converter.cpp)
-target_include_directories(gta_asset_converter PUBLIC \${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(gta_asset_converter PUBLIC .)
 target_link_libraries(gta_asset_converter PUBLIC ragekit)
 target_compile_features(gta_asset_converter PUBLIC cxx_std_20)
 if(ANDROID)

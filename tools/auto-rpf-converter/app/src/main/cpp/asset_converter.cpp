@@ -68,7 +68,9 @@ std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std:
         ++stats.already_legacy;
         return {input.begin(), input.end()};
     }
-    if (resource.version != gen9_version(ext)) {
+    const bool is_gen9 = resource.version == gen9_version(ext) ||
+        ((ext == "ydr" || ext == "ydd") && resource.version == 154);
+    if (!is_gen9) {
         throw std::runtime_error(ext + " has unsupported RSC7 resource version " + std::to_string(resource.version));
     }
     if (ext == "ytd") {
