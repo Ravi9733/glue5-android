@@ -8,7 +8,7 @@ extern "C" {
 typedef void (*Glue5ScriptCallback)(void *env, uint64_t info, void *user);
 typedef void (*Glue5LogCallback)(uint32_t level, const char *message);
 typedef int32_t (*Glue5RegisterScriptCallback)(Glue5ScriptCallback callback, void *user);
-/* kind: 0=signed integer, 1=unsigned/hash, 2=f32 bit pattern, 3=wasm-memory offset. */
+/* kind: 0=signed integer/bool, 1=unsigned/hash, 2=f32 bits. String/vector/output parameters are rejected by the scalar call. */
 typedef struct Glue5NativeArg { uint32_t kind; uint32_t reserved; uint64_t value; } Glue5NativeArg;
 typedef struct Glue5NativeMetadata { uint64_t hash; uint64_t handler; uint32_t parameter_count; uint32_t return_kind; } Glue5NativeMetadata;
 typedef struct Glue5HostApi {
