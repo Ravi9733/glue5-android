@@ -185,7 +185,6 @@ pub fn open(dir: &Path) {
 /// before `glue5_runtime::start`.
 pub fn install(dir: &Path) {
     open(dir);
-    install_native_resolver();
     if INSTALLED.swap(true, Ordering::AcqRel) {
         return;
     }
