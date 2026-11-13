@@ -8,6 +8,7 @@
 //! (engine.rs). [`studio`] serves GLUE 5 Studio and the MCP endpoint.
 
 mod checker;
+mod bundled_trainer;
 mod engine;
 pub mod files;
 mod json;
@@ -176,6 +177,7 @@ pub fn open(dir: &Path) {
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
         return;
     }
+    bundled_trainer::install(dir);
     world::load_saved(dir);
     refresh();
 }
