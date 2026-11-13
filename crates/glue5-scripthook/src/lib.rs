@@ -1,12 +1,13 @@
 //! Android-native ScriptHook host and game script-thread callback bridge.
 use glue5_game::{Env, Hooks, exports, orig};
+use glue5_mods::{natives::{Dir, Kind, NATIVES}, world::{self, Pool}};
 use libloading::Library;
 use std::ffi::{c_char, c_void, CStr};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-pub const ABI_VERSION: u32 = 4;
+pub const ABI_VERSION: u32 = 5;
 const ENTRYPOINT: &[u8] = b"glue5_scripthook_plugin_init\0";
 pub type ScriptCallback = unsafe extern "C" fn(env: *mut c_void, info: u64, user: *mut c_void);
 pub type NativeResolver = fn(hash: u64) -> Option<u64>;
@@ -15,6 +16,10 @@ pub type NativeResolver = fn(hash: u64) -> Option<u64>;
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct NativeArg { pub kind: u32, pub reserved: u32, pub value: u64 }
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct NativeMetadata { pub hash: u64, pub handler: u64, pub parameter_count: u32, pub return_kind: u32 }
 
 #[repr(C)]
 pub struct HostApi {
@@ -28,6 +33,9 @@ pub struct HostApi {
     pub call_native: Option<unsafe extern "C" fn(env: *mut c_void, hash: u64, info: u64) -> i32>,
     /// Typed scalar call; result is returned as raw 64-bit bits.
     pub call_native_typed: Option<unsafe extern "C" fn(env: *mut c_void, hash: u64, args: *const NativeArg, count: u32, result: *mut u64) -> i32>,
+    pub native_metadata: Option<unsafe extern "C" fn(hash: u64, output: *mut NativeMetadata) -> i32>,
+    pub native_parameter: Option<unsafe extern "C" fn(hash: u64, index: u32, kind: *mut u32, direction: *mut u32) -> i32>,
+    pub enumerate_entities: Option<unsafe extern "C" fn(env: *mut c_void, pool: u32, output: *mut i32, capacity: u32) -> i32>,
 }
 pub type PluginInit = unsafe extern "C" fn(host: *const HostApi) -> i32;
 #[derive(Clone, Copy)]
@@ -116,11 +124,41 @@ unsafe extern "C" fn call_native_typed(
     }
 }
 
+fn kind_code(kind: Option<Kind>) -> u32 {
+    match kind { None => 0, Some(Kind::Int) => 1, Some(Kind::Float) => 2, Some(Kind::Bool) => 3,
+        Some(Kind::Hash) => 4, Some(Kind::Str) => 5, Some(Kind::Vec3) => 6, Some(Kind::Any) => 7,
+        Some(Kind::Handle(_)) => 8 }
+}
+fn find_native(hash: u64) -> Option<&'static glue5_mods::natives::Native> {
+    NATIVES.iter().find(|native| native.hash == hash)
+}
+unsafe extern "C" fn native_metadata(hash: u64, output: *mut NativeMetadata) -> i32 {
+    if output.is_null() { return -1; }
+    let Some(native) = find_native(hash) else { return -2; };
+    unsafe { output.write(NativeMetadata { hash, handler: native.handler,
+        parameter_count: native.params.len() as u32, return_kind: kind_code(native.ret) }); }
+    0
+}
+unsafe extern "C" fn native_parameter(hash: u64, index: u32, kind: *mut u32, direction: *mut u32) -> i32 {
+    if kind.is_null() || direction.is_null() { return -1; }
+    let Some(native) = find_native(hash) else { return -2; };
+    let Some(param) = native.params.get(index as usize) else { return -3; };
+    unsafe { kind.write(kind_code(Some(param.kind))); direction.write(match param.dir { Dir::In => 0, Dir::Out => 1, Dir::InOut => 2 }); }
+    0
+}
+unsafe extern "C" fn enumerate_entities(env: *mut c_void, pool: u32, output: *mut i32, capacity: u32) -> i32 {
+    if env.is_null() || (capacity != 0 && output.is_null()) || capacity > 4096 { return -1; }
+    let pool = match pool { 0 => Pool::Peds, 1 => Pool::Vehicles, 2 => Pool::Objects, _ => return -2 };
+    let handles = unsafe { world::handles(env.cast(), pool, capacity as usize) };
+    for (index, handle) in handles.iter().enumerate() { unsafe { output.add(index).write(*handle); } }
+    handles.len() as i32
+}
 static HOST_API: HostApi = HostApi {
     abi_version: ABI_VERSION, log: Some(host_log), register_script_callback: Some(register_script_callback),
     script_stack_top: Some(script_stack_top), script_stack_alloc: Some(script_stack_alloc),
     script_stack_restore: Some(script_stack_restore), call_native: Some(call_native),
-    call_native_typed: Some(call_native_typed),
+    call_native_typed: Some(call_native_typed), native_metadata: Some(native_metadata),
+    native_parameter: Some(native_parameter), enumerate_entities: Some(enumerate_entities),
 };
 pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
     // Use the generated native database for this exact game.wasm build; do not
@@ -164,7 +202,7 @@ unsafe fn load_one(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 4); }
+    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 5); }
     #[test] fn native_arg_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeArg>(), 16); }
     #[test] fn missing_directory_is_reported_without_panicking() {
         let report = load_directory(Path::new("/definitely/not/a/glue5/plugin/folder"));
