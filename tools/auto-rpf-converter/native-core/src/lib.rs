@@ -185,3 +185,71 @@ mod tests {
         assert!(safe_relative_path("C:\\Windows\\file.txt").is_err());
     }
 }
+
+
+/// Convert an extracted PC asset tree into a new, unencrypted GTA V RPF7 archive.
+/// Gen9 YTD resources are converted to Legacy YTD; other asset types are preserved
+/// byte-for-byte and are NOT claimed to be platform-converted.
+pub fn build_android_rpf7(
+    source_dir: impl AsRef<Path>,
+    output_file: impl AsRef<Path>,
+    limits: Limits,
+) -> Result<(usize, u64, usize)> {
+    use rage_rpf::{RpfBuilder, RpfEncryption, RpfArchive};
+
+    let source_dir = source_dir.as_ref();
+    let output_file = output_file.as_ref();
+    let root = fs::canonicalize(source_dir).context("open source asset folder")?;
+    let mut builder = RpfBuilder::new(RpfEncryption::Open);
+    let mut stack = vec![root.clone()];
+    let mut count = 0usize;
+    let mut total = 0u64;
+    let mut converted_ytd = 0usize;
+
+    while let Some(dir) = stack.pop() {
+        for item in fs::read_dir(&dir)? {
+            let item = item?;
+            let path = item.path();
+            let meta = fs::symlink_metadata(&path)?;
+            if meta.file_type().is_symlink() {
+                bail!("symbolic links are not allowed in conversion input");
+            }
+            if meta.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !meta.is_file() { continue; }
+            count += 1;
+            if count > limits.max_entries { bail!("file count exceeds conversion limit"); }
+            if meta.len() > limits.max_entry_bytes { bail!("file exceeds conversion size limit: {}", path.display()); }
+            total = total.checked_add(meta.len()).context("conversion size overflow")?;
+            if total > limits.max_total_output_bytes { bail!("conversion input exceeds total size limit"); }
+
+            let relative = path.strip_prefix(&root).context("file escaped input root")?;
+            let archive_path = relative.to_string_lossy().replace('\\', "/");
+            let mut data = fs::read(&path)?;
+            if path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("ytd")) {
+                if let Ok(converted) = rage_formats::convert_ytd_to_legacy(&data) {
+                    if converted != data {
+                        data = converted;
+                        converted_ytd += 1;
+                    }
+                }
+            }
+            builder.add_file(&archive_path, data);
+        }
+    }
+    if count == 0 { bail!("no files found to package"); }
+    let archive_bytes = builder.build(None).context("build RPF7 archive")?;
+    if archive_bytes.len() as u64 > limits.max_total_output_bytes {
+        bail!("generated RPF exceeds output size limit");
+    }
+    let parsed = RpfArchive::parse(&archive_bytes, "android-converted.rpf", None)
+        .context("generated RPF failed validation")?;
+    if parsed.version != rage_rpf::RpfVersion::V7 || parsed.entries.len() < count {
+        bail!("generated RPF validation mismatch");
+    }
+    if let Some(parent) = output_file.parent() { fs::create_dir_all(parent)?; }
+    fs::write(output_file, &archive_bytes).context("write generated RPF")?;
+    Ok((count, archive_bytes.len() as u64, converted_ytd))
+}
