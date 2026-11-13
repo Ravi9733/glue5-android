@@ -21,6 +21,18 @@ static void on_script_wait(void *env, uint64_t info, void *user) {
 
     if (!g_host || !g_host->call_native_marshaled) return;
 
+    /* Demonstrate trainer navigation keys without taking over game controls. */
+    if (g_host->is_control_just_pressed) {
+        if (g_host->is_control_just_pressed(env, 0, 172) == 1 && g_host->log)
+            g_host->log(1, "Trainer input sample: UP");
+        if (g_host->is_control_just_pressed(env, 0, 173) == 1 && g_host->log)
+            g_host->log(1, "Trainer input sample: DOWN");
+        if (g_host->is_control_just_pressed(env, 0, 176) == 1 && g_host->log)
+            g_host->log(1, "Trainer input sample: SELECT");
+        if (g_host->is_control_just_pressed(env, 0, 177) == 1 && g_host->log)
+            g_host->log(1, "Trainer input sample: BACK");
+    }
+
     /* Keep the demonstration quiet: log once every ~5 seconds at 60 FPS. */
     if (++g_wait_count % 300u != 0u) return;
 
@@ -38,7 +50,8 @@ int32_t glue5_scripthook_plugin_init(const Glue5HostApi *host) {
         !host->register_script_callback || !host->native_hash_by_name ||
         !host->native_metadata || !host->call_native_marshaled ||
         !host->resolve_model_name || !host->request_model || !host->release_model ||
-        !host->create_entity || !host->delete_entity || !host->validate_entity)
+        !host->create_entity || !host->delete_entity || !host->validate_entity ||
+        !host->is_control_just_pressed || !host->is_control_pressed || !host->get_control_normal)
         return -1;
 
     Glue5NativeMetadata metadata = {0};
@@ -48,6 +61,6 @@ int32_t glue5_scripthook_plugin_init(const Glue5HostApi *host) {
         return -2;
 
     g_host = host;
-    if (host->log) host->log(1, "ScriptHook sample initialized; ABI v10 and native signature verified");
+    if (host->log) host->log(1, "ScriptHook sample initialized; ABI v11, control input and native signatures verified");
     return host->register_script_callback(on_script_wait, 0);
 }
