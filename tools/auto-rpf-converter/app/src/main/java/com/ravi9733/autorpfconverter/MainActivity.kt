@@ -101,7 +101,7 @@ class MainActivity : Activity() {
         }
         root.addView(chooseDestination)
         val extract = Button(this).apply {
-            text = "EXTRACT SELECTED RPF"
+            text = "CONVERT SELECTED PC RPF → ANDROID RPF"
             setOnClickListener { extractSelectedArchive() }
         }
         root.addView(extract)
@@ -148,7 +148,7 @@ class MainActivity : Activity() {
             }
             REQUEST_DESTINATION -> {
                 outputTreeUri = uri
-                output.text = "Output folder selected. Tap EXTRACT SELECTED RPF."
+                output.text = "Output folder selected. Tap CONVERT SELECTED PC RPF → ANDROID RPF."
             }
         }
     }
@@ -169,12 +169,18 @@ class MainActivity : Activity() {
                 contentResolver.openInputStream(sourceUri)?.use { input -> source.outputStream().use { out -> input.copyTo(out) } } ?: error("Cannot read archive")
                 val extracted = java.io.File(work, "extracted")
                 check(extracted.mkdir()) { "Cannot create extraction folder" }
-                val report = NativeRpf.extractArchive(source.absolutePath, extracted.absolutePath)
-                check(report.startsWith("Extraction complete")) { report }
+                val extractionReport = NativeRpf.extractArchive(source.absolutePath, extracted.absolutePath)
+                check(extractionReport.startsWith("Extraction complete")) { extractionReport }
+                val converted = java.io.File(work, safeName.removeSuffix(".rpf") + "_android.rpf")
+                val conversionReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
+                check(conversionReport.startsWith("RPF7 build complete")) { conversionReport }
                 val root = DocumentFile.fromTreeUri(this, destinationUri) ?: error("Cannot open destination")
-                val target = root.createDirectory("RPF_Extract_" + System.currentTimeMillis()) ?: error("Cannot create output folder")
-                copyExtractedTree(extracted, target)
-                report + " Output: " + target.name + ". Original archive unchanged."
+                val target = root.createFile("application/octet-stream", converted.name) ?: error("Cannot create Android RPF output")
+                contentResolver.openOutputStream(target.uri, "w")?.use { out ->
+                    converted.inputStream().use { input -> input.copyTo(out) }
+                } ?: error("Cannot write Android RPF output")
+                extractionReport + "\n\n" + conversionReport + "\n\nSaved: " + target.name +
+                    "\nOriginal PC archive unchanged. Only Gen9 YTD→Legacy YTD is converted; other asset types are preserved unchanged."
             } catch (e: Throwable) { "Extraction failed: " + (e.message ?: e.javaClass.simpleName) }
             runOnUiThread { output.text = result }
         }
