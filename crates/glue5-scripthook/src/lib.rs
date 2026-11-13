@@ -411,6 +411,7 @@ mod tests {
     use super::*;
     #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 6); }
     #[test] fn native_arg_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeArg>(), 16); }
+    #[test] fn native_metadata_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeMetadata>(), 24); }
     #[test] fn missing_directory_is_reported_without_panicking() {
         let report = load_directory(Path::new("/definitely/not/a/glue5/plugin/folder"));
         assert!(report.loaded.is_empty()); assert_eq!(report.rejected.len(), 1);
