@@ -218,6 +218,60 @@ mod tests {
     }
 
     #[test]
+    fn repacks_rsc7_resources_without_losing_the_header_or_page_flags() {
+        let temp = tempfile::tempdir().unwrap();
+        let input = temp.path().join("input");
+        std::fs::create_dir_all(&input).unwrap();
+
+        // RPF7 stores the resource body plus page flags; extraction must reconstruct
+        // the complete 16-byte standalone RSC7 header exactly.
+        let mut resource = vec![0u8; 24];
+        resource[0..4].copy_from_slice(&0x37435352u32.to_le_bytes());
+        resource[4..8].copy_from_slice(&165u32.to_le_bytes());
+        resource[8..12].copy_from_slice(&0xA0000002u32.to_le_bytes());
+        resource[12..16].copy_from_slice(&0x50000000u32.to_le_bytes());
+        resource[16..24].copy_from_slice(b"asset123");
+        std::fs::write(input.join("prop.ydr"), &resource).unwrap();
+
+        let output = temp.path().join("resources_android.rpf");
+        let (files, _, _) = build_android_rpf7(&input, &output, Limits::default()).unwrap();
+        assert_eq!(files, 1);
+
+        let archive_bytes = std::fs::read(&output).unwrap();
+        let archive = rage_rpf::RpfArchive::parse(&archive_bytes, "resources_android.rpf", None).unwrap();
+        let entry = archive.entries.iter()
+            .find(|entry| entry.name_lower == "prop.ydr")
+            .expect("resource entry must be present");
+        assert!(matches!(entry.kind, rage_rpf::RpfEntryKind::ResourceFile { .. }));
+        assert_eq!(archive.extract_entry(&archive_bytes, entry, None).unwrap(), resource);
+
+        let second_parser = rpf_archive::RpfArchive::parse(&archive_bytes, "resources_android.rpf", None).unwrap();
+        let second_entry = second_parser.entries.iter()
+            .find(|entry| entry.name_lower == "prop.ydr")
+            .expect("second parser must find the resource");
+        assert!(matches!(second_entry.kind, rpf_archive::RpfEntryKind::ResourceFile { .. }));
+        assert_eq!(second_parser.extract_entry(&archive_bytes, second_entry, None).unwrap(), resource);
+    }
+
+    #[test]
+    fn rejects_rsc7_files_with_inconsistent_header_version_and_page_flags() {
+        let temp = tempfile::tempdir().unwrap();
+        let input = temp.path().join("input");
+        std::fs::create_dir_all(&input).unwrap();
+
+        let mut resource = vec![0u8; 20];
+        resource[0..4].copy_from_slice(&0x37435352u32.to_le_bytes());
+        resource[4..8].copy_from_slice(&13u32.to_le_bytes());
+        resource[8..12].copy_from_slice(&0xA0000002u32.to_le_bytes());
+        resource[12..16].copy_from_slice(&0x50000000u32.to_le_bytes());
+        std::fs::write(input.join("bad.ytd"), resource).unwrap();
+
+        let output = temp.path().join("bad_android.rpf");
+        assert!(build_android_rpf7(&input, &output, Limits::default()).is_err());
+        assert!(!output.exists());
+    }
+
+    #[test]
     fn rejects_parent_traversal() {
         assert!(safe_relative_path("../outside.txt").is_err());
         assert!(safe_relative_path("folder/../../outside.txt").is_err());
@@ -281,6 +335,25 @@ pub fn build_android_rpf7(
             names_bytes = names_bytes.checked_add(archive_path.len() + 1).context("RPF name table overflow")?;
             if names_bytes > u16::MAX as usize { bail!("RPF7 name table exceeds 64 KiB writer limit"); }
             let mut data = fs::read(&path)?;
+            let has_rsc7_magic = data.len() >= 4
+                && u32::from_le_bytes(data[0..4].try_into().unwrap()) == 0x37435352;
+            if has_rsc7_magic {
+                if data.len() < 16 {
+                    bail!("truncated RSC7 header: {}", archive_path);
+                }
+                let header_version = u32::from_le_bytes(data[4..8].try_into().unwrap());
+                let system_flags = u32::from_le_bytes(data[8..12].try_into().unwrap());
+                let graphics_flags = u32::from_le_bytes(data[12..16].try_into().unwrap());
+                let flags_version = rage_rpf::resource_version_from_flags(system_flags, graphics_flags);
+                if header_version != flags_version {
+                    bail!(
+                        "RSC7 version/header flags disagree for {} (header {}, flags {})",
+                        archive_path,
+                        header_version,
+                        flags_version
+                    );
+                }
+            }
             let is_ytd = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("ytd"));
             if is_ytd {
                 match rage_formats::Edition::of_file("ytd", &data).context("invalid YTD resource header")? {
@@ -291,7 +364,7 @@ pub fn build_android_rpf7(
                     Some(rage_formats::Edition::Legacy) | None => {}
                 }
             }
-            let is_resource = data.len() >= 4 && u32::from_le_bytes(data[0..4].try_into().unwrap()) == 0x37435352;
+            let is_resource = has_rsc7_magic;
             if data.len() > 0xFFFFFF && !is_resource {
                 bail!("binary file exceeds RPF7 24-bit size limit: {}", archive_path);
             }
