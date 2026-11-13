@@ -27,6 +27,10 @@ typedef struct Glue5HostApi {
     int32_t (*call_native_marshaled)(void *env, uint64_t hash, const Glue5NativeArg *args,
                                      uint32_t count, uint64_t *result_bits);
     int32_t (*native_metadata)(uint64_t hash, Glue5NativeMetadata *output);
+    /* Exact GTA native name, e.g. CREATE_VEHICLE; returns its game-build hash. */
+    int32_t (*native_hash_by_name)(const char *name, uint64_t *hash);
+    /* expected_pool: 0=any entity, 1=ped, 2=vehicle, 3=object; returns 1/0. */
+    int32_t (*validate_entity)(void *env, int32_t handle, uint32_t expected_pool);
     int32_t (*native_parameter)(uint64_t hash, uint32_t index, uint32_t *kind, uint32_t *direction);
     /* pool: 0=peds, 1=vehicles, 2=objects; returns count or negative error. */
     int32_t (*enumerate_entities)(void *env, uint32_t pool, int32_t *output, uint32_t capacity);
