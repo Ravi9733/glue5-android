@@ -1,24 +1,37 @@
-//! Android native plugin host foundation.
+//! Android-native ScriptHook host and game script-thread callback bridge.
 //!
-//! This is a versioned C ABI, not yet the complete ScriptHookV or
-//! ScriptHookVDotNet API. Those require game runtime hooks, native
-//! registration, and (for .NET) a managed runtime.
+//! Plugins are Android ARM64 shared libraries, not Windows ASI/DLL files.
+//! They export glue5_scripthook_plugin_init and register callbacks through
+//! the versioned HostApi. Callbacks run from the game's script WAIT hook.
 
+use glue5_game::{Env, Hooks, orig};
 use libloading::Library;
-use std::ffi::{c_char, CStr};
+use std::ffi::{c_char, c_void, CStr};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 2;
 const ENTRYPOINT: &[u8] = b"glue5_scripthook_plugin_init\0";
+
+pub type ScriptCallback = unsafe extern "C" fn(env: *mut c_void, info: u64, user: *mut c_void);
 
 #[repr(C)]
 pub struct HostApi {
     pub abi_version: u32,
     pub log: Option<unsafe extern "C" fn(level: u32, message: *const c_char)>,
+    pub register_script_callback:
+        Option<unsafe extern "C" fn(callback: Option<ScriptCallback>, user: *mut c_void) -> i32>,
 }
 
 pub type PluginInit = unsafe extern "C" fn(host: *const HostApi) -> i32;
+
+#[derive(Clone, Copy)]
+struct Callback { function: ScriptCallback, user: usize }
+
+static CALLBACKS: Mutex<Vec<Callback>> = Mutex::new(Vec::new());
+static LOADED: Mutex<Vec<Library>> = Mutex::new(Vec::new());
+static INSTALLED: AtomicBool = AtomicBool::new(false);
 
 unsafe extern "C" fn host_log(level: u32, message: *const c_char) {
     if message.is_null() { return; }
@@ -31,8 +44,40 @@ unsafe extern "C" fn host_log(level: u32, message: *const c_char) {
     }
 }
 
-static HOST_API: HostApi = HostApi { abi_version: ABI_VERSION, log: Some(host_log) };
-static LOADED: Mutex<Vec<Library>> = Mutex::new(Vec::new());
+unsafe extern "C" fn register_script_callback(
+    callback: Option<ScriptCallback>, user: *mut c_void,
+) -> i32 {
+    let Some(function) = callback else { return -1 };
+    match CALLBACKS.lock() {
+        Ok(mut callbacks) => {
+            callbacks.push(Callback { function, user: user as usize });
+            0
+        }
+        Err(_) => -2,
+    }
+}
+
+static HOST_API: HostApi = HostApi {
+    abi_version: ABI_VERSION,
+    log: Some(host_log),
+    register_script_callback: Some(register_script_callback),
+};
+
+/// Installs the game hook. Call before glue5_runtime::start.
+pub fn install() {
+    if INSTALLED.swap(true, Ordering::AcqRel) { return; }
+    glue5_runtime::add_hooks(hooks);
+}
+
+fn hooks(hooks: &mut Hooks) { hooks.script_wait = Some(script_wait); }
+
+unsafe extern "C" fn script_wait(env: *mut Env, info: u64) {
+    let callbacks = CALLBACKS.lock().map(|items| items.clone()).unwrap_or_default();
+    for callback in callbacks {
+        unsafe { (callback.function)(env.cast(), info, callback.user as *mut c_void); }
+    }
+    unsafe { orig::script_wait(env, info) };
+}
 
 #[derive(Debug, Default)]
 pub struct LoadReport {
@@ -82,7 +127,7 @@ unsafe fn load_one(path: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     #[test]
-    fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 1); }
+    fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 2); }
     #[test]
     fn missing_directory_is_reported_without_panicking() {
         let report = load_directory(Path::new("/definitely/not/a/glue5/plugin/folder"));
