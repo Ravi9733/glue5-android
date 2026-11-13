@@ -228,14 +228,22 @@ pub fn build_android_rpf7(
 
             let relative = path.strip_prefix(&root).context("file escaped input root")?;
             let archive_path = relative.to_string_lossy().replace('\\', "/");
+            names_bytes = names_bytes.checked_add(archive_path.len() + 1).context("RPF name table overflow")?;
+            if names_bytes > u16::MAX as usize { bail!("RPF7 name table exceeds 64 KiB writer limit"); }
             let mut data = fs::read(&path)?;
-            if path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("ytd")) {
-                if let Ok(converted) = rage_formats::convert_ytd_to_legacy(&data) {
-                    if converted != data {
-                        data = converted;
+            let is_ytd = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("ytd"));
+            if is_ytd {
+                match rage_formats::Edition::of_file("ytd", &data).context("invalid YTD resource header")? {
+                    Some(rage_formats::Edition::Gen9) => {
+                        data = rage_formats::convert_ytd_to_legacy(&data).context("Gen9 YTD conversion failed")?;
                         converted_ytd += 1;
                     }
+                    Some(rage_formats::Edition::Legacy) | None => {}
                 }
+            }
+            let is_resource = data.len() >= 4 && u32::from_le_bytes(data[0..4].try_into().unwrap()) == 0x37435352;
+            if data.len() > 0xFFFFFF && !is_resource {
+                bail!("binary file exceeds RPF7 24-bit size limit: {}", archive_path);
             }
             builder.add_file(&archive_path, data);
         }
