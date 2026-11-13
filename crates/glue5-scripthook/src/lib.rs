@@ -410,6 +410,10 @@ pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport
     // guess handler indices or resolve against a different GTA title/build.
     let _ = NATIVE_RESOLVER.set(glue5_mods::natives::handler_by_hash);
     if !INSTALLED.swap(true, Ordering::AcqRel) && !mods_hook_installed { glue5_runtime::add_hooks(hooks); }
+    if let Err(error) = std::fs::create_dir_all(plugin_directory) {
+        log::error!("cannot create ScriptHook plugin directory {}: {error}", plugin_directory.display());
+        return LoadReport { loaded: Vec::new(), rejected: vec![(plugin_directory.to_path_buf(), error.to_string())] };
+    }
     let report = load_directory(plugin_directory);
     for path in &report.loaded { log::info!("ScriptHook plugin ready: {}", path.display()); }
     for (path, error) in &report.rejected { log::warn!("ScriptHook plugin rejected {}: {}", path.display(), error); }
