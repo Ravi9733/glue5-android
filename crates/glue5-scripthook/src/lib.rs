@@ -95,7 +95,7 @@ unsafe extern "C" fn call_native_typed(
         let native_result = alloc(32)?;
         for index in 0..count as usize {
             let arg = unsafe { *args.add(index) };
-            if arg.kind > 3 { return Err(-7); }
+            if arg.kind > 3 || (arg.kind == 3 && arg.value >= memory_size) { return Err(-7); }
             let at = params + index as u64 * 8;
             unsafe { std::ptr::write_unaligned(data.add(at as usize).cast::<u64>(), arg.value); }
         }
