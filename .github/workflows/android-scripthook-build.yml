@@ -65,6 +65,11 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
+      - name: Prepare dependencies and test ScriptHook host
+        run: |
+          mise run setup
+          cargo test -p glue5-scripthook --lib
+
       - name: Build Android APK
         run: |
           mise run android:build
