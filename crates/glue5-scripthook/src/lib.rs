@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-pub const ABI_VERSION: u32 = 9;
+pub const ABI_VERSION: u32 = 10;
 const ENTRYPOINT: &[u8] = b"glue5_scripthook_plugin_init\0";
 pub type ScriptCallback = unsafe extern "C" fn(env: *mut c_void, info: u64, user: *mut c_void);
 pub type NativeResolver = fn(hash: u64) -> Option<u64>;
@@ -41,6 +41,10 @@ pub struct HostApi {
     pub request_model: Option<unsafe extern "C" fn(env: *mut c_void, model_hash: u32) -> i32>,
     /// Release a model after it is no longer needed.
     pub release_model: Option<unsafe extern "C" fn(env: *mut c_void, model_hash: u32) -> i32>,
+    /// Calls a verified CREATE_/CLONE_ native and returns a live typed entity handle.
+    pub create_entity: Option<unsafe extern "C" fn(env: *mut c_void, native_hash: u64, args: *const NativeArg, count: u32, expected_pool: u32, output_handle: *mut i32) -> i32>,
+    /// Deletes a live typed entity using the generated DELETE_* signature.
+    pub delete_entity: Option<unsafe extern "C" fn(env: *mut c_void, handle: i32, expected_pool: u32) -> i32>,
     pub validate_entity: Option<unsafe extern "C" fn(env: *mut c_void, handle: i32, expected_pool: u32) -> i32>,
     pub native_parameter: Option<unsafe extern "C" fn(hash: u64, index: u32, kind: *mut u32, direction: *mut u32) -> i32>,
     pub enumerate_entities: Option<unsafe extern "C" fn(env: *mut c_void, pool: u32, output: *mut i32, capacity: u32) -> i32>,
@@ -411,6 +415,74 @@ unsafe extern "C" fn release_model(env: *mut c_void, model_hash: u32) -> i32 {
         Err(code) => code,
     }
 }
+/// Calls a creation native only when its generated return type matches the
+/// requested entity pool, then validates the returned script handle.
+unsafe extern "C" fn create_entity(
+    env: *mut c_void, native_hash: u64, args: *const NativeArg, count: u32,
+    expected_pool: u32, output_handle: *mut i32,
+) -> i32 {
+    if env.is_null() || output_handle.is_null() || (count != 0 && args.is_null()) { return -1; }
+    let expected = match expected_pool {
+        1 => natives::Handle::Ped,
+        2 => natives::Handle::Vehicle,
+        3 => natives::Handle::Object,
+        _ => return -2,
+    };
+    let Some(native) = natives::by_hash(native_hash) else { return -3; };
+    if !(native.name.starts_with("CREATE_") || native.name.starts_with("CLONE_")) { return -4; }
+    if native.ret != Some(Kind::Handle(expected)) { return -5; }
+    if native.params.len() != count as usize { return -6; }
+    let mut bits = 0u64;
+    let status = unsafe { call_native_marshaled(env, native_hash, args, count, &mut bits) };
+    if status != 0 { return status; }
+    let handle = bits as u32 as i32;
+    if handle <= 0 || unsafe { validate_entity(env, handle, expected_pool) } != 1 { return -7; }
+    unsafe { output_handle.write(handle); }
+    0
+}
+
+/// Uses only the exact generated DELETE_* entry and its declared one-handle
+/// signature. INOUT handle parameters are staged in wasm memory for writeback.
+unsafe extern "C" fn delete_entity(env: *mut c_void, handle: i32, expected_pool: u32) -> i32 {
+    if env.is_null() || handle <= 0 { return -1; }
+    let (kind, native_name) = match expected_pool {
+        1 => (natives::Handle::Ped, "DELETE_PED"),
+        2 => (natives::Handle::Vehicle, "DELETE_VEHICLE"),
+        3 => (natives::Handle::Object, "DELETE_OBJECT"),
+        _ => return -2,
+    };
+    if unsafe { validate_entity(env, handle, expected_pool) } != 1 { return -3; }
+    let Some(native) = natives::NATIVES.iter().find(|n| n.name == native_name) else { return -4; };
+    if native.params.len() != 1 || native.params[0].kind != Kind::Handle(kind) { return -5; }
+    let mut staged = 0u64;
+    let arg = match native.params[0].dir {
+        Dir::In => NativeArg { kind: 0, reserved: 0, value: handle as u32 as u64 },
+        Dir::InOut => {
+            let env = env.cast::<Env>();
+            let memory = unsafe { (*env).memory };
+            if memory.is_null() { return -6; }
+            let data = unsafe { (*memory).data };
+            let size = unsafe { (*memory).size };
+            if data.is_null() { return -6; }
+            let top = match unsafe { exports::emscripten_stack_get_current(env) } { Ok(v) => v, Err(_) => return -7 };
+            let at = match unsafe { exports::_emscripten_stack_alloc(env, 16) } { Ok(v) => v, Err(_) => return -7 };
+            if at.checked_add(4).is_none_or(|end| end > size) {
+                let _ = unsafe { exports::_emscripten_stack_restore(env, top) };
+                return -8;
+            }
+            unsafe { std::ptr::write_unaligned(data.add(at as usize).cast::<u32>(), handle as u32); }
+            staged = top;
+            NativeArg { kind: 0, reserved: 0, value: at }
+        }
+        Dir::Out => return -9,
+    };
+    let mut result = 0u64;
+    let status = unsafe { call_native_marshaled(env, native.hash, &arg, 1, &mut result) };
+    if staged != 0 {
+        let _ = unsafe { exports::_emscripten_stack_restore(env.cast::<Env>(), staged) };
+    }
+    if status == 0 { 0 } else { status }
+}
 unsafe extern "C" fn validate_entity(env: *mut c_void, handle: i32, expected_pool: u32) -> i32 {
     if env.is_null() { return -1; }
     let Some(kind) = (unsafe { natives::entity_handle_kind(env.cast(), handle) }) else { return 0; };
@@ -448,7 +520,7 @@ static HOST_API: HostApi = HostApi {
     abi_version: ABI_VERSION, log: Some(host_log), register_script_callback: Some(register_script_callback),
     script_stack_top: Some(script_stack_top), script_stack_alloc: Some(script_stack_alloc),
     script_stack_restore: Some(script_stack_restore), call_native: Some(call_native),
-    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata), native_hash_by_name: Some(native_hash_by_name), resolve_model_name: Some(resolve_model_name), request_model: Some(request_model), release_model: Some(release_model), validate_entity: Some(validate_entity),
+    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata), native_hash_by_name: Some(native_hash_by_name), resolve_model_name: Some(resolve_model_name), request_model: Some(request_model), release_model: Some(release_model), create_entity: Some(create_entity), delete_entity: Some(delete_entity), validate_entity: Some(validate_entity),
     native_parameter: Some(native_parameter), enumerate_entities: Some(enumerate_entities),
 };
 pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
