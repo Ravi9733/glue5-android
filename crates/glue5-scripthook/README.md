@@ -27,3 +27,12 @@ Place Android ARM64 .so plugins there. They must export glue5_scripthook_plugin_
 This is not yet a drop-in ScriptHookV / ScriptHookVDotNet implementation. Menyoo has not been ported. A managed .NET runtime is not included. Existing Windows .asi binaries cannot run unchanged and must be ported/rebuilt for Android.
 
 The supplied iOS ScriptHook pack contains Menyoo assets and managed DLLs, but not the native iOS PostHook implementation needed to reproduce the iOS runtime. This Android implementation therefore needs its own native bridge and Android-specific plugin builds.
+
+
+## ABI v5 additions
+
+- Native metadata lookup by hash: reports handler index, parameter count, and return-kind code for the exact generated database.
+- Per-parameter introspection: reports each argument kind and direction (input, output, in/out) without exposing Rust internals.
+- Entity enumeration from the game's live pools: peds, vehicles, and objects are returned as script handles, capped at 4096 per request.
+
+These APIs provide discovery and inspection; they do not yet implement a complete safe typed marshaller for strings, vectors, or output parameters. Entity enumeration must be called from the game script callback context.
