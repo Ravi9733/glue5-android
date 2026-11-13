@@ -1,5 +1,7 @@
 #include "asset_converter.h"
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -47,6 +49,23 @@ int main() {
     require(passthrough == opaque, "unsupported formats must be preserved unchanged");
     require(stats.unchanged_other == 1, "unchanged format count must be one");
 
-    std::cout << "Gen9 YTD -> Legacy YTD conversion smoke test passed\n";
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "gta-rpf-converter-directory-smoke";
+    std::error_code ignored;
+    fs::remove_all(root, ignored);
+    fs::create_directories(root);
+    rk::rsc::write_file((root / "smoke.ytd").string(), gen9);
+    {
+        std::ofstream note(root / "readme.txt", std::ios::binary);
+        note << "leave me unchanged";
+    }
+    const std::string report = gta_asset_converter::convert_directory(root);
+    require(report.find("YTD=1") != std::string::npos, "directory scan must report one converted YTD");
+    require(report.find("Other files preserved unchanged: 1") != std::string::npos, "directory scan must preserve unrelated files");
+    const auto directory_result = rk::rsc::read_file((root / "smoke.ytd").string());
+    require(rk::rsc::Resource::load(directory_result).version == 13, "directory scan must replace Gen9 YTD with Legacy YTD");
+    fs::remove_all(root, ignored);
+
+    std::cout << "Gen9 YTD -> Legacy YTD conversion and directory smoke tests passed\n";
     return 0;
 }

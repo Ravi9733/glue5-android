@@ -189,6 +189,35 @@ mod tests {
     }
 
     #[test]
+    fn packages_a_small_nested_rpf_as_a_binary_entry_without_truncation() {
+        use rage_rpf::{RpfArchive, RpfBuilder, RpfEncryption, RpfVersion};
+
+        let temp = tempfile::tempdir().unwrap();
+        let input = temp.path().join("input");
+        std::fs::create_dir_all(&input).unwrap();
+
+        let mut nested_builder = RpfBuilder::new(RpfEncryption::Open);
+        nested_builder.add_file("nested/readme.txt", b"nested archive payload".to_vec());
+        let nested_bytes = nested_builder.build(None).unwrap();
+        assert!(nested_bytes.len() < 0xFFFFFF);
+        std::fs::write(input.join("nested.rpf"), &nested_bytes).unwrap();
+
+        let output = temp.path().join("outer_android.rpf");
+        let (files, _, _) = build_android_rpf7(&input, &output, Limits::default()).unwrap();
+        assert_eq!(files, 1);
+
+        let outer_bytes = std::fs::read(&output).unwrap();
+        let outer = RpfArchive::parse(&outer_bytes, "outer_android.rpf", None).unwrap();
+        let nested_entry = outer.entries.iter()
+            .find(|entry| entry.name_lower == "nested.rpf")
+            .expect("outer archive must retain nested.rpf");
+        let nested_payload = outer.extract_entry(&outer_bytes, nested_entry, None).unwrap();
+        let nested = RpfArchive::parse(&nested_payload, "nested.rpf", None).unwrap();
+        assert_eq!(nested.version, RpfVersion::V7);
+        assert!(nested.entries.iter().any(|entry| entry.name_lower == "readme.txt"));
+    }
+
+    #[test]
     fn rejects_parent_traversal() {
         assert!(safe_relative_path("../outside.txt").is_err());
         assert!(safe_relative_path("folder/../../outside.txt").is_err());
