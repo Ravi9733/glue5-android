@@ -20,7 +20,6 @@ static int32_t g_entity_handle;
 static uint32_t g_entity_pool;
 static int g_selection;
 static int g_pending_selection = -1;
-static int g_model_pending;
 
 static uint32_t f32_bits(float value) {
     uint32_t bits = 0;
@@ -29,8 +28,8 @@ static uint32_t f32_bits(float value) {
 }
 
 /* Verify every argument against this build's generated native metadata. */
-static int verify_native(const char *name, uint32_t expected_pool,
-                         const uint32_t *kinds, uint32_t count, uint64_t *hash) {
+static int verify_native(const char *name, const uint32_t *kinds,
+                         uint32_t count, uint64_t *hash) {
     Glue5NativeMetadata metadata = {0};
     if (g_host->native_hash_by_name(name, hash) != 0 ||
         g_host->native_metadata(*hash, &metadata) != 0 ||
@@ -42,7 +41,6 @@ static int verify_native(const char *name, uint32_t expected_pool,
             kind != kinds[i] || direction != 0)
             return -2;
     }
-    (void)expected_pool;
     return 0;
 }
 
@@ -66,7 +64,6 @@ static int spawn_selected(void *env, int selection) {
         : g_host->create_entity(env, g_create_hash[SPAWN_PED], ped_args, 8, pool, &handle);
 
     g_host->release_model(env, g_model_hash[selection]);
-    g_model_pending = 0;
     g_pending_selection = -1;
     if (status == 0) {
         g_entity_handle = handle;
@@ -96,7 +93,6 @@ static void on_script_wait(void *env, uint64_t info, void *user) {
         if (g_pending_selection >= 0) {
             g_host->release_model(env, g_model_hash[g_pending_selection]);
             g_pending_selection = -1;
-            g_model_pending = 0;
         } else if (g_entity_handle &&
                    g_host->validate_entity(env, g_entity_handle, g_entity_pool) == 1) {
             if (g_host->delete_entity(env, g_entity_handle, g_entity_pool) == 0) {
@@ -115,15 +111,13 @@ static void on_script_wait(void *env, uint64_t info, void *user) {
             if (g_host->log) g_host->log(2, "ScriptHook: delete current entity with BACK first");
         } else {
             g_pending_selection = g_selection;
-            g_model_pending = 0;
-        }
+            }
     }
 
     if (g_pending_selection < 0) return;
     int selection = g_pending_selection;
     int32_t loaded = g_host->request_model(env, g_model_hash[selection]);
     if (loaded == 1) {
-        g_model_pending = 1;
         spawn_selected(env, selection);
     } else if (loaded < 0) {
         g_pending_selection = -1;
@@ -151,10 +145,10 @@ int32_t glue5_scripthook_plugin_init(const Glue5HostApi *host) {
 
     const uint32_t vehicle_kinds[7] = {1, 2, 2, 2, 2, 4, 4};
     const uint32_t ped_kinds[8] = {0, 1, 2, 2, 2, 2, 4, 4};
-    if (verify_native("CREATE_VEHICLE", 2, vehicle_kinds, 7,
+    if (verify_native("CREATE_VEHICLE", vehicle_kinds, 7,
                       &g_create_hash[SPAWN_VEHICLE]) != 0)
         return -4;
-    if (verify_native("CREATE_PED", 1, ped_kinds, 8,
+    if (verify_native("CREATE_PED", ped_kinds, 8,
                       &g_create_hash[SPAWN_PED]) != 0)
         return -5;
 
