@@ -185,6 +185,7 @@ pub fn open(dir: &Path) {
 /// before `glue5_runtime::start`.
 pub fn install(dir: &Path) {
     open(dir);
+    glue5_scripthook::set_native_resolver(native_handler_by_hash);
     if INSTALLED.swap(true, Ordering::AcqRel) {
         return;
     }
