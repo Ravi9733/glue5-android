@@ -1,5 +1,8 @@
 #include "../../include/glue5_scripthook.h"
 
+_Static_assert(sizeof(Glue5NativeArg) == 16, "Glue5NativeArg ABI layout changed");
+_Static_assert(sizeof(Glue5NativeMetadata) == 24, "Glue5NativeMetadata ABI layout changed");
+
 /*
  * Minimal Android-native plugin example.
  *
@@ -33,7 +36,9 @@ static void on_script_wait(void *env, uint64_t info, void *user) {
 int32_t glue5_scripthook_plugin_init(const Glue5HostApi *host) {
     if (!host || host->abi_version != GLUE5_SCRIPTHOOK_ABI_VERSION ||
         !host->register_script_callback || !host->native_hash_by_name ||
-        !host->native_metadata || !host->call_native_marshaled)
+        !host->native_metadata || !host->call_native_marshaled ||
+        !host->resolve_model_name || !host->request_model || !host->release_model ||
+        !host->create_entity || !host->delete_entity || !host->validate_entity)
         return -1;
 
     Glue5NativeMetadata metadata = {0};
@@ -43,6 +48,6 @@ int32_t glue5_scripthook_plugin_init(const Glue5HostApi *host) {
         return -2;
 
     g_host = host;
-    if (host->log) host->log(1, "ScriptHook sample initialized; native signature verified");
+    if (host->log) host->log(1, "ScriptHook sample initialized; ABI v10 and native signature verified");
     return host->register_script_callback(on_script_wait, 0);
 }
