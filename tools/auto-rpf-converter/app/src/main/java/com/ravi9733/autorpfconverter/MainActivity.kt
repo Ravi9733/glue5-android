@@ -177,11 +177,12 @@ class MainActivity : Activity() {
                 check(assetConversionReport.startsWith("Asset conversion complete")) { assetConversionReport }
                 val nestedStats = NestedRpfStats()
                 convertNestedRpfFiles(extracted, 0, nestedStats)
-                val converted = java.io.File(work, safeName.removeSuffix(".rpf") + "_android.rpf")
+                val converted = java.io.File(work, safeName.removeSuffix(".rpf") + ".converted.rpf")
                 val conversionReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
                 check(conversionReport.startsWith("RPF7 build complete")) { conversionReport }
                 val root = DocumentFile.fromTreeUri(this, destinationUri) ?: error("Cannot open destination")
-                val target = root.createFile("application/octet-stream", converted.name) ?: error("Cannot create Android RPF output")
+                val outputName = uniqueOutputName(root, safeName)
+                val target = root.createFile("application/octet-stream", outputName) ?: error("Cannot create Android RPF output")
                 contentResolver.openOutputStream(target.uri, "w")?.use { out ->
                     converted.inputStream().use { input -> input.copyTo(out) }
                 } ?: error("Cannot write Android RPF output")
@@ -263,12 +264,12 @@ class MainActivity : Activity() {
                         check(assetReport.startsWith("Asset conversion complete")) { assetReport }
                         val nestedStats = NestedRpfStats()
                         convertNestedRpfFiles(extracted, 0, nestedStats)
-                        val converted = java.io.File(work, safeName.removeSuffix(".rpf") + "_android.rpf")
+                        val converted = java.io.File(work, safeName.removeSuffix(".rpf") + ".converted.rpf")
                         val packageReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
                         check(packageReport.startsWith("RPF7 build complete")) { packageReport }
 
                         val outputDirectory = ensureOutputDirectory(destination!!, relativeDir)
-                        val outputName = uniqueOutputName(outputDirectory, safeName.removeSuffix(".rpf") + "_android.rpf")
+                        val outputName = uniqueOutputName(outputDirectory, safeName)
                         val target = outputDirectory.createFile("application/octet-stream", outputName)
                             ?: error("Cannot create Android RPF output")
                         contentResolver.openOutputStream(target.uri, "w")?.use { out ->
