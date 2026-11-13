@@ -121,10 +121,8 @@ static void on_script_wait(void *env, uint64_t info, void *user) {
         spawn_selected(env, selection);
     } else if (loaded < 0) {
         g_pending_selection = -1;
-        g_model_pending = 0;
         if (g_host->log) g_host->log(2, "ScriptHook: model streaming failed");
     } else {
-        g_model_pending = 1;
     }
 }
 
