@@ -569,9 +569,22 @@ unsafe fn load_one(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 8); }
+    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 10); }
     #[test] fn native_arg_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeArg>(), 16); }
     #[test] fn native_metadata_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeMetadata>(), 24); }
+    #[test] fn host_api_v10_exposes_entity_lifecycle() {
+        assert_eq!(HOST_API.abi_version, ABI_VERSION);
+        assert!(HOST_API.create_entity.is_some());
+        assert!(HOST_API.delete_entity.is_some());
+        assert!(HOST_API.request_model.is_some());
+        assert!(HOST_API.release_model.is_some());
+    }
+    #[test] fn host_api_field_order_matches_c_header_contract() {
+        use std::mem::offset_of;
+        assert!(offset_of!(HostApi, create_entity) > offset_of!(HostApi, release_model));
+        assert!(offset_of!(HostApi, delete_entity) > offset_of!(HostApi, create_entity));
+        assert!(offset_of!(HostApi, validate_entity) > offset_of!(HostApi, delete_entity));
+    }
     #[test] fn missing_directory_is_reported_without_panicking() {
         let report = load_directory(Path::new("/definitely/not/a/glue5/plugin/folder"));
         assert!(report.loaded.is_empty()); assert_eq!(report.rejected.len(), 1);
