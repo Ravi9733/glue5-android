@@ -1039,6 +1039,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "glue5-scripthook"
+version = "0.1.0"
+dependencies = [
+ "libloading",
+ "log",
+]
+
+[[package]]
 name = "glue5-stream"
 version = "0.1.0"
 dependencies = [
