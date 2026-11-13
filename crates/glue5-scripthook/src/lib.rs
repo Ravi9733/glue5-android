@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-pub const ABI_VERSION: u32 = 6;
+pub const ABI_VERSION: u32 = 7;
 const ENTRYPOINT: &[u8] = b"glue5_scripthook_plugin_init\0";
 pub type ScriptCallback = unsafe extern "C" fn(env: *mut c_void, info: u64, user: *mut c_void);
 pub type NativeResolver = fn(hash: u64) -> Option<u64>;
@@ -430,7 +430,7 @@ unsafe fn load_one(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 6); }
+    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 7); }
     #[test] fn native_arg_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeArg>(), 16); }
     #[test] fn native_metadata_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeMetadata>(), 24); }
     #[test] fn missing_directory_is_reported_without_panicking() {
