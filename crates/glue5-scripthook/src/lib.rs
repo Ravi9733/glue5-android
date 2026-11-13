@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-pub const ABI_VERSION: u32 = 5;
+pub const ABI_VERSION: u32 = 6;
 const ENTRYPOINT: &[u8] = b"glue5_scripthook_plugin_init\0";
 pub type ScriptCallback = unsafe extern "C" fn(env: *mut c_void, info: u64, user: *mut c_void);
 pub type NativeResolver = fn(hash: u64) -> Option<u64>;
@@ -228,6 +228,18 @@ unsafe extern "C" fn call_native_marshaled(
             std::ptr::write_unaligned(data.add((info + 24) as usize).cast::<i32>(), 0);
         }
         glue5_game::call_native(env, native.handler, info).map_err(|_| -8)?;
+        // Match Glue 5's existing Vec3 reference write-back protocol.
+        let vector_refs = (unsafe { std::ptr::read_unaligned(data.add((info + 24) as usize).cast::<i32>()) }).clamp(0, 4) as u64;
+        for index in 0..vector_refs {
+            let original = unsafe { std::ptr::read_unaligned(data.add((info + 32 + 8 * index) as usize).cast::<u64>()) };
+            check_range(original, 24)?;
+            let vector_buffer = info + 64 + 16 * index;
+            check_range(vector_buffer, 12)?;
+            for component in 0..3u64 {
+                let bits = read_u32(vector_buffer + component * 4)?;
+                write_u32(original + component * 8, bits)?;
+            }
+        }
         for (buffer, destination, kind) in outputs {
             match kind {
                 Kind::Vec3 => {
@@ -397,7 +409,7 @@ unsafe fn load_one(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 5); }
+    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 6); }
     #[test] fn native_arg_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeArg>(), 16); }
     #[test] fn missing_directory_is_reported_without_panicking() {
         let report = load_directory(Path::new("/definitely/not/a/glue5/plugin/folder"));
