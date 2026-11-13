@@ -31,7 +31,7 @@ For INOUT scalar arguments, `value` is the wasm-memory destination offset contai
 
 ## Plugin location
 
-The app creates the user-data folder `scripthook/plugins/` on first Android game launch, then scans it for Android ARM64 `.so` plugins. Place plugins there; they must export `glue5_scripthook_plugin_init` and be built against `include/glue5_scripthook.h`. A C example is in `examples/native-plugin/plugin.c`: UP selects the Adder vehicle, DOWN selects a security ped, SELECT streams and spawns the selected entity, and BACK cancels a pending spawn or deletes the last spawned entity. The example verifies generated `CREATE_VEHICLE` and `CREATE_PED` parameter metadata before use; it uses fixed demo coordinates (0, 0, 72), not the player's position.
+The app creates the user-data folder `scripthook/plugins/` on first Android game launch, then scans it for Android ARM64 `.so` plugins. Place plugins there; they must export `glue5_scripthook_plugin_init` and be built against `include/glue5_scripthook.h`. A C example is in `examples/native-plugin/plugin.c`: UP selects the Adder vehicle, DOWN selects a security ped, SELECT streams and spawns the selected entity, and BACK cancels a pending spawn or deletes the last spawned entity. The example verifies generated `CREATE_VEHICLE` and `CREATE_PED` parameter metadata before use and uses the host's `get_player_spawn_transform` API to place entities relative to the local player. The helper returns x, y, z and heading for a point ahead of the player; the plugin must call it from its script WAIT callback.
 
 ## Important limitations
 
