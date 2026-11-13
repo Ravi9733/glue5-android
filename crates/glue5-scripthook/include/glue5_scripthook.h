@@ -4,12 +4,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define GLUE5_SCRIPTHOOK_ABI_VERSION 4u
+#define GLUE5_SCRIPTHOOK_ABI_VERSION 5u
 typedef void (*Glue5ScriptCallback)(void *env, uint64_t info, void *user);
 typedef void (*Glue5LogCallback)(uint32_t level, const char *message);
 typedef int32_t (*Glue5RegisterScriptCallback)(Glue5ScriptCallback callback, void *user);
 /* kind: 0=signed integer, 1=unsigned/hash, 2=f32 bit pattern, 3=wasm-memory offset. */
 typedef struct Glue5NativeArg { uint32_t kind; uint32_t reserved; uint64_t value; } Glue5NativeArg;
+typedef struct Glue5NativeMetadata { uint64_t hash; uint64_t handler; uint32_t parameter_count; uint32_t return_kind; } Glue5NativeMetadata;
 typedef struct Glue5HostApi {
     uint32_t abi_version;
     Glue5LogCallback log;
@@ -22,6 +23,10 @@ typedef struct Glue5HostApi {
     /* Typed scalar call. Result is returned as raw bits through result_bits. */
     int32_t (*call_native_typed)(void *env, uint64_t hash, const Glue5NativeArg *args,
                                  uint32_t count, uint64_t *result_bits);
+    int32_t (*native_metadata)(uint64_t hash, Glue5NativeMetadata *output);
+    int32_t (*native_parameter)(uint64_t hash, uint32_t index, uint32_t *kind, uint32_t *direction);
+    /* pool: 0=peds, 1=vehicles, 2=objects; returns count or negative error. */
+    int32_t (*enumerate_entities)(void *env, uint32_t pool, int32_t *output, uint32_t capacity);
 } Glue5HostApi;
 int32_t glue5_scripthook_plugin_init(const Glue5HostApi *host);
 #ifdef __cplusplus
