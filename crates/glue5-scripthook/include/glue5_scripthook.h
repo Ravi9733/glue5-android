@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define GLUE5_SCRIPTHOOK_ABI_VERSION 9u
+#define GLUE5_SCRIPTHOOK_ABI_VERSION 10u
 typedef void (*Glue5ScriptCallback)(void *env, uint64_t info, void *user);
 typedef void (*Glue5LogCallback)(uint32_t level, const char *message);
 typedef int32_t (*Glue5RegisterScriptCallback)(Glue5ScriptCallback callback, void *user);
@@ -35,6 +35,11 @@ typedef struct Glue5HostApi {
     int32_t (*request_model)(void *env, uint32_t model_hash);
     /* Call after model use to let the engine release its streaming reference. */
     int32_t (*release_model)(void *env, uint32_t model_hash);
+    /* expected_pool: 1=ped, 2=vehicle, 3=object; verifies generated CREATE_/CLONE_ return kind. */
+    int32_t (*create_entity)(void *env, uint64_t native_hash, const Glue5NativeArg *args,
+                             uint32_t count, uint32_t expected_pool, int32_t *output_handle);
+    /* expected_pool: 1=ped, 2=vehicle, 3=object; checks the live handle and DELETE_* signature. */
+    int32_t (*delete_entity)(void *env, int32_t handle, uint32_t expected_pool);
     /* expected_pool: 0=any entity, 1=ped, 2=vehicle, 3=object; returns 1/0. */
     int32_t (*validate_entity)(void *env, int32_t handle, uint32_t expected_pool);
     int32_t (*native_parameter)(uint64_t hash, uint32_t index, uint32_t *kind, uint32_t *direction);
