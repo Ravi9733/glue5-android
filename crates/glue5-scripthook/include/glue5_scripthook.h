@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define GLUE5_SCRIPTHOOK_ABI_VERSION 10u
+#define GLUE5_SCRIPTHOOK_ABI_VERSION 11u
 typedef void (*Glue5ScriptCallback)(void *env, uint64_t info, void *user);
 typedef void (*Glue5LogCallback)(uint32_t level, const char *message);
 typedef int32_t (*Glue5RegisterScriptCallback)(Glue5ScriptCallback callback, void *user);
@@ -35,6 +35,11 @@ typedef struct Glue5HostApi {
     int32_t (*request_model)(void *env, uint32_t model_hash);
     /* Call after model use to let the engine release its streaming reference. */
     int32_t (*release_model)(void *env, uint32_t model_hash);
+    /* Returns 1=pressed, 0=not pressed, negative=error. */
+    int32_t (*is_control_just_pressed)(void *env, int32_t control_group, int32_t control_id);
+    int32_t (*is_control_pressed)(void *env, int32_t control_group, int32_t control_id);
+    /* Writes the raw f32 result bits from GET_CONTROL_NORMAL. */
+    int32_t (*get_control_normal)(void *env, int32_t control_group, int32_t control_id, uint32_t *output_bits);
     /* expected_pool: 1=ped, 2=vehicle, 3=object; verifies generated CREATE_/CLONE_ return kind. */
     int32_t (*create_entity)(void *env, uint64_t native_hash, const Glue5NativeArg *args,
                              uint32_t count, uint32_t expected_pool, int32_t *output_handle);
