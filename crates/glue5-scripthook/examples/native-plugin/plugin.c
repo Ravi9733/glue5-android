@@ -10,7 +10,7 @@ _Static_assert(sizeof(Glue5NativeMetadata) == 24, "Glue5NativeMetadata ABI layou
  * Build as arm64-v8a sample.so and place in user-data/scripthook/plugins/.
  *
  * This API currently resolves vehicle/ped archetypes, not object archetypes.
- * Spawn position is a safe demo coordinate (0, 0, 72), not player-relative.
+ * Spawn point is resolved 4 metres in front of the local player.
  */
 enum { SPAWN_VEHICLE = 0, SPAWN_PED = 1 };
 static const Glue5HostApi *g_host;
@@ -45,16 +45,24 @@ static int verify_native(const char *name, const uint32_t *kinds,
 }
 
 static int spawn_selected(void *env, int selection) {
+    float spawn[4] = {0};
+    int32_t transform_status = g_host->get_player_spawn_transform(env, 4.0f, spawn);
+    if (transform_status != 0) {
+        g_host->release_model(env, g_model_hash[selection]);
+        g_pending_selection = -1;
+        if (g_host->log) g_host->log(2, "ScriptHook: could not read player spawn transform");
+        return transform_status;
+    }
     Glue5NativeArg vehicle_args[7] = {
         {1, 0, g_model_hash[SPAWN_VEHICLE]},
-        {2, 0, f32_bits(0.0f)}, {2, 0, f32_bits(0.0f)},
-        {2, 0, f32_bits(72.0f)}, {2, 0, f32_bits(0.0f)},
+        {2, 0, f32_bits(spawn[0])}, {2, 0, f32_bits(spawn[1])},
+        {2, 0, f32_bits(spawn[2])}, {2, 0, f32_bits(spawn[3])},
         {4, 0, 0}, {4, 0, 0}
     };
     Glue5NativeArg ped_args[8] = {
         {0, 0, 4}, {1, 0, g_model_hash[SPAWN_PED]},
-        {2, 0, f32_bits(0.0f)}, {2, 0, f32_bits(0.0f)},
-        {2, 0, f32_bits(72.0f)}, {2, 0, f32_bits(0.0f)},
+        {2, 0, f32_bits(spawn[0])}, {2, 0, f32_bits(spawn[1])},
+        {2, 0, f32_bits(spawn[2])}, {2, 0, f32_bits(spawn[3])},
         {4, 0, 0}, {4, 0, 0}
     };
     int32_t handle = 0;
@@ -132,7 +140,7 @@ int32_t glue5_scripthook_plugin_init(const Glue5HostApi *host) {
         !host->native_metadata || !host->native_parameter ||
         !host->resolve_model_name || !host->request_model || !host->release_model ||
         !host->create_entity || !host->delete_entity || !host->validate_entity ||
-        !host->is_control_just_pressed)
+        !host->is_control_just_pressed || !host->get_player_spawn_transform)
         return -1;
 
     g_host = host;
