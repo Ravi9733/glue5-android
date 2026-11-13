@@ -63,6 +63,27 @@ static CALLBACKS: Mutex<Vec<Callback>> = Mutex::new(Vec::new());
 static LOADED: Mutex<Vec<Library>> = Mutex::new(Vec::new());
 static INSTALLED: AtomicBool = AtomicBool::new(false);
 static NATIVE_RESOLVER: OnceLock<NativeResolver> = OnceLock::new();
+static PLUGIN_DIRECTORY: OnceLock<PathBuf> = OnceLock::new();
+static LAST_REPORT: OnceLock<Mutex<LoadReport>> = OnceLock::new();
+
+/// The directory scanned for Android ARM64 native plugins.
+pub fn plugin_directory() -> Option<PathBuf> {
+    PLUGIN_DIRECTORY.get().cloned()
+}
+
+/// A snapshot of the most recent plugin scan, for the in-app status page.
+pub fn last_report() -> LoadReport {
+    LAST_REPORT.get_or_init(|| Mutex::new(LoadReport::default()))
+        .lock()
+        .map(|report| report.clone())
+        .unwrap_or_default()
+}
+
+fn remember_report(report: &LoadReport) {
+    if let Ok(mut last) = LAST_REPORT.get_or_init(|| Mutex::new(LoadReport::default())).lock() {
+        *last = report.clone();
+    }
+}
 
 pub fn set_native_resolver(resolver: NativeResolver) { let _ = NATIVE_RESOLVER.set(resolver); }
 
@@ -623,6 +644,7 @@ static HOST_API: HostApi = HostApi {
     native_parameter: Some(native_parameter), enumerate_entities: Some(enumerate_entities), get_player_spawn_transform: Some(get_player_spawn_transform),
 };
 pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
+    let _ = PLUGIN_DIRECTORY.set(plugin_directory.to_path_buf());
     // Use the generated native database for this exact game.wasm build; do not
     // guess handler indices or resolve against a different GTA title/build.
     let _ = NATIVE_RESOLVER.set(glue5_mods::natives::handler_by_hash);
@@ -635,9 +657,12 @@ pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport
     }
     if let Err(error) = std::fs::create_dir_all(plugin_directory) {
         log::error!("cannot create ScriptHook plugin directory {}: {error}", plugin_directory.display());
-        return LoadReport { loaded: Vec::new(), rejected: vec![(plugin_directory.to_path_buf(), error.to_string())] };
+        let report = LoadReport { loaded: Vec::new(), rejected: vec![(plugin_directory.to_path_buf(), error.to_string())] };
+        remember_report(&report);
+        return report;
     }
     let report = load_directory(plugin_directory);
+    remember_report(&report);
     for path in &report.loaded { log::info!("ScriptHook plugin ready: {}", path.display()); }
     for (path, error) in &report.rejected { log::warn!("ScriptHook plugin rejected {}: {}", path.display(), error); }
     report
@@ -651,7 +676,7 @@ unsafe extern "C" fn script_wait(env: *mut Env, info: u64) {
     unsafe { glue5_runtime::dispatch_script_wait_callbacks(env, info); }
     unsafe { orig::script_wait(env, info) };
 }
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct LoadReport { pub loaded: Vec<PathBuf>, pub rejected: Vec<(PathBuf, String)> }
 pub fn load_directory(directory: &Path) -> LoadReport {
     let mut report = LoadReport::default();
