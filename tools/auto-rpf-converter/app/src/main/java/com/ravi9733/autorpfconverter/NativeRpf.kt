@@ -10,4 +10,5 @@ internal object NativeRpf {
     }
 
     external fun extractArchive(sourceAbsolutePath: String, destinationAbsolutePath: String): String
+    external fun buildAndroidRpf7(sourceDirectoryAbsolutePath: String, outputAbsolutePath: String): String
 }
