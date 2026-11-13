@@ -60,4 +60,4 @@ The host exposes three non-blocking input helpers. Call them from the registered
 - `is_control_pressed(env, group, control)`: 1 while held, 0 otherwise, negative on error.
 - `get_control_normal(env, group, control, &bits)`: writes the raw IEEE-754 f32 bits returned by `GET_CONTROL_NORMAL`.
 
-The example uses GTA control IDs 172 (up), 173 (down), 176 (select), and 177 (back), in group 0. These are input primitives for the next trainer-menu layer; touch overlay rendering and a complete Menyoo menu are not implemented yet.
+The native C example uses GTA control IDs 176 (select) and 177 (back), in group 0, to demonstrate a native vehicle-spawn/delete workflow. It resolves the Adder model from the installed archetype catalog, requests streaming without blocking, validates the generated `CREATE_VEHICLE` signature, spawns the vehicle, and releases the model. It uses fixed sample coordinates (0, 0, 72); this is a plugin API example, not a Luau trainer or a complete Menyoo port. Touch overlay rendering and a complete Menyoo menu are not implemented.
