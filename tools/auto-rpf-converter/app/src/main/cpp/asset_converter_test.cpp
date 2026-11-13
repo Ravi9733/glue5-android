@@ -86,7 +86,33 @@ int main() {
     (void)rk::read_ypt(legacy_ypt);
     require(model_stats.converted_ypt == 1, "Gen9 YPT conversion count must be one");
 
-    // Legacy versions are recognized and preserved byte-for-byte for all five supported extensions.
+    // YBN/YMAP/YTYP share their RSC7 versions between Legacy and Enhanced. They are
+    // parsed and rebuilt semantically instead of being incorrectly labelled Gen9 conversions.
+    rk::BoundMaterial collision_material;
+    const std::vector<rk::Vec3> collision_vertices = {{0,0,0}, {1,0,0}, {0,1,0}};
+    const std::vector<uint32_t> collision_triangles = {0,1,2};
+    auto collision_bound = rk::Bound::make_mesh(collision_vertices, collision_triangles, collision_material);
+    const auto gen_ybn = rk::write_ybn(*collision_bound);
+    gta_asset_converter::ConversionStats map_stats;
+    const auto rebuilt_ybn = gta_asset_converter::convert_asset_bytes("ybn", gen_ybn, map_stats);
+    require(rk::read_ybn(rebuilt_ybn) != nullptr, "rebuilt YBN must parse");
+    require(map_stats.validated_ybn == 1, "YBN must be parsed and rebuilt");
+
+    rk::MapData map_data;
+    map_data.name = rk::joaat_lower("converter_test_map");
+    const auto gen_ymap = rk::write_ymap(map_data);
+    const auto rebuilt_ymap = gta_asset_converter::convert_asset_bytes("ymap", gen_ymap, map_stats);
+    require(rk::read_ymap(rebuilt_ymap).name == map_data.name, "YMAP must retain its map name");
+    require(map_stats.rebuilt_ymap == 1, "YMAP must be parsed and rebuilt");
+
+    rk::MapTypes map_types;
+    map_types.name = rk::joaat_lower("converter_test_types");
+    const auto gen_ytyp = rk::write_ytyp(map_types);
+    const auto rebuilt_ytyp = gta_asset_converter::convert_asset_bytes("ytyp", gen_ytyp, map_stats);
+    require(rk::read_ytyp(rebuilt_ytyp).name == map_types.name, "YTYP must retain its dictionary name");
+    require(map_stats.rebuilt_ytyp == 1, "YTYP must be parsed and rebuilt");
+
+    // Legacy versions are recognized and preserved byte-for-byte for all five Gen9-capable extensions.
     const auto legacy_ydr_fixture = rk::write_ydr(empty_drawable, rk::Game::Legacy);
     const auto legacy_ydd_fixture = rk::write_ydd(drawable_dictionary, rk::Game::Legacy);
     const auto legacy_yft_fixture = rk::write_yft(fragment, rk::Game::Legacy);
