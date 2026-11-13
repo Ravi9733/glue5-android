@@ -23,7 +23,7 @@ This is not yet a universal PC-to-Android converter and is not yet verified agai
 - Nested RPF file entries are recursively extracted, converted and rebuilt up to depth 8 and 500 nested files. Each nested archive must remain below the RPF7 24-bit binary-entry limit (16 MiB); larger nested files fail closed rather than being truncated.
 - RPF7 output is structurally validated; runtime mounting, DLC registration, load order, and Glue5 in-game asset compatibility are not yet validated.
 - Bulk conversion processes .rpf files visible in the selected Android folder tree and recursively rebuilds nested RPF file entries that fit the 16 MiB RPF7 binary-entry limit.
-- Bulk mode is limited to 500 on-disk RPF files and 1 GiB per input archive. Resource conversion enforces 512 MiB per supported asset, 8 GiB total scanned input and one million files.
+- Bulk mode is limited to 500 on-disk RPF files and 1 GiB per input archive. Resource conversion enforces 512 MiB per supported asset, 8 GiB total extracted/scanned input and one million files. Because the current RPF7 writer buffers its input and output in memory, each rebuilt archive is capped at 512 MiB of aggregate loose-file input and 1 GiB of generated archive bytes; larger archives fail safely instead of risking an Android out-of-memory crash.
 - AES/NG encrypted archives are skipped/rejected unless legitimate matching key material is available. No encryption bypass is attempted.
 - The C++ conversion engine is pinned to RatPrez/ragekit commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b (v0.3.1). Its Gen9 conversion work is documented at https://github.com/RatPrez/ragekit/blob/v0.3.1/docs/enhanced.md.
 - Physical Android and Glue5 in-game tests are still required.
