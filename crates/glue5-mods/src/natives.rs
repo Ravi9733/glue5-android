@@ -93,6 +93,11 @@ pub fn reserved_handler(name: &str) -> Option<u64> {
     RESERVED.iter().find(|(n, _)| *n == name).map(|&(_, h)| h)
 }
 
+/// Resolves a GTA native hash to this game build's handler table index.
+pub fn handler_by_hash(hash: u64) -> Option<u64> {
+    NATIVES.iter().find(|native| native.hash == hash).map(|native| native.handler)
+}
+
 /// The native `lua` of namespace `ns` (NATIVES is sorted by both).
 pub fn find(ns: usize, lua: &str) -> Option<usize> {
     let ns = ns as u16;
