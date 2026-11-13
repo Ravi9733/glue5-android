@@ -28,7 +28,7 @@ For INOUT scalar arguments, `value` is the wasm-memory destination offset contai
 
 ## Plugin location
 
-The app scans the user data folder at `scripthook/plugins/`. Place Android ARM64 `.so` plugins there. They must export `glue5_scripthook_plugin_init` and be built against `include/glue5_scripthook.h`.
+The app creates the user-data folder `scripthook/plugins/` on first Android game launch, then scans it for Android ARM64 `.so` plugins. Place plugins there; they must export `glue5_scripthook_plugin_init` and be built against `include/glue5_scripthook.h`. A minimal C example is in `examples/native-plugin/plugin.c`: it resolves `GET_GAME_TIMER` by name, verifies its generated zero-argument signature, registers a WAIT callback, and invokes the native without hard-coding its hash.
 
 ## Important limitations
 
