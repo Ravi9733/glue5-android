@@ -18,6 +18,7 @@ pub enum Tab {
     Mods,
     Studio,
     Log,
+    ScriptHook,
 }
 
 /// What the page keeps between frames.
@@ -89,26 +90,17 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
             toggle(ui, &mut settings.mods);
         });
         if !settings.mods && !status.mods {
-            ui.add_space(4.0 * scale);
-            panel(ui, |ui| {
-                card_title(ui, "WHAT MODS ARE", None);
-                small(
-                    ui,
-                    "A mod is a folder of Luau scripts that call the game's own functions: spawn a car, change \
-                     the weather, add a menu of its own. Turn mods on, then write them in GLUE 5 Studio from a \
-                     browser on your computer or tablet, or let Claude Code write them.",
-                    theme::MUTED,
-                );
-            });
-            return;
+            page.tab = Tab::ScriptHook;
         }
         ui.add_space(6.0 * scale);
-        // The menus are there while the game runs with mods.
-        let mut tabs = vec![(Tab::Mods, "MODS"), (Tab::Studio, "STUDIO"), (Tab::Log, "LOG")];
-        if status.mods {
-            tabs.insert(0, (Tab::Menus, "MENUS"));
-        } else if page.tab == Tab::Menus {
-            page.tab = Tab::Mods;
+        let mut tabs = vec![(Tab::ScriptHook, "NATIVE")];
+        if settings.mods || status.mods {
+            tabs.extend([(Tab::Mods, "MODS"), (Tab::Studio, "STUDIO"), (Tab::Log, "LOG")]);
+            if status.mods {
+                tabs.insert(0, (Tab::Menus, "MENUS"));
+            }
+        } else if matches!(page.tab, Tab::Menus | Tab::Mods | Tab::Studio | Tab::Log) {
+            page.tab = Tab::ScriptHook;
         }
         segmented(ui, &mut page.tab, &tabs, 40.0 * scale);
         ui.add_space(10.0 * scale);
@@ -117,8 +109,51 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
             Tab::Mods => mods_tab(ui, page, status),
             Tab::Studio => studio_tab(ui, settings, status),
             Tab::Log => log_tab(ui),
+            Tab::ScriptHook => scripthook_tab(ui),
         }
     })
+}
+
+/// Android-native ScriptHook plugin status, separate from the Luau mods.
+fn scripthook_tab(ui: &mut egui::Ui) {
+    let scale = theme::density(ui);
+    let directory = glue5_scripthook::plugin_directory();
+    let report = glue5_scripthook::last_report();
+    panel(ui, |ui| {
+        card_title(ui, "ANDROID NATIVE PLUGINS", None);
+        small(ui, "Only Glue 5 ScriptHook ABI v12 plugins compiled as Android ARM64 .so files are accepted. Windows .asi and .dll files cannot run here just by renaming them.", theme::MUTED);
+        if let Some(path) = directory.as_ref() {
+            ui.add_space(4.0 * scale);
+            ui.label(RichText::new("PLUGIN FOLDER").size(10.0 * scale).color(theme::MUTED));
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(path.display().to_string()).monospace().size(11.0 * scale));
+                if inline_button(ui, "Copy path").clicked() {
+                    ui.ctx().copy_text(path.display().to_string());
+                }
+            });
+        } else {
+            small(ui, "The plugin folder is created when the game starts.", theme::MUTED);
+        }
+        ui.add_space(6.0 * scale);
+        let summary = format!("{} loaded · {} rejected", report.loaded.len(), report.rejected.len());
+        card_title(ui, &summary.to_uppercase(), None);
+        if report.loaded.is_empty() {
+            small(ui, "No native plugin is currently loaded.", theme::MUTED);
+        }
+        for path in &report.loaded {
+            ui.label(RichText::new(format!("✓ {}", path.file_name().and_then(|n| n.to_str()).unwrap_or("plugin.so"))).size(12.0 * scale).color(Color32::from_rgb(145, 220, 160)));
+        }
+        for (path, error) in &report.rejected {
+            ui.add_space(3.0 * scale);
+            ui.label(RichText::new(format!("{} · {}", path.file_name().and_then(|n| n.to_str()).unwrap_or("plugin"), error)).size(11.0 * scale).color(ERR));
+        }
+    });
+    ui.add_space(8.0 * scale);
+    panel(ui, |ui| {
+        card_title(ui, "INSTALL NOTES", None);
+        small(ui, "Place compatible .so files in the plugin folder, then fully restart Glue 5. A file-manager importer and live reload are not implemented yet.", theme::MUTED);
+        small(ui, "Do not place plugins in the GTA game/data folders. Keep the original game files untouched.", theme::MUTED);
+    });
 }
 
 /// The mods' menus, each under its title: their items with the app's own
