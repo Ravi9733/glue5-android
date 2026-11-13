@@ -5,12 +5,13 @@ This crate establishes an Android-native ScriptHook-style plugin boundary. It di
 ## Current implementation
 
 - Deterministic discovery and loading of Android ARM64 `.so` plugins.
-- Versioned C ABI (v9), host logging, script-stack allocation/restore helpers, and hash-based GTA native dispatch against the generated metadata for this exact game build.
+- Versioned C ABI (v10), host logging, script-stack allocation/restore helpers, and hash-based GTA native dispatch against the generated metadata for this exact game build.
 - Plugins can register callbacks dispatched from the GTA script `WAIT` hook; callback dispatch is chained through Glue 5's existing mods hook when present.
 - Native metadata introspection exposes handler index, parameter count, return kind, and per-parameter kind/direction; plugins can also resolve a native by its exact GTA name (for example `CREATE_VEHICLE`).
 - Entity handles can be validated against the live script-guid pool and checked as any entity, ped, vehicle, or object before use.
 - Model-name resolution checks the installed game's live vehicle/ped archetype catalog and returns the correct JOAAT model hash; it rejects unknown model names instead of blindly requesting them.
 - Model streaming lifecycle helpers: `request_model(env, hash)` invokes the generated `REQUEST_MODEL` signature and checks `HAS_MODEL_LOADED` on each script tick (1=loaded, 0=pending); `release_model(env, hash)` calls `SET_MODEL_AS_NO_LONGER_NEEDED`. They reject unexpected generated parameter kinds/directions rather than guessing.
+- Typed entity lifecycle helpers: `create_entity` accepts a native hash and marshalled arguments, permits only generated `CREATE_`/`CLONE_` entries with the requested ped/vehicle/object return kind, and validates the returned live script handle. `delete_entity` validates the live handle and only calls the matching `DELETE_PED`/`DELETE_VEHICLE`/`DELETE_OBJECT` entry when its generated one-handle signature matches; INOUT handles are staged in wasm memory.
 - Live ped, vehicle, and object enumeration returns script handles from the game's entity pools (maximum 4096).
 - `call_native_typed` remains a scalar-only helper.
 - `call_native_marshaled` validates each argument against the generated native signature and supports integer/hash/float/bool scalars, NUL-terminated string input, Vec3 input, and OUT/INOUT buffers. OUT/INOUT arguments provide a wasm-memory destination offset; Vec3 destinations are 12 contiguous bytes, string destinations are an 8-byte wasm pointer slot, and scalar destinations are 4 bytes.
@@ -40,3 +41,12 @@ The supplied iOS ScriptHook pack contains Menyoo assets and managed DLLs, but no
 ### Model streaming usage
 
 Resolve a vehicle or ped model name with `resolve_model_name`, then call `request_model` once per script WAIT callback until it returns 1. Only then call the relevant creation native (for example `CREATE_VEHICLE` or `CREATE_PED`) through `call_native_marshaled`. After the creation call succeeds, call `release_model` to drop the streaming reference. A return value of 0 means the model is still loading; do not spin-wait or block the game thread.
+
+### Entity lifecycle usage
+
+1. Resolve a model name and request it with `request_model` on each WAIT tick until it returns 1.
+2. Resolve the creation native by exact name (for example `CREATE_VEHICLE`), inspect its parameter kinds/directions, and prepare `Glue5NativeArg` values.
+3. Call `create_entity` with expected pool 1 (ped), 2 (vehicle), or 3 (object). It rejects a native whose generated return kind does not match and returns a handle only after live-pool validation.
+4. When finished, call `delete_entity` with the same expected pool. It checks that the handle is live and that the matching generated delete signature is a single handle parameter.
+
+These wrappers do not guess native hashes or argument layouts. The plugin must still supply arguments matching the exact generated signature and must not block the script thread while a model streams.
