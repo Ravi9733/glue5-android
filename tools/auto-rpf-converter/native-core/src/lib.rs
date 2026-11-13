@@ -183,6 +183,9 @@ mod tests {
         assert_eq!(archive.version, rage_rpf::RpfVersion::V7);
         assert!(!archive.encryption.is_encrypted());
         assert!(archive.entries.iter().any(|entry| entry.name_lower == "readme.txt"));
+        let app_parser = rpf_archive::RpfArchive::parse(&archive_bytes, "converted.rpf", None).unwrap();
+        assert_eq!(app_parser.entries.len(), archive.entries.len());
+        assert!(!app_parser.encryption.is_encrypted());
     }
 
     #[test]
