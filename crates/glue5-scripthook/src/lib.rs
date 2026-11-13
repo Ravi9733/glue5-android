@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-pub const ABI_VERSION: u32 = 11;
+pub const ABI_VERSION: u32 = 12;
 const ENTRYPOINT: &[u8] = b"glue5_scripthook_plugin_init\0";
 pub type ScriptCallback = unsafe extern "C" fn(env: *mut c_void, info: u64, user: *mut c_void);
 pub type NativeResolver = fn(hash: u64) -> Option<u64>;
@@ -453,6 +453,67 @@ unsafe extern "C" fn get_control_normal(env: *mut c_void, group: i32, control: i
     }
 }
 
+/// Returns a spawn point a short distance in front of the local player.
+/// output is four native floats: x, y, z, heading-degrees.
+unsafe extern "C" fn get_player_spawn_transform(env: *mut c_void, distance: f32, output: *mut f32) -> i32 {
+    if env.is_null() || output.is_null() || !distance.is_finite() || !(0.5..=25.0).contains(&distance) { return -1; }
+    let Some(player_native) = natives::NATIVES.iter().find(|n| n.name == "PLAYER_PED_ID") else { return -2; };
+    if !player_native.params.is_empty() || player_native.ret != Some(Kind::Handle(natives::Handle::Ped)) { return -3; }
+    let mut player_bits = 0u64;
+    let status = unsafe { call_native_marshaled(env, player_native.hash, std::ptr::null(), 0, &mut player_bits) };
+    if status != 0 { return status; }
+    let player = player_bits as u32 as i32;
+    if player <= 0 || unsafe { validate_entity(env, player, 1) } != 1 { return -4; }
+
+    let Some(matrix_native) = natives::NATIVES.iter().find(|n| n.name == "GET_ENTITY_MATRIX") else { return -5; };
+    if matrix_native.params.len() != 5
+        || matrix_native.params[0].kind != Kind::Handle(natives::Handle::Entity)
+        || matrix_native.params[0].dir != Dir::In
+        || matrix_native.params[1..].iter().any(|p| p.kind != Kind::Vec3 || p.dir != Dir::Out)
+        || matrix_native.ret.is_some() { return -6; }
+
+    let game_env = env.cast::<Env>();
+    let memory = unsafe { (*game_env).memory };
+    if memory.is_null() { return -7; }
+    let data = unsafe { (*memory).data };
+    let memory_size = unsafe { (*memory).size };
+    if data.is_null() { return -7; }
+    let top = match unsafe { exports::emscripten_stack_get_current(game_env) } { Ok(v) => v, Err(_) => return -8 };
+    let result = (|| -> Result<[f32; 4], i32> {
+        let at = unsafe { exports::_emscripten_stack_alloc(game_env, 64) }.map_err(|_| -8)?;
+        if at.checked_add(64).is_none_or(|end| end > memory_size) { return Err(-9); }
+        let args = [
+            NativeArg { kind: 0, reserved: 0, value: player as u32 as u64 },
+            NativeArg { kind: 3, reserved: 0, value: at },
+            NativeArg { kind: 3, reserved: 0, value: at + 12 },
+            NativeArg { kind: 3, reserved: 0, value: at + 24 },
+            NativeArg { kind: 3, reserved: 0, value: at + 36 },
+        ];
+        let mut ignored = 0u64;
+        let status = unsafe { call_native_marshaled(env, matrix_native.hash, args.as_ptr(), 5, &mut ignored) };
+        if status != 0 { return Err(status); }
+        let mem = unsafe { glue5_runtime::memory::Mem::of(game_env) };
+        let read_vec = |offset: u64| -> [f32; 3] {
+            [0, 1, 2].map(|i| f32::from_bits(mem.u32(offset + i * 4)))
+        };
+        let forward = read_vec(at);
+        let position = read_vec(at + 36);
+        if !forward.iter().chain(position.iter()).all(|v| v.is_finite()) { return Err(-10); }
+        let heading = forward[1].atan2(forward[0]).to_degrees();
+        Ok([
+            position[0] + forward[0] * distance,
+            position[1] + forward[1] * distance,
+            position[2] + forward[2] * distance + 0.5,
+            heading,
+        ])
+    })();
+    if unsafe { exports::_emscripten_stack_restore(game_env, top) }.is_err() { return -11; }
+    match result {
+        Ok(values) => { unsafe { std::ptr::copy_nonoverlapping(values.as_ptr(), output, 4); } 0 }
+        Err(code) => code,
+    }
+}
+
 unsafe extern "C" fn create_entity(
     env: *mut c_void, native_hash: u64, args: *const NativeArg, count: u32,
     expected_pool: u32, output_handle: *mut i32,
@@ -557,7 +618,7 @@ static HOST_API: HostApi = HostApi {
     script_stack_top: Some(script_stack_top), script_stack_alloc: Some(script_stack_alloc),
     script_stack_restore: Some(script_stack_restore), call_native: Some(call_native),
     call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata), native_hash_by_name: Some(native_hash_by_name), resolve_model_name: Some(resolve_model_name), request_model: Some(request_model), release_model: Some(release_model), is_control_just_pressed: Some(is_control_just_pressed), is_control_pressed: Some(is_control_pressed), get_control_normal: Some(get_control_normal), create_entity: Some(create_entity), delete_entity: Some(delete_entity), validate_entity: Some(validate_entity),
-    native_parameter: Some(native_parameter), enumerate_entities: Some(enumerate_entities),
+    native_parameter: Some(native_parameter), enumerate_entities: Some(enumerate_entities), get_player_spawn_transform: Some(get_player_spawn_transform),
 };
 pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
     // Use the generated native database for this exact game.wasm build; do not
@@ -611,7 +672,7 @@ unsafe fn load_one(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 11); }
+    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 12); }
     #[test] fn native_arg_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeArg>(), 16); }
     #[test] fn native_metadata_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeMetadata>(), 24); }
     #[test] fn host_api_v11_exposes_controls_and_entity_lifecycle() {
@@ -623,12 +684,13 @@ mod tests {
         assert!(HOST_API.delete_entity.is_some());
         assert!(HOST_API.request_model.is_some());
         assert!(HOST_API.release_model.is_some());
+        assert!(HOST_API.get_player_spawn_transform.is_some());
     }
     #[test] fn host_api_layout_matches_android_arm64_c_header_contract() {
         use std::mem::{offset_of, size_of};
         // Android plugins are arm64-v8a. Pin every public field offset so a
         // Rust-side reorder/type change cannot silently desynchronize the C ABI.
-        assert_eq!(size_of::<HostApi>(), 176);
+        assert_eq!(size_of::<HostApi>(), 184);
         assert_eq!(offset_of!(HostApi, abi_version), 0);
         assert_eq!(offset_of!(HostApi, log), 8);
         assert_eq!(offset_of!(HostApi, register_script_callback), 16);
@@ -651,6 +713,7 @@ mod tests {
         assert_eq!(offset_of!(HostApi, validate_entity), 152);
         assert_eq!(offset_of!(HostApi, native_parameter), 160);
         assert_eq!(offset_of!(HostApi, enumerate_entities), 168);
+        assert_eq!(offset_of!(HostApi, get_player_spawn_transform), 176);
     }
     #[test] fn missing_directory_is_reported_without_panicking() {
         let report = load_directory(Path::new("/definitely/not/a/glue5/plugin/folder"));
