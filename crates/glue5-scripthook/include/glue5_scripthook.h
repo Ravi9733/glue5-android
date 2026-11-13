@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define GLUE5_SCRIPTHOOK_ABI_VERSION 11u
+#define GLUE5_SCRIPTHOOK_ABI_VERSION 12u
 typedef void (*Glue5ScriptCallback)(void *env, uint64_t info, void *user);
 typedef void (*Glue5LogCallback)(uint32_t level, const char *message);
 typedef int32_t (*Glue5RegisterScriptCallback)(Glue5ScriptCallback callback, void *user);
@@ -50,6 +50,8 @@ typedef struct Glue5HostApi {
     int32_t (*native_parameter)(uint64_t hash, uint32_t index, uint32_t *kind, uint32_t *direction);
     /* pool: 0=peds, 1=vehicles, 2=objects; returns count or negative error. */
     int32_t (*enumerate_entities)(void *env, uint32_t pool, int32_t *output, uint32_t capacity);
+    /* Returns x,y,z,heading for a spawn point in front of the local player. distance must be 0.5..25m. */
+    int32_t (*get_player_spawn_transform)(void *env, float distance, float output_xyzh[4]);
 } Glue5HostApi;
 int32_t glue5_scripthook_plugin_init(const Glue5HostApi *host);
 #ifdef __cplusplus
