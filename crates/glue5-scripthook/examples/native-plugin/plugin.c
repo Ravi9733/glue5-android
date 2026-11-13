@@ -1,8 +1,12 @@
 #include "../../include/glue5_scripthook.h"
+#include <stddef.h>
 #include <string.h>
 
 _Static_assert(sizeof(Glue5NativeArg) == 16, "Glue5NativeArg ABI layout changed");
 _Static_assert(sizeof(Glue5NativeMetadata) == 24, "Glue5NativeMetadata ABI layout changed");
+_Static_assert(sizeof(Glue5HostApi) == 184, "Glue5HostApi ABI v12 size changed");
+_Static_assert(offsetof(Glue5HostApi, get_player_spawn_transform) == 176,
+               "Glue5HostApi v12 player transform offset changed");
 
 /*
  * Native-only ScriptHook spawn sample. UP/DOWN selects vehicle or ped,
