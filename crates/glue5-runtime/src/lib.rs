@@ -219,7 +219,7 @@ static EXTRA_HOOKS: Mutex<Vec<fn(&mut glue5_game::Hooks)>> = Mutex::new(Vec::new
 
 /// Script-thread callbacks shared by independent runtime integrations.
 /// This keeps the mods engine decoupled from the native ScriptHook host.
-type ScriptWaitCallback = unsafe fn(*mut glue5_game::Env, u64);
+pub type ScriptWaitCallback = unsafe fn(*mut glue5_game::Env, u64);
 static SCRIPT_WAIT_CALLBACKS: Mutex<Vec<ScriptWaitCallback>> = Mutex::new(Vec::new());
 
 pub fn add_script_wait_callback(callback: ScriptWaitCallback) {
