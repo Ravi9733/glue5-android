@@ -349,7 +349,7 @@ pub fn build_android_rpf7(
             if meta.len() > limits.max_entry_bytes { bail!("file exceeds conversion size limit: {}", path.display()); }
             total = total.checked_add(meta.len()).context("conversion size overflow")?;
             if total > limits.max_total_pack_input_bytes {
-                bail!("RPF7 in-memory pack input exceeds the configured 512 MiB safety limit");
+                bail!("RPF7 in-memory pack input exceeds configured limit ({} bytes)", limits.max_total_pack_input_bytes);
             }
 
             let relative = path.strip_prefix(&root).context("file escaped input root")?;
