@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-pub const ABI_VERSION: u32 = 8;
+pub const ABI_VERSION: u32 = 9;
 const ENTRYPOINT: &[u8] = b"glue5_scripthook_plugin_init\0";
 pub type ScriptCallback = unsafe extern "C" fn(env: *mut c_void, info: u64, user: *mut c_void);
 pub type NativeResolver = fn(hash: u64) -> Option<u64>;
@@ -37,6 +37,10 @@ pub struct HostApi {
     pub native_metadata: Option<unsafe extern "C" fn(hash: u64, output: *mut NativeMetadata) -> i32>,
     pub native_hash_by_name: Option<unsafe extern "C" fn(name: *const c_char, output: *mut u64) -> i32>,
     pub resolve_model_name: Option<unsafe extern "C" fn(name: *const c_char, expected_kind: u32, output_hash: *mut u32) -> i32>,
+    /// Request a model; returns 1 when loaded, 0 while streaming, or a negative error.
+    pub request_model: Option<unsafe extern "C" fn(env: *mut c_void, model_hash: u32) -> i32>,
+    /// Release a model after it is no longer needed.
+    pub release_model: Option<unsafe extern "C" fn(env: *mut c_void, model_hash: u32) -> i32>,
     pub validate_entity: Option<unsafe extern "C" fn(env: *mut c_void, handle: i32, expected_pool: u32) -> i32>,
     pub native_parameter: Option<unsafe extern "C" fn(hash: u64, index: u32, kind: *mut u32, direction: *mut u32) -> i32>,
     pub enumerate_entities: Option<unsafe extern "C" fn(env: *mut c_void, pool: u32, output: *mut i32, capacity: u32) -> i32>,
@@ -365,6 +369,48 @@ unsafe extern "C" fn resolve_model_name(name: *const c_char, expected_kind: u32,
     unsafe { output_hash.write(natives::joaat(&lower)); }
     1
 }
+/// Calls one of the model-lifecycle natives using the generated signature table.
+unsafe fn call_model_native(env: *mut c_void, name: &str, model_hash: u32) -> Result<u64, i32> {
+    if env.is_null() { return Err(-1); }
+    let native = natives::NATIVES.iter().find(|native| native.name == name).ok_or(-2)?;
+    let mut args = Vec::with_capacity(native.params.len());
+    for (index, param) in native.params.iter().enumerate() {
+        if param.dir != Dir::In { return Err(-3); }
+        let arg = match (index, param.kind) {
+            (0, Kind::Hash) => NativeArg { kind: 1, reserved: 0, value: u64::from(model_hash) },
+            (_, Kind::Bool) => NativeArg { kind: 4, reserved: 0, value: 0 },
+            (_, Kind::Int | Kind::Any) => NativeArg { kind: 0, reserved: 0, value: 0 },
+            _ => return Err(-4),
+        };
+        args.push(arg);
+    }
+    let mut result = 0u64;
+    let status = unsafe {
+        call_native_marshaled(env, native.hash, args.as_ptr(), args.len() as u32, &mut result)
+    };
+    if status != 0 { return Err(status); }
+    Ok(result)
+}
+
+/// Starts streaming a model and checks its state on this script tick.
+/// Returns 1 when loaded, 0 while pending, negative on invalid input/native error.
+unsafe extern "C" fn request_model(env: *mut c_void, model_hash: u32) -> i32 {
+    if model_hash == 0 { return -1; }
+    if unsafe { call_model_native(env, "REQUEST_MODEL", model_hash) }.is_err() { return -2; }
+    match unsafe { call_model_native(env, "HAS_MODEL_LOADED", model_hash) } {
+        Ok(bits) => if bits != 0 { 1 } else { 0 },
+        Err(code) => code,
+    }
+}
+
+/// Releases a model after the plugin has finished creating/using its entities.
+unsafe extern "C" fn release_model(env: *mut c_void, model_hash: u32) -> i32 {
+    if model_hash == 0 { return -1; }
+    match unsafe { call_model_native(env, "SET_MODEL_AS_NO_LONGER_NEEDED", model_hash) } {
+        Ok(_) => 0,
+        Err(code) => code,
+    }
+}
 unsafe extern "C" fn validate_entity(env: *mut c_void, handle: i32, expected_pool: u32) -> i32 {
     if env.is_null() { return -1; }
     let Some(kind) = (unsafe { natives::entity_handle_kind(env.cast(), handle) }) else { return 0; };
@@ -402,7 +448,7 @@ static HOST_API: HostApi = HostApi {
     abi_version: ABI_VERSION, log: Some(host_log), register_script_callback: Some(register_script_callback),
     script_stack_top: Some(script_stack_top), script_stack_alloc: Some(script_stack_alloc),
     script_stack_restore: Some(script_stack_restore), call_native: Some(call_native),
-    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata), native_hash_by_name: Some(native_hash_by_name), resolve_model_name: Some(resolve_model_name), validate_entity: Some(validate_entity),
+    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata), native_hash_by_name: Some(native_hash_by_name), resolve_model_name: Some(resolve_model_name), request_model: Some(request_model), release_model: Some(release_model), validate_entity: Some(validate_entity),
     native_parameter: Some(native_parameter), enumerate_entities: Some(enumerate_entities),
 };
 pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
