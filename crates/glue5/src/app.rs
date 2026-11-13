@@ -883,8 +883,9 @@ impl App {
         log::info!("game: {}, user data: {}", game_dir.display(), self.user_dir.display());
         let s = &self.settings;
         let back_buffer = settings::render_size(self.window.size_in_pixels(), s.render_scale(), s.low_memory);
-        // Install the Android-native ScriptHook bridge before the game hooks are frozen.
-        glue5_scripthook::install();
+        // Load Android-native plugins before the engine starts. If Luau mods are
+        // enabled, their WAIT hook dispatches ScriptHook callbacks as well.
+        glue5_scripthook::install(s.mods, &self.user_dir.join("scripthook").join("plugins"));
         if s.mods {
             glue5_mods::install(&self.user_dir.join("mods"));
         }
