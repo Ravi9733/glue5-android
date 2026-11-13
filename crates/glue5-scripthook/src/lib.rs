@@ -126,27 +126,36 @@ unsafe extern "C" fn call_native_marshaled(
             let target = if parameter.dir == Dir::In {
                 slot
             } else {
-                if arg.kind != 3 { return Err(-13); }
-                let width = match parameter.kind { Kind::Vec3 => 24, Kind::Str => 8, _ => 4 };
+                let width = match parameter.kind { Kind::Vec3 => 12, Kind::Str => 8, _ => 4 };
                 check_range(arg.value, width)?;
+                if parameter.dir == Dir::Out && arg.kind != 3 { return Err(-13); }
+                if parameter.dir == Dir::InOut {
+                    let expected = match parameter.kind {
+                        Kind::Int | Kind::Any | Kind::Handle(_) => 0,
+                        Kind::Hash => 1,
+                        Kind::Float => 2,
+                        Kind::Bool => 4,
+                        Kind::Str | Kind::Vec3 => 3,
+                    };
+                    if arg.kind != expected { return Err(-13); }
+                }
                 let buffer = alloc(24)?;
                 if parameter.dir == Dir::InOut {
                     match parameter.kind {
-                        Kind::Int | Kind::Any | Kind::Bool | Kind::Handle(_) | Kind::Hash | Kind::Float => {
-                            let expected = match parameter.kind {
-                                Kind::Hash => 1, Kind::Float => 2, Kind::Bool => 4, _ => 0,
-                            };
-                            if arg.kind == 3 { return Err(-13); }
-                            let _ = expected;
+                        Kind::Int | Kind::Any | Kind::Handle(_) | Kind::Hash | Kind::Float | Kind::Bool => {
+                            let bits = read_u32(arg.value)?;
+                            write_u32(buffer, bits)?;
                         }
                         Kind::Str => {
-                            let mut end = arg.value;
-                            while end < memory_size && unsafe { *data.add(end as usize) } != 0 { end += 1; }
-                            if end == memory_size { return Err(-7); }
-                            unsafe { std::ptr::write_unaligned(data.add(buffer as usize).cast::<u64>(), arg.value); }
+                            let pointer = unsafe { std::ptr::read_unaligned(data.add(arg.value as usize).cast::<u64>()) };
+                            if pointer != 0 {
+                                let mut end = pointer;
+                                while end < memory_size && unsafe { *data.add(end as usize) } != 0 { end += 1; }
+                                if end == memory_size { return Err(-7); }
+                            }
+                            unsafe { std::ptr::write_unaligned(data.add(buffer as usize).cast::<u64>(), pointer); }
                         }
                         Kind::Vec3 => {
-                            check_range(arg.value, 12)?;
                             for component in 0..3u64 {
                                 let bits = read_u32(arg.value + component * 4)?;
                                 write_u32(buffer + component * 8, bits)?;
@@ -162,7 +171,7 @@ unsafe extern "C" fn call_native_marshaled(
                 match parameter.kind {
                     Kind::Int | Kind::Any | Kind::Handle(_) => {
                         if arg.kind != 0 { return Err(-13); }
-                        write_u32(target, arg.value as u32)?;
+                        write_u32(target, if parameter.dir == Dir::InOut { read_u32(arg.value)? } else { arg.value as u32 })?;
                     }
                     Kind::Hash => {
                         if arg.kind != 1 { return Err(-13); }
@@ -178,10 +187,13 @@ unsafe extern "C" fn call_native_marshaled(
                     }
                     Kind::Str => {
                         if arg.kind != 3 { return Err(-13); }
-                        let mut end = arg.value;
-                        while end < memory_size && unsafe { *data.add(end as usize) } != 0 { end += 1; }
-                        if end == memory_size { return Err(-7); }
-                        unsafe { std::ptr::write_unaligned(data.add(target as usize).cast::<u64>(), arg.value); }
+                        let pointer = if parameter.dir == Dir::InOut { unsafe { std::ptr::read_unaligned(data.add(arg.value as usize).cast::<u64>()) } } else { arg.value };
+                        if pointer != 0 {
+                            let mut end = pointer;
+                            while end < memory_size && unsafe { *data.add(end as usize) } != 0 { end += 1; }
+                            if end == memory_size { return Err(-7); }
+                        }
+                        unsafe { std::ptr::write_unaligned(data.add(target as usize).cast::<u64>(), pointer); }
                     }
                     Kind::Vec3 => {
                         if arg.kind != 3 { return Err(-13); }
