@@ -1,0 +1,11 @@
+[package]
+name = "glue5-scripthook"
+description = "Android-native ScriptHook-compatible plugin host for Glue 5"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+log.workspace = true
+libloading = "0.8.9"
