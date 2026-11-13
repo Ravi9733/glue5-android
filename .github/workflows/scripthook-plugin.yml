@@ -22,10 +22,12 @@ jobs:
       - name: Install Android NDK
         run: sdkmanager "ndk;27.2.12479018"
 
+      - name: Configure NDK path
+        run: echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
       - name: Build native plugin sample
         working-directory: crates/glue5-scripthook/examples/native-plugin
         env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.2.12479018
           ANDROID_API_LEVEL: "29"
         run: ./build.sh
 
