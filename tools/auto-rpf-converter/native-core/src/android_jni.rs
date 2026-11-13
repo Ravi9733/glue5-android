@@ -33,3 +33,33 @@ pub extern "system" fn Java_com_ravi9733_autorpconverter_NativeRpf_extractArchiv
         .map(|value| value.into_raw())
         .unwrap_or_else(|_| ptr::null_mut())
 }
+
+
+#[no_mangle]
+pub extern "system" fn Java_com_ravi9733_autorpconverter_NativeRpf_buildAndroidRpf7(
+    mut env: JNIEnv,
+    _class: JClass,
+    source_dir: JString,
+    output_file: JString,
+) -> jstring {
+    let result = (|| -> anyhow::Result<String> {
+        let source_dir: String = env.get_string(&source_dir)?.into();
+        let output_file: String = env.get_string(&output_file)?.into();
+        let (files, bytes, ytd) = crate::build_android_rpf7(
+            source_dir,
+            output_file.clone(),
+            crate::Limits::default(),
+        )?;
+        Ok(format!(
+            "RPF7 build complete\\nFiles: {}\\nArchive bytes: {}\\nGen9 YTD converted to Legacy: {}\\nOutput: {}\\nOther resource formats were preserved, not converted.",
+            files, bytes, ytd, output_file
+        ))
+    })();
+    let message = match result {
+        Ok(message) => message,
+        Err(error) => format!("RPF7 build failed: {error:#}"),
+    };
+    env.new_string(message)
+        .map(|value| value.into_raw())
+        .unwrap_or_else(|_| ptr::null_mut())
+}
