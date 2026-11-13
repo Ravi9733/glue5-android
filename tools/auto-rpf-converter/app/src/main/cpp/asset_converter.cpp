@@ -17,7 +17,7 @@ std::string lower(std::string value) {
     return value;
 }
 bool supported_extension(const std::string& ext) {
-    return ext == "ytd" || ext == "ydr" || ext == "ydd" || ext == "yft" || ext == "ypt";
+    return ext == "ytd" || ext == "ydr" || ext == "ydd" || ext == "yft" || ext == "ypt" || ext == "ybn" || ext == "ymap" || ext == "ytyp";
 }
 int legacy_version(const std::string& ext) {
     if (ext == "ytd") return 13;
@@ -64,6 +64,30 @@ std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std:
     }
     if (input.size() > kMaxAssetBytes) throw std::runtime_error(ext + " exceeds the 512 MiB per-asset safety limit");
     const auto resource = rk::rsc::Resource::load(input);
+    // Collision and map resources do not have a Gen9-specific layout: GTA V Legacy and
+    // Enhanced both use YBN=43 and YMAP/YTYP=2. Parse and serialize them through ragekit
+    // so malformed data is rejected and the semantic structures are rebuilt, not renamed.
+    if (ext == "ybn") {
+        if (resource.version != 43) throw std::runtime_error("YBN has unsupported RSC7 resource version " + std::to_string(resource.version));
+        auto bound = rk::read_ybn(input);
+        auto output = rk::write_ybn(*bound);
+        ++stats.validated_ybn;
+        return output;
+    }
+    if (ext == "ymap") {
+        if (resource.version != 2) throw std::runtime_error("YMAP has unsupported RSC7 resource version " + std::to_string(resource.version));
+        auto map = rk::read_ymap(input);
+        auto output = rk::write_ymap(map);
+        ++stats.rebuilt_ymap;
+        return output;
+    }
+    if (ext == "ytyp") {
+        if (resource.version != 2) throw std::runtime_error("YTYP has unsupported RSC7 resource version " + std::to_string(resource.version));
+        auto types = rk::read_ytyp(input);
+        auto output = rk::write_ytyp(types);
+        ++stats.rebuilt_ytyp;
+        return output;
+    }
     if (resource.version == legacy_version(ext)) {
         ++stats.already_legacy;
         return {input.begin(), input.end()};
@@ -136,9 +160,12 @@ std::string convert_directory(const fs::path& root) {
            ", YDD=" + std::to_string(stats.converted_ydd) +
            ", YFT=" + std::to_string(stats.converted_yft) +
            ", YPT=" + std::to_string(stats.converted_ypt) + "\n"
+           "Edition-independent resources parsed/rebuilt: YBN=" + std::to_string(stats.validated_ybn) +
+           ", YMAP=" + std::to_string(stats.rebuilt_ymap) +
+           ", YTYP=" + std::to_string(stats.rebuilt_ytyp) + "\n"
            "Already Legacy resources: " + std::to_string(stats.already_legacy) + "\n"
            "Other files preserved unchanged: " + std::to_string(stats.unchanged_other) + "\n"
            "Scanned bytes: " + std::to_string(stats.bytes_scanned) + "\n"
-           "YBN, map/meta, audio and non-resource files were not rewritten.";
+           "Audio, scripts, metadata outside YMAP/YTYP, and unsupported formats were preserved unchanged."
 }
 }
