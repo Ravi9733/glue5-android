@@ -885,6 +885,7 @@ impl App {
         let back_buffer = settings::render_size(self.window.size_in_pixels(), s.render_scale(), s.low_memory);
         // Load Android-native plugins before the engine starts. If Luau mods are
         // enabled, their WAIT hook dispatches ScriptHook callbacks as well.
+        #[cfg(target_os = "android")]
         glue5_scripthook::install(s.mods, &self.user_dir.join("scripthook").join("plugins"));
         if s.mods {
             glue5_mods::install(&self.user_dir.join("mods"));
