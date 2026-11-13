@@ -886,7 +886,10 @@ impl App {
         // Load Android-native plugins before the engine starts. If Luau mods are
         // enabled, their WAIT hook dispatches ScriptHook callbacks as well.
         #[cfg(target_os = "android")]
-        glue5_scripthook::install(s.mods, &self.user_dir.join("scripthook").join("plugins"));
+        {
+            glue5_mods::install_native_resolver();
+            glue5_scripthook::install(s.mods, &self.user_dir.join("scripthook").join("plugins"));
+        }
         if s.mods {
             glue5_mods::install(&self.user_dir.join("mods"));
         }
