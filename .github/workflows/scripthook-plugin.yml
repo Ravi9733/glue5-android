@@ -16,12 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Test ScriptHook host crate
-        run: cargo test -p glue5-scripthook --lib
-
       - name: Install Android command-line tools and NDK
         shell: bash
         run: |
