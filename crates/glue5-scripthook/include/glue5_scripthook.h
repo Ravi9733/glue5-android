@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define GLUE5_SCRIPTHOOK_ABI_VERSION 8u
+#define GLUE5_SCRIPTHOOK_ABI_VERSION 9u
 typedef void (*Glue5ScriptCallback)(void *env, uint64_t info, void *user);
 typedef void (*Glue5LogCallback)(uint32_t level, const char *message);
 typedef int32_t (*Glue5RegisterScriptCallback)(Glue5ScriptCallback callback, void *user);
@@ -31,6 +31,10 @@ typedef struct Glue5HostApi {
     int32_t (*native_hash_by_name)(const char *name, uint64_t *hash);
     /* expected_kind: 0=any model, 1=vehicle, 2=ped. Returns 1=found, 0=not installed. */
     int32_t (*resolve_model_name)(const char *name, uint32_t expected_kind, uint32_t *model_hash);
+    /* Returns 1 when loaded, 0 while pending, negative on error; call each script tick. */
+    int32_t (*request_model)(void *env, uint32_t model_hash);
+    /* Call after model use to let the engine release its streaming reference. */
+    int32_t (*release_model)(void *env, uint32_t model_hash);
     /* expected_pool: 0=any entity, 1=ped, 2=vehicle, 3=object; returns 1/0. */
     int32_t (*validate_entity)(void *env, int32_t handle, uint32_t expected_pool);
     int32_t (*native_parameter)(uint64_t hash, uint32_t index, uint32_t *kind, uint32_t *direction);
