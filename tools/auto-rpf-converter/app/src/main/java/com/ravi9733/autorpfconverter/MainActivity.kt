@@ -13,6 +13,8 @@ import android.widget.TextView
 import androidx.documentfile.provider.DocumentFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -173,6 +175,8 @@ class MainActivity : Activity() {
                 check(extractionReport.startsWith("Extraction complete")) { extractionReport }
                 val assetConversionReport = NativeAssets.convertDirectory(extracted.absolutePath)
                 check(assetConversionReport.startsWith("Asset conversion complete")) { assetConversionReport }
+                val nestedStats = NestedRpfStats()
+                convertNestedRpfFiles(extracted, 0, nestedStats)
                 val converted = java.io.File(work, safeName.removeSuffix(".rpf") + "_android.rpf")
                 val conversionReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
                 check(conversionReport.startsWith("RPF7 build complete")) { conversionReport }
@@ -181,7 +185,8 @@ class MainActivity : Activity() {
                 contentResolver.openOutputStream(target.uri, "w")?.use { out ->
                     converted.inputStream().use { input -> input.copyTo(out) }
                 } ?: error("Cannot write Android RPF output")
-                extractionReport + "\n\n" + assetConversionReport + "\n\n" + conversionReport + "\n\nSaved: " + target.name +
+                extractionReport + "\n\n" + assetConversionReport + "\nNested RPFs rebuilt: " + nestedStats.converted + "; preserved/skipped: " + nestedStats.skipped +
+                    "\n" + nestedStats.notes.joinToString("\n") + "\n\n" + conversionReport + "\n\nSaved: " + target.name +
                     "\nOriginal PC archive unchanged. Only reported Gen9 formats were converted; other files remain unchanged."
             } catch (e: Throwable) { "Extraction failed: " + (e.message ?: e.javaClass.simpleName) }
             runOnUiThread { output.text = result }
@@ -256,6 +261,8 @@ class MainActivity : Activity() {
                         check(extractionReport.startsWith("Extraction complete")) { extractionReport }
                         val assetReport = NativeAssets.convertDirectory(extracted.absolutePath)
                         check(assetReport.startsWith("Asset conversion complete")) { assetReport }
+                        val nestedStats = NestedRpfStats()
+                        convertNestedRpfFiles(extracted, 0, nestedStats)
                         val converted = java.io.File(work, safeName.removeSuffix(".rpf") + "_android.rpf")
                         val packageReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
                         check(packageReport.startsWith("RPF7 build complete")) { packageReport }
@@ -273,6 +280,8 @@ class MainActivity : Activity() {
                         report.appendLine(assetReport.lineSequence().filter {
                             it.startsWith("Gen9 to Legacy") || it.startsWith("Already Legacy")
                         }.joinToString(" | "))
+                        report.appendLine("Nested RPFs rebuilt=" + nestedStats.converted + ", preserved/skipped=" + nestedStats.skipped)
+                        nestedStats.notes.forEach { report.appendLine(it) }
                     } catch (e: Throwable) {
                         failed++
                         report.appendLine("FAIL " + relativeDir + "/" + name + " — " + (e.message ?: e.javaClass.simpleName))
@@ -285,11 +294,74 @@ class MainActivity : Activity() {
                 report.appendLine("Finished. Converted/repacked=" + done + ", Failed=" + failed + ", Skipped=" + skipped)
                 report.appendLine("Output bytes written: " + totalBytes)
                 report.appendLine("Source archives were not modified.")
-                report.appendLine("Nested RPF files inside an archive are not recursively rebuilt yet.")
+                report.appendLine("Nested RPF file entries are rebuilt recursively up to the configured depth and RPF7 size limits.")
             } catch (e: Throwable) {
                 report.appendLine("Bulk operation stopped: " + (e.message ?: e.javaClass.simpleName))
             }
             runOnUiThread { latestReport = report.toString(); output.text = latestReport }
+        }
+    }
+
+    private data class NestedRpfStats(
+        var seen: Int = 0,
+        var converted: Int = 0,
+        var skipped: Int = 0,
+        val notes: MutableList<String> = mutableListOf()
+    )
+
+    private fun convertNestedRpfFiles(root: java.io.File, depth: Int, stats: NestedRpfStats) {
+        val nestedFiles = root.walkTopDown()
+            .filter { it.isFile && it.extension.equals("rpf", ignoreCase = true) }
+            .toList()
+        for (nested in nestedFiles) {
+            stats.seen++
+            if (stats.seen > MAX_NESTED_ARCHIVES) {
+                error("Nested RPF count exceeds the " + MAX_NESTED_ARCHIVES + " archive limit")
+            }
+            if (depth >= MAX_NESTED_DEPTH) {
+                stats.skipped++
+                stats.notes.add("PRESERVED " + nested.name + " — nested depth limit reached")
+                continue
+            }
+            if (Files.isSymbolicLink(nested.toPath())) {
+                error("Symbolic link rejected in nested RPF tree: " + nested.absolutePath)
+            }
+            if (nested.length() > MAX_NESTED_RPF_BYTES) {
+                error("Nested RPF " + nested.name + " exceeds the RPF7 24-bit binary-entry limit (16 MiB); refusing to truncate it")
+            }
+
+            val work = java.io.File(cacheDir, "nested-rpf-work-" + stats.seen)
+            work.deleteRecursively()
+            check(work.mkdirs()) { "Cannot create nested RPF work folder" }
+            val extracted = java.io.File(work, "extracted")
+            check(extracted.mkdir()) { "Cannot create nested extraction folder" }
+
+            val extractionReport = NativeRpf.extractArchive(nested.absolutePath, extracted.absolutePath)
+            if (!extractionReport.startsWith("Extraction complete")) {
+                stats.skipped++
+                stats.notes.add("PRESERVED " + nested.name + " — " + extractionReport.replace('\n', ' '))
+                work.deleteRecursively()
+                continue
+            }
+
+            val assetReport = NativeAssets.convertDirectory(extracted.absolutePath)
+            check(assetReport.startsWith("Asset conversion complete")) { assetReport }
+            convertNestedRpfFiles(extracted, depth + 1, stats)
+
+            val converted = java.io.File(work, "nested_android.rpf")
+            val packageReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
+            check(packageReport.startsWith("RPF7 build complete")) { packageReport }
+            if (converted.length() > MAX_NESTED_RPF_BYTES) {
+                error("Converted nested RPF " + nested.name + " exceeds 16 MiB; refusing to truncate it")
+            }
+
+            val replacement = java.io.File(nested.parentFile, nested.name + ".converted")
+            if (replacement.exists()) replacement.delete()
+            converted.copyTo(replacement, overwrite = true)
+            Files.move(replacement.toPath(), nested.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            stats.converted++
+            stats.notes.add("REBUILT " + nested.name + " — supported Gen9 resources converted to Legacy")
+            work.deleteRecursively()
         }
     }
 
@@ -517,6 +589,9 @@ class MainActivity : Activity() {
         private const val MAX_TOC_BYTES = 80L * 1024L * 1024L
         private const val MAX_BULK_ARCHIVES = 500
         private const val MAX_ARCHIVE_BYTES = 1024L * 1024L * 1024L
+        private const val MAX_NESTED_RPF_BYTES = 0xFFFFFFL
+        private const val MAX_NESTED_DEPTH = 8
+        private const val MAX_NESTED_ARCHIVES = 500
         private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ysc", "awc", "rel", "dat")
     }
 }

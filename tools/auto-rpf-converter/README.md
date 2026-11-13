@@ -20,8 +20,9 @@ This is not yet a universal PC-to-Android converter and is not yet verified agai
 
 - Gen9-to-Legacy conversion is attempted only for .ytd, .ydr, .ydd, .yft and .ypt. A resource that fails parsing or conversion stops that archive; it is not silently copied as if converted.
 - .ybn, map/meta, audio, scripts, configuration and other formats are not rewritten. Some GTA V Legacy/Enhanced formats are edition-independent, but this does not establish compatibility with every Android port.
-- RPF7 output is structurally validated; runtime mounting, DLC registration, load order, nested RPF recursion, and Glue5 in-game asset compatibility are not yet validated or implemented completely.
-- Bulk conversion processes .rpf files visible in the selected Android folder tree. It does not descend into RPF archives to recursively rebuild archives nested inside them.
+- Nested RPF file entries are recursively extracted, converted and rebuilt up to depth 8 and 500 nested files. Each nested archive must remain below the RPF7 24-bit binary-entry limit (16 MiB); larger nested files fail closed rather than being truncated.
+- RPF7 output is structurally validated; runtime mounting, DLC registration, load order, and Glue5 in-game asset compatibility are not yet validated.
+- Bulk conversion processes .rpf files visible in the selected Android folder tree and recursively rebuilds nested RPF file entries that fit the 16 MiB RPF7 binary-entry limit.
 - Bulk mode is limited to 500 on-disk RPF files and 1 GiB per input archive. Resource conversion enforces 512 MiB per supported asset, 8 GiB total scanned input and one million files.
 - AES/NG encrypted archives are skipped/rejected unless legitimate matching key material is available. No encryption bypass is attempted.
 - The C++ conversion engine is pinned to RatPrez/ragekit commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b (v0.3.1). Its Gen9 conversion work is documented at https://github.com/RatPrez/ragekit/blob/v0.3.1/docs/enhanced.md.

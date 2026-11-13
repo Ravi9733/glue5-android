@@ -9,7 +9,7 @@ The C++ library is pinned to commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b. Th
 
 ## Current limitations
 
-- Nested RPF recursion and nested archive rewriting are not implemented.
+- Nested RPF file entries are recursively extracted and rebuilt by the Android orchestration layer, with depth 8 / 500-file caps and a 16 MiB RPF7 binary-entry ceiling. Larger nested archives fail closed.
 - .ybn, map/meta, audio, scripts, configuration and other non-listed formats are not rewritten.
 - Encrypted AES/NG archives need legitimate matching key material and fail closed otherwise.
 - Repacked archives are structurally validated, but Glue5/Android runtime compatibility is not established.
