@@ -624,11 +624,33 @@ mod tests {
         assert!(HOST_API.request_model.is_some());
         assert!(HOST_API.release_model.is_some());
     }
-    #[test] fn host_api_field_order_matches_c_header_contract() {
-        use std::mem::offset_of;
-        assert!(offset_of!(HostApi, create_entity) > offset_of!(HostApi, release_model));
-        assert!(offset_of!(HostApi, delete_entity) > offset_of!(HostApi, create_entity));
-        assert!(offset_of!(HostApi, validate_entity) > offset_of!(HostApi, delete_entity));
+    #[test] fn host_api_layout_matches_android_arm64_c_header_contract() {
+        use std::mem::{offset_of, size_of};
+        // Android plugins are arm64-v8a. Pin every public field offset so a
+        // Rust-side reorder/type change cannot silently desynchronize the C ABI.
+        assert_eq!(size_of::<HostApi>(), 176);
+        assert_eq!(offset_of!(HostApi, abi_version), 0);
+        assert_eq!(offset_of!(HostApi, log), 8);
+        assert_eq!(offset_of!(HostApi, register_script_callback), 16);
+        assert_eq!(offset_of!(HostApi, script_stack_top), 24);
+        assert_eq!(offset_of!(HostApi, script_stack_alloc), 32);
+        assert_eq!(offset_of!(HostApi, script_stack_restore), 40);
+        assert_eq!(offset_of!(HostApi, call_native), 48);
+        assert_eq!(offset_of!(HostApi, call_native_typed), 56);
+        assert_eq!(offset_of!(HostApi, call_native_marshaled), 64);
+        assert_eq!(offset_of!(HostApi, native_metadata), 72);
+        assert_eq!(offset_of!(HostApi, native_hash_by_name), 80);
+        assert_eq!(offset_of!(HostApi, resolve_model_name), 88);
+        assert_eq!(offset_of!(HostApi, request_model), 96);
+        assert_eq!(offset_of!(HostApi, release_model), 104);
+        assert_eq!(offset_of!(HostApi, is_control_just_pressed), 112);
+        assert_eq!(offset_of!(HostApi, is_control_pressed), 120);
+        assert_eq!(offset_of!(HostApi, get_control_normal), 128);
+        assert_eq!(offset_of!(HostApi, create_entity), 136);
+        assert_eq!(offset_of!(HostApi, delete_entity), 144);
+        assert_eq!(offset_of!(HostApi, validate_entity), 152);
+        assert_eq!(offset_of!(HostApi, native_parameter), 160);
+        assert_eq!(offset_of!(HostApi, enumerate_entities), 168);
     }
     #[test] fn missing_directory_is_reported_without_panicking() {
         let report = load_directory(Path::new("/definitely/not/a/glue5/plugin/folder"));
