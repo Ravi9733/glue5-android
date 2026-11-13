@@ -36,6 +36,7 @@ pub struct HostApi {
     pub call_native_marshaled: Option<unsafe extern "C" fn(env: *mut c_void, hash: u64, args: *const NativeArg, count: u32, result: *mut u64) -> i32>,
     pub native_metadata: Option<unsafe extern "C" fn(hash: u64, output: *mut NativeMetadata) -> i32>,
     pub native_hash_by_name: Option<unsafe extern "C" fn(name: *const c_char, output: *mut u64) -> i32>,
+    pub resolve_model_name: Option<unsafe extern "C" fn(name: *const c_char, expected_kind: u32, output_hash: *mut u32) -> i32>,
     pub validate_entity: Option<unsafe extern "C" fn(env: *mut c_void, handle: i32, expected_pool: u32) -> i32>,
     pub native_parameter: Option<unsafe extern "C" fn(hash: u64, index: u32, kind: *mut u32, direction: *mut u32) -> i32>,
     pub enumerate_entities: Option<unsafe extern "C" fn(env: *mut c_void, pool: u32, output: *mut i32, capacity: u32) -> i32>,
@@ -348,6 +349,22 @@ unsafe extern "C" fn native_hash_by_name(name: *const c_char, output: *mut u64) 
     unsafe { output.write(native.hash); }
     0
 }
+unsafe extern "C" fn resolve_model_name(name: *const c_char, expected_kind: u32, output_hash: *mut u32) -> i32 {
+    if name.is_null() || output_hash.is_null() { return -1; }
+    let Ok(name) = unsafe { CStr::from_ptr(name) }.to_str() else { return -2; };
+    if name.is_empty() || name.len() > 64 || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') { return -3; }
+    let Some(catalog) = world::catalog() else { return -4; };
+    let lower = name.to_ascii_lowercase();
+    let found = match expected_kind {
+        1 => catalog.vehicles.iter().any(|item| item == &lower),
+        2 => catalog.peds.iter().any(|item| item == &lower),
+        0 => catalog.vehicles.iter().any(|item| item == &lower) || catalog.peds.iter().any(|item| item == &lower),
+        _ => return -5,
+    };
+    if !found { return 0; }
+    unsafe { output_hash.write(natives::joaat(&lower)); }
+    1
+}
 unsafe extern "C" fn validate_entity(env: *mut c_void, handle: i32, expected_pool: u32) -> i32 {
     if env.is_null() { return -1; }
     let Some(kind) = (unsafe { natives::entity_handle_kind(env.cast(), handle) }) else { return 0; };
@@ -385,7 +402,7 @@ static HOST_API: HostApi = HostApi {
     abi_version: ABI_VERSION, log: Some(host_log), register_script_callback: Some(register_script_callback),
     script_stack_top: Some(script_stack_top), script_stack_alloc: Some(script_stack_alloc),
     script_stack_restore: Some(script_stack_restore), call_native: Some(call_native),
-    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata), native_hash_by_name: Some(native_hash_by_name), validate_entity: Some(validate_entity),
+    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata), native_hash_by_name: Some(native_hash_by_name), resolve_model_name: Some(resolve_model_name), validate_entity: Some(validate_entity),
     native_parameter: Some(native_parameter), enumerate_entities: Some(enumerate_entities),
 };
 pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
