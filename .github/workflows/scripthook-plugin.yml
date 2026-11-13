@@ -41,7 +41,7 @@ jobs:
         working-directory: crates/glue5-scripthook/examples/native-plugin
         env:
           ANDROID_API_LEVEL: "29"
-        run: ./build.sh
+        run: bash ./build.sh
 
       - name: Upload sample plugin
         uses: actions/upload-artifact@v4
