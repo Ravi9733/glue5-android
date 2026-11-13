@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-pub const ABI_VERSION: u32 = 10;
+pub const ABI_VERSION: u32 = 11;
 const ENTRYPOINT: &[u8] = b"glue5_scripthook_plugin_init\0";
 pub type ScriptCallback = unsafe extern "C" fn(env: *mut c_void, info: u64, user: *mut c_void);
 pub type NativeResolver = fn(hash: u64) -> Option<u64>;
@@ -41,6 +41,11 @@ pub struct HostApi {
     pub request_model: Option<unsafe extern "C" fn(env: *mut c_void, model_hash: u32) -> i32>,
     /// Release a model after it is no longer needed.
     pub release_model: Option<unsafe extern "C" fn(env: *mut c_void, model_hash: u32) -> i32>,
+    /// GTA control polling using the generated native signatures.
+    pub is_control_just_pressed: Option<unsafe extern "C" fn(env: *mut c_void, control_group: i32, control_id: i32) -> i32>,
+    pub is_control_pressed: Option<unsafe extern "C" fn(env: *mut c_void, control_group: i32, control_id: i32) -> i32>,
+    /// Raw f32 bits from GET_CONTROL_NORMAL.
+    pub get_control_normal: Option<unsafe extern "C" fn(env: *mut c_void, control_group: i32, control_id: i32, output_bits: *mut u32) -> i32>,
     /// Calls a verified CREATE_/CLONE_ native and returns a live typed entity handle.
     pub create_entity: Option<unsafe extern "C" fn(env: *mut c_void, native_hash: u64, args: *const NativeArg, count: u32, expected_pool: u32, output_handle: *mut i32) -> i32>,
     /// Deletes a live typed entity using the generated DELETE_* signature.
@@ -417,6 +422,37 @@ unsafe extern "C" fn release_model(env: *mut c_void, model_hash: u32) -> i32 {
 }
 /// Calls a creation native only when its generated return type matches the
 /// requested entity pool, then validates the returned script handle.
+/// Reads one of GTA's two-integer control natives after checking its generated signature.
+unsafe fn call_control_native(env: *mut c_void, name: &str, group: i32, control: i32, expected_return: Kind) -> Result<u64, i32> {
+    if env.is_null() { return Err(-1); }
+    let native = natives::NATIVES.iter().find(|native| native.name == name).ok_or(-2)?;
+    if native.params.len() != 2 || native.params.iter().any(|p| p.dir != Dir::In || p.kind != Kind::Int)
+        || native.ret != Some(expected_return) { return Err(-3); }
+    let args = [
+        NativeArg { kind: 0, reserved: 0, value: group as u32 as u64 },
+        NativeArg { kind: 0, reserved: 0, value: control as u32 as u64 },
+    ];
+    let mut result = 0u64;
+    let status = unsafe { call_native_marshaled(env, native.hash, args.as_ptr(), 2, &mut result) };
+    if status == 0 { Ok(result) } else { Err(status) }
+}
+unsafe extern "C" fn is_control_just_pressed(env: *mut c_void, group: i32, control: i32) -> i32 {
+    match unsafe { call_control_native(env, "IS_CONTROL_JUST_PRESSED", group, control, Kind::Bool) } {
+        Ok(bits) => if bits != 0 { 1 } else { 0 }, Err(code) => code,
+    }
+}
+unsafe extern "C" fn is_control_pressed(env: *mut c_void, group: i32, control: i32) -> i32 {
+    match unsafe { call_control_native(env, "IS_CONTROL_PRESSED", group, control, Kind::Bool) } {
+        Ok(bits) => if bits != 0 { 1 } else { 0 }, Err(code) => code,
+    }
+}
+unsafe extern "C" fn get_control_normal(env: *mut c_void, group: i32, control: i32, output_bits: *mut u32) -> i32 {
+    if output_bits.is_null() { return -1; }
+    match unsafe { call_control_native(env, "GET_CONTROL_NORMAL", group, control, Kind::Float) } {
+        Ok(bits) => { unsafe { output_bits.write(bits as u32); } 0 }, Err(code) => code,
+    }
+}
+
 unsafe extern "C" fn create_entity(
     env: *mut c_void, native_hash: u64, args: *const NativeArg, count: u32,
     expected_pool: u32, output_handle: *mut i32,
@@ -520,7 +556,7 @@ static HOST_API: HostApi = HostApi {
     abi_version: ABI_VERSION, log: Some(host_log), register_script_callback: Some(register_script_callback),
     script_stack_top: Some(script_stack_top), script_stack_alloc: Some(script_stack_alloc),
     script_stack_restore: Some(script_stack_restore), call_native: Some(call_native),
-    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata), native_hash_by_name: Some(native_hash_by_name), resolve_model_name: Some(resolve_model_name), request_model: Some(request_model), release_model: Some(release_model), create_entity: Some(create_entity), delete_entity: Some(delete_entity), validate_entity: Some(validate_entity),
+    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata), native_hash_by_name: Some(native_hash_by_name), resolve_model_name: Some(resolve_model_name), request_model: Some(request_model), release_model: Some(release_model), is_control_just_pressed: Some(is_control_just_pressed), is_control_pressed: Some(is_control_pressed), get_control_normal: Some(get_control_normal), create_entity: Some(create_entity), delete_entity: Some(delete_entity), validate_entity: Some(validate_entity),
     native_parameter: Some(native_parameter), enumerate_entities: Some(enumerate_entities),
 };
 pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
@@ -569,11 +605,14 @@ unsafe fn load_one(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 10); }
+    #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 11); }
     #[test] fn native_arg_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeArg>(), 16); }
     #[test] fn native_metadata_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeMetadata>(), 24); }
-    #[test] fn host_api_v10_exposes_entity_lifecycle() {
+    #[test] fn host_api_v11_exposes_controls_and_entity_lifecycle() {
         assert_eq!(HOST_API.abi_version, ABI_VERSION);
+        assert!(HOST_API.is_control_just_pressed.is_some());
+        assert!(HOST_API.is_control_pressed.is_some());
+        assert!(HOST_API.get_control_normal.is_some());
         assert!(HOST_API.create_entity.is_some());
         assert!(HOST_API.delete_entity.is_some());
         assert!(HOST_API.request_model.is_some());
