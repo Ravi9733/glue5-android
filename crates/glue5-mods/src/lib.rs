@@ -219,6 +219,10 @@ pub fn install(dir: &Path) {
 }
 
 /// The mods folder, once open.
+fn native_handler_by_hash(hash: u64) -> Option<u64> {
+    natives::handler_by_hash(hash)
+}
+
 pub fn dir() -> Option<&'static Path> {
     SHARED.dir.get().map(PathBuf::as_path)
 }
