@@ -5,11 +5,12 @@ This crate establishes an Android-native ScriptHook-style plugin boundary. It di
 ## Current implementation
 
 - Deterministic discovery and loading of Android ARM64 `.so` plugins.
-- Versioned C ABI (v10), host logging, script-stack allocation/restore helpers, and hash-based GTA native dispatch against the generated metadata for this exact game build.
+- Versioned C ABI (v11), host logging, script-stack allocation/restore helpers, and hash-based GTA native dispatch against the generated metadata for this exact game build.
 - Plugins can register callbacks dispatched from the GTA script `WAIT` hook; callback dispatch is chained through Glue 5's existing mods hook when present.
 - Native metadata introspection exposes handler index, parameter count, return kind, and per-parameter kind/direction; plugins can also resolve a native by its exact GTA name (for example `CREATE_VEHICLE`).
 - Entity handles can be validated against the live script-guid pool and checked as any entity, ped, vehicle, or object before use.
 - Model-name resolution checks the installed game's live vehicle/ped archetype catalog and returns the correct JOAAT model hash; it rejects unknown model names instead of blindly requesting them.
+- Trainer input primitives: `is_control_just_pressed`, `is_control_pressed`, and `get_control_normal` resolve the exact generated GTA control natives and verify their two-integer input signatures and expected return types before calling them. The sample demonstrates UP/DOWN/SELECT/BACK polling from the script WAIT callback.
 - Model streaming lifecycle helpers: `request_model(env, hash)` invokes the generated `REQUEST_MODEL` signature and checks `HAS_MODEL_LOADED` on each script tick (1=loaded, 0=pending); `release_model(env, hash)` calls `SET_MODEL_AS_NO_LONGER_NEEDED`. They reject unexpected generated parameter kinds/directions rather than guessing.
 - Typed entity lifecycle helpers: `create_entity` accepts a native hash and marshalled arguments, permits only generated `CREATE_`/`CLONE_` entries with the requested ped/vehicle/object return kind, and validates the returned live script handle. `delete_entity` validates the live handle and only calls the matching `DELETE_PED`/`DELETE_VEHICLE`/`DELETE_OBJECT` entry when its generated one-handle signature matches; INOUT handles are staged in wasm memory.
 - Live ped, vehicle, and object enumeration returns script handles from the game's entity pools (maximum 4096).
@@ -50,3 +51,13 @@ Resolve a vehicle or ped model name with `resolve_model_name`, then call `reques
 4. When finished, call `delete_entity` with the same expected pool. It checks that the handle is live and that the matching generated delete signature is a single handle parameter.
 
 These wrappers do not guess native hashes or argument layouts. The plugin must still supply arguments matching the exact generated signature and must not block the script thread while a model streams.
+
+### Trainer input polling
+
+The host exposes three non-blocking input helpers. Call them from the registered script WAIT callback; they do not create a UI or consume/disable the game's controls.
+
+- `is_control_just_pressed(env, group, control)`: 1 for a new press, 0 otherwise, negative on error.
+- `is_control_pressed(env, group, control)`: 1 while held, 0 otherwise, negative on error.
+- `get_control_normal(env, group, control, &bits)`: writes the raw IEEE-754 f32 bits returned by `GET_CONTROL_NORMAL`.
+
+The example uses GTA control IDs 172 (up), 173 (down), 176 (select), and 177 (back), in group 0. These are input primitives for the next trainer-menu layer; touch overlay rendering and a complete Menyoo menu are not implemented yet.
