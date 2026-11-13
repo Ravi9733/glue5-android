@@ -18,6 +18,17 @@ jobs:
       - name: Test native RPF core
         run: cargo test --manifest-path tools/auto-rpf-converter/native-core/Cargo.toml
 
+  ragekit-conversion-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run host C++ conversion smoke test
+        run: |
+          cmake -S tools/auto-rpf-converter/app/src/main/cpp -B build/ragekit-host -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/ragekit-host --target asset_converter_tests --parallel 2
+          ctest --test-dir build/ragekit-host --output-on-failure
+
   build-debug-apk:
     runs-on: ubuntu-latest
     defaults:
@@ -46,7 +57,7 @@ jobs:
             exit 1
           fi
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:

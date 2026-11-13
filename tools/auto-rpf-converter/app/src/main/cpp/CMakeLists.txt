@@ -1,0 +1,27 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(gta_ragekit_converter LANGUAGES C CXX)
+include(FetchContent)
+set(RAGEKIT_BUILD_CLI OFF CACHE BOOL "" FORCE)
+set(RAGEKIT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(RAGEKIT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(RAGEKIT_BUILD_RENDER OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    ragekit
+    GIT_REPOSITORY https://github.com/RatPrez/ragekit.git
+    GIT_TAG 9d4110ef0fce900787aaeccb52b67fa5402ff41b
+)
+FetchContent_MakeAvailable(ragekit)
+add_library(gta_asset_converter STATIC asset_converter.cpp)
+target_include_directories(gta_asset_converter PUBLIC \${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(gta_asset_converter PUBLIC ragekit)
+target_compile_features(gta_asset_converter PUBLIC cxx_std_20)
+if(ANDROID)
+    add_library(gta_ragekit_jni SHARED ragekit_jni.cpp)
+    target_compile_features(gta_ragekit_jni PRIVATE cxx_std_20)
+    target_link_libraries(gta_ragekit_jni PRIVATE gta_asset_converter android log)
+else()
+    enable_testing()
+    add_executable(asset_converter_tests asset_converter_test.cpp)
+    target_link_libraries(asset_converter_tests PRIVATE gta_asset_converter)
+    add_test(NAME asset_converter_tests COMMAND asset_converter_tests)
+endif()

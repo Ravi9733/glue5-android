@@ -1,34 +1,38 @@
 # GTA V PC RPF to Android RPF Converter
 
-Android ARM64 prototype for converting supported, unencrypted GTA V PC RPF7 archives into a newly-built unencrypted RPF7 archive on Android. No desktop PC is required.
+Android ARM64 converter prototype for unencrypted GTA V RPF7 archives. It extracts an archive, converts supported GTA V Enhanced (Gen9) resources to Legacy resource layouts, and builds a new unencrypted RPF7 container. The original PC archive is never modified.
 
-## Current conversion pipeline
+## Current supported pipeline
 
-1. Select one PC .rpf archive and an output folder.
-2. Extract supported entries with the Rust RPF parser.
-3. Convert supported Gen9 / GTA V Enhanced .ytd texture dictionaries to Legacy .ytd using rage-formats.
-4. Preserve all other extracted files byte-for-byte (they are NOT format-converted).
-5. Rebuild the extracted tree as a new RPF7 archive using rage-rpf, then parse the result for structural validation.
-6. Save the new *_android.rpf file to the selected Android folder. The original PC archive is never modified.
+1. Select one .rpf archive and an output folder, or select a GTA V folder and run bulk conversion of up to 500 on-disk .rpf files.
+2. Extract supported unencrypted archives with the Rust rpf-archive parser.
+3. Convert Gen9 resources to Legacy with the pinned ragekit v0.3.1 C++ library:
+   - .ytd texture dictionaries (Gen9 version 5 to Legacy version 13)
+   - .ydr drawables and .ydd drawable dictionaries (Gen9 version 159 to Legacy version 165)
+   - .yft fragments (Gen9 version 171 to Legacy version 162)
+   - .ypt particle dictionaries (Gen9 version 71 to Legacy version 68)
+4. Preserve already-Legacy versions byte-for-byte and leave other file types unchanged.
+5. Rebuild a new, unencrypted RPF7 archive with rage-rpf; validate the generated archive with both RPF parsers.
 
 ## Important limitations
 
-This is a first working conversion pipeline, not a universal GTA V PC-to-Android converter.
+This is not yet a universal PC-to-Android converter and is not yet verified against Glue5's runtime.
 
-- Only Gen9 YTD to Legacy YTD is currently transformed. Legacy YTDs are retained as-is.
-- YDR, YDD, YFT, YBN, YMAP, YTYP, YCD, YSC, AWC, REL and DAT files are preserved unchanged; no Android-specific conversion is claimed for them.
-- The output is a newly packed unencrypted RPF7 container. It is not proven compatible with Glue5 or every Android GTA V port.
-- Nested RPF recursion and full DLC folder / dlclist generation are not implemented in this first pipeline.
-- AES/NG encrypted input archives are rejected unless legitimate matching key support is added. No encryption bypass is attempted.
-- Runtime verification on a physical Android device and in-game Glue5 testing are still required.
+- Gen9-to-Legacy conversion is attempted only for .ytd, .ydr, .ydd, .yft and .ypt. A resource that fails parsing or conversion stops that archive; it is not silently copied as if converted.
+- .ybn, map/meta, audio, scripts, configuration and other formats are not rewritten. Some GTA V Legacy/Enhanced formats are edition-independent, but this does not establish compatibility with every Android port.
+- RPF7 output is structurally validated; runtime mounting, DLC registration, load order, nested RPF recursion, and Glue5 in-game asset compatibility are not yet validated or implemented completely.
+- Bulk conversion processes .rpf files visible in the selected Android folder tree. It does not descend into RPF archives to recursively rebuild archives nested inside them.
+- Bulk mode is limited to 500 on-disk RPF files and 1 GiB per input archive. Resource conversion enforces 512 MiB per supported asset, 8 GiB total scanned input and one million files.
+- AES/NG encrypted archives are skipped/rejected unless legitimate matching key material is available. No encryption bypass is attempted.
+- The C++ conversion engine is pinned to RatPrez/ragekit commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b (v0.3.1). Its Gen9 conversion work is documented at https://github.com/RatPrez/ragekit/blob/v0.3.1/docs/enhanced.md.
+- Physical Android and Glue5 in-game tests are still required.
 
 ## Safety
 
-- Input archives are read-only; generated output is separate.
-- Extraction and repacking enforce entry, per-file and total-size limits.
-- Symlinks and unsafe archive paths are rejected.
-- Keep a backup and ensure sufficient free storage for temporary extraction plus the new RPF.
+- Source PC RPF archives are read-only; all extraction and conversion happens in app cache and a separate output folder.
+- Symlinks, oversized supported resources and excessive directory workloads are rejected.
+- Keep a backup and ensure enough free storage for the extracted tree and rebuilt RPF.
 
 ## Build
 
-GitHub Actions runs Rust native-core tests and builds an Android ARM64 debug APK. A successful build confirms compilation and packaging, not in-game compatibility.
+GitHub Actions runs Rust archive tests, a host C++ Gen9 YTD conversion smoke test and an Android ARM64 debug APK build. A successful build verifies compilation and archive/texture test fixtures, not runtime compatibility.

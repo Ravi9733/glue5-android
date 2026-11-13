@@ -1,24 +1,16 @@
-# Native RPF core
+# Native conversion core
 
-This is the first real extraction layer for the Android converter. It uses the
-upstream `rpf-archive` parser rather than the prototype's hand-written TOC
-reader.
+The Android app uses two native layers:
 
-## Current scope
+- Rust rpf-archive / rage-rpf: bounded RPF parsing, unencrypted extraction and RPF7 repacking.
+- C++ ragekit v0.3.1: Gen9-to-Legacy resource conversion for .ytd, .ydr, .ydd, .yft and .ypt.
 
-- Parse archive metadata through `RpfArchive`.
-- Extract supported unencrypted archive entries into a separate destination.
-- Preserve the source archive.
-- Reject path traversal and enforce archive / entry / total-output limits.
-- Fail closed for encrypted archives when matching key material is unavailable.
+The C++ library is pinned to commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b. The app invokes its JNI bridge on the extracted app-private directory before RPF7 repacking.
 
-## Not yet implemented
+## Current limitations
 
-- Android JNI bridge and Storage Access Framework integration.
-- Nested RPF recursion.
-- Batch job progress / cancellation.
-- RSC7 asset conversion or Android-port compatibility validation.
-- Repacking converted assets.
-
-This crate is a host-buildable core, not yet wired into the APK. Its use of
-`rpf-archive` is pinned to 0.10.0. The upstream crate is Unlicense-licensed.
+- Nested RPF recursion and nested archive rewriting are not implemented.
+- .ybn, map/meta, audio, scripts, configuration and other non-listed formats are not rewritten.
+- Encrypted AES/NG archives need legitimate matching key material and fail closed otherwise.
+- Repacked archives are structurally validated, but Glue5/Android runtime compatibility is not established.
+- Host tests currently include a synthetic Gen9 YTD-to-Legacy conversion fixture; real-game YDR/YDD/YFT/YPT fixture coverage and on-device tests remain outstanding.
