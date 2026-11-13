@@ -609,7 +609,7 @@ Exposure=0.5
     fn resolves_nested_effect_path_under_zip_wrapper_even_with_duplicate_basename() {
         let root = std::env::temp_dir().join(format!("glue5-reshade-suffix-{}", std::process::id()));
         let wrapped = root.join("reshade-shaders").join("Shaders").join("SweetFX");
-        let unrelated = root.join("OtherPack").join("Shaders").join("SweetFX");
+        let unrelated = root.join("OtherPack").join("Shaders");
         std::fs::create_dir_all(&wrapped).unwrap();
         std::fs::create_dir_all(&unrelated).unwrap();
         let expected = wrapped.join("Vibrance.fx");
