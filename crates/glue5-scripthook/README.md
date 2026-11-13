@@ -1,16 +1,26 @@
 # Glue 5 Android ScriptHook host
 
-This crate establishes the Android-native plugin boundary for the ScriptHook port. It discovers `.so` files and loads only libraries that export `glue5_scripthook_plugin_init`, passing a versioned host API.
+This crate establishes an Android-native plugin boundary for the ScriptHook port. It discovers `.so` files and loads only libraries that export `glue5_scripthook_plugin_init`, passing a versioned host API.
 
-## Current scope
+## Current implementation
 
-- Deterministic discovery and loading of Android ARM64 shared libraries.
+- Deterministic discovery and loading of Android `arm64-v8a` shared libraries.
 - Versioned C ABI and host logging callback.
+- Plugins can register callbacks dispatched from the GTA script `WAIT` hook.
+- Callback dispatch is chained through the existing Glue 5 mods hook when that feature is enabled, avoiding two systems overwriting the same game hook.
 - Loaded libraries remain resident so registered callbacks cannot point into unloaded code.
 - Windows `.asi` / `.dll` and managed .NET assemblies are not treated as Android-native plugins.
 
-## Not implemented yet
+The public C header is in `include/glue5_scripthook.h`; a minimal plugin example is in `examples/native-plugin/plugin.c`.
 
-This is **not** a drop-in ScriptHookV / ScriptHookVDotNet implementation. The game-specific native registration table, script-thread lifecycle, Menyoo port, managed .NET runtime, and Android equivalents of the iOS PostHook hooks still need to be implemented and tested. The supplied ScriptHook pack contains mod assets and managed DLLs, but not the native iOS PostHook implementation needed to reproduce the iOS runtime.
+## Plugin location
 
-Plugins must be rebuilt for Android `arm64-v8a` against this ABI. Existing Windows `.asi` binaries cannot run unchanged.
+The app currently scans the user data folder at `scripthook/plugins/`.
+
+Place Android ARM64 `.so` plugins there. They must export `glue5_scripthook_plugin_init` and be built against the header in this crate.
+
+## Important limitations
+
+This is **not** yet a drop-in ScriptHookV / ScriptHookVDotNet implementation. The callbacks run in the game's script WAIT context, but the complete ScriptHook native API (native hash invocation, parameter marshalling, entity helpers, keyboard/input APIs, and lifecycle parity) is not implemented yet. Menyoo has not been ported. A managed .NET runtime is not included. Existing Windows `.asi` binaries cannot run unchanged and must be ported/rebuilt for Android.
+
+The supplied iOS ScriptHook pack contains Menyoo assets and managed DLLs, but not the native iOS PostHook implementation needed to reproduce the iOS runtime. This Android implementation therefore needs its own native bridge and Android-specific plugin builds.
