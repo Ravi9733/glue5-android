@@ -12,7 +12,7 @@ const ENTRYPOINT: &[u8] = b"glue5_scripthook_plugin_init\0";
 pub type ScriptCallback = unsafe extern "C" fn(env: *mut c_void, info: u64, user: *mut c_void);
 pub type NativeResolver = fn(hash: u64) -> Option<u64>;
 
-/// Scalar native argument: 0=signed integer, 1=unsigned/hash, 2=f32 bits, 3=wasm-memory pointer offset.
+/// Scalar native argument: 0=signed integer/bool, 1=unsigned/hash, 2=f32 bits. Complex pointer arguments are rejected.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct NativeArg { pub kind: u32, pub reserved: u32, pub value: u64 }
@@ -101,9 +101,25 @@ unsafe extern "C" fn call_native_typed(
         let info = alloc(128)?;
         let params = alloc(u64::from(count.max(1)) * 8)?;
         let native_result = alloc(32)?;
-        for index in 0..count as usize {
+        let native = natives::by_hash(hash).ok_or(-3)?;
+        if native.params.len() != count as usize { return Err(-10); }
+        for (index, parameter) in native.params.iter().enumerate() {
+            // This entrypoint is deliberately scalar-only. Complex pointer,
+            // string, vector and output parameters must use a future typed ABI.
+            if parameter.dir != Dir::In { return Err(-11); }
             let arg = unsafe { *args.add(index) };
-            if arg.kind > 3 || (arg.kind == 3 && arg.value >= memory_size) { return Err(-7); }
+            let expected = match parameter.kind {
+                Kind::Int | Kind::Any | Kind::Handle(_) => 0,
+                Kind::Hash => 1,
+                Kind::Float => 2,
+                Kind::Bool => 0,
+                Kind::Str | Kind::Vec3 => return Err(-12),
+            };
+            if arg.kind != expected { return Err(-13); }
+            if parameter.kind == Kind::Bool && arg.value > 1 { return Err(-14); }
+            // A raw wasm offset is not a valid scalar value; accepting it
+            // here would silently pass an address as an integer.
+            if arg.kind == 3 { return Err(-15); }
             let at = params + index as u64 * 8;
             unsafe { std::ptr::write_unaligned(data.add(at as usize).cast::<u64>(), arg.value); }
         }
