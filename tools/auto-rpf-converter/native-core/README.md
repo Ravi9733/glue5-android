@@ -13,4 +13,4 @@ The C++ library is pinned to commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b. Th
 - .ybn, map/meta, audio, scripts, configuration and other non-listed formats are not rewritten.
 - Encrypted AES/NG archives need legitimate matching key material and fail closed otherwise.
 - Repacked archives are structurally validated, but Glue5/Android runtime compatibility is not established.
-- Host tests currently include a synthetic Gen9 YTD-to-Legacy conversion fixture; real-game YDR/YDD/YFT/YPT fixture coverage and on-device tests remain outstanding.
+- Host C++ tests now build synthetic Gen9 YTD/YDR/YDD/YFT/YPT resources, convert each to its Legacy version, parse the outputs, and verify Legacy pass-through. Rust tests cover OPEN RPF7 repacking, RSC7 resource-header/page-flag round trips, nested archive payloads and malformed-header rejection. These are synthetic fixtures, not real retail-game fixtures; physical Android and Glue5 in-game tests remain outstanding.
