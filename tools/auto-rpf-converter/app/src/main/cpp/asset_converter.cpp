@@ -166,6 +166,6 @@ std::string convert_directory(const fs::path& root) {
            "Already Legacy resources: " + std::to_string(stats.already_legacy) + "\n"
            "Other files preserved unchanged: " + std::to_string(stats.unchanged_other) + "\n"
            "Scanned bytes: " + std::to_string(stats.bytes_scanned) + "\n"
-           "Audio, scripts, metadata outside YMAP/YTYP, and unsupported formats were preserved unchanged."
+           "Audio, scripts, metadata outside YMAP/YTYP, and unsupported formats were preserved unchanged.";
 }
 }
