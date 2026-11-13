@@ -9,5 +9,6 @@ publish = false
 [dependencies]
 glue5-game.workspace = true
 glue5-runtime.workspace = true
+glue5-mods.workspace = true
 log.workspace = true
 libloading = "0.8.9"
