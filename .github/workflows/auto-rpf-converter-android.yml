@@ -5,6 +5,10 @@ on:
     paths:
       - "tools/auto-rpf-converter/**"
       - ".github/workflows/auto-rpf-converter-android.yml"
+  pull_request:
+    paths:
+      - "tools/auto-rpf-converter/**"
+      - ".github/workflows/auto-rpf-converter-android.yml"
   workflow_dispatch:
 
 jobs:
