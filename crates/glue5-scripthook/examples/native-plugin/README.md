@@ -34,7 +34,11 @@ The host creates/scans the `scripthook/plugins` directory when it initializes. T
 
 - D-pad Up: select the Adder vehicle.
 - D-pad Down: select the security ped.
-- Select: request the selected model and spawn it.
+- Select: request the selected model and spawn it 4 metres in front of the local player, using the player's current heading.
 - Back: cancel a pending model request or delete the last spawned entity.
 
-This is a low-level API demonstration, not a polished touch trainer. The sample uses a fixed demonstration coordinate and has not been validated in live gameplay. Native argument signatures, spawning, deletion, and device stability still require in-game testing on the target Glue 5 build.
+The player-relative spawn API checks the generated `PLAYER_PED_ID` and `GET_ENTITY_MATRIX` signatures and cancels spawning if it cannot read a valid transform. This is still a low-level API demonstration, not a polished touch trainer or a drop-in ScriptHookV replacement. It has not been validated in live gameplay. Native argument signatures, spawning, deletion, and device stability still require in-game testing on the target Glue 5 build.
+
+## CI
+
+The pull-request workflow installs Android command-line tools into the runner's temporary SDK directory, installs NDK r27d, builds the ARM64 sample, and uploads `sample.so` as a workflow artifact. A successful workflow run is required before treating the sample as build-verified.
