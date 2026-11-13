@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define GLUE5_SCRIPTHOOK_ABI_VERSION 5u
+#define GLUE5_SCRIPTHOOK_ABI_VERSION 6u
 typedef void (*Glue5ScriptCallback)(void *env, uint64_t info, void *user);
 typedef void (*Glue5LogCallback)(uint32_t level, const char *message);
 typedef int32_t (*Glue5RegisterScriptCallback)(Glue5ScriptCallback callback, void *user);
