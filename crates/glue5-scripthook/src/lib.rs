@@ -175,15 +175,15 @@ unsafe extern "C" fn call_native_marshaled(
                     }
                     Kind::Hash => {
                         if arg.kind != 1 { return Err(-13); }
-                        write_u32(target, arg.value as u32)?;
+                        write_u32(target, if parameter.dir == Dir::InOut { read_u32(arg.value)? } else { arg.value as u32 })?;
                     }
                     Kind::Float => {
                         if arg.kind != 2 { return Err(-13); }
-                        write_u32(target, arg.value as u32)?;
+                        write_u32(target, if parameter.dir == Dir::InOut { read_u32(arg.value)? } else { arg.value as u32 })?;
                     }
                     Kind::Bool => {
                         if arg.kind != 4 || arg.value > 1 { return Err(-14); }
-                        write_u32(target, arg.value as u32)?;
+                        write_u32(target, if parameter.dir == Dir::InOut { read_u32(arg.value)? } else { arg.value as u32 })?;
                     }
                     Kind::Str => {
                         if arg.kind != 3 { return Err(-13); }
