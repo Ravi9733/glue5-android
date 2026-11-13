@@ -205,6 +205,7 @@ pub fn build_android_rpf7(
     let mut count = 0usize;
     let mut total = 0u64;
     let mut converted_ytd = 0usize;
+    let mut names_bytes = 0usize;
 
     while let Some(dir) = stack.pop() {
         for item in fs::read_dir(&dir)? {
