@@ -185,7 +185,7 @@ pub fn open(dir: &Path) {
 /// before `glue5_runtime::start`.
 pub fn install(dir: &Path) {
     open(dir);
-    glue5_scripthook::set_native_resolver(native_handler_by_hash);
+    install_native_resolver();
     if INSTALLED.swap(true, Ordering::AcqRel) {
         return;
     }
@@ -219,6 +219,11 @@ pub fn install(dir: &Path) {
 }
 
 /// The mods folder, once open.
+/// Makes this build's GTA native handler table available to native plugins, without starting Luau.
+pub fn install_native_resolver() {
+    glue5_scripthook::set_native_resolver(native_handler_by_hash);
+}
+
 fn native_handler_by_hash(hash: u64) -> Option<u64> {
     natives::handler_by_hash(hash)
 }
