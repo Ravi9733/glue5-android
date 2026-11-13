@@ -563,7 +563,13 @@ pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport
     // Use the generated native database for this exact game.wasm build; do not
     // guess handler indices or resolve against a different GTA title/build.
     let _ = NATIVE_RESOLVER.set(glue5_mods::natives::handler_by_hash);
-    if !INSTALLED.swap(true, Ordering::AcqRel) && !mods_hook_installed { glue5_runtime::add_hooks(hooks); }
+    if !INSTALLED.swap(true, Ordering::AcqRel) {
+        if mods_hook_installed {
+            glue5_runtime::add_script_wait_callback(on_script_wait);
+        } else {
+            glue5_runtime::add_hooks(hooks);
+        }
+    }
     if let Err(error) = std::fs::create_dir_all(plugin_directory) {
         log::error!("cannot create ScriptHook plugin directory {}: {error}", plugin_directory.display());
         return LoadReport { loaded: Vec::new(), rejected: vec![(plugin_directory.to_path_buf(), error.to_string())] };
@@ -579,7 +585,7 @@ pub unsafe fn on_script_wait(env: *mut Env, info: u64) {
     for callback in callbacks { unsafe { (callback.function)(env.cast(), info, callback.user as *mut c_void); } }
 }
 unsafe extern "C" fn script_wait(env: *mut Env, info: u64) {
-    unsafe { on_script_wait(env, info); }
+    unsafe { glue5_runtime::dispatch_script_wait_callbacks(env, info); }
     unsafe { orig::script_wait(env, info) };
 }
 #[derive(Debug, Default)]
