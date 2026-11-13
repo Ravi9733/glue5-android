@@ -9,7 +9,7 @@ use std::sync::{Mutex, OnceLock};
 pub const ABI_VERSION: u32 = 3;
 const ENTRYPOINT: &[u8] = b"glue5_scripthook_plugin_init\0";
 pub type ScriptCallback = unsafe extern "C" fn(env: *mut c_void, info: u64, user: *mut c_void);
-type NativeResolver = fn(hash: u64) -> Option<u64>;
+pub type NativeResolver = fn(hash: u64) -> Option<u64>;
 
 #[repr(C)]
 pub struct HostApi {
