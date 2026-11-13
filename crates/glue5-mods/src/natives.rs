@@ -98,6 +98,11 @@ pub fn handler_by_hash(hash: u64) -> Option<u64> {
     NATIVES.iter().find(|native| native.hash == hash).map(|native| native.handler)
 }
 
+/// Finds the generated native metadata entry for a hash in this game build.
+pub fn by_hash(hash: u64) -> Option<&'static Native> {
+    NATIVES.iter().find(|native| native.hash == hash)
+}
+
 /// The native `lua` of namespace `ns` (NATIVES is sorted by both).
 pub fn find(ns: usize, lua: &str) -> Option<usize> {
     let ns = ns as u16;
