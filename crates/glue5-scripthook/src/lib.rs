@@ -35,6 +35,8 @@ pub struct HostApi {
     pub call_native_typed: Option<unsafe extern "C" fn(env: *mut c_void, hash: u64, args: *const NativeArg, count: u32, result: *mut u64) -> i32>,
     pub call_native_marshaled: Option<unsafe extern "C" fn(env: *mut c_void, hash: u64, args: *const NativeArg, count: u32, result: *mut u64) -> i32>,
     pub native_metadata: Option<unsafe extern "C" fn(hash: u64, output: *mut NativeMetadata) -> i32>,
+    pub native_hash_by_name: Option<unsafe extern "C" fn(name: *const c_char, output: *mut u64) -> i32>,
+    pub validate_entity: Option<unsafe extern "C" fn(env: *mut c_void, handle: i32, expected_pool: u32) -> i32>,
     pub native_parameter: Option<unsafe extern "C" fn(hash: u64, index: u32, kind: *mut u32, direction: *mut u32) -> i32>,
     pub enumerate_entities: Option<unsafe extern "C" fn(env: *mut c_void, pool: u32, output: *mut i32, capacity: u32) -> i32>,
 }
@@ -339,6 +341,25 @@ fn kind_code(kind: Option<Kind>) -> u32 {
 fn find_native(hash: u64) -> Option<&'static glue5_mods::natives::Native> {
     natives::by_hash(hash)
 }
+unsafe extern "C" fn native_hash_by_name(name: *const c_char, output: *mut u64) -> i32 {
+    if name.is_null() || output.is_null() { return -1; }
+    let Ok(name) = unsafe { CStr::from_ptr(name) }.to_str() else { return -2; };
+    let Some(native) = natives::NATIVES.iter().find(|native| native.name == name) else { return -3; };
+    unsafe { output.write(native.hash); }
+    0
+}
+unsafe extern "C" fn validate_entity(env: *mut c_void, handle: i32, expected_pool: u32) -> i32 {
+    if env.is_null() { return -1; }
+    let Some(kind) = (unsafe { natives::entity_handle_kind(env.cast(), handle) }) else { return 0; };
+    let matches = match expected_pool {
+        0 => matches!(kind, natives::Handle::Entity | natives::Handle::Ped | natives::Handle::Vehicle | natives::Handle::Object),
+        1 => kind == natives::Handle::Ped,
+        2 => kind == natives::Handle::Vehicle,
+        3 => kind == natives::Handle::Object,
+        _ => return -2,
+    };
+    if matches { 1 } else { 0 }
+}
 unsafe extern "C" fn native_metadata(hash: u64, output: *mut NativeMetadata) -> i32 {
     if output.is_null() { return -1; }
     let Some(native) = find_native(hash) else { return -2; };
@@ -364,7 +385,7 @@ static HOST_API: HostApi = HostApi {
     abi_version: ABI_VERSION, log: Some(host_log), register_script_callback: Some(register_script_callback),
     script_stack_top: Some(script_stack_top), script_stack_alloc: Some(script_stack_alloc),
     script_stack_restore: Some(script_stack_restore), call_native: Some(call_native),
-    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata),
+    call_native_typed: Some(call_native_typed), call_native_marshaled: Some(call_native_marshaled), native_metadata: Some(native_metadata), native_hash_by_name: Some(native_hash_by_name), validate_entity: Some(validate_entity),
     native_parameter: Some(native_parameter), enumerate_entities: Some(enumerate_entities),
 };
 pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
