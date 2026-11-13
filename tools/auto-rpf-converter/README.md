@@ -36,4 +36,4 @@ This is not yet a universal PC-to-Android converter and is not yet verified agai
 
 ## Build
 
-GitHub Actions runs Rust archive tests (including nested RPF and RSC7 resource-entry round trips), host C++ synthetic Gen9-to-Legacy conversion tests for YTD/YDR/YDD/YFT/YPT, and an Android ARM64 debug APK build. These are synthetic fixtures, not a test against a complete retail GTA V installation; a successful build does not prove Glue5 runtime compatibility.
+GitHub Actions runs Rust archive tests (including nested RPF and RSC7 resource-entry round trips), host C++ synthetic Gen9-to-Legacy conversion tests for YTD/YDR/YDD/YFT/YPT plus parse/rebuild tests for YBN/YMAP/YTYP, and an Android ARM64 debug APK build. These are synthetic fixtures, not a test against a complete retail GTA V installation; a successful build does not prove Glue5 runtime compatibility.
