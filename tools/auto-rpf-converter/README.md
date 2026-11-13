@@ -4,7 +4,7 @@ Android ARM64 converter prototype for unencrypted GTA V RPF7 archives. It extrac
 
 ## Current supported pipeline
 
-1. Select one .rpf archive and an output folder, or select a GTA V folder and run bulk conversion of up to 500 on-disk .rpf files.
+1. Select one .rpf archive and an output folder, or select a GTA V folder and run bulk conversion of up to 500 on-disk .rpf files. Bulk output mirrors the source folder path and keeps each original `.rpf` filename, so existing DLC path references can still match when the output tree is overlaid in the same layout. Use a separate output folder; if a name already exists, the app chooses a non-overwriting suffixed name.
 2. Extract supported unencrypted archives with the Rust rpf-archive parser.
 3. Convert Gen9 resources to Legacy with the pinned ragekit v0.3.1 C++ library:
    - .ytd texture dictionaries (Gen9 version 5 to Legacy version 13)
@@ -21,7 +21,7 @@ This is not yet a universal PC-to-Android converter and is not yet verified agai
 - Gen9-to-Legacy conversion is attempted only for .ytd, .ydr, .ydd, .yft and .ypt. A resource that fails parsing or conversion stops that archive; it is not silently copied as if converted.
 - .ybn, map/meta, audio, scripts, configuration and other formats are not rewritten. Some GTA V Legacy/Enhanced formats are edition-independent, but this does not establish compatibility with every Android port.
 - Nested RPF file entries are recursively extracted, converted and rebuilt up to depth 8 and 500 nested files. Each nested archive must remain below the RPF7 24-bit binary-entry limit (16 MiB); larger nested files fail closed rather than being truncated.
-- RPF7 output is structurally validated; runtime mounting, DLC registration, load order, and Glue5 in-game asset compatibility are not yet validated.
+- RPF7 output is structurally validated; preserving archive filenames and relative folders helps retain DLC paths, but `dlclist.xml` / `setup2.xml` are not rewritten and runtime mounting, DLC registration, load order, and Glue5 in-game asset compatibility are not yet validated.
 - Bulk conversion processes .rpf files visible in the selected Android folder tree and recursively rebuilds nested RPF file entries that fit the 16 MiB RPF7 binary-entry limit.
 - Bulk mode is limited to 500 on-disk RPF files and 1 GiB per input archive. Resource conversion enforces 512 MiB per supported asset, 8 GiB total extracted/scanned input and one million files. Because the current RPF7 writer buffers its input and output in memory, each rebuilt archive is capped at 512 MiB of aggregate loose-file input and 1 GiB of generated archive bytes; larger archives fail safely instead of risking an Android out-of-memory crash.
 - AES/NG encrypted archives are skipped/rejected unless legitimate matching key material is available. No encryption bypass is attempted.
