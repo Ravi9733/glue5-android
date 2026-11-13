@@ -1,45 +1,34 @@
-# GTA V Auto RPF Converter
+# GTA V PC RPF to Android RPF Converter
 
-Android ARM64 prototype for inventorying and extracting supported GTA V RPF7 archives directly from Android. No desktop PC is required for the app workflow.
+Android ARM64 prototype for converting supported, unencrypted GTA V PC RPF7 archives into a newly-built unencrypted RPF7 archive on Android. No desktop PC is required.
 
-## Current build
+## Current conversion pipeline
 
-- Select a GTA V folder using Android Storage Access Framework.
-- Recursively inventory .rpf files and inspect bounded RPF7 metadata / OPEN TOC asset names.
-- Select and extract one supported archive.
-- Bulk-extract up to 500 confirmed OPEN RPF7 archives from the selected folder.
-- Write extracted files to a separately selected destination folder; source archives are never modified.
-- Native Rust extraction uses rpf-archive 0.10.0, with path traversal and extraction-size limits.
-- AES/NG encrypted archives are skipped or rejected unless legitimate matching key support is supplied.
+1. Select one PC .rpf archive and an output folder.
+2. Extract supported entries with the Rust RPF parser.
+3. Convert supported Gen9 / GTA V Enhanced .ytd texture dictionaries to Legacy .ytd using rage-formats.
+4. Preserve all other extracted files byte-for-byte (they are NOT format-converted).
+5. Rebuild the extracted tree as a new RPF7 archive using rage-rpf, then parse the result for structural validation.
+6. Save the new *_android.rpf file to the selected Android folder. The original PC archive is never modified.
 
-## What this app does NOT do yet
+## Important limitations
 
-This is NOT yet a complete PC-to-Android RPF converter. Extraction only unpacks entries from archives the native parser can read. It does not transform RSC7 assets or create Android-ready RPF/DLC packs.
+This is a first working conversion pipeline, not a universal GTA V PC-to-Android converter.
 
-Not implemented or not verified:
-- Nested RPF recursion as a conversion pipeline.
-- Gen9-to-Legacy YTD conversion (research only; not integrated).
-- YDR/YDD/YFT/YBN/YMAP/YTYP conversion.
-- RPF repacking / DLC pack generation.
-- Target Glue5 runtime compatibility validation and in-game tests.
-- Encrypted archive support without legitimate matching keys.
+- Only Gen9 YTD to Legacy YTD is currently transformed. Legacy YTDs are retained as-is.
+- YDR, YDD, YFT, YBN, YMAP, YTYP, YCD, YSC, AWC, REL and DAT files are preserved unchanged; no Android-specific conversion is claimed for them.
+- The output is a newly packed unencrypted RPF7 container. It is not proven compatible with Glue5 or every Android GTA V port.
+- Nested RPF recursion and full DLC folder / dlclist generation are not implemented in this first pipeline.
+- AES/NG encrypted input archives are rejected unless legitimate matching key support is added. No encryption bypass is attempted.
+- Runtime verification on a physical Android device and in-game Glue5 testing are still required.
 
-## Safe usage
+## Safety
 
-1. Select the GTA V root folder and wait for the inventory scan.
-2. Select a separate output folder with enough free space.
-3. Use single-archive extraction or bulk extraction.
-4. Keep the app open during extraction. Large archives need temporary internal storage approximately equal to the selected archive plus extracted payload.
-5. Check the report: failed or skipped archives are not treated as converted.
-
-The app never changes source RPF files. Output is ordinary extracted content, not a replacement game installation. Keep backups and do not overwrite original game data.
+- Input archives are read-only; generated output is separate.
+- Extraction and repacking enforce entry, per-file and total-size limits.
+- Symlinks and unsafe archive paths are rejected.
+- Keep a backup and ensure sufficient free storage for temporary extraction plus the new RPF.
 
 ## Build
 
-GitHub Actions builds an Android debug APK and runs native Rust unit tests. A successful APK build verifies compilation only; it does not prove converted assets work in Glue5.
-
-Workflow artifact: gta-v-auto-rpf-converter-debug.
-
-## Licensing / game data
-
-The app contains no proprietary GTA V game assets. Users must provide their own legally obtained game files. Encrypted archives require legitimate matching key material; this app does not recover or bypass keys.
+GitHub Actions runs Rust native-core tests and builds an Android ARM64 debug APK. A successful build confirms compilation and packaging, not in-game compatibility.
