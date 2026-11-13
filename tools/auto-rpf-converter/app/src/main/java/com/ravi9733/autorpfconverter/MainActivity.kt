@@ -114,7 +114,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select your GTA V folder. The app checks RPF7 headers, archive entry counts and encryption markers.\n\nThis prototype reads OPEN RPF7 tables of contents. It does not modify source archives or convert assets."
+            text = "Select one supported OPEN PC RPF and an output folder. The app extracts it, converts supported Gen9 YTD textures to Legacy, then rebuilds a new RPF7 archive. Other asset formats are preserved unchanged, not converted."
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)
