@@ -21,7 +21,7 @@ pub struct HostApi {
     pub script_stack_restore: Option<unsafe extern "C" fn(env: *mut c_void, top: u64) -> i32>,
     pub call_native: Option<unsafe extern "C" fn(env: *mut c_void, hash: u64, info: u64) -> i32>,
 }
-pub type PluginInit = unsafe extern "C" fn(host: *const HostApi);
+pub type PluginInit = unsafe extern "C" fn(host: *const HostApi) -> i32;
 #[derive(Clone, Copy)]
 struct Callback { function: ScriptCallback, user: usize }
 static CALLBACKS: Mutex<Vec<Callback>> = Mutex::new(Vec::new());
@@ -93,7 +93,8 @@ pub fn load_directory(directory: &Path) -> LoadReport {
 unsafe fn load_one(path: &Path) -> Result<(), String> {
     let library = unsafe { Library::new(path) }.map_err(|e| e.to_string())?;
     let init = unsafe { library.get::<PluginInit>(ENTRYPOINT) }.map_err(|e| format!("missing Glue 5 ScriptHook entrypoint: {e}"))?;
-    unsafe { init(&HOST_API) };
+    let status = unsafe { init(&HOST_API) };
+    if status != 0 { return Err(format!("plugin initialization returned status {status}")); }
     LOADED.lock().map_err(|_| "plugin registry is poisoned".to_string())?.push(library);
     log::info!("ScriptHook plugin loaded: {}", path.display());
     Ok(())
