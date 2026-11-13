@@ -53,6 +53,8 @@ pub struct HostApi {
     pub validate_entity: Option<unsafe extern "C" fn(env: *mut c_void, handle: i32, expected_pool: u32) -> i32>,
     pub native_parameter: Option<unsafe extern "C" fn(hash: u64, index: u32, kind: *mut u32, direction: *mut u32) -> i32>,
     pub enumerate_entities: Option<unsafe extern "C" fn(env: *mut c_void, pool: u32, output: *mut i32, capacity: u32) -> i32>,
+    /// Returns x, y, z and heading for a spawn point in front of the local player.
+    pub get_player_spawn_transform: Option<unsafe extern "C" fn(env: *mut c_void, distance: f32, output_xyzh: *mut f32) -> i32>,
 }
 pub type PluginInit = unsafe extern "C" fn(host: *const HostApi) -> i32;
 #[derive(Clone, Copy)]
