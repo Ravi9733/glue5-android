@@ -168,6 +168,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn builds_valid_open_rpf7_from_asset_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let input = temp.path().join("input");
+        std::fs::create_dir_all(input.join("vehicles/democar")).unwrap();
+        std::fs::write(input.join("vehicles/democar/readme.txt"), b"test asset").unwrap();
+        let output = temp.path().join("converted.rpf");
+        let (files, _bytes, converted) =
+            build_android_rpf7(&input, &output, Limits::default()).unwrap();
+        assert_eq!(files, 1);
+        assert_eq!(converted, 0);
+        let archive_bytes = std::fs::read(&output).unwrap();
+        let archive = rage_rpf::RpfArchive::parse(&archive_bytes, "converted.rpf", None).unwrap();
+        assert_eq!(archive.version, rage_rpf::RpfVersion::V7);
+        assert!(!archive.encryption.is_encrypted());
+        assert!(archive.entries.iter().any(|entry| entry.name_lower == "readme.txt"));
+    }
+
+    #[test]
     fn rejects_parent_traversal() {
         assert!(safe_relative_path("../outside.txt").is_err());
         assert!(safe_relative_path("folder/../../outside.txt").is_err());
