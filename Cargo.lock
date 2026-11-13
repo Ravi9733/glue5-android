@@ -1012,6 +1012,7 @@ dependencies = [
  "getrandom 0.4.3",
  "glue5-game",
  "glue5-runtime",
+ "glue5-scripthook",
  "httparse",
  "log",
  "mlua",
