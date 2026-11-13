@@ -887,7 +887,6 @@ impl App {
         // enabled, their WAIT hook dispatches ScriptHook callbacks as well.
         #[cfg(target_os = "android")]
         {
-            glue5_mods::install_native_resolver();
             glue5_scripthook::install(s.mods, &self.user_dir.join("scripthook").join("plugins"));
         }
         if s.mods {
