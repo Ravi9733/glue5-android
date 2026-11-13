@@ -702,7 +702,7 @@ mod tests {
     #[test] fn abi_version_is_stable_and_nonzero() { assert_eq!(ABI_VERSION, 12); }
     #[test] fn native_arg_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeArg>(), 16); }
     #[test] fn native_metadata_layout_is_stable() { assert_eq!(std::mem::size_of::<NativeMetadata>(), 24); }
-    #[test] fn host_api_v11_exposes_controls_and_entity_lifecycle() {
+    #[test] fn host_api_v12_exposes_controls_and_entity_lifecycle() {
         assert_eq!(HOST_API.abi_version, ABI_VERSION);
         assert!(HOST_API.is_control_just_pressed.is_some());
         assert!(HOST_API.is_control_pressed.is_some());
