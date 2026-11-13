@@ -123,6 +123,9 @@ static HOST_API: HostApi = HostApi {
     call_native_typed: Some(call_native_typed),
 };
 pub fn install(mods_hook_installed: bool, plugin_directory: &Path) -> LoadReport {
+    // Use the generated native database for this exact game.wasm build; do not
+    // guess handler indices or resolve against a different GTA title/build.
+    let _ = NATIVE_RESOLVER.set(glue5_mods::natives::handler_by_hash);
     if !INSTALLED.swap(true, Ordering::AcqRel) && !mods_hook_installed { glue5_runtime::add_hooks(hooks); }
     let report = load_directory(plugin_directory);
     for path in &report.loaded { log::info!("ScriptHook plugin ready: {}", path.display()); }
