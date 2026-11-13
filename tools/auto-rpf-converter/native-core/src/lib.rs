@@ -1,8 +1,9 @@
-//! Read-only RPF archive inspection and bounded extraction primitives.
+//! Bounded RPF7 inspection, extraction and OPEN RPF7 repacking primitives.
 //!
-//! This crate deliberately does not claim to convert PC assets to an Android
-//! game format. It extracts entries from archives the upstream parser can
-//! read, preserves originals, and rejects unsafe paths / oversized workloads.
+//! The Android app's C++ ragekit layer performs the supported Gen9-to-Legacy
+//! asset conversions. This crate validates RSC7 headers and builds the new
+//! archive; neither layer alone proves compatibility with a particular Android
+//! game runtime. Source archives are never modified and unsafe workloads fail closed.
 
 use anyhow::{bail, Context, Result};
 use rpf_archive::{build_directory_tree, list_all_files, RpfArchive};
