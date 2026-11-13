@@ -5,7 +5,7 @@ This crate establishes an Android-native ScriptHook-style plugin boundary. It di
 ## Current implementation
 
 - Deterministic discovery and loading of Android ARM64 `.so` plugins.
-- Versioned C ABI (v6), host logging, script-stack allocation/restore helpers, and hash-based GTA native dispatch against the generated metadata for this exact game build.
+- Versioned C ABI (v7), host logging, script-stack allocation/restore helpers, and hash-based GTA native dispatch against the generated metadata for this exact game build.
 - Plugins can register callbacks dispatched from the GTA script `WAIT` hook; callback dispatch is chained through Glue 5's existing mods hook when present.
 - Native metadata introspection exposes handler index, parameter count, return kind, and per-parameter kind/direction; plugins can also resolve a native by its exact GTA name (for example `CREATE_VEHICLE`).
 - Entity handles can be validated against the live script-guid pool and checked as any entity, ped, vehicle, or object before use.
