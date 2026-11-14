@@ -47,7 +47,7 @@ class MainActivity : Activity() {
         ))
 
         val subtitle = TextView(this).apply {
-            text = "Android converter 0.2 • Gen9 resources to Legacy"
+            text = "Android converter 0.3 • Gen9 resources to Legacy"
             textSize = 13f
             setTextColor(0xFFB9C6B5.toInt())
             gravity = Gravity.CENTER
@@ -127,7 +127,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. Supported Gen9 YTD, YDR, YDD, YFT and YPT resources are converted to Legacy before a new RPF7 is built."
+            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. Gen9 YTD, YDR, YDD, YFT and YPT are converted to Legacy; YBN, YMAP and YTYP are parsed and rebuilt; other formats remain unchanged."
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)
@@ -206,10 +206,7 @@ class MainActivity : Activity() {
                 val conversionReport = NativeAssets.buildOpenRpf7(extracted.absolutePath, converted.absolutePath)
                 check(conversionReport.startsWith("RPF7 build complete")) { conversionReport }
                 val root = DocumentFile.fromTreeUri(this, destinationUri) ?: error("Cannot open destination")
-                val target = createExactOutputFile(root, selectedArchiveName)
-                contentResolver.openOutputStream(target.uri, "w")?.use { out ->
-                    converted.inputStream().use { input -> input.copyTo(out) }
-                } ?: error("Cannot write Android RPF output")
+                val target = writeOutputFileSafely(converted, root, selectedArchiveName)
                 extractionReport + "\n\n" + assetConversionReport + "\nNested RPFs rebuilt: " + nestedStats.converted + "; preserved/skipped: " + nestedStats.skipped +
                     "\n" + nestedStats.notes.joinToString("\n") + "\n\n" + conversionReport + "\n\nSaved: " + target.name +
                     "\nOriginal PC archive unchanged. Only reported Gen9 formats were converted; other files remain unchanged."
@@ -304,10 +301,7 @@ class MainActivity : Activity() {
                         check(packageReport.startsWith("RPF7 build complete")) { packageReport }
 
                         val outputDirectory = ensureOutputDirectory(destination!!, relativeDir)
-                        val target = createExactOutputFile(outputDirectory, name)
-                        contentResolver.openOutputStream(target.uri, "w")?.use { out ->
-                            converted.inputStream().use { input -> input.copyTo(out) }
-                        } ?: error("Cannot write Android RPF output")
+                        val target = writeOutputFileSafely(converted, outputDirectory, name)
                         done++
                         totalBytes += converted.length()
                         report.appendLine("OK " + relativeDir + "/" + name + " → " + relativeDir + "/" + target.name)
@@ -452,15 +446,59 @@ class MainActivity : Activity() {
         return current
     }
 
-    private fun createExactOutputFile(directory: DocumentFile, requestedName: String): DocumentFile {
-        check(requestedName.isNotBlank() && requestedName != "." && requestedName != ".." && !requestedName.contains('/')) {
+    private fun writeOutputFileSafely(
+        source: java.io.File,
+        directory: DocumentFile,
+        requestedName: String
+    ): DocumentFile {
+        check(requestedName.isNotBlank() && requestedName != "." && requestedName != ".." &&
+            !requestedName.contains('/') && !requestedName.contains('\\') && !requestedName.contains(':')) {
             "Unsafe RPF filename cannot be preserved: " + requestedName
         }
         check(directory.findFile(requestedName) == null) {
             "Output already contains " + requestedName + ". Choose an empty output folder to preserve DLC filenames and avoid overwriting."
         }
-        return directory.createFile("application/octet-stream", requestedName)
-            ?: error("Cannot create Android RPF output with original filename " + requestedName)
+        val partialName = requestedName + ".partial"
+        check(directory.findFile(partialName) == null) {
+            "A partial output already exists: " + partialName + ". Remove it before retrying."
+        }
+        val partial = directory.createFile("application/octet-stream", partialName)
+            ?: error("Cannot create temporary output file " + partialName)
+        try {
+            var copied = 0L
+            contentResolver.openOutputStream(partial.uri, "w")?.use { out ->
+                source.inputStream().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        copied += count
+                        out.write(buffer, 0, count)
+                    }
+                    out.flush()
+                }
+            } ?: error("Cannot write temporary Android RPF output")
+            check(copied == source.length()) {
+                "Output copy length mismatch: expected " + source.length() + " bytes, copied " + copied
+            }
+            val storedLength = partial.length()
+            check(storedLength == 0L || storedLength == copied) {
+                "Storage provider reported an incomplete temporary RPF output"
+            }
+            check(partial.renameTo(requestedName)) {
+                "Storage provider could not finalize the RPF output filename. Partial file remains: " + partialName
+            }
+            val result = directory.findFile(requestedName)
+                ?: error("Final RPF output could not be found after rename")
+            val finalLength = result.length()
+            check(finalLength == 0L || finalLength == copied) {
+                "Final RPF output size does not match the completed archive"
+            }
+            return result
+        } catch (error: Throwable) {
+            partial.delete()
+            throw error
+        }
     }
 
     private data class HeaderInfo(
@@ -622,7 +660,7 @@ class MainActivity : Activity() {
 
         rows.sort()
         return buildString {
-            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.2")
+            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.3")
             appendLine("RPF files found: ${rows.size}")
             appendLine("GTA V RPF7 archives: $gtaVArchives")
             appendLine("OPEN archives: $openArchives")
