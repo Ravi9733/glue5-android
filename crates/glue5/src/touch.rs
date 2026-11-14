@@ -157,7 +157,7 @@ const ICON_FILES: &[(&str, &[u8])] = icons![
     "down", "drive-special", "duck", "enter", "exit", "fire", "gas", "handbrake", "horn", "jump", "landing-gear",
     "left", "lights", "melee", "pad-a", "pad-b", "pad-lb", "pad-ls", "pad-lt", "pad-rb", "pad-rs", "pad-rt",
     "pad-x", "pad-y", "parachute", "pause", "phone", "radio", "reload", "right", "rise", "seat", "settings", "skip",
-    "special", "switch", "throw", "up", "view", "weapons", "yaw-left", "yaw-right",
+    "special", "sprint", "switch", "throw", "up", "view", "weapons", "yaw-left", "yaw-right",
     // Original gameplay icons extracted from the Android reference APK.
     "ref-aim", "ref-fire", "ref-jump", "ref-crouch", "ref-gas", "ref-brake", "ref-handbrake", "ref-horn", "ref-exit", "ref-enter",
 ];
@@ -201,11 +201,16 @@ const LEFT_2: At = At::LeftBottom(46.0, 258.0);
 const LEFT_3: At = At::LeftBottom(46.0, 202.0);
 const LEFT_4: At = At::LeftBottom(104.0, 288.0);
 const LEFT_5: At = At::LeftBottom(104.0, 232.0);
-/// The character wheel, in every layout but a cutscene's.
-const SWITCH: Action = wheel(action("Switch", "switch", button::DOWN, LEFT_4, 22.0));
+/// The character and weapon wheels: hold, then drag to choose.
+const SWITCH: Action = wheel(action("Switch", "switch", button::DOWN, LEFT_4, 30.0));
+const WEAPONS: Action = wheel(action("Weapons", "weapons", button::L1, LEFT_1, 30.0));
+const RADIO: Action = wheel(action("Radio", "radio", button::LEFT, LEFT_2, 28.0));
+const MELEE: Action = action("Melee\\nReload", "melee", button::EAST, LEFT_2, 30.0);
+const COVER: Action = action("Cover", "cover", button::R1, LEFT_3, 30.0);
+const SPECIAL: Action = action("Special", "special", button::L3 | button::R3, LEFT_5, 28.0);
+const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(46.0, 334.0), 28.0);
 
-/// The main buttons of the layouts in vehicles sit here: the right thumb's
-/// throttle and brake, then around them.
+/// The main buttons of the layouts in vehicles sit here: larger thumb targets.
 const MAIN: At = At::RightBottom(78.0, 150.0);
 const SECOND: At = At::RightBottom(184.0, 80.0);
 const THIRD: At = At::RightBottom(190.0, 196.0);
@@ -213,29 +218,37 @@ const FOURTH: At = At::RightBottom(70.0, 262.0);
 const FIFTH: At = At::RightBottom(280.0, 50.0);
 const SIXTH: At = At::RightBottom(282.0, 128.0);
 
-/// Minimal on-foot gameplay layout: movement/sprint stick on the left,
-/// essential actions on the right. Camera look remains a drag anywhere else.
+/// On-foot: full gameplay cluster, with large thumb targets and the same
+/// hold-and-drag weapon/character wheels as the reference touch overlay.
 static ON_FOOT: &[Action] = &[
-    does(24, primary(turns(action("Fire", "ref-fire", button::R2, At::RightBottom(76.0, 166.0), 32.0)))),
-    does(25, turns(action("Aim", "ref-aim", button::L2, At::RightBottom(178.0, 150.0), 28.0))),
-    does(22, action("Jump", "ref-jump", button::WEST, At::RightBottom(76.0, 64.0), 26.0)),
-    does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 26.0)),
-    does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(178.0, 232.0), 25.0))),
-    // Dedicated sprint button (INPUT_SPRINT), independent of stick travel.
-    does(SPRINT, action("Sprint", "pad-a", button::SOUTH, At::LeftBottom(104.0, 104.0), 25.0)),
-    // Hold and drag to open the character wheel and choose Michael, Franklin or Trevor.
+    WEAPONS,
+    MELEE,
+    COVER,
     SWITCH,
+    SPECIAL,
+    does(24, primary(turns(action("Fire", "ref-fire", button::R2, At::RightBottom(76.0, 166.0), 38.0)))),
+    does(25, turns(action("Aim", "ref-aim", button::L2, At::RightBottom(178.0, 150.0), 34.0))),
+    does(22, action("Jump", "ref-jump", button::WEST, At::RightBottom(76.0, 64.0), 32.0)),
+    does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 32.0)),
+    does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(178.0, 232.0), 30.0))),
+    // A dedicated sprint target in addition to sprinting by pushing the stick.
+    does(SPRINT, action("Sprint", "sprint", button::SOUTH, At::LeftBottom(104.0, 104.0), 30.0)),
+    PHONE,
     VIEW,
     PAUSE,
 ];
 
-/// Minimal car gameplay layout: pedals and essential vehicle actions.
+/// Driving: full pedal/vehicle cluster, radio and character wheels.
 static CAR: &[Action] = &[
-    primary(with_phone(action("Gas", "ref-gas", button::R2, At::RightBottom(76.0, 154.0), 32.0))),
-    with_phone(action("Brake", "ref-brake", button::L2, At::RightBottom(178.0, 78.0), 29.0)),
-    action("Exit", "ref-exit", button::NORTH, At::RightBottom(178.0, 226.0), 25.0),
-    with_phone(action("H.brake", "ref-handbrake", button::R1, At::RightBottom(76.0, 270.0), 25.0)),
-    action("Horn", "ref-horn", button::L3, At::RightBottom(280.0, 52.0), 22.0),
+    primary(with_phone(action("Gas", "ref-gas", button::R2, At::RightBottom(76.0, 154.0), 38.0))),
+    with_phone(action("Brake", "ref-brake", button::L2, At::RightBottom(178.0, 78.0), 34.0)),
+    action("Exit", "ref-exit", button::NORTH, At::RightBottom(178.0, 226.0), 30.0),
+    with_phone(action("H.brake", "ref-handbrake", button::R1, At::RightBottom(76.0, 270.0), 30.0)),
+    action("Horn", "ref-horn", button::L3, At::RightBottom(280.0, 52.0), 28.0),
+    RADIO,
+    SWITCH,
+    action("Behind", "behind", button::R3, LEFT_3, 28.0),
+    PHONE,
     VIEW,
     PAUSE,
 ];
