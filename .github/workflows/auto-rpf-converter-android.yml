@@ -1,0 +1,81 @@
+name: Auto RPF Converter Android
+
+on:
+  push:
+    paths:
+      - "tools/auto-rpf-converter/**"
+      - ".github/workflows/auto-rpf-converter-android.yml"
+  pull_request:
+    paths:
+      - "tools/auto-rpf-converter/**"
+      - ".github/workflows/auto-rpf-converter-android.yml"
+  workflow_dispatch:
+
+jobs:
+  native-core-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Test native RPF core
+        run: cargo test --manifest-path tools/auto-rpf-converter/native-core/Cargo.toml
+
+  ragekit-conversion-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run host C++ conversion smoke test
+        run: |
+          cmake -S tools/auto-rpf-converter/app/src/main/cpp -B build/ragekit-host -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/ragekit-host --target asset_converter_tests --parallel 2
+          ctest --test-dir build/ragekit-host --output-on-failure
+
+  build-debug-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/auto-rpf-converter
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under $SDK_ROOT/cmdline-tools"
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Build Android native library
+        run: |
+          cargo install cargo-ndk --locked
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release --manifest-path native-core/Cargo.toml
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: gta-v-auto-rpf-converter-debug
+          path: tools/auto-rpf-converter/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
