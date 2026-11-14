@@ -967,6 +967,19 @@ impl App {
                 Err(e) => log::warn!("cannot write High graphics preset: {e}"),
             }
         }
+        // Keep High texture/effects quality, but reduce the CPU-heavy
+        // number/variety of nearby peds and vehicles once on Android. This
+        // avoids repeatedly rewriting settings.xml after the player changes it.
+        #[cfg(target_os = "android")]
+        if !self.settings.android_smooth_world_profile_applied {
+            match glue5_runtime::game_settings::apply_smooth_world_preset(&self.user_dir) {
+                Ok(()) => {
+                    self.settings.android_smooth_world_profile_applied = true;
+                    log::info!("the game's world density: smooth-play profile written");
+                }
+                Err(e) => log::warn!("cannot write smooth-play world profile: {e}"),
+            }
+        }
         // Graphics quality is the game's own (its menu); the low-memory
         // profile only lowers it once, after which the menu has the last word.
         if self.settings.low_memory && !self.settings.low_preset_written {
