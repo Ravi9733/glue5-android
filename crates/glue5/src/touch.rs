@@ -194,7 +194,7 @@ const VIEW: Action = action("View", "view", button::SELECT, At::MidTop(-54.0, 30
 const PAUSE: Action = action("☰", "pause", button::START, At::MidTop(0.0, 30.0), 20.0);
 
 /// The phone, on the right below the game's HUD.
-const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(46.0, 334.0), 22.0);
+const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(46.0, 334.0), 28.0);
 /// Two columns on the left, between the game's help text and its radar.
 const LEFT_1: At = At::LeftBottom(46.0, 318.0);
 const LEFT_2: At = At::LeftBottom(46.0, 258.0);
@@ -208,7 +208,6 @@ const RADIO: Action = wheel(action("Radio", "radio", button::LEFT, LEFT_2, 28.0)
 const MELEE: Action = action("Melee\\nReload", "melee", button::EAST, LEFT_2, 30.0);
 const COVER: Action = action("Cover", "cover", button::R1, LEFT_3, 30.0);
 const SPECIAL: Action = action("Special", "special", button::L3 | button::R3, LEFT_5, 28.0);
-const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(46.0, 334.0), 28.0);
 
 /// The main buttons of the layouts in vehicles sit here: larger thumb targets.
 const MAIN: At = At::RightBottom(78.0, 150.0);
