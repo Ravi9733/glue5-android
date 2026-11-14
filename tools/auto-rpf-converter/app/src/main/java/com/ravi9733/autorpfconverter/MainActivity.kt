@@ -177,12 +177,11 @@ class MainActivity : Activity() {
                 check(assetConversionReport.startsWith("Asset conversion complete")) { assetConversionReport }
                 val nestedStats = NestedRpfStats()
                 convertNestedRpfFiles(extracted, 0, nestedStats)
-                val converted = java.io.File(work, safeName.removeSuffix(".rpf") + ".converted.rpf")
+                val converted = java.io.File(work, safeName.substringBeforeLast('.', safeName) + ".converted.rpf")
                 val conversionReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
                 check(conversionReport.startsWith("RPF7 build complete")) { conversionReport }
                 val root = DocumentFile.fromTreeUri(this, destinationUri) ?: error("Cannot open destination")
-                val outputName = uniqueOutputName(root, safeName)
-                val target = root.createFile("application/octet-stream", outputName) ?: error("Cannot create Android RPF output")
+                val target = createExactOutputFile(root, selectedArchiveName)
                 contentResolver.openOutputStream(target.uri, "w")?.use { out ->
                     converted.inputStream().use { input -> input.copyTo(out) }
                 } ?: error("Cannot write Android RPF output")
@@ -215,23 +214,28 @@ class MainActivity : Activity() {
                 check(sourceRoot != null && destination != null) { "Cannot open selected folders" }
                 val archives = mutableListOf<Pair<DocumentFile, String>>()
                 val stack = ArrayDeque<Pair<DocumentFile, String>>()
+                var scannedItems = 0
                 stack.add(sourceRoot!! to "")
                 while (stack.isNotEmpty()) {
                     val pair = stack.removeLast()
                     val dir = pair.first
                     val relativeDir = pair.second
                     for (child in dir.listFiles()) {
+                        scannedItems++
+                        if (scannedItems > MAX_FOLDER_ITEMS) {
+                            error("Selected folder tree exceeds the " + MAX_FOLDER_ITEMS + " item safety limit.")
+                        }
                         val childName = child.name ?: continue
                         val relative = if (relativeDir.isEmpty()) childName else relativeDir + "/" + childName
                         if (child.isDirectory) {
                             stack.add(child to relative)
                         } else if (child.isFile && childName.endsWith(".rpf", true)) {
                             archives.add(child to relativeDir)
+                            if (archives.size > MAX_BULK_ARCHIVES) {
+                                error("Found more than " + MAX_BULK_ARCHIVES + " RPF files; select a smaller folder.")
+                            }
                         }
                     }
-                }
-                if (archives.size > MAX_BULK_ARCHIVES) {
-                    error("Found " + archives.size + " RPF files; safety limit is " + MAX_BULK_ARCHIVES + ". Select a smaller folder.")
                 }
                 report.appendLine("RPF archives discovered: " + archives.size)
                 for ((index, pair) in archives.withIndex()) {
@@ -264,14 +268,12 @@ class MainActivity : Activity() {
                         check(assetReport.startsWith("Asset conversion complete")) { assetReport }
                         val nestedStats = NestedRpfStats()
                         convertNestedRpfFiles(extracted, 0, nestedStats)
-                        val converted = java.io.File(work, safeName.removeSuffix(".rpf") + ".converted.rpf")
+                        val converted = java.io.File(work, safeName.substringBeforeLast('.', safeName) + ".converted.rpf")
                         val packageReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
                         check(packageReport.startsWith("RPF7 build complete")) { packageReport }
 
                         val outputDirectory = ensureOutputDirectory(destination!!, relativeDir)
-                        val outputName = uniqueOutputName(outputDirectory, safeName)
-                        val target = outputDirectory.createFile("application/octet-stream", outputName)
-                            ?: error("Cannot create Android RPF output")
+                        val target = createExactOutputFile(outputDirectory, name)
                         contentResolver.openOutputStream(target.uri, "w")?.use { out ->
                             converted.inputStream().use { input -> input.copyTo(out) }
                         } ?: error("Cannot write Android RPF output")
@@ -387,25 +389,30 @@ class MainActivity : Activity() {
         var current = root
         if (relativePath.isBlank()) return current
         for (part in relativePath.split('/')) {
-            val safe = part.replace(Regex("[^A-Za-z0-9._-]"), "_")
-            val existing = current.findFile(safe)
+            check(part.isNotBlank() && part != "." && part != ".." && !part.contains('/')) {
+                "Unsafe source folder name cannot be mirrored: " + part
+            }
+            val existing = current.findFile(part)
             current = if (existing != null && existing.isDirectory) {
                 existing
             } else if (existing == null) {
-                current.createDirectory(safe) ?: error("Cannot create output directory " + safe)
+                current.createDirectory(part) ?: error("Cannot create output directory " + part)
             } else {
-                error("Output path component is already a file: " + safe)
+                error("Output path component is already a file: " + part)
             }
         }
         return current
     }
 
-    private fun uniqueOutputName(directory: DocumentFile, requested: String): String {
-        if (directory.findFile(requested) == null) return requested
-        val base = requested.removeSuffix(".rpf")
-        var index = 2
-        while (directory.findFile(base + "_" + index + ".rpf") != null) index++
-        return base + "_" + index + ".rpf"
+    private fun createExactOutputFile(directory: DocumentFile, requestedName: String): DocumentFile {
+        check(requestedName.isNotBlank() && requestedName != "." && requestedName != ".." && !requestedName.contains('/')) {
+            "Unsafe RPF filename cannot be preserved: " + requestedName
+        }
+        check(directory.findFile(requestedName) == null) {
+            "Output already contains " + requestedName + ". Choose an empty output folder to preserve DLC filenames and avoid overwriting."
+        }
+        return directory.createFile("application/octet-stream", requestedName)
+            ?: error("Cannot create Android RPF output with original filename " + requestedName)
     }
 
     private data class HeaderInfo(
@@ -524,6 +531,8 @@ class MainActivity : Activity() {
         val root = DocumentFile.fromTreeUri(this, rootUri)
             ?: return "Could not open selected folder."
         val rows = mutableListOf<String>()
+        var visitedItems = 0
+        var scanLimitReached = false
         var totalBytes = 0L
         var gtaVArchives = 0
         var openArchives = 0
@@ -532,10 +541,15 @@ class MainActivity : Activity() {
         val stack = ArrayDeque<DocumentFile>()
         stack.add(root)
 
-        while (stack.isNotEmpty()) {
+        while (stack.isNotEmpty() && !scanLimitReached) {
             val dir = stack.removeLast()
             val children = try { dir.listFiles() } catch (_: Exception) { emptyArray() }
             for (child in children) {
+                visitedItems++
+                if (visitedItems > MAX_FOLDER_ITEMS) {
+                    scanLimitReached = true
+                    break
+                }
                 if (child.isDirectory) {
                     stack.add(child)
                 } else if (child.isFile && child.name?.endsWith(".rpf", true) == true) {
@@ -569,6 +583,7 @@ class MainActivity : Activity() {
             appendLine("Total RPF size: ${"%.2f".format(totalBytes / 1073741824.0)} GiB")
             appendLine()
             rows.forEach { appendLine(it) }
+            if (scanLimitReached) appendLine("Scan truncated at the " + MAX_FOLDER_ITEMS + " item safety limit.")
             appendLine()
             appendLine("Read-only scan. No source files were changed.")
             appendLine("OPEN/unencrypted RPF7 TOCs are inspected for YTD/YDR/YFT/YMAP and related asset names. AES/NG TOCs need the matching key material.")
@@ -589,6 +604,7 @@ class MainActivity : Activity() {
         private const val MAX_NAMES_BYTES = 64L * 1024L * 1024L
         private const val MAX_TOC_BYTES = 80L * 1024L * 1024L
         private const val MAX_BULK_ARCHIVES = 500
+        private const val MAX_FOLDER_ITEMS = 250_000
         private const val MAX_ARCHIVE_BYTES = 1024L * 1024L * 1024L
         private const val MAX_NESTED_RPF_BYTES = 0xFFFFFFL
         private const val MAX_NESTED_DEPTH = 8
