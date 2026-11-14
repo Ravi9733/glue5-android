@@ -162,6 +162,66 @@ int main() {
     require(rk::rsc::Resource::load(directory_result).version == 13, "directory scan must replace Gen9 YTD with Legacy YTD");
     fs::remove_all(root, ignored);
 
+    // End-to-end resource conversion + OPEN RPF7 repacking. This exercises every
+    // currently supported resource family through the same folder pipeline used by Android.
+    const fs::path pipeline_root = fs::temp_directory_path() / "gta-rpf-full-pipeline-input";
+    const fs::path pipeline_output = fs::temp_directory_path() / "gta-rpf-full-pipeline-output.rpf";
+    fs::remove_all(pipeline_root, ignored);
+    fs::remove(pipeline_output, ignored);
+    fs::create_directories(pipeline_root / "dlcpacks" / "test");
+    rk::rsc::write_file((pipeline_root / "dlcpacks/test/texture.ytd").string(), gen9);
+    rk::rsc::write_file((pipeline_root / "dlcpacks/test/model.ydr").string(), gen9_ydr);
+    rk::rsc::write_file((pipeline_root / "dlcpacks/test/models.ydd").string(), gen9_ydd);
+    rk::rsc::write_file((pipeline_root / "dlcpacks/test/vehicle.yft").string(), gen9_yft);
+    rk::rsc::write_file((pipeline_root / "dlcpacks/test/particles.ypt").string(), gen9_ypt);
+    rk::rsc::write_file((pipeline_root / "dlcpacks/test/collision.ybn").string(), gen_ybn);
+    rk::rsc::write_file((pipeline_root / "dlcpacks/test/map.ymap").string(), gen_ymap);
+    rk::rsc::write_file((pipeline_root / "dlcpacks/test/types.ytyp").string(), gen_ytyp);
+    const auto untouched_data = bytes_of("unsupported metadata stays byte-for-byte");
+    rk::rsc::write_file((pipeline_root / "dlcpacks/test/extra.dat").string(), untouched_data);
+
+    const std::string pipeline_report = gta_asset_converter::convert_directory(pipeline_root);
+    require(pipeline_report.find("YTD=1") != std::string::npos &&
+            pipeline_report.find("YDR=1") != std::string::npos &&
+            pipeline_report.find("YDD=1") != std::string::npos &&
+            pipeline_report.find("YFT=1") != std::string::npos &&
+            pipeline_report.find("YPT=1") != std::string::npos,
+            "folder pipeline must report all five Gen9-to-Legacy conversions");
+    require(pipeline_report.find("YBN=1") != std::string::npos &&
+            pipeline_report.find("YMAP=1") != std::string::npos &&
+            pipeline_report.find("YTYP=1") != std::string::npos,
+            "folder pipeline must report edition-independent resource validation/rebuilds");
+
+    const std::string package_report = gta_asset_converter::build_open_rpf7(pipeline_root, pipeline_output);
+    require(package_report.find("RPF7 build complete") == 0, "full conversion pipeline must create an RPF7 archive");
+    const rk::Rpf pipeline_archive = rk::Rpf::open(pipeline_output.string(), std::make_shared<rk::RpfKeys>());
+    require(pipeline_archive.encryption() == rk::RpfEncryption::Open, "full pipeline output must be OPEN");
+    auto read_pipeline_file = [&](const std::string& path) {
+        const int index = pipeline_archive.find(path);
+        require(index >= 0, "full pipeline output must preserve every relative asset path");
+        return pipeline_archive.extract(index);
+    };
+    require(rk::rsc::Resource::load(read_pipeline_file("dlcpacks/test/texture.ytd")).version == 13,
+            "RPF output must contain Legacy YTD version 13");
+    require(rk::rsc::Resource::load(read_pipeline_file("dlcpacks/test/model.ydr")).version == 165,
+            "RPF output must contain Legacy YDR version 165");
+    require(rk::rsc::Resource::load(read_pipeline_file("dlcpacks/test/models.ydd")).version == 165,
+            "RPF output must contain Legacy YDD version 165");
+    require(rk::rsc::Resource::load(read_pipeline_file("dlcpacks/test/vehicle.yft")).version == 162,
+            "RPF output must contain Legacy YFT version 162");
+    require(rk::rsc::Resource::load(read_pipeline_file("dlcpacks/test/particles.ypt")).version == 68,
+            "RPF output must contain Legacy YPT version 68");
+    require(rk::read_ybn(read_pipeline_file("dlcpacks/test/collision.ybn")) != nullptr,
+            "RPF output YBN must parse");
+    require(rk::read_ymap(read_pipeline_file("dlcpacks/test/map.ymap")).name == map_data.name,
+            "RPF output YMAP must retain its map name");
+    require(rk::read_ytyp(read_pipeline_file("dlcpacks/test/types.ytyp")).name == map_types.name,
+            "RPF output YTYP must retain its archetype dictionary name");
+    require(read_pipeline_file("dlcpacks/test/extra.dat") == untouched_data,
+            "unsupported files must remain byte-for-byte unchanged in the RPF output");
+    fs::remove_all(pipeline_root, ignored);
+    fs::remove(pipeline_output, ignored);
+
     // A synthetic AES archive proves the app's key-folder import path is used by
     // the same ragekit reader that handles real PC RPF archives.
     const fs::path key_root = fs::temp_directory_path() / "gta-rpf-key-import-smoke";
