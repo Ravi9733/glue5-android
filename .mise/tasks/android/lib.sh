@@ -60,11 +60,14 @@ android_libs() {
     cp "$sdl_lib" "$out/jniLibs/$abi/libSDL3.so"
     cp "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/sysroot/usr/lib/"$target"/libc++_shared.so "$out/jniLibs/$abi/"
 
-    # Package the separately built, verified Android ReShade FX Vulkan layer.
-    # The Android loader discovers app-bundled layers by libVkLayer_*.so name.
+    # ReShade is optional: package its Vulkan layer when the separate
+    # ARM64 runtime build is available; the core Turnip game does not depend on it.
     local reshade_layer="$out/reshade-layer/libVkLayer_VKBASALT_post_processing.so"
-    [ -s "$reshade_layer" ] || die "Android ReShade FX layer artifact is missing: $reshade_layer"
-    cp "$reshade_layer" "$out/jniLibs/$abi/libVkLayer_VKBASALT_post_processing.so"
+    if [ -s "$reshade_layer" ]; then
+        cp "$reshade_layer" "$out/jniLibs/$abi/libVkLayer_VKBASALT_post_processing.so"
+    else
+        echo "Optional Android ReShade FX layer is absent; building core APK without it."
+    fi
 
     # Build the Android Vulkan loader hooks needed by optional AdrenoTools
     # custom-driver support. Packaging alone does not activate Turnip.
