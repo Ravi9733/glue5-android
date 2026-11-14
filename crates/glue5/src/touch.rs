@@ -202,7 +202,7 @@ const LEFT_3: At = At::LeftBottom(46.0, 202.0);
 const LEFT_4: At = At::LeftBottom(104.0, 288.0);
 const LEFT_5: At = At::LeftBottom(104.0, 232.0);
 /// The character and weapon wheels: hold, then drag to choose.
-const SWITCH: Action = wheel(action("Switch", "switch", button::DOWN, LEFT_4, 30.0));
+const SWITCH: Action = wheel(does(19, action("Switch", "switch", button::DOWN, LEFT_4, 30.0)));
 const WEAPONS: Action = wheel(action("Weapons", "weapons", button::L1, LEFT_1, 30.0));
 const RADIO: Action = wheel(action("Radio", "radio", button::LEFT, LEFT_2, 28.0));
 const MELEE: Action = action("Melee\\nReload", "melee", button::EAST, LEFT_2, 30.0);
