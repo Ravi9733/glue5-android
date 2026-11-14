@@ -970,11 +970,27 @@ fn settings_items(
                 settings.render_scale = Some(settings::round_scale(scale));
                 *scale_edit = None;
             }
-            // Fixed mobile-friendly render path: Bicubic only, VSync on, 30 FPS cap.
+            // Keep the requested fixed render profile while allowing VSync
+            // to be switched on or off from the visible control below.
             settings.upscaler = Upscaling::Bicubic;
             settings.max_fps = 30;
-            settings.vsync = true;
             settings.frame_generation = false;
+            setting(ui, "VSync", Control::Toggle, None, |ui| {
+                toggle(ui, &mut settings.vsync)
+            });
+            setting(
+                ui,
+                "Soft Blur graphics mod",
+                Control::Action,
+                Some("One optional, low-strength GTA timecycle blur effect"),
+                |ui| {
+                    let open = action_button(ui, "Open");
+                    if open.clicked() {
+                        *go = Some(Some(Page::Mods));
+                    }
+                    open
+                },
+            );
             let mut overlays = vec![(PerfOverlay::Off, "Off")];
             if cfg!(target_vendor = "apple") {
                 overlays.push((PerfOverlay::MetalHud, "Metal HUD"));
