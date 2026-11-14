@@ -264,7 +264,7 @@ impl Default for Settings {
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
-            max_fps: if MOBILE { 60 } else { 0 },
+            max_fps: 30,
             upscaler: Upscaling::MetalFx,
             sharpness: 0.5,
             frame_generation: false,
@@ -414,6 +414,14 @@ impl Settings {
                 },
             );
         }
+        // Locked smooth-play profile: 30 FPS everywhere, 50% render scale,
+        // Bicubic reconstruction only, with VSync enabled. Apply after all
+        // one-time migrations so older profiles cannot restore 40/60 FPS.
+        settings.max_fps = 30;
+        settings.render_scale = Some(0.50);
+        settings.upscaler = Upscaling::Bicubic;
+        settings.vsync = true;
+        settings.frame_generation = false;
         settings
     }
 
