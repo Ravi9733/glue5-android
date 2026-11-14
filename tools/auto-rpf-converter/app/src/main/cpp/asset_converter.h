@@ -26,4 +26,6 @@ std::string inspect_rpf_keys(const std::filesystem::path& key_directory);
 std::string extract_rpf_archive(const std::filesystem::path& source,
                                 const std::filesystem::path& destination,
                                 const std::filesystem::path& key_directory);
+std::string build_open_rpf7(const std::filesystem::path& source_directory,
+                            const std::filesystem::path& output_path);
 }

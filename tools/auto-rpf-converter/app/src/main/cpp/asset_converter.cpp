@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <system_error>
 #include <unordered_set>
+#include <utility>
 #include "ragekit/ragekit.h"
 namespace gta_asset_converter {
 namespace fs = std::filesystem;
@@ -300,4 +301,98 @@ std::string extract_rpf_archive(const fs::path& source,
            "Files written: " + std::to_string(files_written) + "\n"
            "Bytes written: " + std::to_string(total_bytes);
 }
+std::string build_open_rpf7(const fs::path& source_directory, const fs::path& output_path) {
+    constexpr std::uint64_t max_file_bytes = 512ull * 1024ull * 1024ull;
+    constexpr std::uint64_t max_total_input_bytes = 512ull * 1024ull * 1024ull;
+    constexpr std::uint64_t max_output_bytes = 1024ull * 1024ull * 1024ull;
+    constexpr std::size_t max_files = 1'000'000;
+
+    const auto root_status = fs::symlink_status(source_directory);
+    if (fs::is_symlink(root_status) || !fs::is_directory(root_status)) {
+        throw std::runtime_error("RPF7 build input must be a regular directory, not a symlink");
+    }
+    const fs::path root = fs::canonical(source_directory);
+    if (fs::exists(output_path)) throw std::runtime_error("RPF7 output already exists; refusing to overwrite it");
+
+    rk::RpfBuilder builder;
+    std::uint64_t total_input_bytes = 0;
+    std::size_t file_count = 0;
+    for (fs::recursive_directory_iterator it(root), end; it != end; ++it) {
+        const auto status = it->symlink_status();
+        if (fs::is_symlink(status)) {
+            throw std::runtime_error("symbolic links are not allowed in RPF7 build input: " + it->path().string());
+        }
+        if (!fs::is_regular_file(status)) continue;
+        if (++file_count > max_files) throw std::runtime_error("RPF7 build exceeds one million files");
+
+        const std::uint64_t size = fs::file_size(it->path());
+        if (size > max_file_bytes) {
+            throw std::runtime_error("RPF7 build file exceeds the 512 MiB per-file limit: " + it->path().string());
+        }
+        if (size > max_total_input_bytes - total_input_bytes) {
+            throw std::runtime_error("RPF7 build input exceeds the 512 MiB aggregate memory limit");
+        }
+        total_input_bytes += size;
+
+        const fs::path relative = it->path().lexically_relative(root);
+        const std::string archive_path = relative.generic_string();
+        (void)safe_archive_relative_path(archive_path);
+        auto data = rk::rsc::read_file(it->path().string());
+        if (data.size() != size) throw std::runtime_error("short read while packaging: " + it->path().string());
+        builder.add_file(archive_path, std::move(data));
+    }
+    if (file_count == 0) throw std::runtime_error("RPF7 build input contains no files");
+
+    rk::RpfWriteOptions options;
+    options.encryption = rk::RpfEncryption::Open;
+    options.name = output_path.filename().string();
+    options.compress = true;
+    const auto archive_bytes = builder.build(options);
+    if (archive_bytes.size() > max_output_bytes) {
+        throw std::runtime_error("generated RPF7 exceeds the 1 GiB output limit");
+    }
+
+    fs::create_directories(output_path.parent_path());
+    fs::path temporary = output_path;
+    temporary += ".tmp";
+    std::error_code ignored;
+    fs::remove(temporary, ignored);
+    {
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        if (!out) throw std::runtime_error("cannot create temporary RPF7 output: " + temporary.string());
+        out.write(reinterpret_cast<const char*>(archive_bytes.data()),
+                  static_cast<std::streamsize>(archive_bytes.size()));
+        out.flush();
+        if (!out) {
+            fs::remove(temporary, ignored);
+            throw std::runtime_error("cannot write temporary RPF7 output: " + temporary.string());
+        }
+    }
+
+    try {
+        auto no_keys = std::make_shared<rk::RpfKeys>();
+        const rk::Rpf parsed = rk::Rpf::open(temporary.string(), no_keys);
+        if (parsed.encryption() != rk::RpfEncryption::Open) {
+            throw std::runtime_error("RPF7 output is not OPEN/unencrypted");
+        }
+        const std::size_t parsed_files = static_cast<std::size_t>(std::count_if(
+            parsed.entries().begin(), parsed.entries().end(),
+            [](const rk::RpfEntry& entry) { return !entry.is_directory(); }));
+        if (parsed_files != file_count) {
+            throw std::runtime_error("RPF7 validation entry count does not match packaged file count");
+        }
+        fs::rename(temporary, output_path);
+    } catch (...) {
+        fs::remove(temporary, ignored);
+        throw;
+    }
+
+    return "RPF7 build complete\n"
+           "Encryption: OPEN\n"
+           "Files: " + std::to_string(file_count) + "\n"
+           "Input bytes: " + std::to_string(total_input_bytes) + "\n"
+           "Archive bytes: " + std::to_string(archive_bytes.size()) + "\n"
+           "Validated with the pinned ragekit RPF7 reader.";
+}
+
 }

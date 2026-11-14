@@ -35,6 +35,29 @@ Java_com_ravi9733_autorpconverter_NativeAssets_inspectRpfKeys(JNIEnv* env, jclas
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_com_ravi9733_autorpconverter_NativeAssets_buildOpenRpf7(
+    JNIEnv* env, jclass, jstring source_directory, jstring output_path) {
+    const char* source_chars = env->GetStringUTFChars(source_directory, nullptr);
+    if (source_chars == nullptr) return nullptr;
+    const char* output_chars = env->GetStringUTFChars(output_path, nullptr);
+    if (output_chars == nullptr) {
+        env->ReleaseStringUTFChars(source_directory, source_chars);
+        return nullptr;
+    }
+    std::string report;
+    try {
+        report = gta_asset_converter::build_open_rpf7(source_chars, output_chars);
+    } catch (const std::exception& error) {
+        report = std::string("RPF7 build failed: ") + error.what();
+    } catch (...) {
+        report = "RPF7 build failed: unknown native error";
+    }
+    env->ReleaseStringUTFChars(source_directory, source_chars);
+    env->ReleaseStringUTFChars(output_path, output_chars);
+    return env->NewStringUTF(report.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_ravi9733_autorpconverter_NativeAssets_extractArchiveWithKeys(
     JNIEnv* env, jclass, jstring source_path, jstring destination_path, jstring key_directory) {
     const char* source_chars = env->GetStringUTFChars(source_path, nullptr);

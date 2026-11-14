@@ -216,6 +216,53 @@ int main() {
     fs::remove_all(empty_keys, ignored);
     fs::remove_all(fs::temp_directory_path() / "gta-rpf-no-key-output", ignored);
 
-    std::cout << "Gen9 conversion and keyed RPF extraction smoke tests passed\n";
+    // A nested RPF larger than 16 MiB must survive the OPEN RPF7 writer.
+    const fs::path large_source = fs::temp_directory_path() / "gta-rpf-large-nested-source";
+    const fs::path large_output = fs::temp_directory_path() / "gta-rpf-large-nested-output.rpf";
+    fs::remove_all(large_source, ignored);
+    fs::remove(large_output, ignored);
+    fs::create_directories(large_source / "dlcpacks" / "test");
+    rk::rsc::write_file((large_source / "textures.ytd").string(), legacy);
+
+    std::vector<std::uint8_t> large_payload(17u * 1024u * 1024u);
+    std::uint32_t random_state = 0x12345678u;
+    for (auto& byte : large_payload) {
+        random_state ^= random_state << 13;
+        random_state ^= random_state >> 17;
+        random_state ^= random_state << 5;
+        byte = static_cast<std::uint8_t>(random_state >> 24);
+    }
+    rk::RpfBuilder child_builder;
+    child_builder.add_binary("big.bin", large_payload, false);
+    rk::RpfWriteOptions child_options;
+    child_options.encryption = rk::RpfEncryption::Open;
+    child_options.name = "nested.rpf";
+    const auto child_bytes = child_builder.build(child_options);
+    require(child_bytes.size() > 0xFFFFFFu, "nested test archive must exceed 16 MiB");
+    {
+        std::ofstream out(large_source / "dlcpacks" / "test" / "nested.rpf", std::ios::binary);
+        out.write(reinterpret_cast<const char*>(child_bytes.data()),
+                  static_cast<std::streamsize>(child_bytes.size()));
+    }
+    const auto large_report = gta_asset_converter::build_open_rpf7(large_source, large_output);
+    require(large_report.find("RPF7 build complete") == 0, "RAGEKIT writer must build the outer RPF7");
+    const rk::Rpf outer = rk::Rpf::open(large_output.string(), std::make_shared<rk::RpfKeys>());
+    const int nested_index = outer.find("dlcpacks/test/nested.rpf");
+    require(nested_index >= 0, "outer archive must contain the nested RPF");
+    require(outer.entries()[static_cast<std::size_t>(nested_index)].stored_size == 0 &&
+            outer.entries()[static_cast<std::size_t>(nested_index)].uncompressed_size == child_bytes.size(),
+            "large nested RPF must use the uncompressed 32-bit binary size field");
+    const auto nested_bytes = outer.extract(nested_index);
+    const rk::Rpf nested_archive = rk::Rpf::open_memory(nested_bytes, "nested.rpf", std::make_shared<rk::RpfKeys>());
+    const int big_index = nested_archive.find("big.bin");
+    require(big_index >= 0 && nested_archive.extract(big_index) == large_payload,
+            "nested RPF larger than 16 MiB must round trip without truncation");
+    const int texture_index = outer.find("textures.ytd");
+    require(texture_index >= 0 && outer.extract(texture_index) == legacy,
+            "RPF7 builder must preserve RSC7 resource flags and payload");
+
+    fs::remove_all(large_source, ignored);
+    fs::remove(large_output, ignored);
+    std::cout << "Gen9 conversion, keyed extraction and large nested RPF7 tests passed\n";
     return 0;
 }

@@ -203,7 +203,7 @@ class MainActivity : Activity() {
                 val nestedStats = NestedRpfStats()
                 convertNestedRpfFiles(extracted, 0, nestedStats)
                 val converted = java.io.File(work, safeName.substringBeforeLast('.', safeName) + ".converted.rpf")
-                val conversionReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
+                val conversionReport = NativeAssets.buildOpenRpf7(extracted.absolutePath, converted.absolutePath)
                 check(conversionReport.startsWith("RPF7 build complete")) { conversionReport }
                 val root = DocumentFile.fromTreeUri(this, destinationUri) ?: error("Cannot open destination")
                 val target = createExactOutputFile(root, selectedArchiveName)
@@ -300,7 +300,7 @@ class MainActivity : Activity() {
                         val nestedStats = NestedRpfStats()
                         convertNestedRpfFiles(extracted, 0, nestedStats)
                         val converted = java.io.File(work, safeName.substringBeforeLast('.', safeName) + ".converted.rpf")
-                        val packageReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
+                        val packageReport = NativeAssets.buildOpenRpf7(extracted.absolutePath, converted.absolutePath)
                         check(packageReport.startsWith("RPF7 build complete")) { packageReport }
 
                         val outputDirectory = ensureOutputDirectory(destination!!, relativeDir)
@@ -360,9 +360,6 @@ class MainActivity : Activity() {
             if (Files.isSymbolicLink(nested.toPath())) {
                 error("Symbolic link rejected in nested RPF tree: " + nested.absolutePath)
             }
-            if (nested.length() > MAX_NESTED_RPF_BYTES) {
-                error("Nested RPF " + nested.name + " exceeds the RPF7 24-bit binary-entry limit (16 MiB); refusing to truncate it")
-            }
 
             val work = java.io.File(cacheDir, "nested-rpf-work-" + stats.seen)
             work.deleteRecursively()
@@ -385,11 +382,8 @@ class MainActivity : Activity() {
             convertNestedRpfFiles(extracted, depth + 1, stats)
 
             val converted = java.io.File(work, "nested_android.rpf")
-            val packageReport = NativeRpf.buildAndroidRpf7(extracted.absolutePath, converted.absolutePath)
+            val packageReport = NativeAssets.buildOpenRpf7(extracted.absolutePath, converted.absolutePath)
             check(packageReport.startsWith("RPF7 build complete")) { packageReport }
-            if (converted.length() > MAX_NESTED_RPF_BYTES) {
-                error("Converted nested RPF " + nested.name + " exceeds 16 MiB; refusing to truncate it")
-            }
 
             val replacement = java.io.File(nested.parentFile, nested.name + ".converted")
             if (replacement.exists()) replacement.delete()
@@ -668,7 +662,6 @@ class MainActivity : Activity() {
         private const val MAX_BULK_ARCHIVES = 500
         private const val MAX_FOLDER_ITEMS = 250_000
         private const val MAX_ARCHIVE_BYTES = 1024L * 1024L * 1024L
-        private const val MAX_NESTED_RPF_BYTES = 0xFFFFFFL
         private const val MAX_NESTED_DEPTH = 8
         private const val MAX_NESTED_ARCHIVES = 500
         private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ysc", "awc", "rel", "dat")
