@@ -127,7 +127,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. Gen9 YTD, YDR, YDD, YFT and YPT are converted to Legacy; YBN, YMAP and YTYP are parsed and rebuilt; other formats remain unchanged."
+            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. Gen9 YTD, YDR, YDD, YFT and YPT are converted to Legacy; YBN, YMAP and YTYP are validated and preserved byte-for-byte; unsupported formats remain unchanged."
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)
@@ -306,7 +306,7 @@ class MainActivity : Activity() {
                         totalBytes += converted.length()
                         report.appendLine("OK " + relativeDir + "/" + name + " → " + relativeDir + "/" + target.name)
                         report.appendLine(assetReport.lineSequence().filter {
-                            it.startsWith("Gen9 to Legacy") || it.startsWith("Already Legacy")
+                            it.startsWith("Gen9 to Legacy") || it.startsWith("Edition-independent resources") || it.startsWith("Already Legacy")
                         }.joinToString(" | "))
                         report.appendLine("Nested RPFs rebuilt=" + nestedStats.converted + ", preserved/skipped=" + nestedStats.skipped)
                         nestedStats.notes.forEach { report.appendLine(it) }
@@ -486,7 +486,7 @@ class MainActivity : Activity() {
                 "Storage provider reported an incomplete temporary RPF output"
             }
             check(partial.renameTo(requestedName)) {
-                "Storage provider could not finalize the RPF output filename. Partial file remains: " + partialName
+                "Storage provider could not finalize the RPF output filename; temporary output was discarded: " + partialName
             }
             val result = directory.findFile(requestedName)
                 ?: error("Final RPF output could not be found after rename")
