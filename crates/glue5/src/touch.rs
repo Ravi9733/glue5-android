@@ -1443,17 +1443,17 @@ impl Touch {
         let d = at - origin;
         let sprint = d.length() > SPRINT_REACH * radius;
         let knob = if d.length() > radius { origin + d.normalized() * radius } else { at };
-        // Reference-style movement pad: dark translucent base with a
-        // fine black outline; the centre dot follows the thumb independently.
-        let base_border = Stroke::new(1.25 * self.scale, Color32::from_black_alpha(220));
-        painter.circle(origin, radius, Color32::from_black_alpha(92), base_border);
+        // Reference-style movement pad: transparent centre with only a
+        // thin black outer border; the inner thumb dot moves independently.
+        let base_border = Stroke::new(1.25 * self.scale, Color32::from_black_alpha(240));
+        painter.circle_stroke(origin, radius, base_border);
         if ring {
             let stroke = if sprint { look.ring(true) } else { Stroke::new(look.width, look.line.gamma_multiply(0.5)) };
             painter.circle_stroke(origin, SPRINT_REACH * radius, stroke);
         }
         painter.circle(
             knob,
-            radius * 0.50,
+            radius * 0.32,
             Color32::from_rgba_unmultiplied(225, 225, 225, 145),
             Stroke::new(1.0 * self.scale, Color32::from_black_alpha(210)),
         );
