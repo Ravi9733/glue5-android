@@ -25,6 +25,7 @@ class MainActivity : Activity() {
     private var selectedArchiveName: String = "selected.rpf"
     private var outputTreeUri: Uri? = null
     private var selectedFolderUri: Uri? = null
+    private val rpfKeyDirectory: java.io.File by lazy { java.io.File(filesDir, "rpf-keys") }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,6 +103,16 @@ class MainActivity : Activity() {
             }
         }
         root.addView(chooseDestination)
+        val chooseKeys = Button(this).apply {
+            text = "IMPORT OWN GTA V RPF KEYS"
+            setOnClickListener {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                }
+                startActivityForResult(intent, REQUEST_KEYS)
+            }
+        }
+        root.addView(chooseKeys)
         val extract = Button(this).apply {
             text = "CONVERT SELECTED PC RPF → ANDROID RPF"
             setOnClickListener { extractSelectedArchive() }
@@ -152,6 +163,14 @@ class MainActivity : Activity() {
                 outputTreeUri = uri
                 output.text = "Output folder selected. Tap CONVERT SELECTED PC RPF → ANDROID RPF."
             }
+            REQUEST_KEYS -> {
+                output.text = "Importing recognized GTA V key files into app-private storage..."
+                worker.execute {
+                    val report = try { importRpfKeys(uri) }
+                    catch (e: Throwable) { "RPF key import failed: " + (e.message ?: e.javaClass.simpleName) }
+                    runOnUiThread { output.text = report }
+                }
+            }
         }
     }
 
@@ -167,11 +186,17 @@ class MainActivity : Activity() {
                 work.deleteRecursively()
                 check(work.mkdirs()) { "Cannot create temporary folder" }
                 val safeName = selectedArchiveName.replace(Regex("[^A-Za-z0-9._-]"), "_")
-                val source = java.io.File(work, safeName)
+                check(selectedArchiveName.isNotBlank() && !selectedArchiveName.contains('/')) {
+                    "Unsafe selected archive filename"
+                }
+                // NG archive keys depend on the original filename and archive size.
+                val source = java.io.File(work, selectedArchiveName)
                 copyUriToFile(sourceUri, source, MAX_ARCHIVE_BYTES)
                 val extracted = java.io.File(work, "extracted")
                 check(extracted.mkdir()) { "Cannot create extraction folder" }
-                val extractionReport = NativeRpf.extractArchive(source.absolutePath, extracted.absolutePath)
+                val extractionReport = NativeAssets.extractArchiveWithKeys(
+                    source.absolutePath, extracted.absolutePath, rpfKeyDirectory.absolutePath
+                )
                 check(extractionReport.startsWith("Extraction complete")) { extractionReport }
                 val assetConversionReport = NativeAssets.convertDirectory(extracted.absolutePath)
                 check(assetConversionReport.startsWith("Asset conversion complete")) { assetConversionReport }
@@ -201,7 +226,7 @@ class MainActivity : Activity() {
             output.text = "First select the GTA V folder, then select an output folder."
             return
         }
-        output.text = "Bulk conversion started. Only OPEN RPF7 archives are processed."
+        output.text = "Bulk conversion started. OPEN archives need no keys; AES/NG archives need matching imported keys."
         worker.execute {
             val sourceRoot = DocumentFile.fromTreeUri(this, sourceTree)
             val destination = DocumentFile.fromTreeUri(this, destinationUri)
@@ -244,9 +269,11 @@ class MainActivity : Activity() {
                     val name = archive.name ?: ("archive_" + index + ".rpf")
                     try {
                         val info = inspectHeader(archive.uri)
-                        if (!info.isGtaV || !(info.encryption.startsWith("OPEN") || info.encryption == "None")) {
+                        if (!info.isGtaV || !(info.encryption.startsWith("OPEN") ||
+                                info.encryption == "None" || info.encryption.startsWith("AES encrypted") ||
+                                info.encryption.startsWith("NG encrypted"))) {
                             skipped++
-                            report.appendLine("SKIP " + name + " — " + info.encryption + "; not a confirmed open RPF7")
+                            report.appendLine("SKIP " + name + " — unsupported RPF7 encryption marker: " + info.encryption)
                             continue
                         }
                         if (archive.length() > MAX_ARCHIVE_BYTES) {
@@ -258,11 +285,15 @@ class MainActivity : Activity() {
                         work.deleteRecursively()
                         check(work.mkdirs()) { "Cannot create temporary folder" }
                         val safeName = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
-                        val source = java.io.File(work, safeName)
+                        check(name.isNotBlank() && !name.contains('/')) { "Unsafe source archive filename" }
+                        // Keep the real basename: NG decryption selects a key from filename + size.
+                        val source = java.io.File(work, name)
                         copyUriToFile(archive.uri, source, MAX_ARCHIVE_BYTES)
                         val extracted = java.io.File(work, "extracted")
                         check(extracted.mkdir()) { "Cannot create extraction folder" }
-                        val extractionReport = NativeRpf.extractArchive(source.absolutePath, extracted.absolutePath)
+                        val extractionReport = NativeAssets.extractArchiveWithKeys(
+                    source.absolutePath, extracted.absolutePath, rpfKeyDirectory.absolutePath
+                )
                         check(extractionReport.startsWith("Extraction complete")) { extractionReport }
                         val assetReport = NativeAssets.convertDirectory(extracted.absolutePath)
                         check(assetReport.startsWith("Asset conversion complete")) { assetReport }
@@ -366,6 +397,27 @@ class MainActivity : Activity() {
             stats.notes.add("REBUILT " + nested.name + " — supported Gen9 resources converted to Legacy")
             work.deleteRecursively()
         }
+    }
+
+    private fun importRpfKeys(uri: Uri): String {
+        val source = DocumentFile.fromTreeUri(this, uri) ?: error("Cannot open selected key folder")
+        rpfKeyDirectory.deleteRecursively()
+        check(rpfKeyDirectory.mkdirs()) { "Cannot create app-private RPF key folder" }
+        var copied = 0
+        for ((name, expectedBytes) in RPF_KEY_FILE_SIZES) {
+            val document = source.findFile(name) ?: continue
+            check(document.isFile) { name + " is not a file" }
+            val target = java.io.File(rpfKeyDirectory, name)
+            copyUriToFile(document.uri, target, expectedBytes)
+            check(target.length() == expectedBytes) {
+                name + " has an invalid size: expected " + expectedBytes + " bytes, got " + target.length()
+            }
+            copied++
+        }
+        check(copied > 0) {
+            "No recognized key files found. Select the folder containing gtav_aes_key.dat and/or the ragekit NG key files."
+        }
+        return NativeAssets.inspectRpfKeys(rpfKeyDirectory.absolutePath)
     }
 
     private fun copyUriToFile(uri: Uri, target: java.io.File, maxBytes: Long) {
@@ -601,6 +653,14 @@ class MainActivity : Activity() {
         private const val REQUEST_FOLDER = 1001
         private const val REQUEST_ARCHIVE = 1002
         private const val REQUEST_DESTINATION = 1003
+        private const val REQUEST_KEYS = 1004
+        private val RPF_KEY_FILE_SIZES = linkedMapOf(
+            "gtav_aes_key.dat" to 32L,
+            "gtav_ng_key.dat" to 101L * 272L,
+            "gtav_ng_decrypt_tables.dat" to 17L * 16L * 256L * 4L,
+            "gtav_hash_lut.dat" to 256L,
+            "gtav_awc_key.dat" to 16L
+        )
         private const val MAX_NAMES_BYTES = 64L * 1024L * 1024L
         private const val MAX_TOC_BYTES = 80L * 1024L * 1024L
         private const val MAX_BULK_ARCHIVES = 500

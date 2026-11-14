@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 #include "ragekit/ragekit.h"
@@ -157,6 +158,60 @@ int main() {
     require(rk::rsc::Resource::load(directory_result).version == 13, "directory scan must replace Gen9 YTD with Legacy YTD");
     fs::remove_all(root, ignored);
 
-    std::cout << "Gen9 YTD -> Legacy YTD conversion and directory smoke tests passed\n";
+    // A synthetic AES archive proves the app's key-folder import path is used by
+    // the same ragekit reader that handles real PC RPF archives.
+    const fs::path key_root = fs::temp_directory_path() / "gta-rpf-key-import-smoke";
+    const fs::path archive_root = fs::temp_directory_path() / "gta-rpf-aes-archive-smoke";
+    const fs::path output_root = fs::temp_directory_path() / "gta-rpf-aes-output-smoke";
+    fs::remove_all(key_root, ignored);
+    fs::remove_all(archive_root, ignored);
+    fs::remove_all(output_root, ignored);
+    fs::create_directories(key_root);
+    fs::create_directories(archive_root);
+
+    rk::RpfKeys test_keys;
+    test_keys.aes.assign(32, 0x37);
+    test_keys.save(key_root.string());
+    require(gta_asset_converter::inspect_rpf_keys(key_root).find("AES-256: ready") != std::string::npos,
+            "imported AES key must be detected");
+
+    rk::RpfBuilder encrypted_builder;
+    encrypted_builder.add_binary("common/data/keyed.txt", bytes_of("legitimate test key"), false);
+    rk::RpfWriteOptions encrypted_options;
+    encrypted_options.encryption = rk::RpfEncryption::Aes;
+    encrypted_options.keys = std::make_shared<rk::RpfKeys>(test_keys);
+    encrypted_options.name = "aes_fixture.rpf";
+    const auto encrypted_bytes = encrypted_builder.build(encrypted_options);
+    const fs::path encrypted_archive = archive_root / "aes_fixture.rpf";
+    {
+        std::ofstream out(encrypted_archive, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(encrypted_bytes.data()),
+                  static_cast<std::streamsize>(encrypted_bytes.size()));
+    }
+    const auto keyed_report = gta_asset_converter::extract_rpf_archive(encrypted_archive, output_root, key_root);
+    require(keyed_report.find("Encryption: AES") != std::string::npos,
+            "encrypted archive must open with imported matching AES key");
+    require(rk::rsc::read_file((output_root / "common/data/keyed.txt").string()) == bytes_of("legitimate test key"),
+            "AES archive extraction must preserve the decrypted payload");
+
+    const fs::path empty_keys = fs::temp_directory_path() / "gta-rpf-empty-keys-smoke";
+    fs::remove_all(empty_keys, ignored);
+    fs::create_directories(empty_keys);
+    bool missing_key_rejected = false;
+    try {
+        (void)gta_asset_converter::extract_rpf_archive(encrypted_archive,
+            fs::temp_directory_path() / "gta-rpf-no-key-output", empty_keys);
+    } catch (const std::exception&) {
+        missing_key_rejected = true;
+    }
+    require(missing_key_rejected, "encrypted RPF must fail closed without matching keys");
+
+    fs::remove_all(key_root, ignored);
+    fs::remove_all(archive_root, ignored);
+    fs::remove_all(output_root, ignored);
+    fs::remove_all(empty_keys, ignored);
+    fs::remove_all(fs::temp_directory_path() / "gta-rpf-no-key-output", ignored);
+
+    std::cout << "Gen9 conversion and keyed RPF extraction smoke tests passed\n";
     return 0;
 }

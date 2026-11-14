@@ -3,8 +3,11 @@
 #include <cctype>
 #include <fstream>
 #include <limits>
+#include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <system_error>
+#include <unordered_set>
 #include "ragekit/ragekit.h"
 namespace gta_asset_converter {
 namespace fs = std::filesystem;
@@ -129,6 +132,35 @@ std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std:
     }
     throw std::runtime_error("no conversion handler for " + ext);
 }
+static fs::path safe_archive_relative_path(const std::string& raw) {
+    if (raw.empty() || raw.find(':') != std::string::npos) {
+        throw std::runtime_error("empty or drive-qualified RPF path rejected");
+    }
+    std::string normalized = raw;
+    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+    const fs::path path(normalized);
+    if (path.is_absolute()) throw std::runtime_error("absolute RPF path rejected: " + raw);
+    fs::path clean;
+    for (const auto& component : path) {
+        if (component == "." || component.empty()) continue;
+        if (component == ".." || component == path.root_name() || component == path.root_directory()) {
+            throw std::runtime_error("unsafe RPF path rejected: " + raw);
+        }
+        clean /= component;
+    }
+    if (clean.empty()) throw std::runtime_error("empty RPF path rejected");
+    return clean;
+}
+static std::string rpf_encryption_name(rk::RpfEncryption encryption) {
+    switch (encryption) {
+        case rk::RpfEncryption::None: return "None";
+        case rk::RpfEncryption::Open: return "OPEN";
+        case rk::RpfEncryption::Aes: return "AES";
+        case rk::RpfEncryption::Ng: return "NG";
+    }
+    return "Unknown";
+}
+
 std::string convert_directory(const fs::path& root) {
     if (!fs::exists(root) || !fs::is_directory(root)) throw std::runtime_error("asset conversion input is not a directory");
     ConversionStats stats;
@@ -167,5 +199,105 @@ std::string convert_directory(const fs::path& root) {
            "Other files preserved unchanged: " + std::to_string(stats.unchanged_other) + "\n"
            "Scanned bytes: " + std::to_string(stats.bytes_scanned) + "\n"
            "Audio, scripts, metadata outside YMAP/YTYP, and unsupported formats were preserved unchanged.";
+}
+
+std::string inspect_rpf_keys(const fs::path& key_directory) {
+    const rk::RpfKeys keys = rk::RpfKeys::load(key_directory.string());
+    std::ostringstream report;
+    report << "RPF key status\n"
+           << "AES-256: " << (keys.has_aes() ? "ready" : "missing") << "\n"
+           << "NG key material: " << (keys.has_ng() ? "ready" : "incomplete") << "\n"
+           << "AWC audio key: " << (keys.has_awc() ? "ready" : "missing") << "\n"
+           << "Key files remain in the app-private storage folder on this device.";
+    return report.str();
+}
+
+std::string extract_rpf_archive(const fs::path& source,
+                                const fs::path& destination,
+                                const fs::path& key_directory) {
+    constexpr std::uint64_t max_archive_bytes = 1024ull * 1024ull * 1024ull;
+    constexpr std::uint64_t max_entry_bytes = 512ull * 1024ull * 1024ull;
+    constexpr std::uint64_t max_total_bytes = 8ull * 1024ull * 1024ull * 1024ull;
+    constexpr std::size_t max_entries = 1'000'000;
+
+    const auto source_status = fs::symlink_status(source);
+    if (fs::is_symlink(source_status) || !fs::is_regular_file(source_status)) {
+        throw std::runtime_error("RPF source must be a regular, non-symlink file");
+    }
+    if (fs::file_size(source) > max_archive_bytes) {
+        throw std::runtime_error("RPF archive exceeds the 1 GiB input limit");
+    }
+
+    auto keys = std::make_shared<rk::RpfKeys>(rk::RpfKeys::load(key_directory.string()));
+    const rk::Rpf archive = rk::Rpf::open(source.string(), keys);
+    const auto& entries = archive.entries();
+    if (entries.size() > max_entries) throw std::runtime_error("RPF entry count exceeds one million");
+
+    fs::create_directories(destination);
+    const fs::path root = fs::canonical(destination);
+    std::unordered_set<std::string> seen_paths;
+    std::uint64_t total_bytes = 0;
+    std::size_t files_written = 0;
+
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        const rk::RpfEntry& entry = entries[i];
+        if (entry.is_directory()) continue;
+        if (entry.size() > max_entry_bytes) {
+            throw std::runtime_error("RPF entry exceeds the 512 MiB limit: " + entry.path);
+        }
+        const fs::path relative = safe_archive_relative_path(entry.path);
+        std::string path_key = relative.generic_string();
+        std::transform(path_key.begin(), path_key.end(), path_key.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (!seen_paths.insert(path_key).second) {
+            throw std::runtime_error("duplicate case-insensitive RPF path rejected: " + entry.path);
+        }
+
+        const fs::path target = root / relative;
+        fs::path current = root;
+        for (const auto& component : relative.parent_path()) {
+            current /= component;
+            std::error_code status_error;
+            const auto status = fs::symlink_status(current, status_error);
+            if (!status_error && fs::exists(status)) {
+                if (fs::is_symlink(status) || !fs::is_directory(status)) {
+                    throw std::runtime_error("unsafe RPF output parent rejected: " + current.string());
+                }
+            } else if (!fs::create_directory(current)) {
+                throw std::runtime_error("cannot create RPF output directory: " + current.string());
+            }
+        }
+
+        std::error_code target_error;
+        const auto target_status = fs::symlink_status(target, target_error);
+        if (!target_error && fs::exists(target_status)) {
+            throw std::runtime_error("RPF output file already exists: " + target.string());
+        }
+
+        const auto payload = archive.extract(static_cast<int>(i));
+        if (payload.size() > max_entry_bytes) {
+            throw std::runtime_error("extracted RPF entry exceeds the 512 MiB limit: " + entry.path);
+        }
+        if (payload.size() > std::numeric_limits<std::uint64_t>::max() - total_bytes) {
+            throw std::runtime_error("RPF extracted byte count overflow");
+        }
+        total_bytes += payload.size();
+        if (total_bytes > max_total_bytes) {
+            throw std::runtime_error("RPF extracted output exceeds the 8 GiB limit");
+        }
+
+        std::ofstream out(target, std::ios::binary | std::ios::trunc);
+        if (!out) throw std::runtime_error("cannot create extracted RPF file: " + target.string());
+        out.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
+        out.flush();
+        if (!out) throw std::runtime_error("cannot write extracted RPF file: " + target.string());
+        ++files_written;
+    }
+
+    return "Extraction complete\n"
+           "Encryption: " + rpf_encryption_name(archive.encryption()) + "\n"
+           "Entries: " + std::to_string(entries.size()) + "\n"
+           "Files written: " + std::to_string(files_written) + "\n"
+           "Bytes written: " + std::to_string(total_bytes);
 }
 }

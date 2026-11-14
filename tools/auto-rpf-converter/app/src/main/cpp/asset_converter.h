@@ -22,4 +22,8 @@ struct ConversionStats {
 };
 std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std::span<const std::uint8_t> input, ConversionStats& stats);
 std::string convert_directory(const std::filesystem::path& root);
+std::string inspect_rpf_keys(const std::filesystem::path& key_directory);
+std::string extract_rpf_archive(const std::filesystem::path& source,
+                                const std::filesystem::path& destination,
+                                const std::filesystem::path& key_directory);
 }
