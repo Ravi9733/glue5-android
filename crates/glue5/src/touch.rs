@@ -159,7 +159,7 @@ const ICON_FILES: &[(&str, &[u8])] = icons![
     "pad-x", "pad-y", "parachute", "pause", "phone", "radio", "reload", "right", "rise", "seat", "settings", "skip",
     "special", "switch", "throw", "up", "view", "weapons", "yaw-left", "yaw-right",
     // Original gameplay icons extracted from the Android reference APK.
-    "ref-aim", "ref-fire", "ref-jump", "ref-crouch", "ref-gas", "ref-brake", "ref-handbrake", "ref-horn", "ref-exit",
+    "ref-aim", "ref-fire", "ref-jump", "ref-crouch", "ref-gas", "ref-brake", "ref-handbrake", "ref-horn", "ref-exit", "ref-enter",
 ];
 
 /// The icons' textures, by name.
@@ -220,7 +220,7 @@ static ON_FOOT: &[Action] = &[
     does(25, turns(action("Aim", "ref-aim", button::L2, At::RightBottom(178.0, 150.0), 28.0))),
     does(22, action("Jump", "ref-jump", button::WEST, At::RightBottom(76.0, 64.0), 26.0)),
     does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 26.0)),
-    does(23, near_vehicle(action("Enter", "ref-exit", button::NORTH, At::RightBottom(178.0, 232.0), 25.0))),
+    does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(178.0, 232.0), 25.0))),
     VIEW,
     PAUSE,
 ];
