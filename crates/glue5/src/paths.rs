@@ -47,12 +47,10 @@ pub fn default_game_dirs() -> Vec<PathBuf> {
     } else if cfg!(target_os = "android") {
         #[cfg(target_os = "android")]
         {
-            // Primary location: shared, visible storage. Keep the old
-            // app-specific folder as a fallback for existing installations.
+            // Game files live only in shared, visible storage. Do not
+            // silently fall back to Android/data: users should move the game
+            // folder to Documents/Glue5/game so file managers can access it.
             dirs.push(android_documents_dir().join("game"));
-            if let Some(ext) = android_external_dir() {
-                dirs.push(ext.join("game"));
-            }
         }
     } else {
         // A distributed Mac app can sit beside an external game directory.
