@@ -954,6 +954,19 @@ impl App {
             return Ok(());
         }
         let Some(screen) = self.screen.take() else { return Ok(()) };
+        // Restore the requested High graphics profile once on Android,
+        // including installs that previously had the low-memory preset written.
+        #[cfg(target_os = "android")]
+        if !self.settings.android_high_graphics_profile_applied {
+            match glue5_runtime::game_settings::apply_high_preset(&self.user_dir) {
+                Ok(()) => {
+                    self.settings.android_high_graphics_profile_applied = true;
+                    self.settings.low_preset_written = true;
+                    log::info!("the game's graphics settings: High preset written");
+                }
+                Err(e) => log::warn!("cannot write High graphics preset: {e}"),
+            }
+        }
         // Graphics quality is the game's own (its menu); the low-memory
         // profile only lowers it once, after which the menu has the last word.
         if self.settings.low_memory && !self.settings.low_preset_written {
