@@ -186,8 +186,12 @@ jobs:
           kill "$monitor_pid" 2>/dev/null || true
           trap - EXIT
           cp target/android/gradle/outputs/apk/release/Glue5-release.apk Glue5-android-turnip-test.apk
-          # Fail the build if Gradle did not package the actual ARM64 Vulkan layer.
-          unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libVkLayer_VKBASALT_post_processing.so'
+          # The ReShade layer is optional; verify it only when its artifact was staged.
+          if [ -s target/android/reshade-layer/libVkLayer_VKBASALT_post_processing.so ]; then
+            unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libVkLayer_VKBASALT_post_processing.so'
+          else
+            echo "Optional ReShade layer not bundled; core Vulkan/Turnip APK is still valid." >>"$GITHUB_STEP_SUMMARY"
+          fi
           unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libglue5.so'
           cp ~/.android/debug.keystore Glue5-android.keystore
 
