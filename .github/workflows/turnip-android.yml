@@ -106,25 +106,27 @@ jobs:
           else
             run_id=$(echo "$runs" | jq -r '.[] | select(.status == "completed" and .conclusion == "success") | .databaseId' | head -n 1)
           fi
-          test -n "$run_id" || { echo "No successful ARM64 ReShade runtime build exists yet"; exit 1; }
-          mkdir -p "$RUNNER_TEMP/reshade-layer"
-          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name glue5-reshade-fx-arm64 --dir "$RUNNER_TEMP/reshade-layer"
-          test -s "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so"
           mkdir -p target/android/reshade-layer
-          cp "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so" target/android/reshade-layer/
-          file target/android/reshade-layer/libVkLayer_VKBASALT_post_processing.so
+          if [ -z "$run_id" ]; then
+            echo "Optional ARM64 ReShade runtime is unavailable; continuing with the core Turnip APK." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            mkdir -p "$RUNNER_TEMP/reshade-layer"
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name glue5-reshade-fx-arm64 --dir "$RUNNER_TEMP/reshade-layer"
+            if [ -s "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so" ]; then
+              cp "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so" target/android/reshade-layer/
+              file target/android/reshade-layer/libVkLayer_VKBASALT_post_processing.so
+            else
+              echo "Optional ReShade runtime artifact did not contain its ARM64 layer; continuing without it." | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
 
-          # Bundle the MIT-licensed SweetFX effect pack so common preset
-          # references (Curves, Vibrance, Tonemap, Levels, LumaSharpen, etc.)
-          # do not show Missing immediately after importing an INI-only ZIP.
+          # Bundle SweetFX presets independently of the optional native layer.
           git clone --filter=blob:none --no-checkout https://github.com/CeeJayDK/SweetFX.git "$RUNNER_TEMP/SweetFX"
           git -C "$RUNNER_TEMP/SweetFX" checkout --detach 93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361
           mkdir -p target/android/assets/reshade-shaders/Shaders target/android/assets/reshade-shaders/Textures
           cp -a "$RUNNER_TEMP/SweetFX/Shaders/SweetFX" target/android/assets/reshade-shaders/Shaders/
           cp -a "$RUNNER_TEMP/SweetFX/Textures/SweetFX" target/android/assets/reshade-shaders/Textures/
           cp "$RUNNER_TEMP/SweetFX/LICENSE" target/android/assets/reshade-shaders/LICENSE
-          # ReShade.fxh is explicitly CC0-1.0 upstream. SweetFX's UI header
-          # is replaced by Glue 5's own small compatibility shim (no PC GUI).
           curl -fsSL "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShade.fxh" \
             -o target/android/assets/reshade-shaders/Shaders/ReShade.fxh
           cp platform/android/reshade-assets/Shaders/ReShadeUI.fxh \
