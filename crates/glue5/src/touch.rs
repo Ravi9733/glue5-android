@@ -1057,7 +1057,13 @@ impl Touch {
             return Finger::Button { key: b.key, bits: b.bits, input: b.input, kind: b.kind, origin: p, last: p };
         }
         let left = p.x < self.screen.x / 2.0;
-        if left && (self.has_stick() || self.is(SCRIPTED)) {
+        if left && self.has_stick() {
+            // The movement pad is anchored to its on-screen home position.
+            // Only the inner thumb position moves; the base never follows a
+            // finger, matching a fixed mobile joystick.
+            let origin = self.pos(MOVE_REST);
+            Finger::Move { origin, at: origin }
+        } else if left && self.is(SCRIPTED) {
             Finger::Move { origin: p, at: p }
         } else if self.is(SCRIPTED) {
             Finger::Look { origin: p, at: p }
@@ -1234,10 +1240,13 @@ impl Touch {
         match self.fingers.get_mut(&id) {
             Some(Finger::Move { origin, at } | Finger::Look { origin, at }) => {
                 *at = p;
-                // Far past its reach, the stick comes along under the thumb.
-                let d = p - *origin;
-                if d.length() > follow {
-                    *origin = p - d.normalized() * follow;
+                // Gameplay movement joystick stays anchored. Scripted
+                // scenes retain their floating stick behaviour.
+                if self.is(SCRIPTED) {
+                    let d = p - *origin;
+                    if d.length() > follow {
+                        *origin = p - d.normalized() * follow;
+                    }
                 }
             }
             Some(Finger::Camera { origin, last }) => {
@@ -1432,12 +1441,20 @@ impl Touch {
         let d = at - origin;
         let sprint = d.length() > SPRINT_REACH * radius;
         let knob = if d.length() > radius { origin + d.normalized() * radius } else { at };
-        painter.circle(origin, radius, look.fill(false), look.stroke(false));
+        // Reference-style movement pad: dark translucent base with a
+        // fine black outline; the centre dot follows the thumb independently.
+        let base_border = Stroke::new(1.25 * self.scale, Color32::from_black_alpha(220));
+        painter.circle(origin, radius, Color32::from_black_alpha(92), base_border);
         if ring {
             let stroke = if sprint { look.ring(true) } else { Stroke::new(look.width, look.line.gamma_multiply(0.5)) };
             painter.circle_stroke(origin, SPRINT_REACH * radius, stroke);
         }
-        painter.circle(knob, radius * 0.50, look.knob, look.stroke(origin != at));
+        painter.circle(
+            knob,
+            radius * 0.50,
+            Color32::from_rgba_unmultiplied(225, 225, 225, 145),
+            Stroke::new(1.0 * self.scale, Color32::from_black_alpha(210)),
+        );
     }
 
     /// A button: round, with its icon; ringed in the player's colour when it
