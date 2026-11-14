@@ -4,7 +4,7 @@ Android ARM64 converter prototype for unencrypted GTA V RPF7 archives. It extrac
 
 ## Current supported pipeline
 
-1. Select one .rpf archive and an output folder, or select a GTA V folder and run bulk conversion of up to 500 on-disk .rpf files. Bulk output mirrors the source folder path and keeps each original `.rpf` filename, so existing DLC path references can still match when the output tree is overlaid in the same layout. Use a separate output folder; if a name already exists, the app chooses a non-overwriting suffixed name.
+1. Select one .rpf archive and an output folder, or select a GTA V folder and run bulk conversion of up to 500 on-disk .rpf files. Bulk output mirrors the source folder path and preserves the original `.rpf` filename exactly, so existing DLC path references can still match when the output tree is overlaid in the same layout. Folder discovery is capped at 250,000 entries. Use a separate, preferably empty output folder; an existing output filename is rejected rather than silently renamed or overwritten.
 2. Extract supported unencrypted archives with the Rust rpf-archive parser.
 3. Convert Gen9 resources to Legacy with the pinned ragekit v0.3.1 C++ library:
    - .ytd texture dictionaries (Gen9 version 5 to Legacy version 13)
