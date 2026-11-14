@@ -51,6 +51,12 @@ This is not a universal PC-to-Android converter and is not yet validated against
 
 The supported Gen9-to-Legacy transformations are limited to YTD/YDR/YDD/YFT/YPT; YPT files containing the Enhanced-only ptfx_g9 behaviour fail closed because Legacy has no equivalent. YBN/YMAP/YTYP are parsed for validation and preserved byte-for-byte because their layouts are edition-independent. Audio, scripts, other metadata and unsupported resources remain unchanged. Real retail Enhanced/Legacy fixture coverage, large DLC validation, Android device testing and Glue5 in-game loading tests are still required.
 
+## Glue5 compatibility gate
+
+The Glue5 project's own README and design notes say its runtime needs the supported browser build's prepared game data (re-keyed archives); a regular retail PC/console installation by itself is not sufficient. This converter currently emits structurally validated RPF7 archives with the OPEN encryption tag. It does not yet implement or verify the browser build's target re-keying/key scheme. Therefore this APK is a PC RPF extraction/resource-conversion prototype, not a certified Glue5-ready game-data converter.
+
+Before calling the project complete, the exact target archive/key requirements of the supported browser build must be verified, the corresponding safe re-key/output mode must be implemented (or OPEN archives must be proven accepted), and the resulting data must be tested by loading it in Glue5. The relevant runtime requirement is documented in the [Glue5 README](https://github.com/Ravi9733/glue5-android#notes) and [design notes](https://github.com/Ravi9733/glue5-android/blob/main/docs/design.md#game-files-are-never-in-the-app).
+
 ## Pinned upstream implementation
 
 The C++ conversion, keyed RPF extraction and OPEN RPF7 writer use RatPrez/ragekit v0.3.1, commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b. The pin matches the upstream v0.3.1 tag. Its Gen9 layout and conversion behavior are documented in [ragekit's Enhanced format notes](https://github.com/RatPrez/ragekit/blob/v0.3.1/docs/enhanced.md), and its RPF7 reader/writer API is in [ragekit's RPF header](https://github.com/RatPrez/ragekit/blob/v0.3.1/include/ragekit/rpf.h).
