@@ -92,50 +92,6 @@ jobs:
           test -f third_party/wgpu-core/Cargo.toml
           test -f third_party/wgpu-hal/Cargo.toml
 
-      - name: Download the verified Android ReShade FX layer
-        run: |
-          runs=$(gh run list --workflow build-reshade-runtime.yml --branch "$GITHUB_REF_NAME" --limit 20 --json databaseId,status,conclusion,headSha)
-          latest_id=$(echo "$runs" | jq -r '.[0].databaseId // empty')
-          latest_status=$(echo "$runs" | jq -r '.[0].status // empty')
-          latest_conclusion=$(echo "$runs" | jq -r '.[0].conclusion // empty')
-          if [ "$latest_status" = "in_progress" ] || [ "$latest_status" = "queued" ]; then
-            gh run watch "$latest_id" --exit-status
-            run_id="$latest_id"
-          elif [ "$latest_status" = "completed" ] && [ "$latest_conclusion" = "success" ]; then
-            run_id="$latest_id"
-          else
-            run_id=$(echo "$runs" | jq -r '.[] | select(.status == "completed" and .conclusion == "success") | .databaseId' | head -n 1)
-          fi
-          mkdir -p target/android/reshade-layer
-          if [ -z "$run_id" ]; then
-            echo "Optional ARM64 ReShade runtime is unavailable; continuing with the core Turnip APK." | tee -a "$GITHUB_STEP_SUMMARY"
-          else
-            mkdir -p "$RUNNER_TEMP/reshade-layer"
-            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name glue5-reshade-fx-arm64 --dir "$RUNNER_TEMP/reshade-layer"
-            if [ -s "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so" ]; then
-              cp "$RUNNER_TEMP/reshade-layer/libVkLayer_VKBASALT_post_processing.so" target/android/reshade-layer/
-              file target/android/reshade-layer/libVkLayer_VKBASALT_post_processing.so
-            else
-              echo "Optional ReShade runtime artifact did not contain its ARM64 layer; continuing without it." | tee -a "$GITHUB_STEP_SUMMARY"
-            fi
-          fi
-
-          # Bundle SweetFX presets independently of the optional native layer.
-          git clone --filter=blob:none --no-checkout https://github.com/CeeJayDK/SweetFX.git "$RUNNER_TEMP/SweetFX"
-          git -C "$RUNNER_TEMP/SweetFX" checkout --detach 93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361
-          mkdir -p target/android/assets/reshade-shaders/Shaders target/android/assets/reshade-shaders/Textures
-          cp -a "$RUNNER_TEMP/SweetFX/Shaders/SweetFX" target/android/assets/reshade-shaders/Shaders/
-          cp -a "$RUNNER_TEMP/SweetFX/Textures/SweetFX" target/android/assets/reshade-shaders/Textures/
-          cp "$RUNNER_TEMP/SweetFX/LICENSE" target/android/assets/reshade-shaders/LICENSE
-          curl -fsSL "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShade.fxh" \
-            -o target/android/assets/reshade-shaders/Shaders/ReShade.fxh
-          cp platform/android/reshade-assets/Shaders/ReShadeUI.fxh \
-            target/android/assets/reshade-shaders/Shaders/ReShadeUI.fxh
-          test -s target/android/assets/reshade-shaders/Shaders/ReShade.fxh
-          test -s target/android/assets/reshade-shaders/Shaders/ReShadeUI.fxh
-          test -s target/android/assets/reshade-shaders/Shaders/SweetFX/Vibrance.fx
-          test -s target/android/assets/reshade-shaders/Shaders/SweetFX/Curves.fx
-
       - name: Android signing key
         run: |
           mkdir -p ~/.android
@@ -162,10 +118,6 @@ jobs:
           lscpu | sed -n '1,18p'
           ulimit -a
 
-      - name: Validate ReShade preset parser and Sharpy fallbacks
-        run: |
-          mise exec -- cargo test -p glue5-gpu reshade::tests --lib
-
       - name: Build Turnip-enabled APK
         run: |
           set -o pipefail
@@ -186,12 +138,6 @@ jobs:
           kill "$monitor_pid" 2>/dev/null || true
           trap - EXIT
           cp target/android/gradle/outputs/apk/release/Glue5-release.apk Glue5-android-turnip-test.apk
-          # The ReShade layer is optional; verify it only when its artifact was staged.
-          if [ -s target/android/reshade-layer/libVkLayer_VKBASALT_post_processing.so ]; then
-            unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libVkLayer_VKBASALT_post_processing.so'
-          else
-            echo "Optional ReShade layer not bundled; core Vulkan/Turnip APK is still valid." >>"$GITHUB_STEP_SUMMARY"
-          fi
           unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libglue5.so'
           cp ~/.android/debug.keystore Glue5-android.keystore
 
