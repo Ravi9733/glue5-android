@@ -758,10 +758,11 @@ fn touch_layout_editor(ui: &mut egui::Ui, settings: &mut Settings) {
         let values = settings.touch_layout.get(key).copied().unwrap_or([dx, dy, 1.0]);
         let center = pos2(screen.left() + values[0].clamp(0.04, 0.96) * screen.width(),
                           screen.top() + values[1].clamp(0.06, 0.94) * screen.height());
-        let radius = if key == "__joystick" { 22.0 } else { 15.0 } * values[2].clamp(0.55, 1.8);
+        let radius = (if key == "__joystick" { 22.0 } else { 15.0 }) * values[2].clamp(0.55, 1.8);
         let hit = Rect::from_center_size(center, vec2(radius * 2.0 + 8.0, radius * 2.0 + 8.0));
         let response = ui.interact(hit, Id::new(("touch-layout-control", key)), Sense::click_and_drag());
         if response.clicked() {
+            settings.touch_layout.entry(key.to_owned()).or_insert(values);
             ui.ctx().data_mut(|data| data.insert_temp(Id::new("touch-layout-selected"), key.to_owned()));
         }
         if response.dragged() {
