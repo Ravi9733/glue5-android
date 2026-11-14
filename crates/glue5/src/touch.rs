@@ -253,9 +253,9 @@ static CAR: &[Action] = &[
 ];
 
 static BICYCLE: &[Action] = &[
-    primary(action("Pedal", "gas", button::SOUTH, MAIN, 36.0)),
-    with_phone(action("Brake", "brake", button::L2, SECOND, 32.0)),
-    action("Exit", "exit", button::NORTH, THIRD, 26.0),
+    primary(action("Pedal", "ref-gas", button::SOUTH, MAIN, 36.0)),
+    with_phone(action("Brake", "ref-brake", button::L2, SECOND, 32.0)),
+    action("Exit", "ref-exit", button::NORTH, THIRD, 26.0),
     action("Bell", "bell", button::L3, FIFTH, 22.0),
     PHONE,
     action("Behind", "behind", button::R3, LEFT_3, 22.0),
@@ -266,9 +266,9 @@ static BICYCLE: &[Action] = &[
 
 /// Helicopters (the stick pitches and rolls).
 static HELI: &[Action] = &[
-    primary(with_phone(action("Up", "gas", button::R2, MAIN, 34.0))),
-    with_phone(action("Down", "brake", button::L2, SECOND, 30.0)),
-    action("Exit", "exit", button::NORTH, FIFTH, 24.0),
+    primary(with_phone(action("Up", "ref-gas", button::R2, MAIN, 34.0))),
+    with_phone(action("Down", "ref-brake", button::L2, SECOND, 30.0)),
+    action("Exit", "ref-exit", button::NORTH, FIFTH, 24.0),
     with_phone(action("◀ Yaw", "yaw-left", button::L1, At::RightBottom(160.0, 250.0), 24.0)),
     with_phone(action("Yaw ▶", "yaw-right", button::R1, FOURTH, 24.0)),
     action("Fire", "fire", button::SOUTH, SIXTH, 24.0),
@@ -279,8 +279,8 @@ static HELI: &[Action] = &[
 ];
 
 static PLANE: &[Action] = &[
-    primary(with_phone(action("Throttle", "gas", button::R2, MAIN, 34.0))),
-    with_phone(action("Brake", "brake", button::L2, SECOND, 30.0)),
+    primary(with_phone(action("Throttle", "ref-gas", button::R2, MAIN, 34.0))),
+    with_phone(action("Brake", "ref-brake", button::L2, SECOND, 30.0)),
     action("Exit", "exit", button::NORTH, FIFTH, 24.0),
     with_phone(action("◀ Yaw", "yaw-left", button::L1, At::RightBottom(160.0, 250.0), 24.0)),
     with_phone(action("Yaw ▶", "yaw-right", button::R1, FOURTH, 24.0)),
@@ -293,8 +293,8 @@ static PLANE: &[Action] = &[
 ];
 
 static SUBMARINE: &[Action] = &[
-    primary(with_phone(action("Ahead", "gas", button::R2, MAIN, 34.0))),
-    with_phone(action("Back", "brake", button::L2, SECOND, 30.0)),
+    primary(with_phone(action("Ahead", "ref-gas", button::R2, MAIN, 34.0))),
+    with_phone(action("Back", "ref-brake", button::L2, SECOND, 30.0)),
     action("Rise", "rise", button::WEST, SIXTH, 24.0),
     action("Dive", "dive", button::SOUTH, FIFTH, 24.0),
     action("Exit", "exit", button::NORTH, At::RightBottom(160.0, 250.0), 24.0),
@@ -306,8 +306,8 @@ static SUBMARINE: &[Action] = &[
 
 /// A passenger: shooting from the window (LT aims, RT fires).
 static PASSENGER: &[Action] = &[
-    primary(turns(action("Shoot", "fire", button::R2, MAIN, 34.0))),
-    turns(action("Aim", "aim", button::L2, SECOND, 30.0)),
+    primary(turns(action("Shoot", "ref-fire", button::R2, MAIN, 34.0))),
+    turns(action("Aim", "ref-aim", button::L2, SECOND, 30.0)),
     action("Exit", "exit", button::NORTH, THIRD, 26.0),
     // The driver's seat, when free.
     action("Seat", "seat", button::RIGHT, FIFTH, 22.0),
@@ -1499,10 +1499,10 @@ fn action_icon(input: u32) -> Option<&'static str> {
         0 => "view",                    // NEXT_CAMERA
         18 => "skip",                   // SKIP_CUTSCENE
         19 => "switch",                 // CHARACTER_WHEEL
-        22 => "jump",                   // JUMP
-        23 => "enter",                  // ENTER
-        24 | 69 | 92 | 114 => "fire",   // ATTACK, VEH_ATTACK, VEH_PASSENGER_ATTACK, VEH_FLY_ATTACK
-        25 | 68 | 91 => "aim",          // AIM, VEH_AIM, VEH_PASSENGER_AIM
+        22 => "ref-jump",                   // JUMP
+        23 => "ref-enter",                  // ENTER
+        24 | 69 | 92 | 114 => "ref-fire",   // ATTACK, VEH_ATTACK, VEH_PASSENGER_ATTACK, VEH_FLY_ATTACK
+        25 | 68 | 91 => "ref-aim",          // AIM, VEH_AIM, VEH_PASSENGER_AIM
         26 | 79 => "behind",            // LOOK_BEHIND, VEH_LOOK_BEHIND
         27 => "phone",                  // PHONE
         28 | 29 => "special",           // SPECIAL_ABILITY(_SECONDARY)
@@ -1513,14 +1513,14 @@ fn action_icon(input: u32) -> Option<&'static str> {
         51 | 52 => "action",            // CONTEXT(_SECONDARY)
         54 | 74 => "lights",            // WEAPON_SPECIAL_TWO (the flashlight), VEH_HEADLIGHT
         65 => "drive-special",          // VEH_SPECIAL
-        71 | 87 => "gas",               // VEH_ACCELERATE, VEH_FLY_THROTTLE_UP
-        72 | 88 => "brake",             // VEH_BRAKE, VEH_FLY_THROTTLE_DOWN
+        71 | 87 => "ref-gas",               // VEH_ACCELERATE, VEH_FLY_THROTTLE_UP
+        72 | 88 => "ref-brake",             // VEH_BRAKE, VEH_FLY_THROTTLE_DOWN
         73 => "duck",                   // VEH_DUCK
-        75 => "exit",                   // VEH_EXIT
-        76 => "handbrake",              // VEH_HANDBRAKE
+        75 => "ref-exit",                   // VEH_EXIT
+        76 => "ref-handbrake",              // VEH_HANDBRAKE
         80 => "cinematic",              // VEH_CIN_CAM (the camera's focus on a target)
         85 => "radio",                  // VEH_RADIO_WHEEL
-        86 => "horn",                   // VEH_HORN
+        86 => "ref-horn",                   // VEH_HORN
         89 | 152 => "yaw-left",         // VEH_FLY_YAW_LEFT, PARACHUTE_BRAKE_LEFT
         90 | 153 => "yaw-right",        // VEH_FLY_YAW_RIGHT, PARACHUTE_BRAKE_RIGHT
         113 => "landing-gear",          // VEH_FLY_UNDERCARRIAGE
