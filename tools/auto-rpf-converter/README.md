@@ -10,7 +10,7 @@ Android ARM64 conversion prototype for GTA V RPF7 archives. It extracts a select
    - .ytd texture dictionaries: Gen9 version 5 to Legacy version 13
    - .ydr drawables and .ydd drawable dictionaries: Gen9 version 159 (and the CodeWalker-compatible 154 variant) to Legacy version 165
    - .yft fragments: Gen9 version 171 to Legacy version 162
-   -  .ypt particle dictionaries: Gen9 version 71 to Legacy version 68, except files containing the Enhanced-only ptfx_g9 behaviour are rejected safely
+   - .ypt particle dictionaries: Gen9 version 71 to Legacy version 68, except files containing the Enhanced-only ptfx_g9 behaviour are rejected safely
 4. Parse and validate .ybn, .ymap and .ytyp resources with ragekit, then preserve their original bytes. These formats are edition-independent in the upstream Gen9 format documentation; rewriting them is unnecessary and could introduce collision quantization or map serialization changes. They are not counted as Gen9-to-Legacy conversions.
 5. Preserve already-Legacy versions byte-for-byte. Unsupported extensions such as .ysc, .awc, .rel, .dat, PSO/meta and other files are preserved unchanged and are never reported as converted.
 6. Rebuild a new OPEN RPF7 archive with ragekit's RpfBuilder::save file-streaming writer. The output is reopened with the RPF reader and checked for OPEN encryption and the expected file-entry count. RSC7 resources are written as resource entries with their page flags; nested .rpf files are stored as uncompressed binary entries.
@@ -19,7 +19,7 @@ Android ARM64 conversion prototype for GTA V RPF7 archives. It extracts a select
 
 - Nested .rpf entries are recursively extracted, converted and rebuilt up to depth 8, with at most 500 nested archives per top-level archive. The rebuilt nested archive is put back under the same internal filename and path.
 - The RAGEKIT writer stores nested .rpf binary entries without deflate compression and uses the RPF7 32-bit uncompressed-size field. A nested RPF larger than 16 MiB is supported; the current aggregate loose-file input limit still applies.
-- Bulk output mirrors the selected folder's relative paths. For example, dlcpacks/dyfurai/dlc.rpf is emitted as dlcpacks/dyfurai/dlc.rpf under the selected output folder. The converter does not rename dlc.rpf or other referenced archives.
+- Bulk output mirrors the selected folder's relative paths. For example, dlcpacks/dyfurai/dlc.rpf is emitted as dlcpacks/dyfurai/dlc.rpf under the selected output folder. The converter does not rename dlc.rpf or other referenced archives. It does not install or mount the output in Glue5; copy the output tree over the same relative paths in the game root configured by your Glue5 build, keeping a backup.
 - dlclist.xml and setup2.xml are not edited. Preserving the existing path and filename avoids breaking references, but DLC registration, load order and runtime mounting still depend on the target Android port.
 
 ## Key import
@@ -60,9 +60,9 @@ The C++ conversion, keyed RPF extraction and OPEN RPF7 writer use RatPrez/rageki
 GitHub Actions runs:
 - Rust native-core unit tests (legacy prototype)
 - Host C++ tests for Gen9-to-Legacy YTD/YDR/YDD/YFT/YPT conversion and Legacy pass-through
-- YBN/YMAP/YTYP parse-and-preserve tests
+- YBN/YMAP/YTYP parse-and-preserve tests, plus fail-closed YPT coverage for the Enhanced-only ptfx_g9 behaviour
 - An end-to-end folder-convert-to-OPEN-RPF7 integration test covering all supported resource families and unchanged files
-- Synthetic AES-keyed RPF extraction and missing-key rejection
+- Synthetic AES- and NG-keyed RPF extraction and missing-key rejection
 - A nested RPF7 round-trip larger than 16 MiB
 - Android ARM64 debug APK build
 
