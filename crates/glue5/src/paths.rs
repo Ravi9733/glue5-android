@@ -41,15 +41,23 @@ pub fn default_game_dirs() -> Vec<PathBuf> {
             dirs.push(docs.join("game"));
         }
     } else if cfg!(target_os = "android") {
-        // Prefer a public, user-owned folder so uninstalling Glue 5 does not
-        // remove the ~21 GB game. Android's all-files access permission is
-        // requested by Glue5Activity; keep the old app-specific location as
-        // a fallback for existing installations.
-        dirs.push(PathBuf::from("/storage/emulated/0/GTA5/game"));
-        #[cfg(target_os = "android")]
+        // Search shared internal storage first. Keep game data outside
+        // Android/data so it survives APK updates and uninstall/reinstall.
+        // Accept both layouts users commonly have: a named "game" child, or
+        // the game folder itself (containing b/ and data/).
+        for path in [
+            "/storage/emulated/0/GTA5/game",
+            "/storage/emulated/0/Documents/Glue5/game",
+            "/storage/emulated/0/Documents/Glue5",
+            "/storage/emulated/0/GTA5",
+        ] {
+            dirs.push(PathBuf::from(path));
+        }
+        // Keep the app-specific external-files location as a legacy fallback.
         if let Some(ext) = android_external_dir() {
             dirs.push(ext.join("game"));
         }
+        dirs.dedup();
     } else {
         // A distributed Mac app can sit beside an external game directory.
         // SDL's base path is inside the bundle, not beside the .app.
@@ -147,7 +155,7 @@ pub fn where_the_game_goes() -> &'static str {
         "Copy the game folder into the app's files, named game: Finder (iPhone › Files › Glue 5) \
          or the Files app (On My iPhone › Glue 5). This page looks again when the app comes back."
     } else if cfg!(target_os = "android") {
-        "Copy the game folder, named game, into Internal storage/GTA5/game. Allow Glue 5 access to all files when Android asks. This folder stays after uninstalling the APK."
+        "Keep the game in shared internal storage (not Android/data). Glue 5 checks GTA5/game, Documents/Glue5/game, and Documents/Glue5. Select the folder that directly contains b/ and data/. Allow Glue 5 all-files access in Android Settings if asked."
     } else {
         "Choose the game folder, or start glue5 with its path."
     }
