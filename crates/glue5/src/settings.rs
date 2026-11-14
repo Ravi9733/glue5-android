@@ -47,6 +47,8 @@ pub struct Settings {
     pub android_performance_profile_v3_applied: bool,
     /// One-time Android profile: balanced 30 FPS target at 50% render scale with bicubic output.
     pub android_performance_profile_v4_applied: bool,
+    /// One-time high-quality Android profile: restore normal graphics, target 60 FPS and use bicubic reconstruction.
+    pub android_high_quality_profile_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -255,10 +257,11 @@ impl Default for Settings {
             android_performance_profile_v2_applied: false,
             android_performance_profile_v3_applied: false,
             android_performance_profile_v4_applied: false,
+            android_high_quality_profile_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
-            max_fps: if MOBILE { 30 } else { 0 },
+            max_fps: if MOBILE { 60 } else { 0 },
             upscaler: Upscaling::MetalFx,
             sharpness: 0.5,
             frame_generation: false,
@@ -357,6 +360,17 @@ impl Settings {
             settings.render_scale = Some(0.50);
             settings.upscaler = Upscaling::Bicubic;
             settings.android_performance_profile_v4_applied = true;
+        }
+        // High-quality Android migration: undo the previous low-memory/30 FPS presets
+        // once, while preserving subsequent user changes. Bicubic avoids FSR blur.
+        #[cfg(target_os = "android")]
+        if !settings.android_high_quality_profile_applied {
+            settings.low_memory = false;
+            settings.low_preset_written = false;
+            settings.max_fps = 60;
+            settings.render_scale = Some(0.75);
+            settings.upscaler = Upscaling::Bicubic;
+            settings.android_high_quality_profile_applied = true;
         }
         // Apply the persisted Vulkan choice before the GPU backend creates
         // its first Vulkan entry. The Android activity sets the paths, but
