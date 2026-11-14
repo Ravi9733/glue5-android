@@ -74,8 +74,6 @@ pub fn run() -> Result<()> {
             settings::VulkanDriver::Turnip => std::env::set_var("GLUE5_VULKAN_DRIVER", "turnip"),
         }
     }
-    #[cfg(target_os = "android")]
-    prepare_reshade(&user_dir, settings.reshade_enabled, settings.reshade_depth_capture);
     if settings.online_name.trim().is_empty() {
         settings.online_name = settings::default_online_name();
     }
@@ -220,108 +218,6 @@ pub fn run() -> Result<()> {
         }
     }
     app.run()
-}
-
-/// Prepare vkBasalt's ReShade-FX config from the selected original preset.
-/// The Vulkan layer is opt-in and is enabled before wgpu creates its instance.
-#[cfg(target_os = "android")]
-fn prepare_reshade(user_dir: &Path, enabled: bool, depth_capture: bool) {
-    unsafe {
-        std::env::remove_var("GLUE5_VULKAN_RESHADE");
-        std::env::remove_var("GLUE5_VULKAN_RESHADE_LAYER_FOUND");
-        std::env::remove_var("ENABLE_VKBASALT");
-        std::env::remove_var("VKBASALT_CONFIG_FILE");
-    }
-
-    // Confirm the packaged ARM64 Vulkan layer exists before exposing its
-    // effect manager. The Android loader searches this native library folder.
-    let layer_present = std::env::var_os("GLUE5_NATIVE_LIB_DIR")
-        .map(PathBuf::from)
-        .is_some_and(|dir| dir.join("libVkLayer_VKBASALT_post_processing.so").is_file());
-    if layer_present {
-        unsafe { std::env::set_var("GLUE5_VULKAN_RESHADE_LAYER_FOUND", "1") };
-    } else {
-        log::warn!("Android ReShade Vulkan layer is not packaged in this APK");
-    }
-
-    if !enabled {
-        return;
-    }
-
-    let root = std::env::var_os("GLUE5_RESHADE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| user_dir.join("reshade"));
-    let active_file = root.join("active-preset.txt");
-    let preset_path = match std::fs::read_to_string(&active_file) {
-        Ok(path) => PathBuf::from(path.trim()),
-        Err(error) => {
-            log::warn!("ReShade is enabled but no preset is selected: {error}");
-            return;
-        }
-    };
-    let canonical_root = match root.canonicalize() {
-        Ok(path) => path,
-        Err(error) => {
-            log::warn!("ReShade folder is unavailable: {error}");
-            return;
-        }
-    };
-    let canonical_preset = match preset_path.canonicalize() {
-        Ok(path) if path.starts_with(&canonical_root) && path.is_file() => path,
-        Ok(_) => {
-            log::warn!("ReShade preset path is outside its imported folder");
-            return;
-        }
-        Err(error) => {
-            log::warn!("Cannot read selected ReShade preset: {error}");
-            return;
-        }
-    };
-    let preset_text = match std::fs::read_to_string(&canonical_preset) {
-        Ok(text) => text,
-        Err(error) => {
-            log::warn!("Cannot read ReShade INI: {error}");
-            return;
-        }
-    };
-    let preset = glue5_gpu::reshade::Preset::parse(&preset_text);
-    let preset_dir = canonical_preset.parent().unwrap_or(&canonical_root);
-    let config = preset.to_vkbasalt_config(preset_dir, depth_capture);
-    let config_path = canonical_root.join("vkBasalt.conf");
-    if let Err(error) = std::fs::write(&config_path, config) {
-        log::warn!("Cannot write ReShade FX runtime config: {error}");
-        return;
-    }
-
-    unsafe {
-        std::env::set_var("GLUE5_VULKAN_RESHADE", "1");
-        std::env::set_var("ENABLE_VKBASALT", "1");
-        std::env::set_var("VKBASALT_CONFIG_FILE", config_path.as_os_str());
-    }
-    log::info!("ReShade preset loaded for vkBasalt: {}", canonical_preset.display());
-}
-
-/// Change one effect in the generated vkBasalt config, leaving the original INI intact.
-/// vkBasalt's Android port watches this file and re-records its effect chain live.
-fn update_reshade_effect(effect: &str, enabled: bool, depth_capture: bool) -> Result<()> {
-    let root = std::env::var_os("GLUE5_RESHADE_DIR")
-        .map(PathBuf::from)
-        .ok_or_else(|| anyhow!("ReShade folder is unavailable"))?;
-    let canonical_root = root.canonicalize()?;
-    let active = std::fs::read_to_string(canonical_root.join("active-preset.txt"))?;
-    let preset_path = PathBuf::from(active.trim()).canonicalize()?;
-    anyhow::ensure!(preset_path.starts_with(&canonical_root), "ReShade preset path is outside its imported folder");
-    let source = std::fs::read_to_string(&preset_path)?;
-    let mut preset = glue5_gpu::reshade::Preset::parse(&source);
-    anyhow::ensure!(
-        preset.sections.keys().any(|section| section.eq_ignore_ascii_case(effect)),
-        "ReShade effect section was not found in the selected INI"
-    );
-    preset.techniques.insert(effect.to_owned(), enabled);
-    let preset_dir = preset_path.parent().unwrap_or(&canonical_root);
-    let config = preset.to_vkbasalt_config(preset_dir, depth_capture);
-    std::fs::write(canonical_root.join("vkBasalt.conf"), config)?;
-    Ok(())
 }
 
 /// The command line (desktop): `glue5 [--play] [game folder]`; the start
@@ -574,11 +470,6 @@ impl App {
             return false;
         }
         if let Event::FingerDown { x, y, .. } = event {
-            // The dedicated ReShade button opens its manager over the game.
-            if !self.ui.is_open() && self.ui.reshade_hit(x, y, &self.window) {
-                self.ui.open_reshade();
-                return false;
-            }
             // The settings button takes its finger before the touch controls
             // see it (or they would show, taking pad 0 from a controller).
             if !self.ui.is_open() && self.ui.gear_hit(x, y, &self.window) {
@@ -861,24 +752,6 @@ impl App {
                             }
                         }
                         None => self.ui.note("Android app storage path is unavailable"),
-                    }
-                }
-                Action::ImportReshadeArchive => {
-                    match std::env::var_os("GLUE5_APP_FILES_DIR") {
-                        Some(directory) => {
-                            let request = PathBuf::from(directory).join("reshade-import-request");
-                            match std::fs::write(request, b"1") {
-                                Ok(()) => self.ui.note("Choose the original ReShade preset ZIP…"),
-                                Err(e) => self.ui.note(format!("Cannot request ReShade ZIP picker: {e}")),
-                            }
-                        }
-                        None => self.ui.note("Android app storage path is unavailable"),
-                    }
-                }
-                Action::SetReshadeEffect { effect, enabled } => {
-                    match update_reshade_effect(&effect, enabled, self.settings.reshade_depth_capture) {
-                        Ok(()) => self.ui.note(format!("{} {}", if enabled { "Enabled" } else { "Disabled" }, effect)),
-                        Err(error) => self.ui.note(format!("Cannot update ReShade effect: {error}")),
                     }
                 }
                 Action::ClearGraphicsMods => {
