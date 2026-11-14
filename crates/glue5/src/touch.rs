@@ -1043,7 +1043,7 @@ impl Touch {
         let mut out: Vec<Rect> = self.buttons().iter().map(Button::rect).collect();
         if self.has_stick() {
             let reach = if self.sprints() { SPRINT_REACH } else { 1.0 };
-            out.push(circle(self.pos(MOVE_REST), self.stick_radius() * reach));
+            out.push(circle(self.move_rest(), self.stick_radius() * reach));
         }
         out
     }
@@ -1084,7 +1084,7 @@ impl Touch {
             // The movement pad is anchored to its on-screen home position.
             // Only the inner thumb position moves; the base never follows a
             // finger, matching a fixed mobile joystick.
-            let origin = self.pos(MOVE_REST);
+            let origin = self.move_rest();
             Finger::Move { origin, at: origin }
         } else if left && self.is(SCRIPTED) {
             Finger::Move { origin: p, at: p }
@@ -1098,7 +1098,7 @@ impl Touch {
     /// Over play, a script's menu with its cursor takes a finger off the
     /// controls (and off the stick where it rests).
     fn takes_mouse(&self, p: Pos2) -> bool {
-        let stick = self.has_stick() && p.distance(self.pos(MOVE_REST)) <= FOLLOW_REACH * self.stick_radius();
+        let stick = self.has_stick() && p.distance(self.move_rest()) <= FOLLOW_REACH * self.stick_radius();
         !stick && !self.buttons().iter().any(|b| b.hit(p))
     }
 
@@ -1442,7 +1442,7 @@ impl Touch {
             self.draw_button(painter, &look, b, held);
         }
         // The sticks held, or at rest (on foot, with its sprint ring).
-        let rest = self.has_stick().then(|| self.pos(MOVE_REST));
+        let rest = self.has_stick().then(|| self.move_rest());
         let mut moved = false;
         for f in self.fingers.values() {
             match *f {
