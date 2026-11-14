@@ -979,6 +979,9 @@ impl Gpu {
     /// hundreds of decodes at once, hundreds of milliseconds on a phone).
     /// A texture's regions go in the order they came.
     fn finish_decodes(&mut self) {
+        let started = Instant::now();
+        let mut waited = Duration::ZERO;
+        let mut waited_textures = 0usize;
         let mut later: Vec<Decode> = Vec::new();
         for d in std::mem::take(&mut self.decodes) {
             let Some(t) = self.objs.tex(d.id).filter(|t| t.tex == d.texture) else {
@@ -988,7 +991,11 @@ impl Gpu {
             let texels = if later.iter().any(|l| l.texture == d.texture) {
                 None
             } else if used_now {
-                let Ok(texels) = d.data.recv() else { continue };
+                let waiting = Instant::now();
+                let received = d.data.recv();
+                waited += waiting.elapsed();
+                waited_textures += 1;
+                let Ok(texels) = received else { continue };
                 Some(texels)
             } else {
                 match d.data.try_recv() {
@@ -1009,7 +1016,18 @@ impl Gpu {
             };
             self.uploads.texture(target, &texels, d.bpr, d.src_rows, d.rows, d.extent, d.row_bytes);
         }
+        let pending = later.len();
         self.decodes = later;
+        // Keep diagnostics quiet during normal streaming. A frame that blocks
+        // on CPU BCn decode, or a large decode backlog, is a likely source of
+        // visible texture pop-in and frame pacing spikes on mobile Vulkan.
+        if waited >= Duration::from_millis(8) || pending >= 64 {
+            log::warn!(
+                "texture streaming: waited {:.1} ms for {waited_textures} in-use decode(s); {pending} decode(s) still pending; pass took {:.1} ms",
+                waited.as_secs_f64() * 1000.0,
+                started.elapsed().as_secs_f64() * 1000.0,
+            );
+        }
     }
 
     fn create_shader(&mut self, c: &Command) {
