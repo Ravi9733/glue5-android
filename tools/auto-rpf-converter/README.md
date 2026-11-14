@@ -1,40 +1,69 @@
 # GTA V PC RPF to Android RPF Converter
 
-Android ARM64 converter prototype for unencrypted GTA V RPF7 archives. It extracts an archive, converts supported GTA V Enhanced (Gen9) resources to Legacy resource layouts, and builds a new unencrypted RPF7 container. The original PC archive is never modified.
+Android ARM64 conversion prototype for GTA V RPF7 archives. It extracts a selected archive or recursively discovers RPF files in a selected GTA V folder, converts supported Enhanced (Gen9) resources to the Legacy resource layouts used by the classic PC edition, and builds new OPEN RPF7 archives. Original PC archives are never modified.
 
 ## Current supported pipeline
 
-1. Select one .rpf archive and an output folder, or select a GTA V folder and run bulk conversion of up to 500 on-disk .rpf files. Bulk output mirrors the source folder path and preserves the original `.rpf` filename exactly, so existing DLC path references can still match when the output tree is overlaid in the same layout. Folder discovery is capped at 250,000 entries. Use a separate, preferably empty output folder; an existing output filename is rejected rather than silently renamed or overwritten.
-2. Extract OPEN archives without keys, or AES/NG archives only after importing matching key files from the user's own GTA V installation. The pinned ragekit RPF reader decrypts and extracts archive entries; without matching keys, encrypted archives fail closed.
-3. Convert Gen9 resources to Legacy with the pinned ragekit v0.3.1 C++ library:
-   - .ytd texture dictionaries (Gen9 version 5 to Legacy version 13)
-   - .ydr drawables and .ydd drawable dictionaries (Gen9 versions 154/159 to Legacy version 165)
-   - .yft fragments (Gen9 version 171 to Legacy version 162)
-   - .ypt particle dictionaries (Gen9 version 71 to Legacy version 68)
-4. Preserve already-Legacy versions byte-for-byte and leave other file types unchanged.
-5. Rebuild a new, unencrypted RPF7 archive with rage-rpf; validate the generated archive with both RPF parsers.
+1. Select one .rpf archive and an output folder, or select a GTA V folder and bulk-process up to 500 on-disk RPF files. Folder discovery is capped at 250,000 items. Bulk output mirrors the original relative folder paths and preserves each .rpf basename, so existing DLC path references can still match when the output tree is overlaid at the same relative location. Use an empty output folder; existing output filenames are rejected rather than renamed or overwritten.
+2. Extract RPF7 archives with the pinned ragekit reader. OPEN/None archives need no keys. AES and NG archives are attempted only when the matching key material is imported from the user's own installation; missing or invalid keys cause extraction to fail. No key is bundled, guessed, uploaded or bypassed.
+3. Convert Enhanced Gen9 resources to Legacy with the pinned ragekit v0.3.1 C++ library:
+   - .ytd texture dictionaries: Gen9 version 5 to Legacy version 13
+   - .ydr drawables and .ydd drawable dictionaries: Gen9 version 159 (and the CodeWalker-compatible 154 variant) to Legacy version 165
+   - .yft fragments: Gen9 version 171 to Legacy version 162
+   - .ypt particle dictionaries: Gen9 version 71 to Legacy version 68
+4. Parse and serialize .ybn, .ymap and .ytyp resources with ragekit. These formats are edition-independent in the upstream Gen9 format documentation; they are not counted as Gen9-to-Legacy conversions. The converter reports them separately.
+5. Preserve already-Legacy versions byte-for-byte. Unsupported extensions such as .ysc, .awc, .rel, .dat, PSO/meta and other files are preserved unchanged and are never reported as converted.
+6. Rebuild a new OPEN RPF7 archive with ragekit's RpfBuilder::save file-streaming writer. The output is reopened with the RPF reader and checked for OPEN encryption and the expected file-entry count. RSC7 resources are written as resource entries with their page flags; nested .rpf files are stored as uncompressed binary entries.
 
-## Important limitations
+## Nested RPF and DLC layout
 
-This is not yet a universal PC-to-Android converter and is not yet verified against Glue5's runtime.
+- Nested .rpf entries are recursively extracted, converted and rebuilt up to depth 8, with at most 500 nested archives per top-level archive. The rebuilt nested archive is put back under the same internal filename and path.
+- The RAGEKIT writer stores nested .rpf binary entries without deflate compression and uses the RPF7 32-bit uncompressed-size field. A nested RPF larger than 16 MiB is supported; the current aggregate loose-file input limit still applies.
+- Bulk output mirrors the selected folder's relative paths. For example, dlcpacks/dyfurai/dlc.rpf is emitted as dlcpacks/dyfurai/dlc.rpf under the selected output folder. The converter does not rename dlc.rpf or other referenced archives.
+- dlclist.xml and setup2.xml are not edited. Preserving the existing path and filename avoids breaking references, but DLC registration, load order and runtime mounting still depend on the target Android port.
 
-- Gen9-to-Legacy conversion is attempted only for .ytd, .ydr, .ydd, .yft and .ypt. A resource that fails parsing or conversion stops that archive; it is not silently copied as if converted.
-- .ybn, map/meta, audio, scripts, configuration and other formats are not rewritten. Some GTA V Legacy/Enhanced formats are edition-independent, but this does not establish compatibility with every Android port.
-- Nested RPF file entries are recursively extracted, converted and rebuilt up to depth 8 and 500 nested files. The pinned ragekit RPF7 writer stores nested `.rpf` binary entries uncompressed with a 32-bit uncompressed-size field, so nested archives are no longer restricted to 16 MiB; the aggregate 512 MiB input and 1 GiB output limits still apply.
-- RPF7 output is structurally validated; preserving archive filenames and relative folders helps retain DLC paths, but `dlclist.xml` / `setup2.xml` are not rewritten and runtime mounting, DLC registration, load order, and Glue5 in-game asset compatibility are not yet validated.
-- Bulk conversion processes .rpf files visible in the selected Android folder tree and recursively rebuilds nested RPF file entries that fit the 16 MiB RPF7 binary-entry limit.
-- Bulk mode is limited to 500 on-disk RPF files and 1 GiB per input archive. Resource conversion enforces 512 MiB per supported asset, 8 GiB total extracted/scanned input and one million files. Because the current RPF7 writer buffers its input and output in memory, each rebuilt archive is capped at 512 MiB of aggregate loose-file input and 1 GiB of generated archive bytes; larger archives fail safely instead of risking an Android out-of-memory crash.
-- The app can import recognized key files from a user-selected folder into app-private storage: `gtav_aes_key.dat`, `gtav_ng_key.dat`, `gtav_ng_decrypt_tables.dat`, `gtav_hash_lut.dat`, and optional `gtav_awc_key.dat`. AES archives require the matching 32-byte AES key; NG archives require the complete matching NG keys, decrypt tables and hash LUT. No key is bundled, uploaded, guessed or bypassed. The app does not yet generate keys from `GTA5.exe` + `magic.dat`; the user must supply valid matching key files.
-- The C++ conversion, keyed extraction and OPEN RPF7 writer are pinned to RatPrez/ragekit commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b (v0.3.1). The output is re-opened with the same pinned RPF reader before it is accepted. Its Gen9 conversion work is documented at https://github.com/RatPrez/ragekit/blob/v0.3.1/docs/enhanced.md.
-- Physical Android and Glue5 in-game tests are still required.
+## Key import
 
-## Safety
+The app can import recognized key files from a user-selected folder into app-private storage:
 
-- Source PC RPF archives are read-only; all extraction and conversion happens in app cache and a separate output folder.
-- Imported key files stay in the app-private files directory and are not included in the APK or shared with the converter's GitHub repository.
-- Symlinks, oversized supported resources and excessive directory workloads are rejected.
-- Keep a backup and ensure enough free storage for the extracted tree and rebuilt RPF.
+| File | Required size |
+|---|---:|
+| gtav_aes_key.dat | 32 bytes |
+| gtav_ng_key.dat | 101 × 272 bytes |
+| gtav_ng_decrypt_tables.dat | 17 × 16 × 256 × 4 bytes |
+| gtav_hash_lut.dat | 256 bytes |
+| gtav_awc_key.dat | 16 bytes |
 
-## Build
+AES archives require the matching AES key. NG archives require all NG keys, decrypt tables and the hash LUT. The app does not generate keys from GTA5.exe plus magic.dat; users must provide matching key files. Imported files remain in app-private storage.
 
-GitHub Actions runs Rust archive tests (including nested RPF and RSC7 resource-entry round trips), host C++ synthetic Gen9-to-Legacy conversion tests for YTD/YDR/YDD/YFT/YPT plus parse/rebuild tests for YBN/YMAP/YTYP, an AES-keyed RPF extraction fixture, a >16 MiB nested RPF7 round trip and an Android ARM64 debug APK build. These are synthetic fixtures, not a test against a complete retail GTA V installation; a successful build does not prove Glue5 runtime compatibility.
+## Safety and resource limits
+
+- Source PC archives are read-only; extraction and conversion run in app-private cache, then write a separate output archive.
+- RPF input archives are limited to 1 GiB; individual extracted entries/resources are limited to 512 MiB; extracted output is limited to 8 GiB per archive.
+- The converter scans at most one million extracted files and 8 GiB of asset data. Supported resources are limited to 512 MiB each.
+- The RPF7 builder buffers source file contents in memory, so aggregate loose-file input is limited to 512 MiB per output archive and generated RPF output to 1 GiB. The writer now streams the completed archive to disk instead of building a second archive-sized output buffer, but large individual files can still require an additional temporary buffer.
+- Symlinks, path traversal, absolute/drive-qualified paths, duplicate case-insensitive extracted paths, oversized inputs and output collisions are rejected. Failed nested archives are preserved and reported as skipped; they are not claimed as converted.
+- Ensure sufficient free storage for the temporary extracted tree and the rebuilt output.
+
+## Compatibility status and remaining work
+
+This is not a universal PC-to-Android converter and is not yet validated against Glue5's runtime. It produces Legacy-format RSC7 assets inside a structurally validated RPF7 archive. A successful parse/build does not prove that a specific Android port mounts the archive, supports the same shader/material features, loads the DLC metadata or accepts every asset.
+
+The supported Gen9-to-Legacy transformations are limited to YTD/YDR/YDD/YFT/YPT. YBN/YMAP/YTYP are parsed and serialized because their layouts are edition-independent. Audio, scripts, other metadata and unsupported resources remain unchanged. Real retail Enhanced/Legacy fixture coverage, large DLC validation, Android device testing and Glue5 in-game loading tests are still required.
+
+## Pinned upstream implementation
+
+The C++ conversion, keyed RPF extraction and OPEN RPF7 writer use RatPrez/ragekit v0.3.1, commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b. The pin matches the upstream v0.3.1 tag. Its Gen9 layout and conversion behavior are documented in [ragekit's Enhanced format notes](https://github.com/RatPrez/ragekit/blob/v0.3.1/docs/enhanced.md), and its RPF7 reader/writer API is in [ragekit's RPF header](https://github.com/RatPrez/ragekit/blob/v0.3.1/include/ragekit/rpf.h).
+
+## Tests and build
+
+GitHub Actions runs:
+- Rust native-core unit tests (legacy prototype)
+- Host C++ tests for Gen9-to-Legacy YTD/YDR/YDD/YFT/YPT conversion and Legacy pass-through
+- YBN/YMAP/YTYP parse/serialize tests
+- An end-to-end folder-convert-to-OPEN-RPF7 integration test covering all supported resource families and unchanged files
+- Synthetic AES-keyed RPF extraction and missing-key rejection
+- A nested RPF7 round-trip larger than 16 MiB
+- Android ARM64 debug APK build
+
+Fixtures are synthetic, not a full retail GTA V installation. Physical Android and Glue5 in-game tests have not been completed.
