@@ -73,24 +73,23 @@ std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std:
     // so malformed data is rejected and the semantic structures are rebuilt, not renamed.
     if (ext == "ybn") {
         if (resource.version != 43) throw std::runtime_error("YBN has unsupported RSC7 resource version " + std::to_string(resource.version));
-        auto bound = rk::read_ybn(input);
-        auto output = rk::write_ybn(*bound);
+        (void)rk::read_ybn(input);
         ++stats.validated_ybn;
-        return output;
+        // YBN is edition-independent. Validate it, then preserve the original bytes to
+        // avoid quantization or BVH reordering from an unnecessary serialize cycle.
+        return {input.begin(), input.end()};
     }
     if (ext == "ymap") {
         if (resource.version != 2) throw std::runtime_error("YMAP has unsupported RSC7 resource version " + std::to_string(resource.version));
-        auto map = rk::read_ymap(input);
-        auto output = rk::write_ymap(map);
-        ++stats.rebuilt_ymap;
-        return output;
+        (void)rk::read_ymap(input);
+        ++stats.validated_ymap;
+        return {input.begin(), input.end()};
     }
     if (ext == "ytyp") {
         if (resource.version != 2) throw std::runtime_error("YTYP has unsupported RSC7 resource version " + std::to_string(resource.version));
-        auto types = rk::read_ytyp(input);
-        auto output = rk::write_ytyp(types);
-        ++stats.rebuilt_ytyp;
-        return output;
+        (void)rk::read_ytyp(input);
+        ++stats.validated_ytyp;
+        return {input.begin(), input.end()};
     }
     if (resource.version == legacy_version(ext)) {
         ++stats.already_legacy;
@@ -127,6 +126,12 @@ std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std:
     }
     if (ext == "ypt") {
         auto particles = rk::read_ypt(input);
+        for (const auto& block : particles.blocks()) {
+            if (block->type == rk::PtxType::Behaviour &&
+                block->get<std::uint32_t>(8) == 0x843768CFu) {
+                throw std::runtime_error("YPT contains the Enhanced-only ptfx_g9 behaviour; Legacy conversion is unsafe");
+            }
+        }
         auto output = rk::write_ypt(particles, rk::Game::Legacy);
         ++stats.converted_ypt;
         return output;
@@ -193,9 +198,9 @@ std::string convert_directory(const fs::path& root) {
            ", YDD=" + std::to_string(stats.converted_ydd) +
            ", YFT=" + std::to_string(stats.converted_yft) +
            ", YPT=" + std::to_string(stats.converted_ypt) + "\n"
-           "Edition-independent resources parsed/rebuilt: YBN=" + std::to_string(stats.validated_ybn) +
-           ", YMAP=" + std::to_string(stats.rebuilt_ymap) +
-           ", YTYP=" + std::to_string(stats.rebuilt_ytyp) + "\n"
+           "Edition-independent resources validated and preserved: YBN=" + std::to_string(stats.validated_ybn) +
+           ", YMAP=" + std::to_string(stats.validated_ymap) +
+           ", YTYP=" + std::to_string(stats.validated_ytyp) + "\n"
            "Already Legacy resources: " + std::to_string(stats.already_legacy) + "\n"
            "Other files preserved unchanged: " + std::to_string(stats.unchanged_other) + "\n"
            "Scanned bytes: " + std::to_string(stats.bytes_scanned) + "\n"
