@@ -27,11 +27,13 @@ pub fn start(subsystem: &sdl3::AudioSubsystem, out: AudioOut) -> Result<Audio> {
         channels: Some(CHANNELS as i32),
         format: Some(AudioFormat::f32_sys()),
     };
-    // Use a moderate callback period on Android: 256 frames can be starved
-    // when the game is compiling pipelines or streaming world assets. 512
-    // frames gives the audio thread more scheduling headroom without the
-    // large latency of SDL's usual ~1024-frame period.
-    sdl3::hint::set("SDL_AUDIO_DEVICE_SAMPLE_FRAMES", "512");
+    // Android can starve a 512-frame callback during shader compilation
+    // and world streaming. A 1024-frame period gives the audio thread more
+    // scheduling headroom; desktop keeps the lower-latency 512-frame period.
+    sdl3::hint::set(
+        "SDL_AUDIO_DEVICE_SAMPLE_FRAMES",
+        if cfg!(target_os = "android") { "1024" } else { "512" },
+    );
     let pull = Pull { out, buf: Vec::new(), frames: 0, mixed: 0, calls: 0, peak: 0.0, last_log: Instant::now() };
     let stream = subsystem.open_playback_stream(&spec, pull).map_err(|e| anyhow!("SDL audio: {e}"))?;
     stream.resume().map_err(|e| anyhow!("SDL audio: {e}"))?;
