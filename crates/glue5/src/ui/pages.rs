@@ -750,36 +750,6 @@ pub(super) fn settings_page(
     })
 }
 
-/// Discover additional installed FX files without following symlinks.
-fn discover_unreferenced_reshade_effects(
-    directory: &std::path::Path,
-    referenced: &[glue5_gpu::reshade::EffectFile],
-) -> Vec<std::path::PathBuf> {
-    fn visit(directory: &std::path::Path, output: &mut Vec<std::path::PathBuf>) {
-        let Ok(entries) = std::fs::read_dir(directory) else { return };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Ok(kind) = entry.file_type() else { continue };
-            if kind.is_dir() {
-                visit(&path, output);
-            } else if kind.is_file()
-                && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("fx"))
-            {
-                output.push(path);
-            }
-        }
-    }
-
-    let mut discovered = Vec::new();
-    visit(directory, &mut discovered);
-    discovered.retain(|path| {
-        let candidate = path.to_string_lossy().to_lowercase();
-        !referenced.iter().any(|effect| effect.path.to_string_lossy().to_lowercase() == candidate)
-    });
-    discovered.sort();
-    discovered
-}
-
 /// A window over the start page or the game, centred in the safe area: a
 /// title and a close button, then what `add` adds, scrolling. True when
 /// closed.
