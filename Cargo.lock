@@ -944,6 +944,7 @@ dependencies = [
  "glue5-gpu",
  "glue5-mods",
  "glue5-runtime",
+ "glue5-scripthook",
  "glue5-stream",
  "log",
  "mimalloc",
@@ -1011,6 +1012,7 @@ dependencies = [
  "getrandom 0.4.3",
  "glue5-game",
  "glue5-runtime",
+ "glue5-scripthook",
  "httparse",
  "log",
  "mlua",
@@ -1036,6 +1038,16 @@ dependencies = [
  "sha2",
  "snow",
  "windows-sys",
+]
+
+[[package]]
+name = "glue5-scripthook"
+version = "0.1.0"
+dependencies = [
+ "glue5-game",
+ "glue5-runtime",
+ "libloading",
+ "log",
 ]
 
 [[package]]

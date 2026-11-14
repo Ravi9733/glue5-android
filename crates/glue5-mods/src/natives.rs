@@ -93,6 +93,16 @@ pub fn reserved_handler(name: &str) -> Option<u64> {
     RESERVED.iter().find(|(n, _)| *n == name).map(|&(_, h)| h)
 }
 
+/// Resolves a GTA native hash to this game build's handler table index.
+pub fn handler_by_hash(hash: u64) -> Option<u64> {
+    NATIVES.iter().find(|native| native.hash == hash).map(|native| native.handler)
+}
+
+/// Finds the generated native metadata entry for a hash in this game build.
+pub fn by_hash(hash: u64) -> Option<&'static Native> {
+    NATIVES.iter().find(|native| native.hash == hash)
+}
+
 /// The native `lua` of namespace `ns` (NATIVES is sorted by both).
 pub fn find(ns: usize, lua: &str) -> Option<usize> {
     let ns = ns as u16;
@@ -161,6 +171,20 @@ fn type_name(t: u8) -> &'static str {
         4 => "Ped",
         5 => "Object",
         _ => "Entity",
+    }
+}
+
+/// Returns the validated kind of a live script entity handle.
+///
+/// # Safety
+/// `env` must be the active game environment on the script thread.
+pub unsafe fn entity_handle_kind(env: *mut Env, handle: i32) -> Option<Handle> {
+    let mem = unsafe { Mem::of(env) };
+    match entity_type(mem, handle)? {
+        3 => Some(Handle::Vehicle),
+        4 => Some(Handle::Ped),
+        5 => Some(Handle::Object),
+        _ => Some(Handle::Entity),
     }
 }
 

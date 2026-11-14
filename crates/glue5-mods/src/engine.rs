@@ -78,6 +78,7 @@ thread_local! {
 }
 
 unsafe extern "C" fn script_wait(env: *mut Env, info: u64) {
+    unsafe { glue5_runtime::dispatch_script_wait_callbacks(env, info) };
     let killed = ENGINE.with(|engine| {
         // A mod's native that waits would come back here: not for us then.
         let Ok(mut engine) = engine.try_borrow_mut() else { return false };

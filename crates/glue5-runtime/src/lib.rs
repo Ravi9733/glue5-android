@@ -217,6 +217,26 @@ static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 /// runtime's own modules have set theirs.
 static EXTRA_HOOKS: Mutex<Vec<fn(&mut glue5_game::Hooks)>> = Mutex::new(Vec::new());
 
+/// Script-thread callbacks shared by independent runtime integrations.
+/// This keeps the mods engine decoupled from the native ScriptHook host.
+pub type ScriptWaitCallback = unsafe fn(*mut glue5_game::Env, u64);
+static SCRIPT_WAIT_CALLBACKS: Mutex<Vec<ScriptWaitCallback>> = Mutex::new(Vec::new());
+
+pub fn add_script_wait_callback(callback: ScriptWaitCallback) {
+    let mut callbacks = SCRIPT_WAIT_CALLBACKS.lock().unwrap();
+    if !callbacks.iter().any(|registered| std::ptr::fn_addr_eq(*registered, callback)) {
+        callbacks.push(callback);
+    }
+}
+
+/// Dispatch callbacks from the active game's WAIT hook.
+pub unsafe fn dispatch_script_wait_callbacks(env: *mut glue5_game::Env, info: u64) {
+    let callbacks = SCRIPT_WAIT_CALLBACKS.lock().map(|items| items.clone()).unwrap_or_default();
+    for callback in callbacks {
+        unsafe { callback(env, info); }
+    }
+}
+
 /// Has `set` set its hooks when the game starts. Call before [`start`].
 pub fn add_hooks(set: fn(&mut glue5_game::Hooks)) {
     EXTRA_HOOKS.lock().unwrap().push(set);

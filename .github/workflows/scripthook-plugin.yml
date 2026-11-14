@@ -1,0 +1,51 @@
+name: ScriptHook Android plugin sample
+
+on:
+  pull_request:
+    paths:
+      - "crates/glue5-scripthook/**"
+      - ".github/workflows/scripthook-plugin.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm64-sample:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Android command-line tools and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="$RUNNER_TEMP/android-sdk"
+          TOOLS_ZIP="$RUNNER_TEMP/android-commandlinetools.zip"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl --fail --location --retry 3 \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+            --output "$TOOLS_ZIP"
+          unzip -q "$TOOLS_ZIP" -d "$SDK_ROOT/cmdline-tools"
+          mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" "ndk;27.2.12479018"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Build native plugin sample
+        working-directory: crates/glue5-scripthook/examples/native-plugin
+        env:
+          ANDROID_API_LEVEL: "29"
+        run: bash ./build.sh
+
+      - name: Upload sample plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: glue5-scripthook-sample-arm64-v8a
+          path: crates/glue5-scripthook/examples/native-plugin/build/arm64-v8a/sample.so
+          if-no-files-found: error

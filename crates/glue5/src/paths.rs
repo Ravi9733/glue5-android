@@ -1,14 +1,8 @@
 //! Where things are, per platform.
 //!
-//! - The user directory (settings, saves, caches) is SDL's per-user
-//!   application directory: `~/Library/Application Support/glue5` on macOS,
-//!   `~/.local/share/glue5` on Linux, `%APPDATA%\glue5` on Windows, the app's
-//!   sandbox on iOS and Android.
-//! - The game (`b/<build>/` and `data/`, ~21 GB) is never part of the app: it
-//!   is wherever the user put it. Mobile defaults are user-visible places
-//!   (iOS: the app's Documents, through Finder or Files; Android: the app's
-//!   external files directory). The Apple TV has none: it keeps only caches
-//!   the system may empty, and the game always streams from a server.
+//! The user directory (settings, saves, caches) remains SDL's per-user
+//! application directory. The large game install is separate and user-visible:
+//! Android uses Documents/Glue5/game, not Android/data.
 
 use std::path::{Path, PathBuf};
 
@@ -30,6 +24,16 @@ pub fn user_dir() -> Result<PathBuf> {
     sdl3::filesystem::get_pref_path("", "glue5").map_err(|e| anyhow::anyhow!("no user directory: {e}"))
 }
 
+/// Android's shared Documents location. Access is granted by the
+/// MANAGE_EXTERNAL_STORAGE special permission (see Glue5Activity).
+#[cfg(target_os = "android")]
+fn android_documents_dir() -> PathBuf {
+    let storage = std::env::var_os("EXTERNAL_STORAGE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/storage/emulated/0"));
+    storage.join("Documents").join("Glue5")
+}
+
 /// Where the game is looked for when nothing says otherwise.
 pub fn default_game_dirs() -> Vec<PathBuf> {
     if TV {
@@ -42,12 +46,14 @@ pub fn default_game_dirs() -> Vec<PathBuf> {
         }
     } else if cfg!(target_os = "android") {
         #[cfg(target_os = "android")]
-        if let Some(ext) = android_external_dir() {
-            dirs.push(ext.join("game"));
+        {
+            // Game files live only in shared, visible storage. Do not
+            // silently fall back to Android/data: users should move the game
+            // folder to Documents/Glue5/game so file managers can access it.
+            dirs.push(android_documents_dir().join("game"));
         }
     } else {
         // A distributed Mac app can sit beside an external game directory.
-        // SDL's base path is inside the bundle, not beside the .app.
         #[cfg(target_os = "macos")]
         if let Ok(exe) = std::env::current_exe()
             && let Some(bundle) = exe.parent().and_then(Path::parent).and_then(Path::parent)
@@ -56,16 +62,12 @@ pub fn default_game_dirs() -> Vec<PathBuf> {
         {
             dirs.push(parent.join("game"));
         }
-        // Likewise beside an AppImage: the executable runs from where it is
-        // mounted, a temporary directory; its runtime says where it is.
         #[cfg(target_os = "linux")]
         if let Some(appimage) = std::env::var_os("APPIMAGE").map(PathBuf::from)
             && let Some(parent) = appimage.parent()
         {
             dirs.push(parent.join("game"));
         }
-        // Next to the executable, the repository's ./game (target/<profile>/glue5),
-        // and the working directory.
         if let Ok(base) = sdl3::filesystem::get_base_path() {
             dirs.push(base.join("game"));
             dirs.push(base.join("../../game"));
@@ -82,11 +84,8 @@ fn android_external_dir() -> Option<PathBuf> {
 }
 
 /// The app's cache folder: what can be fetched again (the stream's copy of
-/// the game, the packs this computer shares). iOS and tvOS may empty it
-/// while the app is not running; the stream then fetches again.
+/// the game, the packs this computer shares).
 pub fn cache_dir(user_dir: &Path) -> PathBuf {
-    // SDL's user directory there is Library/Application Support/glue5 (on
-    // tvOS Library/Caches/glue5, which is this one).
     #[cfg(any(target_os = "ios", target_os = "tvos"))]
     if let Some(library) = user_dir.parent().and_then(Path::parent) {
         return library.join("Caches").join("glue5");
@@ -118,12 +117,15 @@ pub fn stream_copy(user_dir: &Path) -> PathBuf {
     cache_dir(user_dir).join("stream").join(glue5_runtime::GAME_BUILD)
 }
 
-/// Where the whole game goes when it is downloaded from a server: where a
-/// copied game would be (`Documents/game`, the external files' `game`, the
-/// user directory's `game` on desktop). None on tvOS, which keeps nothing.
+/// Where the whole game goes when it is downloaded from a server.
 pub fn download_dir(user_dir: &Path) -> Option<PathBuf> {
     if !can_download_all() {
         None
+    } else if cfg!(target_os = "android") {
+        #[cfg(target_os = "android")]
+        { Some(android_documents_dir().join("game")) }
+        #[cfg(not(target_os = "android"))]
+        { None }
     } else if MOBILE {
         default_game_dirs().into_iter().next()
     } else {
@@ -139,10 +141,9 @@ pub fn can_download_all() -> bool {
 /// Where the game's files go, for the start page when they are missing.
 pub fn where_the_game_goes() -> &'static str {
     if cfg!(target_os = "ios") {
-        "Copy the game folder into the app's files, named game: Finder (iPhone › Files › Glue 5) \
-         or the Files app (On My iPhone › Glue 5). This page looks again when the app comes back."
+        "Copy the game folder into the app's files, named game: Finder (iPhone › Files › Glue 5) or the Files app (On My iPhone › Glue 5)."
     } else if cfg!(target_os = "android") {
-        "Copy the game folder, named game, into Android/data/<app>/files/ on the device."
+        "Copy the complete game folder to Internal storage/Documents/Glue5/game. Allow Glue 5 access to all files in Android settings, then reopen the app."
     } else {
         "Choose the game folder, or start glue5 with its path."
     }
