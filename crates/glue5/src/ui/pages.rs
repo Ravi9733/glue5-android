@@ -726,6 +726,73 @@ fn last_failure(ui: &mut egui::Ui, why: &str, reset: bool, actions: &mut Vec<Act
     }
 }
 
+
+/// A miniature full-screen touch layout. Drag a control to reposition it;
+/// select one to adjust its individual size. Coordinates are saved normalized
+/// to the safe area, so they survive changes in display resolution.
+fn touch_layout_editor(ui: &mut egui::Ui, settings: &mut Settings) {
+    ui.add_space(8.0);
+    ui.label(RichText::new("TOUCH LAYOUT EDITOR").strong());
+    ui.label(RichText::new("Drag the circles to move controls. Tap a circle to select its size.").small().color(theme::MUTED));
+    let (screen, _) = ui.allocate_exact_size(vec2(300.0, 176.0), Sense::hover());
+    let painter = ui.painter();
+    painter.rect_filled(screen, 8.0, Color32::from_gray(24));
+    painter.rect_stroke(screen, 8.0, Stroke::new(1.0, Color32::from_gray(90)), StrokeKind::Inside);
+    let controls: [(&str, &str, f32, f32); 14] = [
+        ("__joystick", "MOVE", 0.20, 0.72),
+        ("Fire", "FIRE", 0.88, 0.67),
+        ("Aim", "AIM", 0.70, 0.69),
+        ("Jump", "JUMP", 0.88, 0.39),
+        ("Crouch", "CROUCH", 0.70, 0.39),
+        ("Enter", "ENTER", 0.70, 0.53),
+        ("Sprint", "RUN", 0.34, 0.78),
+        ("Gas", "GAS", 0.88, 0.68),
+        ("Brake", "BRAKE", 0.70, 0.42),
+        ("Exit", "EXIT", 0.70, 0.54),
+        ("H.brake", "HAND", 0.88, 0.83),
+        ("Horn", "HORN", 0.92, 0.52),
+        ("View", "VIEW", 0.43, 0.08),
+        ("☰", "MENU", 0.53, 0.08),
+    ];
+    for (key, label, dx, dy) in controls {
+        let values = settings.touch_layout.get(key).copied().unwrap_or([dx, dy, 1.0]);
+        let center = pos2(screen.left() + values[0].clamp(0.04, 0.96) * screen.width(),
+                          screen.top() + values[1].clamp(0.06, 0.94) * screen.height());
+        let radius = if key == "__joystick" { 22.0 } else { 15.0 } * values[2].clamp(0.55, 1.8);
+        let hit = Rect::from_center_size(center, vec2(radius * 2.0 + 8.0, radius * 2.0 + 8.0));
+        let response = ui.interact(hit, Id::new(("touch-layout-control", key)), Sense::click_and_drag());
+        if response.clicked() {
+            ui.ctx().data_mut(|data| data.insert_temp(Id::new("touch-layout-selected"), key.to_owned()));
+        }
+        if response.dragged() {
+            if let Some(pointer) = response.interact_pointer_pos() {
+                let x = ((pointer.x - screen.left()) / screen.width()).clamp(0.04, 0.96);
+                let y = ((pointer.y - screen.top()) / screen.height()).clamp(0.06, 0.94);
+                settings.touch_layout.insert(key.to_owned(), [x, y, values[2]]);
+            }
+        }
+        let selected = ui.ctx().data(|data| data.get_temp::<String>(Id::new("touch-layout-selected")))
+            .is_some_and(|selected| selected == key);
+        painter.circle_filled(center, radius, if selected { Color32::from_rgb(55, 125, 190) } else { Color32::from_gray(65) });
+        painter.circle_stroke(center, radius, Stroke::new(1.3, Color32::WHITE));
+        painter.text(center, egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(8.0), Color32::WHITE);
+    }
+    if let Some(key) = ui.ctx().data(|data| data.get_temp::<String>(Id::new("touch-layout-selected"))) {
+        if let Some(values) = settings.touch_layout.get_mut(&key) {
+            ui.horizontal(|ui| {
+                ui.label(format!("{key} size"));
+                slider(ui, &mut values[2], 0.55..=1.8, 0.05, "×", 2);
+            });
+        } else {
+            ui.label("Selected control size: drag first to save its position.");
+        }
+    }
+    if ui.button("Reset touch layout").clicked() {
+        settings.touch_layout.clear();
+        ui.ctx().data_mut(|data| data.remove::<String>(Id::new("touch-layout-selected")));
+    }
+}
+
 /// The settings, over the start page or the game. True when closed.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn settings_page(
@@ -1020,6 +1087,7 @@ fn settings_items(
             .on_hover_text("Auto: shown on touch screens; hidden while using a controller or keyboard");
             setting(ui, "Button Tiki layout", Control::Toggle, None, |ui| toggle(ui, &mut settings.button_tiki_layout))
                 .on_hover_text("On: alternate thumb-friendly button arrangement. Off: original Glue 5 layout.");
+            touch_layout_editor(ui, settings);
             setting(ui, "Size", Control::Slider, None, |ui| {
                 slider(ui, &mut settings.touch_size, 0.7..=1.5, 0.1, "×", 1)
             });
