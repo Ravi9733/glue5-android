@@ -91,6 +91,44 @@ int main() {
     (void)rk::read_ypt(legacy_ypt);
     require(model_stats.converted_ypt == 1, "Gen9 YPT conversion count must be one");
 
+    // A known Enhanced-only particle behaviour cannot be made safe for Legacy by
+    // changing only the YPT resource version. Build a small graph fixture and ensure
+    // the converter rejects it instead of producing a misleading Legacy file.
+    rk::ParticleDictionary enhanced_only_particles;
+    auto rule_dictionary = std::make_shared<rk::PtxBlock>();
+    rule_dictionary->type = rk::PtxType::RuleDictionary;
+    rule_dictionary->bytes.resize(0x40);
+    rule_dictionary->set<std::uint16_t>(0x38, 1);
+    rule_dictionary->set<std::uint16_t>(0x3A, 1);
+    auto particle_rule_array = std::make_shared<rk::PtxBlock>();
+    particle_rule_array->type = rk::PtxType::PointerArray;
+    particle_rule_array->bytes.resize(8);
+    auto particle_rule = std::make_shared<rk::PtxBlock>();
+    particle_rule->type = rk::PtxType::ParticleRule;
+    particle_rule->bytes.resize(0x240);
+    particle_rule->set<std::uint16_t>(0x130, 1);
+    particle_rule->set<std::uint16_t>(0x132, 1);
+    auto behaviour_array = std::make_shared<rk::PtxBlock>();
+    behaviour_array->type = rk::PtxType::PointerArray;
+    behaviour_array->bytes.resize(8);
+    auto enhanced_only_behaviour = std::make_shared<rk::PtxBlock>();
+    enhanced_only_behaviour->type = rk::PtxType::Behaviour;
+    enhanced_only_behaviour->bytes.resize(0xD0);
+    enhanced_only_behaviour->set<std::uint32_t>(8, 0x843768CFu);
+    rule_dictionary->links.push_back({0x30, particle_rule_array, 0});
+    particle_rule_array->links.push_back({0, particle_rule, 0});
+    particle_rule->links.push_back({0x128, behaviour_array, 0});
+    behaviour_array->links.push_back({0, enhanced_only_behaviour, 0});
+    enhanced_only_particles.particle_rules.dictionary = rule_dictionary;
+    const auto gen9_ypt_with_gen9_behaviour = rk::write_ypt(enhanced_only_particles, rk::Game::Enhanced);
+    bool gen9_behaviour_rejected = false;
+    try {
+        (void)gta_asset_converter::convert_asset_bytes("ypt", gen9_ypt_with_gen9_behaviour, model_stats);
+    } catch (const std::exception&) {
+        gen9_behaviour_rejected = true;
+    }
+    require(gen9_behaviour_rejected, "YPT with Enhanced-only ptfx_g9 behaviour must fail closed");
+
     // YBN/YMAP/YTYP share their RSC7 versions between Legacy and Enhanced. They are
     // parsed and rebuilt semantically instead of being incorrectly labelled Gen9 conversions.
     rk::BoundMaterial collision_material;
@@ -100,22 +138,25 @@ int main() {
     const auto gen_ybn = rk::write_ybn(*collision_bound);
     gta_asset_converter::ConversionStats map_stats;
     const auto rebuilt_ybn = gta_asset_converter::convert_asset_bytes("ybn", gen_ybn, map_stats);
-    require(rk::read_ybn(rebuilt_ybn) != nullptr, "rebuilt YBN must parse");
-    require(map_stats.validated_ybn == 1, "YBN must be parsed and rebuilt");
+    require(rk::read_ybn(rebuilt_ybn) != nullptr, "YBN must parse");
+    require(rebuilt_ybn == gen_ybn, "edition-independent YBN must be preserved byte-for-byte");
+    require(map_stats.validated_ybn == 1, "YBN must be parsed and validated");
 
     rk::MapData map_data;
     map_data.name = rk::joaat_lower("converter_test_map");
     const auto gen_ymap = rk::write_ymap(map_data);
     const auto rebuilt_ymap = gta_asset_converter::convert_asset_bytes("ymap", gen_ymap, map_stats);
     require(rk::read_ymap(rebuilt_ymap).name == map_data.name, "YMAP must retain its map name");
-    require(map_stats.rebuilt_ymap == 1, "YMAP must be parsed and rebuilt");
+    require(rebuilt_ymap == gen_ymap, "edition-independent YMAP must be preserved byte-for-byte");
+    require(map_stats.validated_ymap == 1, "YMAP must be parsed and validated");
 
     rk::MapTypes map_types;
     map_types.name = rk::joaat_lower("converter_test_types");
     const auto gen_ytyp = rk::write_ytyp(map_types);
     const auto rebuilt_ytyp = gta_asset_converter::convert_asset_bytes("ytyp", gen_ytyp, map_stats);
     require(rk::read_ytyp(rebuilt_ytyp).name == map_types.name, "YTYP must retain its dictionary name");
-    require(map_stats.rebuilt_ytyp == 1, "YTYP must be parsed and rebuilt");
+    require(rebuilt_ytyp == gen_ytyp, "edition-independent YTYP must be preserved byte-for-byte");
+    require(map_stats.validated_ytyp == 1, "YTYP must be parsed and validated");
 
     // Legacy versions are recognized and preserved byte-for-byte for all five Gen9-capable extensions.
     const auto legacy_ydr_fixture = rk::write_ydr(empty_drawable, rk::Game::Legacy);
@@ -190,7 +231,7 @@ int main() {
     require(pipeline_report.find("YBN=1") != std::string::npos &&
             pipeline_report.find("YMAP=1") != std::string::npos &&
             pipeline_report.find("YTYP=1") != std::string::npos,
-            "folder pipeline must report edition-independent resource validation/rebuilds");
+            "folder pipeline must report edition-independent resource validation");
 
     const std::string package_report = gta_asset_converter::build_open_rpf7(pipeline_root, pipeline_output);
     require(package_report.find("RPF7 build complete") == 0, "full conversion pipeline must create an RPF7 archive");
