@@ -45,6 +45,8 @@ pub struct Settings {
     pub android_performance_profile_v4_applied: bool,
     /// One-time high-quality Android profile: restore normal graphics, target 60 FPS and use bicubic reconstruction.
     pub android_high_quality_profile_applied: bool,
+    /// One-time balanced Android profile for sustained frame pacing without enabling low-memory graphics.
+    pub android_balanced_performance_profile_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -252,6 +254,7 @@ impl Default for Settings {
             android_performance_profile_v3_applied: false,
             android_performance_profile_v4_applied: false,
             android_high_quality_profile_applied: false,
+            android_balanced_performance_profile_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -365,6 +368,18 @@ impl Settings {
             settings.render_scale = Some(0.75);
             settings.upscaler = Upscaling::Bicubic;
             settings.android_high_quality_profile_applied = true;
+        }
+        // Balanced Android profile: reduce GPU pixel work and use a stable
+        // 30 FPS budget, while keeping normal game graphics settings and
+        // bicubic reconstruction (no FSR or extra blur). Applied only once.
+        #[cfg(target_os = "android")]
+        if !settings.android_balanced_performance_profile_applied {
+            settings.low_memory = false;
+            settings.low_preset_written = false;
+            settings.max_fps = 30;
+            settings.render_scale = Some(0.60);
+            settings.upscaler = Upscaling::Bicubic;
+            settings.android_balanced_performance_profile_applied = true;
         }
         // Apply the persisted Vulkan choice before the GPU backend creates
         // its first Vulkan entry. The Android activity sets the paths, but
