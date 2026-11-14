@@ -1,9 +1,10 @@
 Soft Blur Graphics — Glue5 Android
 
-Options:
+This bundled mod provides only:
 - Soft Blur ON
 - Blur OFF
 - Reset Graphics
 
-This mod uses the game's timecycle modifier API with hud_def_blur at low strength.
-The exact visual effect depends on runtime support and must be tested in-game.
+It uses GTA V's primary timecycle modifier hud_def_blur at 0.18 strength.
+It deliberately avoids the optional extra-timecycle layer so the effect can
+run on game builds that do not expose that separate native.
