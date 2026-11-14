@@ -1,17 +1,21 @@
-# Native conversion core
+# Legacy Rust native core
 
-The Android app uses two native layers:
+This Rust crate is retained as a separately tested RPF parsing/extraction and RPF7-repacking prototype. It is not the active conversion implementation used by the current Android screen.
 
-- Rust rpf-archive / rage-rpf: bounded RPF parsing, unencrypted extraction and RPF7 repacking.
-- C++ ragekit v0.3.1: Gen9-to-Legacy resource conversion for .ytd, .ydr, .ydd, .yft and .ypt.
+## Active Android pipeline
 
-The C++ library is pinned to commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b. The app invokes its JNI bridge on the extracted app-private directory before RPF7 repacking.
+The current MainActivity calls the C++ NativeAssets JNI bridge. That bridge uses RatPrez/ragekit v0.3.1 for keyed RPF7 extraction, Gen9-to-Legacy resource conversion, nested RPF rebuilding and OPEN RPF7 output. The Rust NativeRpf JNI wrapper is retained for development compatibility but is not called by the current Android activity.
 
-## Current limitations
+## Rust crate scope
 
-- Nested RPF file entries are recursively extracted and rebuilt by the Android orchestration layer, with depth 8 / 500-file caps and a 16 MiB RPF7 binary-entry ceiling. Larger nested archives fail closed.
-- The current in-memory RPF7 writer accepts at most 512 MiB aggregate loose-file input and emits at most 1 GiB per archive to keep peak memory bounded on 8 GB Android devices.
-- .ybn, map/meta, audio, scripts, configuration and other non-listed formats are not rewritten.
-- Encrypted AES/NG archives need legitimate matching key material and fail closed otherwise.
-- Repacked archives are structurally validated, but Glue5/Android runtime compatibility is not established.
-- Host C++ tests now build synthetic Gen9 YTD/YDR/YDD/YFT/YPT resources, convert each to its Legacy version, parse the outputs, and verify Legacy pass-through. Rust tests cover OPEN RPF7 repacking, RSC7 resource-header/page-flag round trips, nested archive payloads and malformed-header rejection. These are synthetic fixtures, not real retail-game fixtures; physical Android and Glue5 in-game tests remain outstanding.
+- inspect_archive: RPF metadata inspection using rpf-archive.
+- extract_archive: bounded extraction of archives accepted by the Rust parser; encrypted archives fail closed without keys.
+- build_android_rpf7: legacy prototype writer that converts Gen9 YTD only and preserves other formats unchanged.
+- Path traversal, symlink and configured size limits are checked.
+- Rust unit tests cover RPF7 output parsing, nested archive payloads, RSC7 resource flags, pack budgets and malformed paths/headers.
+
+Do not treat this crate's YTD-only conversion function as the Android app's active resource conversion path. The C++ ragekit pipeline is authoritative for the current APK.
+
+## Limitations
+
+The Rust crate does not implement nested archive orchestration, the app's AES/NG key import flow, YDR/YDD/YFT/YPT conversion, YBN/YMAP/YTYP parsing, DLC registration, or Glue5 runtime compatibility. Physical Android and Glue5 in-game tests remain outstanding.
