@@ -52,6 +52,8 @@ pub struct Settings {
     pub android_performance_profile_v5_applied: bool,
     /// One-time Android migration to restore the explicit High graphics preset.
     pub android_high_graphics_profile_applied: bool,
+    /// One-time Android tuning to reduce CPU-heavy traffic and pedestrian load.
+    pub android_smooth_world_profile_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -264,6 +266,7 @@ impl Default for Settings {
             android_balanced_performance_profile_applied: false,
             android_performance_profile_v5_applied: false,
             android_high_graphics_profile_applied: false,
+            android_smooth_world_profile_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
