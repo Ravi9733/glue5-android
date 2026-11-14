@@ -15,8 +15,8 @@ struct ConversionStats {
     std::size_t converted_yft = 0;
     std::size_t converted_ypt = 0;
     std::size_t validated_ybn = 0;
-    std::size_t rebuilt_ymap = 0;
-    std::size_t rebuilt_ytyp = 0;
+    std::size_t validated_ymap = 0;
+    std::size_t validated_ytyp = 0;
     std::size_t unchanged_other = 0;
     std::uint64_t bytes_scanned = 0;
 };
