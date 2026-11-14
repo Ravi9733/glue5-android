@@ -523,6 +523,8 @@ pub struct Touch {
     pub aim_locked: bool,
     /// Alternate Button Tiki arrangement; false preserves the built-in layout.
     button_tiki_layout: bool,
+    /// Custom positions and size multipliers, keyed by action label.
+    custom_layout: HashMap<String, [f32; 3]>,
     /// What the player is doing: the layout follows.
     context: PlayerContext,
     /// What the game asks to press, and where the phone is (points).
@@ -600,6 +602,7 @@ impl Touch {
             camera_speed: 1.0,
             aim_locked: false,
             button_tiki_layout: false,
+            custom_layout: HashMap::new(),
             context: PlayerContext {
                 activity: Activity::OnFoot,
                 vehicle_near: false,
@@ -640,6 +643,22 @@ impl Touch {
         self.screen = screen;
         self.area = area;
         self.scale = control_scale(screen, scale);
+    }
+
+    /// Apply the saved, user-editable positions and per-control sizes.
+    pub fn set_custom_layout(&mut self, layout: &HashMap<String, [f32; 3]>) {
+        if &self.custom_layout != layout {
+            self.custom_layout.clone_from(layout);
+            self.fingers.clear();
+        }
+    }
+
+    /// The movement stick's saved resting position, or its built-in position.
+    fn move_rest(&self) -> Pos2 {
+        self.custom_layout.get("__joystick").map_or_else(
+            || self.pos(MOVE_REST),
+            |v| pos2(self.area.min.x + v[0].clamp(0.0, 1.0) * self.area.width(), self.area.min.y + v[1].clamp(0.0, 1.0) * self.area.height()),
+        )
     }
 
     /// Select the alternate button arrangement without changing input bindings.
@@ -861,7 +880,11 @@ impl Touch {
                         .map_or(self.pos(a.at), |d| pos2(keys[4].x - d.x * s, self.area.max.y - d.y * s)),
                     _ => self.pos(chosen_at),
                 };
-                Button { icon, ..round(Key::Action(a), at, a) }
+                let (at, radius) = self.custom_layout.get(a.label).map_or((at, a.radius * s), |v| (
+                    pos2(self.area.min.x + v[0].clamp(0.0, 1.0) * self.area.width(), self.area.min.y + v[1].clamp(0.0, 1.0) * self.area.height()),
+                    a.radius * s * v[2].clamp(0.55, 1.8),
+                ));
+                Button { radius, icon, ..round(Key::Action(a), at, a) }
             })
             .collect();
         if phone {
