@@ -46,7 +46,7 @@ use glue5_runtime::prompts::{Pad, Prompt, SKIP_CUTSCENE};
 use crate::haptics;
 
 /// Stick travel, in points (scaled with the controls).
-const STICK_RADIUS: f32 = 56.0;
+const STICK_RADIUS: f32 = 64.0;
 /// Phones are held closer: their controls are this much smaller.
 const PHONE_SCALE: f32 = 0.82;
 /// Below this many points on its short side, a screen is a phone's.
@@ -157,7 +157,7 @@ const ICON_FILES: &[(&str, &[u8])] = icons![
     "down", "drive-special", "duck", "enter", "exit", "fire", "gas", "handbrake", "horn", "jump", "landing-gear",
     "left", "lights", "melee", "pad-a", "pad-b", "pad-lb", "pad-ls", "pad-lt", "pad-rb", "pad-rs", "pad-rt",
     "pad-x", "pad-y", "parachute", "pause", "phone", "radio", "reload", "right", "rise", "seat", "settings", "skip",
-    "special", "sprint", "switch", "throw", "up", "view", "weapons", "yaw-left", "yaw-right",
+    "special", "switch", "throw", "up", "view", "weapons", "yaw-left", "yaw-right",
     // Original gameplay icons extracted from the Android reference APK.
     "ref-aim", "ref-fire", "ref-jump", "ref-crouch", "ref-gas", "ref-brake", "ref-handbrake", "ref-horn", "ref-exit", "ref-enter",
 ];
@@ -231,7 +231,7 @@ static ON_FOOT: &[Action] = &[
     does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 32.0)),
     does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(178.0, 232.0), 30.0))),
     // A dedicated sprint target in addition to sprinting by pushing the stick.
-    does(SPRINT, action("Sprint", "sprint", button::SOUTH, At::LeftBottom(104.0, 104.0), 30.0)),
+    does(SPRINT, action("Sprint", "pad-a", button::SOUTH, At::LeftBottom(104.0, 104.0), 30.0)),
     PHONE,
     VIEW,
     PAUSE,
@@ -1437,7 +1437,7 @@ impl Touch {
             let stroke = if sprint { look.ring(true) } else { Stroke::new(look.width, look.line.gamma_multiply(0.5)) };
             painter.circle_stroke(origin, SPRINT_REACH * radius, stroke);
         }
-        painter.circle(knob, radius * 0.45, look.knob, look.stroke(origin != at));
+        painter.circle(knob, radius * 0.50, look.knob, look.stroke(origin != at));
     }
 
     /// A button: round, with its icon; ringed in the player's colour when it
