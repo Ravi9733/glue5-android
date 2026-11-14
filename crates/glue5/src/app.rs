@@ -647,7 +647,7 @@ impl App {
         self.presentation.set_vsync(self.settings.vsync);
         self.presentation.set_metal_hud(self.settings.overlay == PerfOverlay::MetalHud);
         glue5_gpu::perf::set_on(in_game && self.settings.overlay == PerfOverlay::Glue5);
-        self.presentation.set_frame_rate(self.settings.max_fps);
+        self.presentation.set_frame_rate(self.settings.max_fps.min(30));
         self.presentation.set_upscaler(upscaler(&self.settings));
         self.presentation.set_sharpness(self.settings.sharpness);
         self.presentation.set_color_boost(self.settings.light_graphics_mode);
@@ -993,7 +993,7 @@ impl App {
                 start_mode: if self.mode == Mode::Sandbox { 2 } else { 1 },
                 benchmark: self.mode == Mode::Benchmark,
                 low_memory: s.low_memory,
-                max_fps: s.max_fps,
+                max_fps: s.max_fps.min(30),
                 online: (self.mode == Mode::Online).then(|| glue5_runtime::Online {
                     name: s.online_name.trim().into(),
                     lobby: self.join.take().unwrap_or_default(),
@@ -1010,7 +1010,7 @@ impl App {
             }
         };
         let started =
-            Started { game_dir, source: self.source, max_fps: s.max_fps, low_memory: s.low_memory, mods: s.mods };
+            Started { game_dir, source: self.source, max_fps: s.max_fps.min(30), low_memory: s.low_memory, mods: s.mods };
         self.game = Some(Running { game, input: None, started, back_buffer, _audio: audio });
         self.ui.game_started();
         Ok(())
