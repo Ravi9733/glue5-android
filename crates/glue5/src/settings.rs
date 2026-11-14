@@ -30,10 +30,6 @@ pub struct Settings {
     pub light_graphics_mode: bool,
     /// Vulkan ICD selection on Android. Turnip takes effect on next launch.
     pub vulkan_driver: VulkanDriver,
-    /// Enable the app-packaged ReShade FX Vulkan post-processing layer when available.
-    pub reshade_enabled: bool,
-    /// Experimental vkBasalt depth capture for depth-based ReShade effects (RTGI/DOF).
-    pub reshade_depth_capture: bool,
     /// Whether the low-memory preset is in the game's settings (written at
     /// the first start with `low_memory`; the game's menu changes it after).
     pub low_preset_written: bool,
@@ -250,8 +246,6 @@ impl Default for Settings {
             } else {
                 VulkanDriver::System
             },
-            reshade_enabled: false,
-            reshade_depth_capture: false,
             low_preset_written: false,
             android_performance_profile_applied: false,
             android_performance_profile_v2_applied: false,
