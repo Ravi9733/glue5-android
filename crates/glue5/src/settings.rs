@@ -2,6 +2,7 @@
 //! Graphics quality is the game's (its menu, Settings › Graphics, saved in
 //! its `settings.xml`).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -270,6 +271,7 @@ impl Default for Settings {
             overlay_corner: Corner::TopLeft,
             touch: TouchMode::Auto,
             button_tiki_layout: false,
+            touch_layout: HashMap::new(),
             touch_opacity: 0.6,
             touch_size: 1.0,
             touch_camera: 1.0,
