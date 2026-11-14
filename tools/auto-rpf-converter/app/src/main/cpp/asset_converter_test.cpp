@@ -12,6 +12,10 @@ static void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
 }
 
+static std::vector<std::uint8_t> bytes_of(const std::string& value) {
+    return {value.begin(), value.end()};
+}
+
 int main() {
     require(rk::rsc::game_of("ydr", 154) == rk::Game::Enhanced, "YDR version 154 must be recognized as Gen9");
     require(rk::rsc::game_of("ydr", 159) == rk::Game::Enhanced, "YDR version 159 must be recognized as Gen9");
