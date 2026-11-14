@@ -221,6 +221,10 @@ static ON_FOOT: &[Action] = &[
     does(22, action("Jump", "ref-jump", button::WEST, At::RightBottom(76.0, 64.0), 26.0)),
     does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 26.0)),
     does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(178.0, 232.0), 25.0))),
+    // Dedicated sprint button (INPUT_SPRINT), independent of stick travel.
+    does(SPRINT, action("Sprint", "pad-a", button::SOUTH, At::LeftBottom(104.0, 104.0), 25.0)),
+    // Hold and drag to open the character wheel and choose Michael, Franklin or Trevor.
+    SWITCH,
     VIEW,
     PAUSE,
 ];
