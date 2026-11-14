@@ -50,6 +50,8 @@ pub struct Settings {
     pub android_balanced_performance_profile_applied: bool,
     /// One-time Android 50% render-scale profile targeting 40 FPS for smoother sustained play.
     pub android_performance_profile_v5_applied: bool,
+    /// One-time Android migration to restore the explicit High graphics preset.
+    pub android_high_graphics_profile_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -261,6 +263,7 @@ impl Default for Settings {
             android_high_quality_profile_applied: false,
             android_balanced_performance_profile_applied: false,
             android_performance_profile_v5_applied: false,
+            android_high_graphics_profile_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -283,7 +286,7 @@ impl Default for Settings {
             online: false,
             online_name: String::new(),
             friend_notices: true,
-            mods: false,
+            mods: cfg!(target_os = "android"),
             studio: true,
             // A phone's own browser is no place to write mods.
             studio_lan: crate::paths::MOBILE,
@@ -420,8 +423,13 @@ impl Settings {
         settings.max_fps = 30;
         settings.render_scale = Some(0.50);
         settings.upscaler = Upscaling::Bicubic;
-        settings.vsync = true;
         settings.frame_generation = false;
+        #[cfg(target_os = "android")]
+        {
+            // Never leave an old low-memory preset active on the Android build.
+            settings.low_memory = false;
+            settings.mods = true;
+        }
         settings
     }
 
