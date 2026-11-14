@@ -75,6 +75,8 @@ pub struct Settings {
     pub touch: TouchMode,
     /// Alternate Button Tiki touch-button arrangement; off preserves the original layout.
     pub button_tiki_layout: bool,
+    /// Custom normalized positions and size multipliers for touch controls.
+    pub touch_layout: HashMap<String, [f32; 3]>,
     pub touch_opacity: f32,
     pub touch_size: f32,
     /// How fast a finger's drag turns the camera.
