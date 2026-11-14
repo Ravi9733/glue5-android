@@ -158,6 +158,8 @@ const ICON_FILES: &[(&str, &[u8])] = icons![
     "left", "lights", "melee", "pad-a", "pad-b", "pad-lb", "pad-ls", "pad-lt", "pad-rb", "pad-rs", "pad-rt",
     "pad-x", "pad-y", "parachute", "pause", "phone", "radio", "reload", "right", "rise", "seat", "settings", "skip",
     "special", "switch", "throw", "up", "view", "weapons", "yaw-left", "yaw-right",
+    // Original gameplay icons extracted from the Android reference APK.
+    "ref-aim", "ref-fire", "ref-jump", "ref-crouch", "ref-gas", "ref-brake", "ref-handbrake", "ref-horn", "ref-exit",
 ];
 
 /// The icons' textures, by name.
@@ -211,41 +213,25 @@ const FOURTH: At = At::RightBottom(70.0, 262.0);
 const FIFTH: At = At::RightBottom(280.0, 50.0);
 const SIXTH: At = At::RightBottom(282.0, 128.0);
 
-/// On foot (the stick sprints past its ring).
+/// Minimal on-foot gameplay layout: movement/sprint stick on the left,
+/// essential actions on the right. Camera look remains a drag anywhere else.
 static ON_FOOT: &[Action] = &[
-    does(24, primary(turns(action("Fire", "fire", button::R2, At::RightBottom(78.0, 166.0), 34.0)))),
-    does(25, turns(action("Aim", "aim", button::L2, At::RightBottom(176.0, 104.0), 30.0))),
-    does(22, action("Jump", "jump", button::WEST, At::RightBottom(64.0, 64.0), 28.0)),
-    does(23, near_vehicle(action("Enter", "enter", button::NORTH, At::RightBottom(180.0, 214.0), 28.0))),
-    action("Melee\nReload", "melee", button::EAST, At::RightBottom(268.0, 52.0), 24.0),
-    does(44, action("Cover", "cover", button::R1, At::RightBottom(78.0, 262.0), 24.0)),
-    does(51, action("Action", "action", button::RIGHT, At::RightBottom(274.0, 136.0), 24.0)),
-    PHONE,
-    does(37, wheel(action("Weapons", "weapons", button::L1, LEFT_1, 24.0))),
-    action("Special", "special", button::L3 | button::R3, LEFT_2, 22.0),
-    does(36, action("Crouch", "crouch", button::L3, LEFT_3, 22.0)),
-    SWITCH,
-    does(58, action("Throw", "throw", button::LEFT, LEFT_5, 22.0)),
+    does(24, primary(turns(action("Fire", "ref-fire", button::R2, At::RightBottom(76.0, 166.0), 32.0)))),
+    does(25, turns(action("Aim", "ref-aim", button::L2, At::RightBottom(178.0, 150.0), 28.0))),
+    does(22, action("Jump", "ref-jump", button::WEST, At::RightBottom(76.0, 64.0), 26.0)),
+    does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 26.0)),
+    does(23, near_vehicle(action("Enter", "ref-exit", button::NORTH, At::RightBottom(178.0, 232.0), 25.0))),
     VIEW,
     PAUSE,
 ];
 
-/// Cars, motorbikes, quads, boats.
+/// Minimal car gameplay layout: pedals and essential vehicle actions.
 static CAR: &[Action] = &[
-    primary(with_phone(action("Gas", "gas", button::R2, MAIN, 36.0))),
-    with_phone(action("Brake", "brake", button::L2, SECOND, 32.0)),
-    action("Exit", "exit", button::NORTH, THIRD, 26.0),
-    with_phone(action("H.brake", "handbrake", button::R1, FOURTH, 26.0)),
-    action("Horn", "horn", button::L3, FIFTH, 22.0),
-    // Drive-by: LB aims, RB fires.
-    action("Shoot", "fire", button::L1 | button::R1, SIXTH, 22.0),
-    PHONE,
-    wheel(action("Radio", "radio", button::LEFT, LEFT_1, 24.0)),
-    action("Lights", "lights", button::RIGHT, LEFT_2, 22.0),
-    action("Behind", "behind", button::R3, LEFT_3, 22.0),
-    SWITCH,
-    // Franklin's, at the wheel.
-    action("Special", "drive-special", button::L3 | button::R3, LEFT_5, 22.0),
+    primary(with_phone(action("Gas", "ref-gas", button::R2, At::RightBottom(76.0, 154.0), 32.0))),
+    with_phone(action("Brake", "ref-brake", button::L2, At::RightBottom(178.0, 78.0), 29.0)),
+    action("Exit", "ref-exit", button::NORTH, At::RightBottom(178.0, 226.0), 25.0),
+    with_phone(action("H.brake", "ref-handbrake", button::R1, At::RightBottom(76.0, 270.0), 25.0)),
+    action("Horn", "ref-horn", button::L3, At::RightBottom(280.0, 52.0), 22.0),
     VIEW,
     PAUSE,
 ];
