@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - turnip-driver-integration
+      - turnip-high-quality-smooth
       - ios-graphics-oiv-zip-installer
     paths-ignore:
       - .github/workflows/build.yml
