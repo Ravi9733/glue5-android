@@ -1030,7 +1030,7 @@ impl Touch {
     }
 
     fn stick_radius(&self) -> f32 {
-        STICK_RADIUS * self.scale
+        STICK_RADIUS * self.scale * self.custom_layout.get("__joystick").map_or(1.0, |v| v[2].clamp(0.55, 1.8))
     }
 
     /// Where the controls shown now are (the stick where it rests, with its
