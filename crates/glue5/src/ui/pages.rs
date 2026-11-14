@@ -137,9 +137,6 @@ pub(super) fn start_page(
                 if icon_button(ui, "★", "Credits", labels).clicked() {
                     *go = Some(Some(Page::Credits));
                 }
-                if icon_button(ui, "🛠", "Mods", labels).clicked() {
-                    *go = Some(Some(Page::Mods));
-                }
                 // Asked to be friends: how many, on the button.
                 let friends = match status.friend_requests {
                     0 => "Friends".to_owned(),
@@ -933,34 +930,6 @@ fn settings_items(
                     response
                 });
             }
-            if cfg!(target_os = "android") {
-                setting(
-                    ui,
-                    "iOS graphics mod",
-                    Control::Action,
-                    Some("Import an OpenIV .oiv or graphics .zip archive"),
-                    |ui| {
-                        let response = action_button(ui, "Import OIV / ZIP");
-                        if response.clicked() {
-                            actions.push(Action::ImportGraphicsArchive);
-                        }
-                        response
-                    },
-                );
-                setting(
-                    ui,
-                    "Installed graphics mods",
-                    Control::Action,
-                    Some("Remove imported packages and restore original game files"),
-                    |ui| {
-                        let response = action_button(ui, "Remove all graphics mods");
-                        if response.clicked() {
-                            actions.push(Action::ClearGraphicsMods);
-                        }
-                        response
-                    },
-                );
-            }
             let mode = setting(
                 ui,
                 "Light graphics + natural colours",
@@ -969,21 +938,21 @@ fn settings_items(
                 |ui| toggle(ui, &mut settings.light_graphics_mode),
             )
             .on_hover_text(
-                "On: subtle colour boost, 75% render scale, Bicubic upscaling, 60 FPS cap and VSync. Off disables colour grading and restores automatic resolution and baseline upscaling. Lightweight renderer effect, not a GTA asset/shader pack.",
+                "On: subtle colour boost, 50% render scale, Bicubic upscaling and a locked 30 FPS cap. VSync stays enabled.",
             );
             if mode.changed() {
                 if settings.light_graphics_mode {
-                    settings.render_scale = Some(0.75);
+                    settings.render_scale = Some(0.50);
                     settings.upscaler = Upscaling::Bicubic;
                     settings.sharpness = 0.35;
-                    settings.max_fps = 60;
+                    settings.max_fps = 30;
                     settings.vsync = true;
                     settings.frame_generation = false;
                 } else {
-                    settings.render_scale = None;
+                    settings.render_scale = Some(0.50);
                     settings.upscaler = Upscaling::Bicubic;
                     settings.sharpness = 0.5;
-                    settings.max_fps = if crate::paths::MOBILE { 60 } else { 0 };
+                    settings.max_fps = 30;
                     settings.vsync = true;
                     settings.frame_generation = false;
                 }
@@ -1001,44 +970,11 @@ fn settings_items(
                 settings.render_scale = Some(settings::round_scale(scale));
                 *scale_edit = None;
             }
-            let options: Vec<_> = status
-                .upscalers
-                .iter()
-                .copied()
-                .filter(|u| *u != Upscaling::Fsr)
-                .map(|u| {
-                    let name = match u {
-                        Upscaling::Bicubic => "Bicubic",
-                        Upscaling::MetalFx => "MetalFX",
-                        Upscaling::MetalFxTemporal => "MetalFX Temporal",
-                        Upscaling::Fsr => unreachable!(),
-                    };
-                    (u, name)
-                })
-                .collect();
-            if !options.is_empty() {
-                if !options.iter().any(|(u, _)| *u == settings.upscaler) {
-                    settings.upscaler = Upscaling::Bicubic;
-                }
-                setting(ui, "Upscaling", Control::Choice, None, |ui| choice(ui, &mut settings.upscaler, &options));
-            }
-            if status.frame_generation && settings.upscaler == Upscaling::MetalFxTemporal {
-                setting(ui, "Frame generation", Control::Toggle, None, |ui| toggle(ui, &mut settings.frame_generation));
-            }
-            let unlimited = if settings.vsync { "Display" } else { "Unlimited" };
-            let mut rates = vec![(0, unlimited), (60, "60")];
-            if status.refresh_rate >= 119.0 {
-                rates.push((40, "40"));
-            }
-            rates.push((30, "30"));
-            setting(
-                ui,
-                "Frame rate",
-                Control::Choice,
-                next_start(started.is_some_and(|s| s.max_fps != settings.max_fps)),
-                |ui| choice(ui, &mut settings.max_fps, &rates),
-            );
-            setting(ui, "VSync", Control::Toggle, None, |ui| toggle(ui, &mut settings.vsync));
+            // Fixed mobile-friendly render path: Bicubic only, VSync on, 30 FPS cap.
+            settings.upscaler = Upscaling::Bicubic;
+            settings.max_fps = 30;
+            settings.vsync = true;
+            settings.frame_generation = false;
             let mut overlays = vec![(PerfOverlay::Off, "Off")];
             if cfg!(target_vendor = "apple") {
                 overlays.push((PerfOverlay::MetalHud, "Metal HUD"));
@@ -1202,14 +1138,6 @@ fn settings_items(
             });
             setting(ui, "Friends' notifications", Control::Toggle, Some("Online, requests, invites"), |ui| {
                 toggle(ui, &mut settings.friend_notices);
-            });
-            let mods = super::mods::summary(settings, status);
-            setting(ui, "Mods", Control::Action, Some(&mods), |ui| {
-                let open = action_button(ui, "Open");
-                if open.clicked() {
-                    *go = Some(Some(Page::Mods));
-                }
-                open
             });
             let version = concat!("Glue 5 ", env!("CARGO_PKG_VERSION"), " and the projects it builds on");
             setting(ui, "Credits", Control::Action, Some(version), |ui| {
