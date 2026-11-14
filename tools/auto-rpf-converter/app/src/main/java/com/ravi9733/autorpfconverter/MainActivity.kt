@@ -119,7 +119,7 @@ class MainActivity : Activity() {
         }
         root.addView(extract)
         val bulkExtract = Button(this).apply {
-            text = "CONVERT ALL OPEN RPF FROM SELECTED GTA V FOLDER"
+            text = "CONVERT ALL RPF FROM SELECTED GTA V FOLDER"
             setOnClickListener { convertAllOpenArchives() }
         }
         root.addView(bulkExtract)
@@ -127,7 +127,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select one OPEN PC RPF or choose a GTA V folder for batch conversion. Supported Gen9 YTD, YDR, YDD, YFT and YPT resources are converted to Legacy before a new RPF7 is built. Other formats remain unchanged."
+            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. Supported Gen9 YTD, YDR, YDD, YFT and YPT resources are converted to Legacy before a new RPF7 is built."
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)
@@ -370,7 +370,9 @@ class MainActivity : Activity() {
             val extracted = java.io.File(work, "extracted")
             check(extracted.mkdir()) { "Cannot create nested extraction folder" }
 
-            val extractionReport = NativeRpf.extractArchive(nested.absolutePath, extracted.absolutePath)
+            val extractionReport = NativeAssets.extractArchiveWithKeys(
+                nested.absolutePath, extracted.absolutePath, rpfKeyDirectory.absolutePath
+            )
             if (!extractionReport.startsWith("Extraction complete")) {
                 stats.skipped++
                 stats.notes.add("PRESERVED " + nested.name + " — " + extractionReport.replace('\n', ' '))
