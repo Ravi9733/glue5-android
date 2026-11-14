@@ -347,29 +347,26 @@ std::string build_open_rpf7(const fs::path& source_directory, const fs::path& ou
     options.encryption = rk::RpfEncryption::Open;
     options.name = output_path.filename().string();
     options.compress = true;
-    const auto archive_bytes = builder.build(options);
-    if (archive_bytes.size() > max_output_bytes) {
-        throw std::runtime_error("generated RPF7 exceeds the 1 GiB output limit");
+    if (!output_path.parent_path().empty()) {
+        fs::create_directories(output_path.parent_path());
     }
-
-    fs::create_directories(output_path.parent_path());
     fs::path temporary = output_path;
     temporary += ".tmp";
     std::error_code ignored;
     fs::remove(temporary, ignored);
-    {
-        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-        if (!out) throw std::runtime_error("cannot create temporary RPF7 output: " + temporary.string());
-        out.write(reinterpret_cast<const char*>(archive_bytes.data()),
-                  static_cast<std::streamsize>(archive_bytes.size()));
-        out.flush();
-        if (!out) {
-            fs::remove(temporary, ignored);
-            throw std::runtime_error("cannot write temporary RPF7 output: " + temporary.string());
-        }
-    }
 
+    // RpfBuilder::build() materializes the entire archive in an ostringstream and then
+    // copies it into a Bytes vector. The upstream save() API writes the same CodeWalker-
+    // compatible RPF7 layout directly to a file, avoiding that additional archive-sized
+    // memory allocation on Android. Source file buffers are still held by the builder,
+    // so the 512 MiB aggregate input limit remains in force.
     try {
+        builder.save(temporary.string(), options);
+        const std::uint64_t archive_bytes = fs::file_size(temporary);
+        if (archive_bytes > max_output_bytes) {
+            throw std::runtime_error("generated RPF7 exceeds the 1 GiB output limit");
+        }
+
         auto no_keys = std::make_shared<rk::RpfKeys>();
         const rk::Rpf parsed = rk::Rpf::open(temporary.string(), no_keys);
         if (parsed.encryption() != rk::RpfEncryption::Open) {
@@ -382,17 +379,16 @@ std::string build_open_rpf7(const fs::path& source_directory, const fs::path& ou
             throw std::runtime_error("RPF7 validation entry count does not match packaged file count");
         }
         fs::rename(temporary, output_path);
+        return "RPF7 build complete\n"
+               "Encryption: OPEN\n"
+               "Files: " + std::to_string(file_count) + "\n"
+               "Input bytes: " + std::to_string(total_input_bytes) + "\n"
+               "Archive bytes: " + std::to_string(archive_bytes) + "\n"
+               "Validated with the pinned ragekit RPF7 reader.";
     } catch (...) {
         fs::remove(temporary, ignored);
         throw;
     }
-
-    return "RPF7 build complete\n"
-           "Encryption: OPEN\n"
-           "Files: " + std::to_string(file_count) + "\n"
-           "Input bytes: " + std::to_string(total_input_bytes) + "\n"
-           "Archive bytes: " + std::to_string(archive_bytes.size()) + "\n"
-           "Validated with the pinned ragekit RPF7 reader.";
 }
 
 }
