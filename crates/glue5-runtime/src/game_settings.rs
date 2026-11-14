@@ -43,6 +43,33 @@ pub fn apply_low_preset(user_dir: &Path) -> io::Result<()> {
     apply(user_dir, LOW)
 }
 
+/// A balanced explicit High-quality preset: sharp textures and normal
+/// world density without enabling the expensive MSAA/ultra-shadow paths.
+const HIGH: &[(&str, &str)] = &[
+    ("TextureQuality", "2"),
+    ("ShadowQuality", "1"),
+    ("ReflectionQuality", "1"),
+    ("ParticleQuality", "1"),
+    ("GrassQuality", "1"),
+    ("WaterQuality", "1"),
+    ("ShaderQuality", "1"),
+    ("AnisotropicFiltering", "4"),
+    ("SSAO", "1"),
+    ("PostFX", "1"),
+    ("LodScale", "0.750000"),
+    ("PedLodBias", "0.500000"),
+    ("VehicleLodBias", "0.500000"),
+    ("CityDensity", "0.750000"),
+    ("PedVarietyMultiplier", "0.750000"),
+    ("VehicleVarietyMultiplier", "0.750000"),
+    ("MotionBlurStrength", "0.000000"),
+];
+
+/// Restores clear High graphics once on Android, replacing any old low preset.
+pub fn apply_high_preset(user_dir: &Path) -> io::Result<()> {
+    apply(user_dir, HIGH)
+}
+
 /// Writes `settings` (name, value) over the current settings (or the
 /// engine's defaults, before its first start). Names the file lacks are
 /// skipped, with a warning.
