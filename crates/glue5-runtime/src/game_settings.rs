@@ -70,6 +70,23 @@ pub fn apply_high_preset(user_dir: &Path) -> io::Result<()> {
     apply(user_dir, HIGH)
 }
 
+/// Reduce CPU-heavy world population while keeping texture, shader,
+/// shadow and effects quality at the High preset. This specifically targets
+/// frame-time spikes when many vehicles and pedestrians are visible.
+const SMOOTH_WORLD: &[(&str, &str)] = &[
+    ("CityDensity", "0.450000"),
+    ("PedVarietyMultiplier", "0.500000"),
+    ("VehicleVarietyMultiplier", "0.500000"),
+    ("LodScale", "0.600000"),
+    ("PedLodBias", "0.400000"),
+    ("VehicleLodBias", "0.400000"),
+];
+
+/// Applies the one-time Android crowd/streaming workload reduction.
+pub fn apply_smooth_world_preset(user_dir: &Path) -> io::Result<()> {
+    apply(user_dir, SMOOTH_WORLD)
+}
+
 /// Writes `settings` (name, value) over the current settings (or the
 /// engine's defaults, before its first start). Names the file lacks are
 /// skipped, with a warning.
@@ -146,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn preset_names_are_in_the_defaults() {
+    fn smooth_world_values_are_in_the_defaults() {\n        for (name, _) in SMOOTH_WORLD {\n            assert!(DEFAULTS.contains(&format!("<{name} value=\\\"")), "{name}");\n        }\n    }\n\n    #[test]\n    fn preset_names_are_in_the_defaults() {
         for (name, _) in LOW {
             assert!(DEFAULTS.contains(&format!("<{name} value=\"")), "{name}");
         }
