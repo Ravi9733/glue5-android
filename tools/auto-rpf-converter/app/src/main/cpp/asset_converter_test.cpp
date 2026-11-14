@@ -311,6 +311,76 @@ int main() {
     }
     require(missing_key_rejected, "encrypted RPF must fail closed without matching keys");
 
+    // A deterministic invertible synthetic NG table exercises the NG key-file import
+    // and archive-name/size-dependent decryption path without using or bundling game keys.
+    const fs::path ng_key_root = fs::temp_directory_path() / "gta-rpf-ng-key-import-smoke";
+    const fs::path ng_archive_root = fs::temp_directory_path() / "gta-rpf-ng-archive-smoke";
+    const fs::path ng_output_root = fs::temp_directory_path() / "gta-rpf-ng-output-smoke";
+    fs::remove_all(ng_key_root, ignored);
+    fs::remove_all(ng_archive_root, ignored);
+    fs::remove_all(ng_output_root, ignored);
+    fs::create_directories(ng_key_root);
+    fs::create_directories(ng_archive_root);
+
+    rk::RpfKeys ng_test_keys;
+    ng_test_keys.ng_keys.assign(101 * 272, 0);
+    ng_test_keys.hash_lut.resize(256);
+    for (std::size_t i = 0; i < ng_test_keys.hash_lut.size(); ++i) {
+        ng_test_keys.hash_lut[i] = static_cast<std::uint8_t>(i);
+    }
+    static constexpr int round_b[4][4] = {
+        {0, 7, 10, 13}, {1, 4, 11, 14}, {2, 5, 8, 15}, {3, 6, 9, 12}
+    };
+    ng_test_keys.ng_tables.resize(17 * 16 * 256);
+    for (int round = 0; round < 17; ++round) {
+        for (int word = 0; word < 4; ++word) {
+            for (int lane = 0; lane < 4; ++lane) {
+                const int table = (round <= 1 || round == 16) ? 4 * word + lane : round_b[word][lane];
+                for (int value = 0; value < 256; ++value) {
+                    ng_test_keys.ng_tables[(round * 16 + table) * 256 + value] =
+                        static_cast<std::uint32_t>(value) << (lane * 8);
+                }
+            }
+        }
+    }
+    require(ng_test_keys.has_ng(), "synthetic NG key material must satisfy the exact imported file sizes");
+    ng_test_keys.save(ng_key_root.string());
+    require(gta_asset_converter::inspect_rpf_keys(ng_key_root).find("NG key material: ready") != std::string::npos,
+            "imported NG keys, tables and hash LUT must be detected");
+
+    rk::RpfBuilder ng_builder;
+    ng_builder.add_binary("common/data/ng-keyed.txt", bytes_of("synthetic NG payload"), false);
+    rk::RpfWriteOptions ng_options;
+    ng_options.encryption = rk::RpfEncryption::Ng;
+    ng_options.keys = std::make_shared<rk::RpfKeys>(ng_test_keys);
+    ng_options.name = "ng_fixture.rpf";
+    const auto ng_bytes = ng_builder.build(ng_options);
+    const fs::path ng_archive = ng_archive_root / "ng_fixture.rpf";
+    {
+        std::ofstream out(ng_archive, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(ng_bytes.data()),
+                  static_cast<std::streamsize>(ng_bytes.size()));
+    }
+    const auto ng_report = gta_asset_converter::extract_rpf_archive(ng_archive, ng_output_root, ng_key_root);
+    require(ng_report.find("Encryption: NG") != std::string::npos,
+            "NG archive must open with matching imported synthetic key material");
+    require(rk::rsc::read_file((ng_output_root / "common/data/ng-keyed.txt").string()) == bytes_of("synthetic NG payload"),
+            "NG archive extraction must preserve the decrypted payload");
+
+    bool missing_ng_rejected = false;
+    try {
+        (void)gta_asset_converter::extract_rpf_archive(
+            ng_archive, fs::temp_directory_path() / "gta-rpf-ng-no-key-output", empty_keys);
+    } catch (const std::exception&) {
+        missing_ng_rejected = true;
+    }
+    require(missing_ng_rejected, "NG archive must fail closed when matching NG key material is absent");
+
+    fs::remove_all(ng_key_root, ignored);
+    fs::remove_all(ng_archive_root, ignored);
+    fs::remove_all(ng_output_root, ignored);
+    fs::remove_all(fs::temp_directory_path() / "gta-rpf-ng-no-key-output", ignored);
+
     fs::remove_all(key_root, ignored);
     fs::remove_all(archive_root, ignored);
     fs::remove_all(output_root, ignored);
