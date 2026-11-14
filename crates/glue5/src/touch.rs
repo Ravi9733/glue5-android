@@ -1235,6 +1235,8 @@ impl Touch {
         let gain = LOOK_GAIN * self.camera_speed;
         let wheel = self.wheel_open();
         let stick = self.drags_are_stick();
+        // Cache this before borrowing the finger map mutably below.
+        let scripted = self.is(SCRIPTED);
         let mut turned = Vec2::ZERO;
         let mut look_from = None;
         match self.fingers.get_mut(&id) {
@@ -1242,7 +1244,7 @@ impl Touch {
                 *at = p;
                 // Gameplay movement joystick stays anchored. Scripted
                 // scenes retain their floating stick behaviour.
-                if self.is(SCRIPTED) {
+                if scripted {
                     let d = p - *origin;
                     if d.length() > follow {
                         *origin = p - d.normalized() * follow;
