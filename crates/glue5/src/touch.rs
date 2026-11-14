@@ -1464,7 +1464,7 @@ impl Touch {
     fn draw_button(&self, painter: &Painter, look: &Look, b: &Button, held: bool) {
         let ring = if held || b.primary || b.asked { look.ring(held) } else { look.stroke(false) };
         painter.circle(b.at, b.radius, look.fill(held), ring);
-        self.draw_icon(painter, look, b.at, b.radius * 1.15, b.icon);
+        self.draw_icon(painter, look, b.at, b.radius * 1.28, b.icon);
     }
 
     /// The icon `name` (or two joined by `+`, side by side), `side` points.
