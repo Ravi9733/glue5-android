@@ -304,7 +304,7 @@ function M.build(root: Menu)
 			action = "Spawn props",
 		}, function(): string?
 			local name = raceRoutes[route.value]
-			if not string.lower(name):endsWith(".json") then
+			if string.sub(string.lower(name), -5) ~= ".json" then
 				return "Select a Rockstar UGC .json race file to spawn its props"
 			end
 			if game.online() then return "Track spawning is Offline/Sandbox only" end
