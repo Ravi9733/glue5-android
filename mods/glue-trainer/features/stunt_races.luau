@@ -269,6 +269,18 @@ function M.build(root: Menu)
 	end
 
 	menu:separator("Spawn stunt track objects")
+	bind.action(menu, "Clear spawned track objects", {
+		note = "Remove every track object spawned by this trainer session",
+		action = "Clear",
+	}, function(): string?
+		local okClear, removed = pcall(function()
+			return world.clearSpawnedPlacements()
+		end)
+		if not okClear then
+			return "Could not clear track objects: " .. tostring(removed)
+		end
+		return "Removed " .. tostring(removed) .. " spawned track objects"
+	end)
 	for _, name in maps do
 		bind.action(menu, name, {
 			note = "Spawn validated track objects with Glue 5",
