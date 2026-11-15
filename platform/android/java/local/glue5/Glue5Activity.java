@@ -365,7 +365,7 @@ public class Glue5Activity extends SDLActivity {
                     int entries = 0;
                     while ((entry = zip.getNextEntry()) != null) {
                         if (++entries > 512) throw new Exception("ZIP has too many entries (limit 512)");
-                        String raw = entry.getName().replace('\\\\', '/');
+                        String raw = entry.getName().replace('\\', '/');
                         if (raw.startsWith("/") || raw.matches("^[A-Za-z]:.*")) {
                             throw new Exception("ZIP contains an absolute path");
                         }
