@@ -289,6 +289,13 @@ mod tests {
     }
 
     #[test]
+    fn uses_valid_menyoo_hash_name_when_available() {
+        let xml = r#"<SpoonerPlacements><Placement><ModelHash>0xDEADBEEF</ModelHash><HashName>stt_prop_ramp_adj_flip_m</HashName><Type>3</Type><PositionRotation><X>1</X><Y>2</Y><Z>3</Z></PositionRotation></Placement></SpoonerPlacements>"#;
+        let set = parse_xml_placements_with_hashes(xml, |_| None).unwrap();
+        assert_eq!(set.placements[0].model, "stt_prop_ramp_adj_flip_m");
+    }
+
+    #[test]
     fn skips_menyoo_peds_and_vehicles_but_keeps_props() {
         let xml = r#"<SpoonerPlacements>
             <Placement><ModelHash>0x11111111</ModelHash><Type>1</Type><PositionRotation><X>0</X><Y>0</Y><Z>0</Z></PositionRotation></Placement>
