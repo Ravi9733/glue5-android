@@ -320,7 +320,12 @@ impl Vm {
                 let set = if relative.ends_with(".xml") {
                     crate::placements::parse_xml_placements_with_hashes(&source, crate::world::resolve_model_hash)
                 } else {
-                    crate::placements::parse_manifest(&source)
+                    match crate::placements::parse_manifest(&source) {
+                        Ok(manifest) => Ok(manifest),
+                        Err(_) => crate::placements::parse_ugc_race_placements(
+                            &source, crate::world::resolve_model_hash
+                        ),
+                    }
                 }.map_err(|e| mlua::Error::runtime(format!("world.loadPlacements: {e}")))?;
                 let result = lua.create_table()?;
                 for (index, placement) in set.placements.iter().enumerate() {
