@@ -94,6 +94,9 @@ local function spawnRaceVehicle(modelName: string, at: vector): (Vehicle?, strin
 	if not car then
 		return nil, "The game could not create the race vehicle"
 	end
+	pcall(function()
+		entity.setEntityAsMissionEntity(car, true, true)
+	end)
 	vehicle.setVehicleOnGroundProperly(car, 5)
 	vehicle.setVehicleEngineOn(car, true, true, false)
 	ped.setPedIntoVehicle(game.me(), car, VehicleSeat.DRIVER)
