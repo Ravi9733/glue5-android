@@ -228,6 +228,24 @@ fn game_jobs(dir: &Path) -> Vec<Job> {
         }
     }
     jobs.sort_by(|a, b| a.name.cmp(&b.name));
+    // Distinguish actual race mission documents from playlist indexes. The
+    // game menu needs the complete mission file (including `mission.race`),
+    // not merely a playlist's CID/name entry.
+    let mut races = 0usize;
+    for job in &jobs {
+        let path = job.path(LANGUAGE_ENGLISH);
+        let Ok(data) = std::fs::read(&path) else { continue };
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data) else { continue };
+        if let Some(race) = value.pointer("/mission/race") {
+            races += 1;
+            let checkpoints = race.get("chp").and_then(serde_json::Value::as_array)
+                .map_or_else(|| race.get("chp").and_then(serde_json::Value::as_u64).unwrap_or(0), |v| v.len() as u64);
+            let kind = value.pointer("/mission/gen/type").and_then(serde_json::Value::as_i64).unwrap_or(-1);
+            let subtype = value.pointer("/mission/gen/subtype").and_then(serde_json::Value::as_i64).unwrap_or(-1);
+            log::info!("jobs: race mission \"{}\" ({}) type={kind} subtype={subtype} checkpoints={checkpoints}", job.name, job.id);
+        }
+    }
+    log::info!("jobs: {races} of {} Rockstar-created missions contain mission.race data", jobs.len());
     log_rockstar_playlists(dir);
     if jobs.is_empty() {
         log::warn!("jobs: no Rockstar-created UGC missions found in {} (expected <22-character-id>0_00.ugc files)", dir.display());
