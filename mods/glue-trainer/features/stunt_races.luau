@@ -201,7 +201,7 @@ function M.build(root: Menu)
 	local builder = menu:submenu("Create checkpoint route", "Stand at each checkpoint and save a local race route")
 	local routeName = builder:text("Route name", "my_stunt_route", { placeholder = "letters, numbers, _ or -", max = 64 })
 	local draft: { vector } = {}
-	builder:label("Checkpoints captured: 0")
+	local draftCount = builder:label("Checkpoints captured: 0")
 	bind.action(builder, "Add checkpoint at my position", {
 		note = "Stand in the middle of the next gate; add checkpoints in driving order",
 		action = "Add",
@@ -210,6 +210,7 @@ function M.build(root: Menu)
 			return "Checkpoint limit reached (128)"
 		end
 		table.insert(draft, game.position())
+		draftCount:set("Checkpoints captured: " .. tostring(#draft))
 		return "Checkpoint " .. tostring(#draft) .. " captured"
 	end)
 	bind.action(builder, "Undo last checkpoint", { action = "Undo" }, function(): string?
@@ -217,7 +218,13 @@ function M.build(root: Menu)
 			return "No checkpoint to undo"
 		end
 		table.remove(draft)
+		draftCount:set("Checkpoints captured: " .. tostring(#draft))
 		return "Removed last checkpoint; " .. tostring(#draft) .. " remain"
+	end)
+	bind.action(builder, "Clear route draft", { note = "Remove all unsaved checkpoints", action = "Clear" }, function(): string?
+		draft = {}
+		draftCount:set("Checkpoints captured: 0")
+		return "Unsaved route draft cleared"
 	end)
 	bind.action(builder, "Save route XML", { note = "Requires at least two checkpoints; existing files are not overwritten", action = "Save" }, function(): string?
 		local okSave, result = pcall(function()
@@ -227,6 +234,7 @@ function M.build(root: Menu)
 			return "Route save failed: " .. tostring(result)
 		end
 		draft = {}
+		draftCount:set("Checkpoints captured: 0")
 		return "Saved " .. tostring(result) .. ". Restart Glue 5 to refresh the route list."
 	end)
 
