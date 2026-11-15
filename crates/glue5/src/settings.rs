@@ -420,13 +420,22 @@ impl Settings {
                 },
             );
         }
-        // Locked smooth-play profile: 30 FPS everywhere, 50% render scale,
-        // Bicubic reconstruction only, with VSync enabled. Apply after all
-        // one-time migrations so older profiles cannot restore 40/60 FPS.
-        settings.max_fps = 30;
-        settings.render_scale = Some(0.50);
-        settings.upscaler = Upscaling::Bicubic;
-        settings.frame_generation = false;
+        // One-time Android smooth-play migration. The previous unconditional
+        // assignments below this migration overwrote the user's saved frame
+        // cap and render scale on every launch (including settings changed in
+        // the UI), pinning the game to 30 FPS / 50% resolution. Start existing
+        // installs at a moderate 40 FPS / 60% Bicubic profile, then preserve
+        // every later user choice across launches.
+        #[cfg(target_os = "android")]
+        if !settings.android_smooth_world_profile_applied {
+            settings.low_memory = false;
+            settings.low_preset_written = false;
+            settings.max_fps = 40;
+            settings.render_scale = Some(0.60);
+            settings.upscaler = Upscaling::Bicubic;
+            settings.frame_generation = false;
+            settings.android_smooth_world_profile_applied = true;
+        }
         #[cfg(target_os = "android")]
         {
             // Never leave an old low-memory preset active on the Android build.
@@ -504,6 +513,22 @@ mod tests {
         assert_eq!(Settings::load(&dir).overlay, PerfOverlay::MetalHud);
         std::fs::write(dir.join("glue5.json"), r#"{"metal_hud": false}"#).unwrap();
         assert_eq!(Settings::load(&dir).overlay, PerfOverlay::Off);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn saved_performance_choices_are_not_overwritten() {
+        let dir = std::env::temp_dir().join(format!("glue5-settings-persist-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("glue5.json"),
+            r#"{"android_smooth_world_profile_applied":true,"max_fps":47,"render_scale":0.7,"upscaler":"bicubic"}"#,
+        )
+        .unwrap();
+        let settings = Settings::load(&dir);
+        assert_eq!(settings.max_fps, 47);
+        assert_eq!(settings.render_scale, Some(0.7));
+        assert_eq!(settings.upscaler, Upscaling::Bicubic);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
