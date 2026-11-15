@@ -90,6 +90,9 @@ local function spawnRaceVehicle(modelName: string, at: vector): (Vehicle?, strin
 end
 
 local function runRace(routeName: string, modelName: string): string?
+	if game.online() then
+		return "Stunt races are Offline/Sandbox only; leave GTA Online first"
+	end
 	if activeRace then
 		return "A stunt race is already running"
 	end
@@ -322,6 +325,9 @@ function M.build(root: Menu)
 			note = "Spawn validated and frozen track objects with Glue 5",
 			action = "Spawn",
 		}, function(): string?
+			if game.online() then
+				return "Track spawning is Offline/Sandbox only; leave GTA Online first"
+			end
 			local spawned, result = pcall(function()
 				return world.spawnPlacements("maps/" .. name)
 			end)
