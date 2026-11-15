@@ -297,7 +297,15 @@ function M.build(root: Menu)
 			for i = 2, #points do
 				distance += vector.magnitude(points[i] - points[i - 1])
 			end
-			return string.format("%s | %d checkpoints | %.0f metres", raceRoutes[route.value], #points, distance)
+			local propCount = "props: n/a"
+			if string.sub(string.lower(raceRoutes[route.value]), -5) == ".json" then
+				local propsOk, props = pcall(function()
+					return world.loadPlacements("maps/routes/" .. raceRoutes[route.value])
+				end)
+				if propsOk then propCount = "static props: " .. tostring(#props) end
+			end
+			return string.format("%s | %d checkpoints | %.0f metres | %s",
+				raceRoutes[route.value], #points, distance, propCount)
 		end)
 		bind.action(raceMenu, "Spawn selected Rockstar track props", {
 			note = "Spawn mission.prop static objects from the selected Rockstar UGC JSON",
