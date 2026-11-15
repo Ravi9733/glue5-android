@@ -94,26 +94,31 @@ impl Vm {
                     || relative.len() > 128
                     || path.is_absolute()
                     || !path.components().all(|c| matches!(c, Component::Normal(_)))
-                    || !relative.ends_with(".json")
+                    || !(relative.ends_with(".json") || relative.ends_with(".xml"))
                 {
                     return Err(mlua::Error::runtime(
-                        "world.loadPlacements: expected a relative .json file inside this mod",
+                        "world.loadPlacements: expected a relative .json or .xml file inside this mod",
                     ));
                 }
                 let file = placement_dir.join(path);
                 let metadata = std::fs::metadata(&file).map_err(|e| {
                     mlua::Error::runtime(format!("world.loadPlacements: {e}"))
                 })?;
-                if metadata.len() > 256 * 1024 {
-                    return Err(mlua::Error::runtime(
-                        "world.loadPlacements: manifest exceeds 256 KiB",
-                    ));
+                let limit = if relative.ends_with(".xml") { 4 * 1024 * 1024 } else { 256 * 1024 };
+                if metadata.len() > limit {
+                    return Err(mlua::Error::runtime(format!(
+                        "world.loadPlacements: file exceeds {} KiB",
+                        limit / 1024
+                    )));
                 }
                 let source = std::fs::read_to_string(&file).map_err(|e| {
                     mlua::Error::runtime(format!("world.loadPlacements: {e}"))
                 })?;
-                let set = crate::placements::parse_manifest(&source)
-                    .map_err(|e| mlua::Error::runtime(format!("world.loadPlacements: {e}")))?;
+                let set = if relative.ends_with(".xml") {
+                    crate::placements::parse_xml_placements(&source)
+                } else {
+                    crate::placements::parse_manifest(&source)
+                }.map_err(|e| mlua::Error::runtime(format!("world.loadPlacements: {e}")))?;
                 let result = lua.create_table()?;
                 for (index, placement) in set.placements.iter().enumerate() {
                     let item = lua.create_table()?;
@@ -147,7 +152,7 @@ impl Vm {
                 r#"
                 local loadPlacements = world.loadPlacements
                 return function(relative)
-                    assert(type(relative) == "string", "world.spawnPlacements: expected a relative .json path")
+                    assert(type(relative) == "string", "world.spawnPlacements: expected a relative .json or .xml path")
                     local placements = loadPlacements(relative)
                     local taskThread = task.spawn(function()
                         for _, item in placements do
