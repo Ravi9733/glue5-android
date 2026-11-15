@@ -1673,3 +1673,5 @@ fn stick_value(v: Vec2) -> [f32; 2] {
 
 #[cfg(test)]
 mod tests;
+
+// CI rebuild trigger: retry the cancelled Android build for the current touch-control styling.
