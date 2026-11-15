@@ -134,6 +134,26 @@ impl Vm {
                 Ok(names)
             })?,
         )?;
+        let delete_map_dir = dir.to_path_buf().join("maps");
+        world.set(
+            "deletePlacementFile",
+            lua.create_function(move |_, name: String| {
+                if name.len() > 80
+                    || !name.to_ascii_lowercase().ends_with(".xml")
+                    || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.')
+                    || name.contains("..")
+                {
+                    return Err(mlua::Error::runtime("deletePlacementFile: invalid XML filename"));
+                }
+                let path = delete_map_dir.join(&name);
+                if !path.is_file() {
+                    return Err(mlua::Error::runtime(format!("map not found: {name}")));
+                }
+                std::fs::remove_file(&path)
+                    .map_err(|e| mlua::Error::runtime(format!("cannot delete {name}: {e}")))?;
+                Ok(())
+            })?,
+        )?;
         world.set(
             "loadPlacements",
             lua.create_function(move |lua, relative: String| {
