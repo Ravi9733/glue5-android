@@ -86,6 +86,23 @@ impl Vm {
         let world: Table = lua.globals().get("world")?;
         let placement_dir = dir.to_path_buf();
         let map_dir = placement_dir.join("maps");
+        let import_dir = map_dir.clone();
+        world.set(
+            "requestPlacementImport",
+            lua.create_function(move |_, ()| {
+                let app_files = std::env::var_os("GLUE5_APP_FILES_DIR")
+                    .map(PathBuf::from)
+                    .ok_or_else(|| mlua::Error::runtime("Android import picker is unavailable on this platform"))?;
+                std::fs::create_dir_all(&import_dir)
+                    .map_err(|e| mlua::Error::runtime(format!("cannot create stunt maps folder: {e}")))?;
+                std::fs::create_dir_all(&app_files)
+                    .map_err(|e| mlua::Error::runtime(format!("cannot access app files: {e}")))?;
+                let request = app_files.join("stunt-race-import-request");
+                std::fs::write(&request, import_dir.to_string_lossy().as_bytes())
+                    .map_err(|e| mlua::Error::runtime(format!("cannot request Android file picker: {e}")))?;
+                Ok(())
+            })?,
+        )?;
         world.set(
             "listPlacementFiles",
             lua.create_function(move |_, ()| {
