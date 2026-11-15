@@ -36,12 +36,15 @@ public class Glue5Activity extends SDLActivity {
     private static final int REQUEST_TURNIP_ZIP = 47112;
     private static final int REQUEST_GRAPHICS_ARCHIVE = 47113;
     private static final int REQUEST_RESHADE_ARCHIVE = 47114;
+    private static final int REQUEST_STUNT_MAPS = 47115;
     private static native String applyOivArchiveNative(String archivePath, String archiveXml,
             String contentRoot, String outputPath, String keysDir);
     private final Handler turnipHandler = new Handler(Looper.getMainLooper());
     private boolean turnipPickerOpen = false;
     private boolean graphicsPickerOpen = false;
     private boolean reshadePickerOpen = false;
+    private boolean stuntMapsPickerOpen = false;
+    private File stuntMapsTarget = null;
     private final Runnable turnipImportWatcher = new Runnable() {
         @Override public void run() { checkTurnipImportRequest(); }
     };
@@ -121,7 +124,7 @@ public class Glue5Activity extends SDLActivity {
     }
 
     private void checkTurnipImportRequest() {
-        if (isFinishing() || turnipPickerOpen || graphicsPickerOpen || reshadePickerOpen) return;
+        if (isFinishing() || turnipPickerOpen || graphicsPickerOpen || reshadePickerOpen || stuntMapsPickerOpen) return;
         File clearGraphicsRequest = new File(getFilesDir(), "graphics-mod-clear-request");
         if (clearGraphicsRequest.isFile() && clearGraphicsRequest.delete()) {
             try {
@@ -143,6 +146,30 @@ public class Glue5Activity extends SDLActivity {
         if (reshadeRequest.isFile() && reshadeRequest.delete()) {
             reshadePickerOpen = true;
             openReshadeArchivePicker();
+            return;
+        }
+        File stuntRequest = new File(getFilesDir(), "stunt-race-import-request");
+        if (stuntRequest.isFile()) {
+            try {
+                String requestedPath = readTextFile(stuntRequest).trim();
+                if (!stuntRequest.delete()) throw new Exception("Cannot clear stunt-map import request");
+                File target = new File(requestedPath).getCanonicalFile();
+                File parent = target.getParentFile();
+                if (!"maps".equals(target.getName()) || parent == null
+                        || !"glue-trainer".equals(parent.getName())) {
+                    throw new Exception("Unsafe stunt-map destination");
+                }
+                if (!target.isDirectory() && !target.mkdirs()) {
+                    throw new Exception("Cannot create " + target.getAbsolutePath());
+                }
+                stuntMapsTarget = target;
+                stuntMapsPickerOpen = true;
+                openStuntMapsPicker();
+            } catch (Exception e) {
+                stuntRequest.delete();
+                Toast.makeText(this, "Stunt-map import unavailable: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                turnipHandler.postDelayed(turnipImportWatcher, 500);
+            }
             return;
         }
         File request = new File(getFilesDir(), "turnip-import-request");
@@ -256,6 +283,21 @@ public class Glue5Activity extends SDLActivity {
             }
             return;
         }
+        if (requestCode == REQUEST_STUNT_MAPS) {
+            stuntMapsPickerOpen = false;
+            try {
+                if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                    String message = importStuntMaps(data.getData());
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(this, "Stunt-map import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            } finally {
+                stuntMapsTarget = null;
+                turnipHandler.postDelayed(turnipImportWatcher, 500);
+            }
+            return;
+        }
         if (requestCode != REQUEST_TURNIP_ZIP) return;
         turnipPickerOpen = false;
         try {
@@ -270,6 +312,139 @@ public class Glue5Activity extends SDLActivity {
         }
     }
 
+
+    private void openStuntMapsPicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivityForResult(intent, REQUEST_STUNT_MAPS);
+        } catch (Exception e) {
+            stuntMapsPickerOpen = false;
+            stuntMapsTarget = null;
+            Toast.makeText(this, "Cannot open stunt-map picker: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+        }
+    }
+
+    /** Import one XML file or XML files from a ZIP into Glue Trainer's maps folder. */
+    private String importStuntMaps(Uri uri) throws Exception {
+        if (stuntMapsTarget == null) throw new Exception("Import destination was lost; try again");
+        File target = stuntMapsTarget.getCanonicalFile();
+        File parent = target.getParentFile();
+        if (!"maps".equals(target.getName()) || parent == null || !"glue-trainer".equals(parent.getName())) {
+            throw new Exception("Unsafe stunt-map destination");
+        }
+        if (!target.isDirectory() && !target.mkdirs()) throw new Exception("Cannot create maps folder");
+
+        String displayName = "stunt-map.xml";
+        try (android.database.Cursor cursor = getContentResolver().query(
+                uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                String name = cursor.getString(0);
+                if (name != null && !name.trim().isEmpty()) displayName = name.trim();
+            }
+        }
+        File staging = new File(target, ".stunt-importing");
+        deleteTree(staging);
+        if (!staging.mkdirs()) throw new Exception("Cannot create temporary import folder");
+        int imported = 0;
+        long total = 0;
+        java.util.HashSet<String> names = new java.util.HashSet<>();
+        try (InputStream input = getContentResolver().openInputStream(uri)) {
+            if (input == null) throw new Exception("Cannot read selected file");
+            if (displayName.toLowerCase(java.util.Locale.ROOT).endsWith(".xml")) {
+                String name = safeStuntXmlName(displayName);
+                File out = new File(staging, name);
+                total = copyStuntXml(input, out, 4L * 1024L * 1024L);
+                imported = 1;
+            } else {
+                try (ZipInputStream zip = new ZipInputStream(input)) {
+                    ZipEntry entry;
+                    byte[] buffer = new byte[16384];
+                    int entries = 0;
+                    while ((entry = zip.getNextEntry()) != null) {
+                        if (++entries > 512) throw new Exception("ZIP has too many entries (limit 512)");
+                        String raw = entry.getName().replace('\\\\', '/');
+                        if (raw.startsWith("/") || raw.matches("^[A-Za-z]:.*")) {
+                            throw new Exception("ZIP contains an absolute path");
+                        }
+                        for (String part : raw.split("/")) {
+                            if ("..".equals(part)) throw new Exception("ZIP contains a path traversal entry");
+                        }
+                        if (entry.isDirectory() || !raw.toLowerCase(java.util.Locale.ROOT).endsWith(".xml")) {
+                            zip.closeEntry();
+                            continue;
+                        }
+                        String base = raw.substring(raw.lastIndexOf('/') + 1);
+                        String name = safeStuntXmlName(base);
+                        if (!names.add(name.toLowerCase(java.util.Locale.ROOT))) {
+                            throw new Exception("ZIP contains duplicate XML filenames: " + name);
+                        }
+                        File out = new File(staging, name);
+                        long entryBytes = 0;
+                        try (FileOutputStream output = new FileOutputStream(out)) {
+                            int count;
+                            while ((count = zip.read(buffer)) != -1) {
+                                entryBytes += count;
+                                total += count;
+                                if (entryBytes > 4L * 1024L * 1024L || total > 32L * 1024L * 1024L) {
+                                    throw new Exception("XML import exceeds 4 MB per map or 32 MB total");
+                                }
+                                output.write(buffer, 0, count);
+                            }
+                        }
+                        imported++;
+                        zip.closeEntry();
+                    }
+                }
+            }
+            if (imported == 0) throw new Exception("No XML map files were found in the selected ZIP");
+            File[] staged = staging.listFiles();
+            if (staged == null || staged.length != imported) throw new Exception("Temporary import is incomplete");
+            for (File source : staged) {
+                String name = source.getName();
+                File destination = new File(target, name);
+                int suffix = 2;
+                while (destination.exists()) {
+                    int dot = name.lastIndexOf('.');
+                    String stem = dot > 0 ? name.substring(0, dot) : name;
+                    String ext = dot > 0 ? name.substring(dot) : "";
+                    destination = new File(target, stem + "_" + suffix++ + ext);
+                }
+                if (!source.renameTo(destination)) throw new Exception("Cannot install map " + name);
+            }
+        } catch (Exception e) {
+            deleteTree(staging);
+            throw e;
+        }
+        deleteTree(staging);
+        return imported + " XML stunt map(s) imported to " + target.getAbsolutePath()
+                + ". Restart the game to refresh the STUNT RACES list.";
+    }
+
+    private String safeStuntXmlName(String raw) throws Exception {
+        String name = new File(raw).getName();
+        if (!name.toLowerCase(java.util.Locale.ROOT).endsWith(".xml")
+                || !name.matches("(?i)[A-Za-z0-9_-]{1,64}\\\\.xml")) {
+            throw new Exception("XML filename must use letters, numbers, _ or - and end in .xml");
+        }
+        return name;
+    }
+
+    private long copyStuntXml(InputStream input, File output, long limit) throws Exception {
+        byte[] buffer = new byte[16384];
+        long total = 0;
+        try (FileOutputStream stream = new FileOutputStream(output)) {
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                total += count;
+                if (total > limit) throw new Exception("XML map exceeds 4 MB");
+                stream.write(buffer, 0, count);
+            }
+        }
+        return total;
+    }
 
     /**
      * Preserve a ReShade preset ZIP intact in its own folder. No files are
