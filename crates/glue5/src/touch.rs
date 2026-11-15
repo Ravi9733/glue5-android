@@ -46,7 +46,7 @@ use glue5_runtime::prompts::{Pad, Prompt, SKIP_CUTSCENE};
 use crate::haptics;
 
 /// Stick travel, in points (scaled with the controls).
-const STICK_RADIUS: f32 = 88.0;
+const STICK_RADIUS: f32 = 92.0;
 /// Phones are held closer: their controls are this much smaller.
 const PHONE_SCALE: f32 = 0.82;
 /// Below this many points on its short side, a screen is a phone's.
@@ -64,7 +64,7 @@ enum At {
 
 /// Where the stick rests (drawn there until a thumb takes it): right of the
 /// game's radar.
-const MOVE_REST: At = At::LeftBottom(132.0, 70.0);
+const MOVE_REST: At = At::LeftBottom(263.0, 139.0);
 
 /// A button of the touch layouts, named for what it does: it presses the pad
 /// buttons the game maps that to (common/data/control/standard*.meta), or
@@ -194,13 +194,13 @@ const VIEW: Action = action("View", "view", button::SELECT, At::MidTop(-54.0, 30
 const PAUSE: Action = action("☰", "pause", button::START, At::MidTop(0.0, 30.0), 20.0);
 
 /// The phone, on the right below the game's HUD.
-const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(46.0, 334.0), 28.0);
+const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(111.0, 561.0), 36.0);
 /// Two columns on the left, between the game's help text and its radar.
-const LEFT_1: At = At::LeftBottom(50.0, 240.0);
-const LEFT_2: At = At::LeftBottom(50.0, 205.0);
-const LEFT_3: At = At::LeftBottom(50.0, 120.0);
-const LEFT_4: At = At::LeftBottom(50.0, 155.0);
-const LEFT_5: At = At::LeftBottom(108.0, 205.0);
+const LEFT_1: At = At::LeftBottom(108.0, 483.0);
+const LEFT_2: At = At::LeftBottom(101.0, 381.0);
+const LEFT_3: At = At::LeftBottom(99.0, 194.0);
+const LEFT_4: At = At::LeftBottom(101.0, 381.0);
+const LEFT_5: At = At::LeftBottom(180.0, 300.0);
 /// The character and weapon wheels: hold, then drag to choose.
 const SWITCH: Action = wheel(does(19, action("Switch", "switch", button::DOWN, LEFT_4, 30.0)));
 const WEAPONS: Action = wheel(action("Weapons", "weapons", button::L1, LEFT_1, 30.0));
@@ -210,12 +210,12 @@ const COVER: Action = action("Cover", "cover", button::R1, LEFT_3, 30.0);
 const SPECIAL: Action = action("Special", "special", button::L3 | button::R3, LEFT_5, 28.0);
 
 /// The main buttons of the layouts in vehicles sit here: larger thumb targets.
-const MAIN: At = At::RightBottom(78.0, 150.0);
-const SECOND: At = At::RightBottom(184.0, 80.0);
-const THIRD: At = At::RightBottom(190.0, 196.0);
-const FOURTH: At = At::RightBottom(70.0, 262.0);
-const FIFTH: At = At::RightBottom(280.0, 50.0);
-const SIXTH: At = At::RightBottom(282.0, 128.0);
+const MAIN: At = At::RightBottom(111.0, 421.0);
+const SECOND: At = At::RightBottom(446.0, 90.0);
+const THIRD: At = At::RightBottom(131.0, 90.0);
+const FOURTH: At = At::RightBottom(286.0, 90.0);
+const FIFTH: At = At::RightBottom(576.0, 221.0);
+const SIXTH: At = At::RightBottom(131.0, 90.0);
 
 /// On-foot: full gameplay cluster, with large thumb targets and the same
 /// hold-and-drag weapon/character wheels as the reference touch overlay.
@@ -225,13 +225,13 @@ static ON_FOOT: &[Action] = &[
     COVER,
     SWITCH,
     SPECIAL,
-    does(24, primary(turns(action("Fire", "ref-fire", button::R2, At::RightBottom(76.0, 166.0), 30.0)))),
-    does(25, turns(action("Aim", "ref-aim", button::L2, At::RightBottom(178.0, 150.0), 34.0))),
-    does(22, action("Jump", "ref-jump", button::WEST, At::RightBottom(76.0, 64.0), 32.0)),
-    does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 32.0)),
-    does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(178.0, 232.0), 30.0))),
+    does(24, primary(turns(action("Fire", "ref-fire", button::R2, At::RightBottom(131.0, 90.0), 42.0)))),
+    does(25, turns(action("Aim", "ref-aim", button::L2, At::RightBottom(576.0, 221.0), 40.0))),
+    does(22, action("Jump", "ref-jump", button::WEST, At::RightBottom(131.0, 90.0), 40.0)),
+    does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(286.0, 90.0), 40.0)),
+    does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(111.0, 421.0), 48.0))),
     // A dedicated sprint target in addition to sprinting by pushing the stick.
-    does(SPRINT, action("Sprint", "pad-a", button::SOUTH, At::LeftBottom(104.0, 104.0), 30.0)),
+    does(SPRINT, action("Sprint", "jump", button::SOUTH, At::RightBottom(446.0, 90.0), 42.0)),
     PHONE,
     VIEW,
     PAUSE,
@@ -1627,17 +1627,15 @@ pub struct Look {
 impl Look {
     pub fn new(opacity: f32, scale: f32, character: Character) -> Self {
         let a = |v: f32, least: f32| ((v * opacity).max(least) * 255.0) as u8;
-        let accent = match character {
-            Character::Michael => Color32::from_rgb(101, 180, 212),
-            Character::Franklin => Color32::from_rgb(171, 237, 171),
-            Character::Trevor => Color32::from_rgb(255, 163, 87),
-            Character::Other => Color32::from_rgb(120, 175, 235),
-        };
+        // Reference overlay uses monochrome black buttons and white rings,
+        // independent of the currently selected GTA character.
+        let accent = Color32::WHITE;
+
         Look {
-            fill: Color32::from_black_alpha(a(0.6, 0.35)),
+            fill: Color32::from_black_alpha(a(0.78, 0.72)),
             pressed: Color32::from_rgba_unmultiplied(72, 72, 72, a(0.75, 0.5)),
-            knob: Color32::from_white_alpha(a(0.45, 0.32)),
-            line: Color32::from_white_alpha(a(0.6, 0.4)),
+            knob: Color32::from_white_alpha(a(0.96, 0.90)),
+            line: Color32::from_white_alpha(a(0.88, 0.78)),
             accent: accent.gamma_multiply(opacity.max(0.6)),
             icon: Color32::from_white_alpha(a(0.95, 0.75)),
             width: 1.5 * scale,
