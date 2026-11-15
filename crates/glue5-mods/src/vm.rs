@@ -215,6 +215,25 @@ impl Vm {
         let route_dir = dir.to_path_buf().join("maps").join("routes");
         let save_route_dir = dir.to_path_buf().join("maps").join("routes");
         world.set(
+            "deleteRaceRoute",
+            lua.create_function(move |_, name: String| {
+                if name.len() > 80
+                    || !(name.to_ascii_lowercase().ends_with(".xml") || name.to_ascii_lowercase().ends_with(".json"))
+                    || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.')
+                    || name.contains("..")
+                {
+                    return Err(mlua::Error::runtime("deleteRaceRoute: invalid route filename"));
+                }
+                let path = route_dir.join(&name);
+                if !path.is_file() {
+                    return Err(mlua::Error::runtime(format!("race route not found: {name}")));
+                }
+                std::fs::remove_file(&path)
+                    .map_err(|e| mlua::Error::runtime(format!("cannot delete race route {name}: {e}")))?;
+                Ok(())
+            })?,
+        )?;
+        world.set(
             "saveRaceRoute",
             lua.create_function(move |_, (name, points): (String, Table)| {
                 if name.is_empty() || name.len() > 64
