@@ -51,6 +51,22 @@ function M.build(root: Menu)
 			return "Map spawning started: " .. name
 		end)
 	end
+
+	local manage = menu:submenu("Manage imported maps", "Delete an imported XML map")
+	for _, name in maps do
+		bind.action(manage, "Delete " .. name, {
+			note = "Permanently deletes this imported XML file",
+			action = "Delete",
+		}, function(): string?
+			local deleted, err = pcall(function()
+				world.deletePlacementFile(name)
+			end)
+			if not deleted then
+				return "Delete failed: " .. tostring(err)
+			end
+			return "Deleted " .. name .. ". Restart the game to refresh the list."
+		end)
+	end
 end
 
 return M
