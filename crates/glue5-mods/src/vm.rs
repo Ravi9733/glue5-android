@@ -134,7 +134,7 @@ impl Vm {
                 Ok(names)
             })?,
         )?;
-        let race_route_dir = dir.to_path_buf().join("maps");
+        let race_route_dir = dir.to_path_buf().join("maps").join("routes");
         world.set(
             "listRaceRoutes",
             lua.create_function(move |_, ()| {
@@ -187,8 +187,8 @@ impl Vm {
                 Ok(())
             })?,
         )?;
-        let route_dir = dir.to_path_buf().join("maps");
-        let save_route_dir = dir.to_path_buf().join("maps");
+        let route_dir = dir.to_path_buf().join("maps").join("routes");
+        let save_route_dir = dir.to_path_buf().join("maps").join("routes");
         world.set(
             "saveRaceRoute",
             lua.create_function(move |_, (name, points): (String, Table)| {
@@ -237,7 +237,7 @@ impl Vm {
                     || !path.components().all(|c| matches!(c, Component::Normal(_)))
                     || !relative.to_ascii_lowercase().ends_with(".xml")
                 {
-                    return Err(mlua::Error::runtime("world.loadRaceRoute: expected a relative XML route inside maps/"));
+                    return Err(mlua::Error::runtime("world.loadRaceRoute: expected a relative XML route inside maps/routes/"));
                 }
                 let file = route_dir.join(path.file_name().ok_or_else(|| mlua::Error::runtime("invalid route filename"))?);
                 let metadata = std::fs::metadata(&file)
