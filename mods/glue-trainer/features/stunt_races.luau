@@ -148,11 +148,6 @@ function M.build(root: Menu)
 		menu:label("Could not read maps folder: " .. tostring(maps))
 		return
 	end
-	if #maps == 0 then
-		menu:label("No XML maps imported yet.")
-		return
-	end
-
 	local builder = menu:submenu("Create checkpoint route", "Stand at each checkpoint and save a local race route")
 	local routeName = builder:text("Route name", "my_stunt_route", { placeholder = "letters, numbers, _ or -", max = 64 })
 	local draft: { vector } = {}
@@ -184,6 +179,11 @@ function M.build(root: Menu)
 		draft = {}
 		return "Saved " .. tostring(result) .. ". Restart Glue 5 to refresh the route list."
 	end)
+
+	if #maps == 0 then
+		menu:label("No XML maps imported yet. Create a checkpoint route above or import an XML map.")
+		return
+	end
 
 	local raceMenu = menu:submenu("Start checkpoint race", "Select a route XML and race vehicle")
 	local route = raceMenu:choice("Route", maps, 1, "XML with Checkpoint position entries")
