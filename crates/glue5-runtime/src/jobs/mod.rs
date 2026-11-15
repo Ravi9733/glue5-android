@@ -154,7 +154,13 @@ fn shared_dir() -> PathBuf {
 /// The game data's jobs: `<22-character id><language digit>_00.ugc`, the
 /// English one (digit 0) for the header.
 fn game_jobs(dir: &Path) -> Vec<Job> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            log::warn!("jobs: Rockstar-created UGC directory unavailable ({}): {error}", dir.display());
+            return Vec::new();
+        }
+    };
     let mut jobs = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -164,6 +170,11 @@ fn game_jobs(dir: &Path) -> Vec<Job> {
         }
     }
     jobs.sort_by(|a, b| a.name.cmp(&b.name));
+    if jobs.is_empty() {
+        log::warn!("jobs: no Rockstar-created UGC missions found in {} (expected <22-character-id>0_00.ugc files)", dir.display());
+    } else {
+        log::info!("jobs: loaded {} Rockstar-created UGC missions from {}", jobs.len(), dir.display());
+    }
     jobs
 }
 
