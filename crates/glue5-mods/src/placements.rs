@@ -139,9 +139,18 @@ pub fn parse_xml_placements_with_hashes(
         .map_err(|e| PlacementError(format!("invalid placement XML: {e}")))?;
     let mut placements = Vec::new();
 
-    for node in doc.descendants().filter(|n| n.is_element() &&
-        (n.tag_name().name().eq_ignore_ascii_case("Placement") ||
-         n.tag_name().name().eq_ignore_ascii_case("CEntityDef"))) {
+    for node in doc.descendants().filter(|n| {
+        if !n.is_element() {
+            return false;
+        }
+        let tag = n.tag_name().name();
+        tag.eq_ignore_ascii_case("Placement")
+            || tag.eq_ignore_ascii_case("CEntityDef")
+            // CodeWalker/YMAP XML commonly represents entities as
+            // <Item type="CEntityDef"> rather than a literal CEntityDef tag.
+            || (tag.eq_ignore_ascii_case("Item")
+                && n.attribute("type").is_some_and(|kind| kind.eq_ignore_ascii_case("CEntityDef")))
+    }) {
         let index = placements.len();
         let named_model = child_text(node, &["ModelName", "Model", "archetypeName"])
             .or_else(|| node.attribute("model"));
@@ -266,6 +275,15 @@ mod tests {
         let set = parse_xml_placements(xml).unwrap();
         assert_eq!(set.placements[0].model, "prop_roadcone02a");
         assert_eq!(set.placements[0].position, [10.0, 20.0, 30.0]);
+    }
+
+    #[test]
+    fn parses_codewalker_item_typed_entity_xml() {
+        let xml = r#"<CMapData><entities><Item type="CEntityDef"><archetypeName>stt_prop_ramp_adj_flip_m</archetypeName><flags value="0"/><position x="12.5" y="-8" z="30"/><rotation x="0" y="0" z="0" w="1"/><scaleXY value="1"/><scaleZ value="1"/></Item></entities></CMapData>"#;
+        let set = parse_xml_placements(xml).unwrap();
+        assert_eq!(set.placements.len(), 1);
+        assert_eq!(set.placements[0].model, "stt_prop_ramp_adj_flip_m");
+        assert_eq!(set.placements[0].position, [12.5, -8.0, 30.0]);
     }
 
     #[test]
