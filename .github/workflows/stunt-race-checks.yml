@@ -1,0 +1,44 @@
+name: Stunt Race Checks
+
+on:
+  push:
+    branches: [stunt-race-xml-import]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stunt-race-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-tests:
+    name: Rust placement and mods tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: jdx/mise-action@v2
+        with:
+          version: 2026.7.5
+          install: true
+          install_args: rust cmake
+          cache_key_prefix: stunt-race-checks
+
+      - name: Fetch the supported game.wasm from the private draft
+        run: |
+          .github/scripts/draft.sh fetch "$RUNNER_TEMP/game"
+          echo "GLUE5_GAME_DIR=$RUNNER_TEMP/game" >> "$GITHUB_ENV"
+
+      - name: Prepare native database and wasm2c
+        run: mise run setup
+
+      - name: Run Glue 5 mods tests
+        run: cargo test -p glue5-mods --locked
