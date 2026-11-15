@@ -30,6 +30,7 @@ for _, feature in {
 	require("./features/players"),
 	require("./features/misc"),
 	require("./features/settings"),
+	require("./features/stunt_races"),
 } do
 	feature.build(root)
 end
