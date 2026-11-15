@@ -163,7 +163,14 @@ mod tests {
     }
 
     #[test]
-    fn smooth_world_values_are_in_the_defaults() {\n        for (name, _) in SMOOTH_WORLD {\n            assert!(DEFAULTS.contains(&format!("<{name} value=\\\"")), "{name}");\n        }\n    }\n\n    #[test]\n    fn preset_names_are_in_the_defaults() {
+    fn smooth_world_values_are_in_the_defaults() {
+        for (name, _) in SMOOTH_WORLD {
+            assert!(DEFAULTS.contains(&format!("<{name} value=\\\"")), "{name}");
+        }
+    }
+
+    #[test]
+    fn preset_names_are_in_the_defaults() {
         for (name, _) in LOW {
             assert!(DEFAULTS.contains(&format!("<{name} value=\"")), "{name}");
         }
