@@ -119,9 +119,8 @@ fn xml_vec(node: roxmltree::Node<'_, '_>, names: &[&str], index: usize) -> Resul
     Ok(Some([component("x")?, component("y")?, component("z")?]))
 }
 
-/// Parse named-model XML placements from common Menyoo-style Placement nodes
-/// and CodeWalker/YMAP CEntityDef nodes. Numeric-only ModelHash entries are
-/// intentionally rejected: they need a game-build-specific hash-to-name lookup.
+/// Parse Menyoo Spooner placements and CodeWalker/YMAP CEntityDef nodes.
+
 pub fn parse_xml_placements(text: &str) -> Result<PlacementSet, PlacementError> {
     parse_xml_placements_with_hashes(text, |_| None)
 }
@@ -178,8 +177,12 @@ pub fn parse_xml_placements_with_hashes(
         if !valid_model(&model) {
             return Err(PlacementError(format!("placement {index}: resolved model name is invalid")));
         }
-        let position = xml_vec(node, &["Position", "position"], index)?
-            .ok_or_else(|| PlacementError(format!("placement {index}: missing Position vector")))?;
+        // Menyoo Spooner files store XYZ and Euler angles together in
+        // <PositionRotation>; CodeWalker/YMAP uses a separate <position>.
+        let position_rotation = node.children().find(|n| n.is_element()
+            && n.tag_name().name().eq_ignore_ascii_case("PositionRotation"));
+        let position = xml_vec(node, &["Position", "position", "PositionRotation"], index)?
+            .ok_or_else(|| PlacementError(format!("placement {index}: missing Position/PositionRotation vector")))?;
         let rotation_node = node.children().find(|n| n.is_element() &&
             ["Rotation", "rotation"].iter().any(|name| n.tag_name().name().eq_ignore_ascii_case(name)));
         let rotation = if let Some(rn) = rotation_node {
@@ -199,10 +202,12 @@ pub fn parse_xml_placements_with_hashes(
                 xml_vec(node, &["Rotation", "rotation"], index)?.unwrap_or([0.0; 3])
             }
         } else {
-            // Menyoo exports often store Euler angles as Pitch/Roll/Yaw.
-            let pitch = child_text(node, &["Pitch"]).map(|s| number(s, "Pitch", index)).transpose()?.unwrap_or(0.0);
-            let roll = child_text(node, &["Roll"]).map(|s| number(s, "Roll", index)).transpose()?.unwrap_or(0.0);
-            let yaw = child_text(node, &["Yaw", "Heading"]).map(|s| number(s, "Yaw", index)).transpose()?.unwrap_or(0.0);
+            // Menyoo exports store Euler angles inside PositionRotation;
+            // older/alternate exports may put them directly on Placement.
+            let angle_source = position_rotation.unwrap_or(node);
+            let pitch = child_text(angle_source, &["Pitch"]).map(|s| number(s, "Pitch", index)).transpose()?.unwrap_or(0.0);
+            let roll = child_text(angle_source, &["Roll"]).map(|s| number(s, "Roll", index)).transpose()?.unwrap_or(0.0);
+            let yaw = child_text(angle_source, &["Yaw", "Heading"]).map(|s| number(s, "Yaw", index)).transpose()?.unwrap_or(0.0);
             [pitch, roll, yaw]
         };
         placements.push(Placement {
@@ -267,6 +272,20 @@ mod tests {
         assert_eq!(set.placements.len(), 1);
         assert_eq!(set.placements[0].model, "stt_prop_ramp_adj_flip_m");
         assert_eq!(set.placements[0].position, [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn parses_real_menyoo_position_rotation_layout() {
+        let xml = r#"<SpoonerPlacements><Placement><ModelHash>0x203011a1</ModelHash><PositionRotation><X>-1143.47192</X><Y>-1700.6554</Y><Z>3.6227603</Z><Pitch>-66.8104858</Pitch><Roll>-116.963776</Roll><Yaw>74.5379562</Yaw></PositionRotation></Placement></SpoonerPlacements>"#;
+        let set = parse_xml_placements_with_hashes(xml, |hash| {
+            (hash == 0x203011a1).then(|| "prop_roadcone02a".to_owned())
+        }).unwrap();
+        assert_eq!(set.placements.len(), 1);
+        assert_eq!(set.placements[0].model, "prop_roadcone02a");
+        assert_eq!(set.placements[0].position, [-1143.47192, -1700.6554, 3.6227603]);
+        assert!((set.placements[0].rotation[0] - -66.8104858).abs() < 0.001);
+        assert!((set.placements[0].rotation[1] - -116.963776).abs() < 0.001);
+        assert!((set.placements[0].rotation[2] - 74.5379562).abs() < 0.001);
     }
 
     #[test]
