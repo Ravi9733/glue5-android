@@ -283,6 +283,20 @@ function M.build(root: Menu)
 	elseif #raceRoutes == 0 then
 		menu:label("No playable checkpoint routes yet. Use Create checkpoint route above.")
 	else
+		local routeManage = menu:submenu("Manage race routes", "Delete imported Rockstar JSON or locally created XML routes")
+		for _, name in raceRoutes do
+			bind.action(routeManage, "Delete " .. name, {
+				note = "Permanently delete this route file",
+				action = "Delete",
+			}, function(): string?
+				local deleted, err = pcall(function()
+					world.deleteRaceRoute(name)
+				end)
+				if not deleted then return "Route delete failed: " .. tostring(err) end
+				return "Deleted " .. name .. ". Restart Glue 5 to refresh the route list."
+			end)
+		end
+
 		local raceMenu = menu:submenu("Start checkpoint race", "Select a validated checkpoint route and vehicle")
 		local route = raceMenu:choice("Route", raceRoutes, 1, "Only XML files with at least two checkpoints appear here")
 		bind.action(raceMenu, "Preview selected route", {
