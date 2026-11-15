@@ -307,7 +307,9 @@ impl Vm {
                 let metadata = std::fs::metadata(&file).map_err(|e| {
                     mlua::Error::runtime(format!("world.loadPlacements: {e}"))
                 })?;
-                let limit = if relative.ends_with(".xml") { 4 * 1024 * 1024 } else { 256 * 1024 };
+                let limit = if relative.ends_with(".xml") { 4 * 1024 * 1024 }
+                    else if relative.starts_with("maps/routes/") { 8 * 1024 * 1024 }
+                    else { 256 * 1024 };
                 if metadata.len() > limit {
                     return Err(mlua::Error::runtime(format!(
                         "world.loadPlacements: file exceeds {} KiB",
