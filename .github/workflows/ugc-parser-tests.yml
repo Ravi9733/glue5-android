@@ -1,0 +1,27 @@
+name: UGC parser tests
+
+on:
+  push:
+    branches: [stunt-race-xml-import]
+  pull_request:
+    branches: [stunt-race-xml-import]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parser-tests:
+    name: Rust placement and UGC parser tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/ugc-parser-check
+      - name: Run parser unit tests
+        run: cargo test --manifest-path tools/ugc-parser-check/Cargo.toml
