@@ -34,7 +34,7 @@ The app can import recognized key files from a user-selected folder into app-pri
 | gtav_hash_lut.dat | 256 bytes |
 | gtav_awc_key.dat | 16 bytes |
 
-AES archives require the matching AES key. NG archives require all NG keys, decrypt tables and the hash LUT. The app does not generate keys from GTA5.exe plus magic.dat; users must provide matching key files. Imported files remain in app-private storage.
+AES archives require the matching AES key. NG archives require all NG keys, decrypt tables and the hash LUT. The app does not generate keys from GTA5.exe plus magic.dat; users must provide matching key files. Imported files remain in app-private storage. Imports are staged and checked before activation, so a failed import retains the previous working key set. The three NG files are accepted only as a complete group; partial NG key sets are rejected.
 
 ## Safety and resource limits
 

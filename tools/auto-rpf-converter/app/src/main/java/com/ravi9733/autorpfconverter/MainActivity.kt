@@ -391,23 +391,61 @@ class MainActivity : Activity() {
 
     private fun importRpfKeys(uri: Uri): String {
         val source = DocumentFile.fromTreeUri(this, uri) ?: error("Cannot open selected key folder")
-        rpfKeyDirectory.deleteRecursively()
-        check(rpfKeyDirectory.mkdirs()) { "Cannot create app-private RPF key folder" }
-        var copied = 0
-        for ((name, expectedBytes) in RPF_KEY_FILE_SIZES) {
-            val document = source.findFile(name) ?: continue
-            check(document.isFile) { name + " is not a file" }
-            val target = java.io.File(rpfKeyDirectory, name)
-            copyUriToFile(document.uri, target, expectedBytes)
-            check(target.length() == expectedBytes) {
-                name + " has an invalid size: expected " + expectedBytes + " bytes, got " + target.length()
+        val staging = java.io.File(filesDir, "rpf-keys.importing")
+        val backup = java.io.File(filesDir, "rpf-keys.previous")
+        check(!Files.isSymbolicLink(rpfKeyDirectory.toPath()) &&
+            !Files.isSymbolicLink(staging.toPath()) && !Files.isSymbolicLink(backup.toPath())) {
+            "Unexpected symbolic link in app-private key storage"
+        }
+        // Recover a previous key set if the process was interrupted between directory renames.
+        if (!rpfKeyDirectory.exists() && backup.exists()) {
+            check(backup.renameTo(rpfKeyDirectory)) { "Cannot recover the previous key set" }
+        }
+        staging.deleteRecursively()
+        check(staging.mkdirs()) { "Cannot create temporary key import folder" }
+        var committed = false
+        try {
+            val importedSizes = linkedMapOf<String, Long>()
+            for ((name, expectedBytes) in RpfKeyMaterialPolicy.expectedFileSizes) {
+                val document = source.findFile(name) ?: continue
+                check(document.isFile) { name + " is not a file" }
+                val target = java.io.File(staging, name)
+                copyUriToFile(document.uri, target, expectedBytes)
+                importedSizes[name] = target.length()
             }
-            copied++
+            RpfKeyMaterialPolicy.validate(importedSizes)
+            val stagedReport = NativeAssets.inspectRpfKeys(staging.absolutePath)
+            val hasNgSet = importedSizes.containsKey("gtav_ng_key.dat")
+            check(stagedReport.contains("AES-256: ready") == importedSizes.containsKey("gtav_aes_key.dat")) {
+                "RAGEKIT did not accept the imported AES key file"
+            }
+            check(stagedReport.contains("NG key material: ready") == hasNgSet) {
+                "RAGEKIT did not accept the complete imported NG key set"
+            }
+            check(stagedReport.contains("AWC audio key: ready") == importedSizes.containsKey("gtav_awc_key.dat")) {
+                "RAGEKIT did not accept the imported AWC key file"
+            }
+
+            // Preserve the current set until every new file has passed validation.
+            if (backup.exists()) check(backup.deleteRecursively()) { "Cannot clear stale key backup" }
+            if (rpfKeyDirectory.exists()) {
+                check(rpfKeyDirectory.renameTo(backup)) {
+                    "Cannot preserve the previous key set; import was not applied"
+                }
+            }
+            if (!staging.renameTo(rpfKeyDirectory)) {
+                if (backup.exists() && !rpfKeyDirectory.exists()) backup.renameTo(rpfKeyDirectory)
+                error("Cannot activate the new key set")
+            }
+            committed = true
+            backup.deleteRecursively()
+            return stagedReport + "\nKey import validated and committed; the previous set was retained until activation."
+        } finally {
+            if (!committed) {
+                staging.deleteRecursively()
+                if (backup.exists() && !rpfKeyDirectory.exists()) backup.renameTo(rpfKeyDirectory)
+            }
         }
-        check(copied > 0) {
-            "No recognized key files found. Select the folder containing gtav_aes_key.dat and/or the ragekit NG key files."
-        }
-        return NativeAssets.inspectRpfKeys(rpfKeyDirectory.absolutePath)
     }
 
     private fun copyUriToFile(uri: Uri, target: java.io.File, maxBytes: Long) {
@@ -419,7 +457,7 @@ class MainActivity : Activity() {
                     val count = input.read(buffer)
                     if (count < 0) break
                     total += count
-                    if (total > maxBytes) error("Archive exceeds the " + (maxBytes / (1024 * 1024)) + " MiB copy limit")
+                    if (total > maxBytes) error("Selected file exceeds the " + (maxBytes / (1024 * 1024)) + " MiB copy limit")
                     out.write(buffer, 0, count)
                 }
                 out.fd.sync()
@@ -688,13 +726,6 @@ class MainActivity : Activity() {
         private const val REQUEST_ARCHIVE = 1002
         private const val REQUEST_DESTINATION = 1003
         private const val REQUEST_KEYS = 1004
-        private val RPF_KEY_FILE_SIZES = linkedMapOf(
-            "gtav_aes_key.dat" to 32L,
-            "gtav_ng_key.dat" to 101L * 272L,
-            "gtav_ng_decrypt_tables.dat" to 17L * 16L * 256L * 4L,
-            "gtav_hash_lut.dat" to 256L,
-            "gtav_awc_key.dat" to 16L
-        )
         private const val MAX_NAMES_BYTES = 64L * 1024L * 1024L
         private const val MAX_TOC_BYTES = 80L * 1024L * 1024L
         private const val MAX_BULK_ARCHIVES = 500
