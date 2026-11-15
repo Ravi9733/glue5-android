@@ -150,6 +150,17 @@ pub fn parse_xml_placements_with_hashes(
             || (tag.eq_ignore_ascii_case("Item")
                 && n.attribute("type").is_some_and(|kind| kind.eq_ignore_ascii_case("CEntityDef")))
     }) {
+        // Menyoo's entity type is 1=ped, 2=vehicle, 3=prop. This importer
+        // builds static track geometry only; don't accidentally try to
+        // create a ped or vehicle through CREATE_OBJECT.
+        if let Some(raw_type) = child_text(node, &["Type"]) {
+            let entity_type: i32 = raw_type.parse().map_err(|_| {
+                PlacementError("placement has an invalid Menyoo Type value".into())
+            })?;
+            if entity_type != 3 {
+                continue;
+            }
+        }
         let index = placements.len();
         let named_model = child_text(node, &["ModelName", "Model", "archetypeName"])
             .or_else(|| node.attribute("model"));
@@ -272,6 +283,20 @@ mod tests {
         assert_eq!(set.placements.len(), 1);
         assert_eq!(set.placements[0].model, "stt_prop_ramp_adj_flip_m");
         assert_eq!(set.placements[0].position, [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn skips_menyoo_peds_and_vehicles_but_keeps_props() {
+        let xml = r#"<SpoonerPlacements>
+            <Placement><ModelHash>0x11111111</ModelHash><Type>1</Type><PositionRotation><X>0</X><Y>0</Y><Z>0</Z></PositionRotation></Placement>
+            <Placement><ModelHash>0x22222222</ModelHash><Type>2</Type><PositionRotation><X>1</X><Y>0</Y><Z>0</Z></PositionRotation></Placement>
+            <Placement><ModelHash>0x33333333</ModelHash><Type>3</Type><PositionRotation><X>2</X><Y>0</Y><Z>0</Z></PositionRotation></Placement>
+        </SpoonerPlacements>"#;
+        let set = parse_xml_placements_with_hashes(xml, |hash| {
+            Some(format!("prop_{hash:08x}"))
+        }).unwrap();
+        assert_eq!(set.placements.len(), 1);
+        assert_eq!(set.placements[0].position, [2.0, 0.0, 0.0]);
     }
 
     #[test]
