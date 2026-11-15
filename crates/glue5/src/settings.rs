@@ -54,6 +54,8 @@ pub struct Settings {
     pub android_high_graphics_profile_applied: bool,
     /// One-time Android tuning to reduce CPU-heavy traffic and pedestrian load.
     pub android_smooth_world_profile_applied: bool,
+    /// One-time migration to stop overwriting saved FPS and render-scale choices.
+    pub android_smooth_settings_persisted: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -267,6 +269,7 @@ impl Default for Settings {
             android_performance_profile_v5_applied: false,
             android_high_graphics_profile_applied: false,
             android_smooth_world_profile_applied: false,
+            android_smooth_settings_persisted: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -427,14 +430,14 @@ impl Settings {
         // installs at a moderate 40 FPS / 60% Bicubic profile, then preserve
         // every later user choice across launches.
         #[cfg(target_os = "android")]
-        if !settings.android_smooth_world_profile_applied {
+        if !settings.android_smooth_settings_persisted {
             settings.low_memory = false;
             settings.low_preset_written = false;
             settings.max_fps = 40;
             settings.render_scale = Some(0.60);
             settings.upscaler = Upscaling::Bicubic;
             settings.frame_generation = false;
-            settings.android_smooth_world_profile_applied = true;
+            settings.android_smooth_settings_persisted = true;
         }
         #[cfg(target_os = "android")]
         {
