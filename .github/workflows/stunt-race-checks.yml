@@ -41,4 +41,4 @@ jobs:
         run: mise run setup
 
       - name: Run Glue 5 mods tests
-        run: cargo test -p glue5-mods --locked
+        run: cargo test -p glue5-mods
