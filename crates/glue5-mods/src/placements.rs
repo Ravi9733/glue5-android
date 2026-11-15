@@ -126,7 +126,11 @@ pub fn parse_xml_placements(text: &str) -> Result<PlacementSet, PlacementError> 
     parse_xml_placements_with_hashes(text, |_| None)
 }
 
-/// Parse XML placements and resolve numeric model hashes against the active game build.\npub fn parse_xml_placements_with_hashes(\n    text: &str,\n    resolve_hash: impl Fn(u32) -> Option<String>,\n) -> Result<PlacementSet, PlacementError> {
+/// Parse XML placements and resolve numeric model hashes against the active game build.
+pub fn parse_xml_placements_with_hashes(
+    text: &str,
+    resolve_hash: impl Fn(u32) -> Option<String>,
+) -> Result<PlacementSet, PlacementError> {
     const MAX_XML_BYTES: usize = 4 * 1024 * 1024;
     if text.len() > MAX_XML_BYTES {
         return Err(PlacementError("XML exceeds 4 MiB limit".into()));
