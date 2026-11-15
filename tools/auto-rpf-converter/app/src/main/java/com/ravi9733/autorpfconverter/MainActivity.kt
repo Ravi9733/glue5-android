@@ -128,7 +128,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. Gen9 YTD, YDR, YDD, YFT and YPT are converted to Legacy; YBN, YMAP and YTYP are validated and preserved byte-for-byte; unsupported formats remain unchanged. Output archives are OPEN RPF7; Glue5 browser-build re-keying is not implemented or verified yet."
+            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. Gen9 YTD, YDR, YDD, YFT and YPT are converted to Legacy; YBN, YMAP and YTYP are validated and preserved byte-for-byte; unsupported formats remain unchanged. Output archives are OPEN RPF7. This tool does not turn a retail PC/console install into Glue5's prepared browser-build game-data set; game.wasm and translated shaders are separate requirements."
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)
