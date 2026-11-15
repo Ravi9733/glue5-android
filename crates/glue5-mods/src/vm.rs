@@ -85,6 +85,37 @@ impl Vm {
         // names and coordinates before any script can use the data.
         let world: Table = lua.globals().get("world")?;
         let placement_dir = dir.to_path_buf();
+        let map_dir = placement_dir.join("maps");
+        world.set(
+            "listPlacementFiles",
+            lua.create_function(move |_, ()| {
+                let _ = std::fs::create_dir_all(&map_dir);
+                let mut names = std::fs::read_dir(&map_dir)
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.path().is_file())
+                    .filter_map(|entry| {
+                        let path = entry.path();
+                        let ext = path.extension()?.to_str()?;
+                        if !ext.eq_ignore_ascii_case("xml") {
+                            return None;
+                        }
+                        let name = path.file_name()?.to_str()?.to_string();
+                        if name.len() <= 80
+                            && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.')
+                        {
+                            Some(name)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                names.sort_by_key(|name| name.to_ascii_lowercase());
+                Ok(names)
+            })?,
+        )?;
         world.set(
             "loadPlacements",
             lua.create_function(move |lua, relative: String| {
