@@ -240,6 +240,97 @@ pub fn parse_xml_placements_with_hashes(
     Ok(PlacementSet { version: 1, placements })
 }
 
+/// Parse the public Rockstar Creator job JSON and extract its race checkpoint
+/// route. Supports the Creator's common vector-array representations while
+/// rejecting unknown encodings rather than guessing coordinates.
+pub fn parse_ugc_race_checkpoints(text: &str) -> Result<Vec<[f32; 3]>, PlacementError> {
+    const MAX_JSON_BYTES: usize = 8 * 1024 * 1024;
+    const MAX_CHECKPOINTS: usize = 128;
+    if text.len() > MAX_JSON_BYTES {
+        return Err(PlacementError("Rockstar Creator JSON exceeds 8 MiB limit".into()));
+    }
+    let root: Value = serde_json::from_str(text)
+        .map_err(|e| PlacementError(format!("invalid Rockstar Creator JSON: {e}")))?;
+    let mission = root.get("mission")
+        .or_else(|| root.pointer("/content/data/mission"))
+        .ok_or_else(|| PlacementError("Creator file has no mission section".into()))?;
+    let race = mission.get("race")
+        .ok_or_else(|| PlacementError("Creator file has no mission.race section".into()))?;
+    let raw = race.get("chl")
+        .ok_or_else(|| PlacementError("mission.race has no checkpoint coordinate field (chl)".into()))?;
+
+    fn coord(value: &Value, index: usize) -> Result<[f32; 3], PlacementError> {
+        let fail = || PlacementError(format!("mission.race.chl checkpoint {index} has an unsupported coordinate shape"));
+        let values: [f64; 3] = if let Some(a) = value.as_array() {
+            if a.len() != 3 { return Err(fail()); }
+            [
+                a[0].as_f64().ok_or_else(fail)?,
+                a[1].as_f64().ok_or_else(fail)?,
+                a[2].as_f64().ok_or_else(fail)?,
+            ]
+        } else if let Some(o) = value.as_object() {
+            let axis = |name: &str| o.iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case(name))
+                .and_then(|(_, value)| value.as_f64()).ok_or_else(fail);
+            [axis("x")?, axis("y")?, axis("z")?]
+        } else if let Some(s) = value.as_str() {
+            let parts = s.split(|ch: char| ch == ',' || ch.is_ascii_whitespace())
+                .filter(|part| !part.is_empty()).collect::<Vec<_>>();
+            if parts.len() != 3 { return Err(fail()); }
+            [
+                parts[0].parse::<f64>().map_err(|_| fail())?,
+                parts[1].parse::<f64>().map_err(|_| fail())?,
+                parts[2].parse::<f64>().map_err(|_| fail())?,
+            ]
+        } else {
+            return Err(fail());
+        };
+        let point = [values[0] as f32, values[1] as f32, values[2] as f32];
+        valid_vector(point, "Rockstar checkpoint position", index)
+    }
+
+    let mut points = Vec::new();
+    if let Some(entries) = raw.as_array() {
+        if entries.iter().all(Value::is_number) {
+            if entries.len() % 3 != 0 {
+                return Err(PlacementError("mission.race.chl flat coordinate list must contain X/Y/Z triples".into()));
+            }
+            for (i, triple) in entries.chunks_exact(3).enumerate() {
+                points.push(coord(&Value::Array(triple.to_vec()), i)?);
+            }
+        } else {
+            for (i, entry) in entries.iter().enumerate() {
+                points.push(coord(entry, i)?);
+            }
+        }
+    } else if let Some(encoded) = raw.as_str() {
+        let decoded: Value = serde_json::from_str(encoded)
+            .map_err(|_| PlacementError("mission.race.chl string is not a JSON coordinate array".into()))?;
+        let Some(entries) = decoded.as_array() else {
+            return Err(PlacementError("mission.race.chl string must decode to an array".into()));
+        };
+        for (i, entry) in entries.iter().enumerate() {
+            points.push(coord(entry, i)?);
+        }
+    } else {
+        return Err(PlacementError("mission.race.chl must be a coordinate array".into()));
+    }
+    if points.len() < 2 {
+        return Err(PlacementError("Rockstar race needs at least two checkpoints".into()));
+    }
+    if points.len() > MAX_CHECKPOINTS {
+        return Err(PlacementError(format!("Rockstar race has too many checkpoints (limit {MAX_CHECKPOINTS})")));
+    }
+    if let Some(expected) = race.get("chp").and_then(Value::as_u64) {
+        if expected as usize != points.len() {
+            return Err(PlacementError(format!(
+                "mission.race.chp says {expected} checkpoints but chl contains {}", points.len()
+            )));
+        }
+    }
+    Ok(points)
+}
+
 /// Parse an offline race route from <Checkpoint><Position><X/Y/Z>...</Position></Checkpoint> nodes.
 pub fn parse_xml_checkpoints(text: &str) -> Result<Vec<[f32; 3]>, PlacementError> {
     const MAX_XML_BYTES: usize = 4 * 1024 * 1024;
@@ -361,6 +452,26 @@ mod tests {
     fn rejects_invalid_models_and_unbounded_coordinates() {
         assert!(parse_manifest(r#"{"version":1,"placements":[{"model":"../bad","position":[0,0,0]}]}"#).is_err());
         assert!(parse_manifest(r#"{"version":1,"placements":[{"model":"prop","position":[99999,0,0]}]}"#).is_err());
+    }
+
+    #[test]
+    fn parses_rockstar_ugc_race_checkpoint_vectors() {
+        let json = r#"{"mission":{"gen":{"type":2},"race":{"chp":3,"lap":1,"chl":[[1,2,3],[4,5,6],[7,8,9]]}}}"#;
+        assert_eq!(parse_ugc_race_checkpoints(json).unwrap(), vec![[1.0,2.0,3.0],[4.0,5.0,6.0],[7.0,8.0,9.0]]);
+    }
+
+    #[test]
+    fn parses_rockstar_ugc_flat_and_object_coordinates() {
+        let flat = r#"{"mission":{"race":{"chl":[1,2,3,4,5,6]}}}"#;
+        assert_eq!(parse_ugc_race_checkpoints(flat).unwrap(), vec![[1.0,2.0,3.0],[4.0,5.0,6.0]]);
+        let objects = r#"{"content":{"data":{"mission":{"race":{"chl":[{"x":1,"y":2,"z":3},{"X":4,"Y":5,"Z":6}]}}}}}"#;
+        assert_eq!(parse_ugc_race_checkpoints(objects).unwrap(), vec![[1.0,2.0,3.0],[4.0,5.0,6.0]]);
+    }
+
+    #[test]
+    fn rejects_mismatched_ugc_checkpoint_count() {
+        let json = r#"{"mission":{"race":{"chp":3,"chl":[[1,2,3],[4,5,6]]}}}"#;
+        assert!(parse_ugc_race_checkpoints(json).unwrap_err().0.contains("chp says 3"));
     }
 
     #[test]
