@@ -33,6 +33,18 @@ impl std::fmt::Display for PlacementError {
 
 impl std::error::Error for PlacementError {}
 
+fn valid_model(model: &str) -> bool {
+    !model.is_empty() && model.len() <= 64 &&
+        model.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn valid_vector(v: [f32; 3], what: &str, index: usize) -> Result<[f32; 3], PlacementError> {
+    if v.iter().any(|n| !n.is_finite() || n.abs() > MAX_COORDINATE) {
+        return Err(PlacementError(format!("placement {index}: {what} is outside the allowed range")));
+    }
+    Ok(v)
+}
+
 /// Parse a version-1 placement manifest:
 /// { "version": 1, "placements": [
 ///   { "model": "prop_name", "position": [x,y,z], "rotation": [rx,ry,rz] }
@@ -56,8 +68,7 @@ pub fn parse_manifest(text: &str) -> Result<PlacementSet, PlacementError> {
         let fail = |message: &str| PlacementError(format!("placement {index}: {message}"));
         let model = entry.get("model").and_then(Value::as_str)
             .ok_or_else(|| fail("model must be a string"))?;
-        if model.is_empty() || model.len() > 64 ||
-            !model.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') {
+        if !valid_model(model) {
             return Err(fail("model name must be 1-64 ASCII letters, digits, '_' or '-'"));
         }
         let vector = |key: &str, default: [f32; 3]| -> Result<[f32; 3], PlacementError> {
@@ -83,6 +94,80 @@ pub fn parse_manifest(text: &str) -> Result<PlacementSet, PlacementError> {
     Ok(PlacementSet { version: 1, placements })
 }
 
+fn child_text<'a, 'input>(node: roxmltree::Node<'a, 'input>, names: &[&str]) -> Option<&'a str> {
+    node.children().find(|n| n.is_element() && names.iter().any(|name| n.tag_name().name().eq_ignore_ascii_case(name)))
+        .and_then(|n| n.text()).map(str::trim).filter(|s| !s.is_empty())
+}
+
+fn number(text: &str, what: &str, index: usize) -> Result<f32, PlacementError> {
+    let n: f32 = text.parse().map_err(|_| PlacementError(format!("placement {index}: invalid {what}")))?;
+    if !n.is_finite() || n.abs() > MAX_COORDINATE {
+        return Err(PlacementError(format!("placement {index}: {what} is outside the allowed range")));
+    }
+    Ok(n)
+}
+
+fn xml_vec(node: roxmltree::Node<'_, '_>, names: &[&str], index: usize) -> Result<Option<[f32; 3]>, PlacementError> {
+    let Some(v) = node.children().find(|n| n.is_element() && names.iter().any(|name| n.tag_name().name().eq_ignore_ascii_case(name))) else {
+        return Ok(None);
+    };
+    let component = |axis: &str| -> Result<f32, PlacementError> {
+        let text = v.attribute(axis).or_else(|| child_text(v, &[axis]))
+            .ok_or_else(|| PlacementError(format!("placement {index}: missing {axis} in {}", names[0])))?;
+        number(text, axis, index)
+    };
+    Ok(Some([component("x")?, component("y")?, component("z")?]))
+}
+
+/// Parse named-model XML placements from common Menyoo-style Placement nodes
+/// and CodeWalker/YMAP CEntityDef nodes. Numeric-only ModelHash entries are
+/// intentionally rejected: they need a game-build-specific hash-to-name lookup.
+pub fn parse_xml_placements(text: &str) -> Result<PlacementSet, PlacementError> {
+    const MAX_XML_BYTES: usize = 4 * 1024 * 1024;
+    if text.len() > MAX_XML_BYTES {
+        return Err(PlacementError("XML exceeds 4 MiB limit".into()));
+    }
+    let doc = roxmltree::Document::parse(text)
+        .map_err(|e| PlacementError(format!("invalid placement XML: {e}")))?;
+    let mut placements = Vec::new();
+
+    for node in doc.descendants().filter(|n| n.is_element() &&
+        (n.tag_name().name().eq_ignore_ascii_case("Placement") ||
+         n.tag_name().name().eq_ignore_ascii_case("CEntityDef"))) {
+        let model = child_text(node, &["ModelName", "Model", "archetypeName"])
+            .or_else(|| node.attribute("model"));
+        let Some(model) = model else { continue };
+        if !valid_model(model) {
+            return Err(PlacementError(format!("placement {}: model name is invalid or is a numeric hash", placements.len())));
+        }
+        let index = placements.len();
+        let position = xml_vec(node, &["Position", "position"], index)?
+            .ok_or_else(|| PlacementError(format!("placement {index}: missing Position vector")))?;
+        let rotation = if let Some(r) = xml_vec(node, &["Rotation", "rotation"], index)? {
+            r
+        } else {
+            // Menyoo exports often store Euler angles as Pitch/Roll/Yaw.
+            let pitch = child_text(node, &["Pitch"]).map(|s| number(s, "Pitch", index)).transpose()?.unwrap_or(0.0);
+            let roll = child_text(node, &["Roll"]).map(|s| number(s, "Roll", index)).transpose()?.unwrap_or(0.0);
+            let yaw = child_text(node, &["Yaw", "Heading"]).map(|s| number(s, "Yaw", index)).transpose()?.unwrap_or(0.0);
+            [pitch, roll, yaw]
+        };
+        placements.push(Placement {
+            model: model.to_owned(),
+            position: valid_vector(position, "position", index)?,
+            rotation: valid_vector(rotation, "rotation", index)?,
+        });
+        if placements.len() > MAX_PLACEMENTS {
+            return Err(PlacementError(format!("too many XML placements (limit {MAX_PLACEMENTS})")));
+        }
+    }
+
+    if placements.is_empty() {
+        return Err(PlacementError("no supported named-model placements found; numeric ModelHash-only Menyoo files need hash resolution".into()));
+    }
+    Ok(PlacementSet { version: 1, placements })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +178,29 @@ mod tests {
         assert_eq!(set.placements.len(), 1);
         assert_eq!(set.placements[0].model, "prop_roadcone02a");
         assert_eq!(set.placements[0].position, [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn parses_named_menyoo_style_xml() {
+        let xml = r#"<SpoonerPlacements><Placement><ModelName>stt_prop_ramp_adj_flip_m</ModelName><Position><X>1</X><Y>2</Y><Z>3</Z></Position><Rotation><X>0</X><Y>0</Y><Z>90</Z></Rotation></Placement></SpoonerPlacements>"#;
+        let set = parse_xml_placements(xml).unwrap();
+        assert_eq!(set.placements.len(), 1);
+        assert_eq!(set.placements[0].model, "stt_prop_ramp_adj_flip_m");
+        assert_eq!(set.placements[0].position, [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn parses_ymap_entity_def_xml() {
+        let xml = r#"<CMapData><entities><Item type="CEntityDef"><archetypeName>prop_roadcone02a</archetypeName><position x="10" y="20" z="30"/><rotation x="0" y="0" z="0" w="1"/></Item></entities></CMapData>"#;
+        let set = parse_xml_placements(xml).unwrap();
+        assert_eq!(set.placements[0].model, "prop_roadcone02a");
+        assert_eq!(set.placements[0].position, [10.0, 20.0, 30.0]);
+    }
+
+    #[test]
+    fn rejects_numeric_hash_only_menyoo_xml() {
+        let xml = r#"<SpoonerPlacements><Placement><ModelHash>123456</ModelHash></Placement></SpoonerPlacements>"#;
+        assert!(parse_xml_placements(xml).unwrap_err().0.contains("numeric ModelHash-only"));
     }
 
     #[test]
