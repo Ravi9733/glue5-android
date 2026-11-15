@@ -261,12 +261,10 @@ pub fn parse_ugc_race_placements(
         .ok_or_else(|| PlacementError("Creator file has no mission section".into()))?;
     let prop = mission.get("prop")
         .ok_or_else(|| PlacementError("Creator file has no mission.prop section".into()))?;
-    let models = prop.get("model").and_then(Value::as_array)
-        .ok_or_else(|| PlacementError("mission.prop.model must be an array".into()))?;
-    let positions = prop.get("loc").and_then(Value::as_array)
-        .ok_or_else(|| PlacementError("mission.prop.loc must be an array".into()))?;
-    let rotations = prop.get("vRot").and_then(Value::as_array)
-        .ok_or_else(|| PlacementError("mission.prop.vRot must be an array".into()))?;
+    let empty: Vec<Value> = Vec::new();
+    let models = prop.get("model").and_then(Value::as_array).unwrap_or(&empty);
+    let positions = prop.get("loc").and_then(Value::as_array).unwrap_or(&empty);
+    let rotations = prop.get("vRot").and_then(Value::as_array).unwrap_or(&empty);
     let count = prop.get("no").and_then(Value::as_u64).unwrap_or(models.len() as u64) as usize;
     if count > MAX_PLACEMENTS {
         return Err(PlacementError(format!("Rockstar race has too many static props (limit {MAX_PLACEMENTS})")));
@@ -332,15 +330,13 @@ pub fn parse_ugc_race_placements(
     // Creator dynamic props (mission.dprop) are spawned with physics instead
     // of being frozen like the main track geometry.
     if let Some(dynamic) = mission.get("dprop") {
-        let dynamic_models = dynamic.get("model").and_then(Value::as_array).cloned().unwrap_or_default();
+        let dynamic_models = dynamic.get("model").and_then(Value::as_array).unwrap_or(&empty);
         let dynamic_count = dynamic.get("no").and_then(Value::as_u64).unwrap_or(dynamic_models.len() as u64) as usize;
         if placements.len().saturating_add(dynamic_count) > MAX_PLACEMENTS {
             return Err(PlacementError(format!("Rockstar race has too many props (limit {MAX_PLACEMENTS})")));
         }
-        let dynamic_positions = dynamic.get("loc").and_then(Value::as_array)
-            .ok_or_else(|| PlacementError("mission.dprop.loc must be an array".into()))?;
-        let dynamic_rotations = dynamic.get("vRot").and_then(Value::as_array)
-            .ok_or_else(|| PlacementError("mission.dprop.vRot must be an array".into()))?;
+        let dynamic_positions = dynamic.get("loc").and_then(Value::as_array).unwrap_or(&empty);
+        let dynamic_rotations = dynamic.get("vRot").and_then(Value::as_array).unwrap_or(&empty);
         if dynamic_models.len() < dynamic_count || dynamic_positions.len() < dynamic_count
             || dynamic_rotations.len() < dynamic_count {
             return Err(PlacementError("mission.dprop arrays are shorter than mission.dprop.no".into()));
