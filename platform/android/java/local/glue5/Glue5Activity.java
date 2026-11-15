@@ -123,8 +123,27 @@ public class Glue5Activity extends SDLActivity {
         }
     }
 
+    /** Open the exact community stunt-map page requested by the in-game F7 menu. */
+    private void openStuntRaceChallengePage() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://www.gta5-mods.com/maps/stunt-race-challenge-45-all-vehicles"));
+            intent.addCategory(Intent.CATEGORY_BROWSABLE);
+            startActivity(intent);
+            Toast.makeText(this, "Opening Stunt Race Challenge 45 download page", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Cannot open stunt-map page: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void checkTurnipImportRequest() {
         if (isFinishing() || turnipPickerOpen || graphicsPickerOpen || reshadePickerOpen || stuntMapsPickerOpen) return;
+        File stuntRacePageRequest = new File(getFilesDir(), "open-stunt-race-page-request");
+        if (stuntRacePageRequest.isFile() && stuntRacePageRequest.delete()) {
+            openStuntRaceChallengePage();
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+            return;
+        }
         File clearGraphicsRequest = new File(getFilesDir(), "graphics-mod-clear-request");
         if (clearGraphicsRequest.isFile() && clearGraphicsRequest.delete()) {
             try {
