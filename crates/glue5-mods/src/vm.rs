@@ -349,6 +349,10 @@ impl Vm {
                                 break
                             end
                             if streaming.load(item.model) then
+                                if generation ~= spawnGeneration then
+                                    streaming.setModelAsNoLongerNeeded(item.model)
+                                    break
+                                end
                                 local objectHandle = object.createObject(item.model, item.position, false, false, false)
                                 streaming.setModelAsNoLongerNeeded(item.model)
                                 if objectHandle then
