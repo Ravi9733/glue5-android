@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn smooth_world_values_are_in_the_defaults() {
         for (name, _) in SMOOTH_WORLD {
-            assert!(DEFAULTS.contains(&format!("<{name} value=\\"")), "{name}");
+            assert!(DEFAULTS.contains(&format!(r#"<{name} value=""#)), "{name}");
         }
     }
 
