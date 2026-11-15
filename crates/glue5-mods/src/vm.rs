@@ -213,7 +213,8 @@ impl Vm {
             })?,
         )?;
         let route_dir = dir.to_path_buf().join("maps").join("routes");
-        let save_route_dir = dir.to_path_buf().join("maps").join("routes");
+        let delete_route_dir = route_dir.clone();
+        let save_route_dir = route_dir.clone();
         world.set(
             "deleteRaceRoute",
             lua.create_function(move |_, name: String| {
@@ -224,7 +225,7 @@ impl Vm {
                 {
                     return Err(mlua::Error::runtime("deleteRaceRoute: invalid route filename"));
                 }
-                let path = route_dir.join(&name);
+                let path = delete_route_dir.join(&name);
                 if !path.is_file() {
                     return Err(mlua::Error::runtime(format!("race route not found: {name}")));
                 }
