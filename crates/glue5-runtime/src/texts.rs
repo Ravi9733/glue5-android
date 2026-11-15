@@ -1,4 +1,4 @@
-//! Texts the game data lacks: its scripts are newer and name labels of
+//! Texts the game data lacks: their scripts are newer and name labels of
 //! later DLC packs, which show as "<LABEL> missing". The ones GTA Online's
 //! jobs and activities show on the way (hosting, coronas, the job lists),
 //! and the pause menu's sessions, are given here, in English.
@@ -45,6 +45,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("PM_EXIT_GAME", "Exit Game"),
     ("PM_ARENA", "Arena War"),
     ("PM_RC_STUNT", "Stunt Races"),
+    ("PM_CLMN_WRN_SRT", "Stunt Races are unavailable because no local Stunt Race job data was found."),
     ("RC_TARGASSAULT", "Target Assault Races"),
     ("FMMC_RSTAR_KOT", "King of the Hill"),
     ("PM_TNEWVS", "Adversary Modes"),
@@ -104,5 +105,10 @@ mod tests {
         assert_eq!(super::label_hash("a"), 0xca2e9442);
         assert_eq!(super::label_hash("ADDER"), super::label_hash("adder"));
         assert_eq!(super::label_hash("adder"), 0xb779a091);
+    }
+
+    #[test]
+    fn stunt_race_warning_label_is_registered() {
+        assert!(super::TEXTS.iter().any(|(label, _)| *label == "PM_CLMN_WRN_SRT"));
     }
 }
