@@ -357,6 +357,10 @@ impl Vm {
                                 streaming.setModelAsNoLongerNeeded(item.model)
                                 if objectHandle then
                                     entity.setEntityRotation(objectHandle, item.rotation, 2, true)
+                                    -- Keep map props alive until the player's explicit Clear action.
+                                    pcall(function()
+                                        entity.setEntityAsMissionEntity(objectHandle, true, true)
+                                    end)
                                     -- Spooner maps are static track geometry: keep ramps,
                                     -- platforms and props from falling under gravity.
                                     entity.freezeEntityPosition(objectHandle, true)
