@@ -357,6 +357,9 @@ impl Vm {
                                 streaming.setModelAsNoLongerNeeded(item.model)
                                 if objectHandle then
                                     entity.setEntityRotation(objectHandle, item.rotation, 2, true)
+                                    -- Spooner maps are static track geometry: keep ramps,
+                                    -- platforms and props from falling under gravity.
+                                    entity.freezeEntityPosition(objectHandle, true)
                                     table.insert(spawnedObjects, objectHandle)
                                     created += 1
                                 else
