@@ -323,7 +323,9 @@ impl Vm {
                 r#"
                 local loadPlacements = world.loadPlacements
                 local spawnedObjects = {}
+                local spawnGeneration = 0
                 world.clearSpawnedPlacements = function()
+                    spawnGeneration += 1
                     local removed = 0
                     for i = #spawnedObjects, 1, -1 do
                         local handle = spawnedObjects[i]
@@ -339,9 +341,13 @@ impl Vm {
                     assert(type(relative) == "string", "world.spawnPlacements: expected a relative .json or .xml path")
                     local placements = loadPlacements(relative)
                     assert(#spawnedObjects + #placements <= 2048, "world.spawnPlacements: clear some spawned track objects first (2048 object session limit)")
+                    local generation = spawnGeneration
                     local taskThread = task.spawn(function()
                         local created, missing = 0, 0
                         for _, item in placements do
+                            if generation ~= spawnGeneration then
+                                break
+                            end
                             if streaming.load(item.model) then
                                 local objectHandle = object.createObject(item.model, item.position, false, false, false)
                                 streaming.setModelAsNoLongerNeeded(item.model)
