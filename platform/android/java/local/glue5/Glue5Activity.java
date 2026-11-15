@@ -426,7 +426,7 @@ public class Glue5Activity extends SDLActivity {
     private String safeStuntXmlName(String raw) throws Exception {
         String name = new File(raw).getName();
         if (!name.toLowerCase(java.util.Locale.ROOT).endsWith(".xml")
-                || !name.matches("(?i)[A-Za-z0-9_-]{1,64}\\\\.xml")) {
+                || !name.matches("(?i)[A-Za-z0-9_-]{1,64}\\.xml")) {
             throw new Exception("XML filename must use letters, numbers, _ or - and end in .xml");
         }
         return name;
