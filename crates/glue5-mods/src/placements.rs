@@ -242,9 +242,20 @@ mod tests {
     }
 
     #[test]
-    fn rejects_numeric_hash_only_menyoo_xml() {
-        let xml = r#"<SpoonerPlacements><Placement><ModelHash>123456</ModelHash></Placement></SpoonerPlacements>"#;
-        assert!(parse_xml_placements(xml).unwrap_err().0.contains("numeric ModelHash-only"));
+    fn resolves_numeric_hash_only_menyoo_xml() {
+        let xml = r#"<SpoonerPlacements><Placement><ModelHash>123456</ModelHash><Position><X>1</X><Y>2</Y><Z>3</Z></Position></Placement></SpoonerPlacements>"#;
+        let set = parse_xml_placements_with_hashes(xml, |hash| {
+            (hash == 123456).then(|| "stt_prop_ramp_adj_flip_m".to_owned())
+        }).unwrap();
+        assert_eq!(set.placements[0].model, "stt_prop_ramp_adj_flip_m");
+        assert_eq!(set.placements[0].position, [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn rejects_unregistered_numeric_model_hash() {
+        let xml = r#"<SpoonerPlacements><Placement><ModelHash>0xDEADBEEF</ModelHash><Position><X>0</X><Y>0</Y><Z>0</Z></Position></Placement></SpoonerPlacements>"#;
+        assert!(parse_xml_placements_with_hashes(xml, |_| None)
+            .unwrap_err().0.contains("not registered in this game build"));
     }
 
     #[test]
