@@ -6,7 +6,7 @@ Android ARM64 conversion prototype for GTA V RPF7 archives. It extracts a select
 
 1. Select one .rpf archive and an output folder, or select a GTA V folder and bulk-process up to 500 on-disk RPF files. Folder discovery is capped at 250,000 items. Bulk output mirrors the original relative folder paths and preserves each .rpf basename, so existing DLC path references can still match when the output tree is overlaid at the same relative location. Use an empty output folder; existing output filenames are rejected rather than renamed or overwritten.
 2. Extract RPF7 archives with the pinned ragekit reader. OPEN/None archives need no keys. AES and NG archives are attempted only when the matching key material is imported from the user's own installation; missing or invalid keys cause extraction to fail. No key is bundled, guessed, uploaded or bypassed.
-3. Convert Enhanced Gen9 resources to Legacy with the pinned ragekit v0.3.1 C++ library:
+3. Convert Enhanced Gen9 resources to Legacy with the pinned ragekit v0.3.2 C++ library:
    - .ytd texture dictionaries: Gen9 version 5 to Legacy version 13
    - .ydr drawables and .ydd drawable dictionaries: Gen9 version 159 (and the CodeWalker-compatible 154 variant) to Legacy version 165
    - .yft fragments: Gen9 version 171 to Legacy version 162
@@ -59,7 +59,7 @@ Before calling the project complete, the exact target archive/key requirements o
 
 ## Pinned upstream implementation
 
-The C++ conversion, keyed RPF extraction and OPEN RPF7 writer use RatPrez/ragekit v0.3.1, commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b. The pin matches the upstream v0.3.1 tag. Its Gen9 layout and conversion behavior are documented in [ragekit's Enhanced format notes](https://github.com/RatPrez/ragekit/blob/v0.3.1/docs/enhanced.md), and its RPF7 reader/writer API is in [ragekit's RPF header](https://github.com/RatPrez/ragekit/blob/v0.3.1/include/ragekit/rpf.h).
+The C++ conversion, keyed RPF extraction and OPEN RPF7 writer use RatPrez/ragekit v0.3.2, commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b. The pin matches the upstream v0.3.2 tag. Its Gen9 layout and conversion behavior are documented in [ragekit's Enhanced format notes](https://github.com/RatPrez/ragekit/blob/v0.3.2/docs/enhanced.md), and its RPF7 reader/writer API is in [ragekit's RPF header](https://github.com/RatPrez/ragekit/blob/v0.3.2/include/ragekit/rpf.h).
 
 ## Tests and build
 
@@ -74,3 +74,10 @@ GitHub Actions runs:
 - Android ARM64 debug APK build
 
 Fixtures are synthetic, not a full retail GTA V installation. Physical Android and Glue5 in-game tests have not been completed.
+
+
+## Output integrity and Android packaging
+
+- Nested RPF discovery uses a streaming filesystem walk and enforces the nested-archive limit while traversing; it does not first materialize a list of every nested archive path.
+- After a converted RPF is copied to the selected SAF output folder, the app reads the finalized document back with a fixed-size buffer and compares SHA-256 plus the byte count against the generated archive. A failed verification deletes the partial/finalized output and reports failure.
+- The Android APK links the pinned ragekit C++ JNI library. The older Rust native-core crate remains covered by a separate CI test job as legacy prototype code, but its unused JNI wrapper and shared library are no longer packaged into the APK.
