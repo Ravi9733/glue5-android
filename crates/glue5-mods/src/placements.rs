@@ -143,8 +143,24 @@ pub fn parse_xml_placements(text: &str) -> Result<PlacementSet, PlacementError> 
         let index = placements.len();
         let position = xml_vec(node, &["Position", "position"], index)?
             .ok_or_else(|| PlacementError(format!("placement {index}: missing Position vector")))?;
-        let rotation = if let Some(r) = xml_vec(node, &["Rotation", "rotation"], index)? {
-            r
+        let rotation_node = node.children().find(|n| n.is_element() &&
+            ["Rotation", "rotation"].iter().any(|name| n.tag_name().name().eq_ignore_ascii_case(name)));
+        let rotation = if let Some(rn) = rotation_node {
+            if let Some(w_text) = rn.attribute("w") {
+                let x = rn.attribute("x").ok_or_else(|| PlacementError(format!("placement {index}: missing quaternion x")))?;
+                let y = rn.attribute("y").ok_or_else(|| PlacementError(format!("placement {index}: missing quaternion y")))?;
+                let z = rn.attribute("z").ok_or_else(|| PlacementError(format!("placement {index}: missing quaternion z")))?;
+                let (x, y, z, w) = (
+                    number(x, "rotation x", index)?, number(y, "rotation y", index)?,
+                    number(z, "rotation z", index)?, number(w_text, "rotation w", index)?,
+                );
+                let roll = (2.0 * (w * x + y * z)).atan2(1.0 - 2.0 * (x * x + y * y));
+                let pitch = (2.0 * (w * y - z * x)).clamp(-1.0, 1.0).asin();
+                let yaw = (2.0 * (w * z + x * y)).atan2(1.0 - 2.0 * (y * y + z * z));
+                [roll.to_degrees(), pitch.to_degrees(), yaw.to_degrees()]
+            } else {
+                xml_vec(node, &["Rotation", "rotation"], index)?.unwrap_or([0.0; 3])
+            }
         } else {
             // Menyoo exports often store Euler angles as Pitch/Roll/Yaw.
             let pitch = child_text(node, &["Pitch"]).map(|s| number(s, "Pitch", index)).transpose()?.unwrap_or(0.0);
