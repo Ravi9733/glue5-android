@@ -86,7 +86,7 @@ pub fn parse_manifest(text: &str) -> Result<PlacementSet, PlacementError> {
             Ok(out)
         };
         placements.push(Placement {
-            model: model.to_owned(),
+            model,
             position: vector("position", [0.0; 3])?,
             rotation: vector("rotation", [0.0; 3])?,
         });
@@ -123,6 +123,10 @@ fn xml_vec(node: roxmltree::Node<'_, '_>, names: &[&str], index: usize) -> Resul
 /// and CodeWalker/YMAP CEntityDef nodes. Numeric-only ModelHash entries are
 /// intentionally rejected: they need a game-build-specific hash-to-name lookup.
 pub fn parse_xml_placements(text: &str) -> Result<PlacementSet, PlacementError> {
+    parse_xml_placements_with_hashes(text, |_| None)
+}
+
+/// Parse XML placements and resolve numeric model hashes against the active game build.\npub fn parse_xml_placements_with_hashes(\n    text: &str,\n    resolve_hash: impl Fn(u32) -> Option<String>,\n) -> Result<PlacementSet, PlacementError> {
     const MAX_XML_BYTES: usize = 4 * 1024 * 1024;
     if text.len() > MAX_XML_BYTES {
         return Err(PlacementError("XML exceeds 4 MiB limit".into()));
@@ -134,13 +138,33 @@ pub fn parse_xml_placements(text: &str) -> Result<PlacementSet, PlacementError> 
     for node in doc.descendants().filter(|n| n.is_element() &&
         (n.tag_name().name().eq_ignore_ascii_case("Placement") ||
          n.tag_name().name().eq_ignore_ascii_case("CEntityDef"))) {
-        let model = child_text(node, &["ModelName", "Model", "archetypeName"])
-            .or_else(|| node.attribute("model"));
-        let Some(model) = model else { continue };
-        if !valid_model(model) {
-            return Err(PlacementError(format!("placement {}: model name is invalid or is a numeric hash", placements.len())));
-        }
         let index = placements.len();
+        let named_model = child_text(node, &["ModelName", "Model", "archetypeName"])
+            .or_else(|| node.attribute("model"));
+        let resolved_model = if let Some(model) = named_model {
+            Some(model.to_owned())
+        } else if let Some(raw_hash) = child_text(node, &["ModelHash", "modelHash"])
+            .or_else(|| node.attribute("modelHash"))
+            .or_else(|| node.attribute("hash"))
+        {
+            let raw = raw_hash.trim();
+            let parsed = if let Some(hex) = raw.strip_prefix("0x").or_else(|| raw.strip_prefix("0X")) {
+                u32::from_str_radix(hex, 16).ok()
+            } else if let Ok(value) = raw.parse::<u32>() {
+                Some(value)
+            } else {
+                raw.parse::<i32>().ok().map(|value| value as u32)
+            }.ok_or_else(|| PlacementError(format!("placement {index}: invalid ModelHash")))?;
+            Some(resolve_hash(parsed).ok_or_else(|| PlacementError(format!(
+                "placement {index}: ModelHash {raw} is not registered in this game build"
+            )))?)
+        } else {
+            None
+        };
+        let Some(model) = resolved_model else { continue };
+        if !valid_model(&model) {
+            return Err(PlacementError(format!("placement {index}: resolved model name is invalid")));
+        }
         let position = xml_vec(node, &["Position", "position"], index)?
             .ok_or_else(|| PlacementError(format!("placement {index}: missing Position vector")))?;
         let rotation_node = node.children().find(|n| n.is_element() &&
