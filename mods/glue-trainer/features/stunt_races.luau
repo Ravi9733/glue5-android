@@ -6,6 +6,7 @@ local game = require("../core/game")
 local M = {}
 
 local activeRace = false
+local respawnRequested = false
 local raceVehicle: Vehicle? = nil
 local routeBlips: { Blip } = {}
 
@@ -73,6 +74,8 @@ local function runRace(routeName: string, modelName: string): string?
 		return why
 	end
 	raceVehicle = car
+	respawnRequested = false
+	entity.freezeEntityPosition(car, true)
 	activeRace = true
 	task.spawn(function()
 		local finished = false
@@ -85,11 +88,21 @@ local function runRace(routeName: string, modelName: string): string?
 				wait(1000)
 			end
 			game.notify("GO!")
+			if raceVehicle and entity.doesEntityExist(raceVehicle) then
+				entity.freezeEntityPosition(raceVehicle, false)
+			end
 			startedAt = os.clock()
 			showRoute(points, 2)
 			checkpoint = 2
 			while activeRace and checkpoint <= #points do
 				wait(0)
+				if respawnRequested and raceVehicle and entity.doesEntityExist(raceVehicle) then
+					entity.setEntityCoordsNoOffset(raceVehicle, points[checkpoint - 1], false, false, true)
+					vehicle.setVehicleForwardSpeed(raceVehicle, 0)
+					vehicle.setVehicleOnGroundProperly(raceVehicle, 5)
+					respawnRequested = false
+					game.notify("Respawned at checkpoint " .. tostring(checkpoint - 1))
+				end
 				if not raceVehicle or not entity.doesEntityExist(raceVehicle) then
 					local replacement, spawnError = spawnRaceVehicle(modelName, points[checkpoint - 1])
 					if not replacement then
@@ -195,6 +208,13 @@ function M.build(root: Menu)
 		action = "Race",
 	}, function(): string?
 		return runRace(maps[route.value], vehicleName.value)
+	end)
+	bind.action(raceMenu, "Respawn at last checkpoint", { note = "Move your race vehicle back to the last passed checkpoint", action = "Respawn" }, function(): string?
+		if not activeRace then
+			return "No stunt race is running"
+		end
+		respawnRequested = true
+		return "Respawn requested"
 	end)
 	bind.action(raceMenu, "Stop race", { action = "Stop" }, function(): string?
 		if not activeRace then
