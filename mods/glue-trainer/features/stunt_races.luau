@@ -230,6 +230,20 @@ function M.build(root: Menu)
 	menu:label("Object XML supports Menyoo PositionRotation and CodeWalker CEntityDef.")
 	menu:label("Rockstar JSON reads mission.race.chl and mission.prop/dprop track objects.")
 
+	bind.action(menu, "Download: Stunt Race Challenge 45", {
+		note = "Open the GTA5-Mods download page in your Android browser",
+		action = "Open download page",
+	}, function(): string?
+		local opened, err = pcall(function()
+			world.requestStuntRaceChallengePage()
+		end)
+		if not opened then
+			return "Could not open download page: " .. tostring(err)
+		end
+		return "Opening Stunt Race Challenge 45 in your browser"
+	end)
+
+
 	bind.action(menu, "Import Rockstar UGC JSON / ZIP", {
 		note = "Import a Rockstar Creator job JSON or ZIP into maps/routes",
 		action = "Import UGC",
