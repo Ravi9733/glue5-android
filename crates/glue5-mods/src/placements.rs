@@ -562,6 +562,31 @@ mod tests {
     }
 
     #[test]
+    fn resolves_string_encoded_ugc_prop_hashes() {
+        let json = r#"{"mission":{"prop":{"no":1,"model":["0x7B"],"loc":[{"x":1,"y":2,"z":3}],"vRot":[{"x":0,"y":0,"z":90}]}}}"#;
+        let set = parse_ugc_race_placements(json, |hash| {
+            (hash == 123).then(|| "stt_prop_ramp_adj_flip_m".to_owned())
+        }).unwrap();
+        assert_eq!(set.placements[0].model, "stt_prop_ramp_adj_flip_m");
+    }
+
+    #[test]
+    fn parses_complete_ugc_route_and_track_fixture() {
+        let json = r#"{
+            "content":{"data":{"mission":{
+                "gen":{"type":2},
+                "race":{"chp":2,"chl":[{"x":10,"y":20,"z":30},{"x":40,"y":50,"z":60}],"chs":[2,2]},
+                "prop":{"no":1,"model":[123],"loc":[{"x":11,"y":22,"z":33}],"vRot":[{"x":0,"y":0,"z":45}]}
+            }}}
+        }"#;
+        let route = parse_ugc_race_checkpoints(json).unwrap();
+        let props = parse_ugc_race_placements(json, |_| Some("stt_prop_ramp_adj_flip_m".into())).unwrap();
+        assert_eq!(route.len(), 2);
+        assert_eq!(props.placements.len(), 1);
+        assert_eq!(props.placements[0].rotation, [0.0, 0.0, 45.0]);
+    }
+
+    #[test]
     fn rejects_ugc_prop_array_count_mismatch() {
         let json = r#"{"mission":{"prop":{"no":2,"model":[1],"loc":[{"x":0,"y":0,"z":0}],"vRot":[{"x":0,"y":0,"z":0}]}}}"#;
         assert!(parse_ugc_race_placements(json, |_| Some("prop_test".into()))
