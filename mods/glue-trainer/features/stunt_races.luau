@@ -9,7 +9,19 @@ function M.build(root: Menu)
 	local menu = root:submenu("STUNT RACES", "Offline stunt maps imported as XML; native Glue 5 object spawning")
 	menu:label("XML maps in mods/glue-trainer/maps/ appear here.")
 	menu:label("Supports named-model Menyoo placements and CodeWalker CEntityDef XML.")
-	menu:label("Numeric ModelHash-only XML and ZIP import are not supported yet.")
+	menu:label("Numeric ModelHash-only XML is not supported yet.")
+	bind.action(menu, "Import XML / ZIP", {
+		note = "Choose an XML map or ZIP containing XML maps; restart the game to refresh the list",
+		action = "Import",
+	}, function(): string?
+		local imported, err = pcall(function()
+			world.requestPlacementImport()
+		end)
+		if not imported then
+			return "Import picker unavailable: " .. tostring(err)
+		end
+		return "Choose a stunt-map XML or ZIP in the Android file picker"
+	end)
 
 	local ok, maps = pcall(function()
 		return world.listPlacementFiles()
