@@ -240,6 +240,81 @@ pub fn parse_xml_placements_with_hashes(
     Ok(PlacementSet { version: 1, placements })
 }
 
+/// Extract Rockstar Creator static race props (mission.prop) into the same
+/// validated placement representation used by XML maps.
+pub fn parse_ugc_race_placements(
+    text: &str,
+    resolve_hash: impl Fn(u32) -> Option<String>,
+) -> Result<PlacementSet, PlacementError> {
+    const MAX_JSON_BYTES: usize = 8 * 1024 * 1024;
+    if text.len() > MAX_JSON_BYTES {
+        return Err(PlacementError("Rockstar Creator JSON exceeds 8 MiB limit".into()));
+    }
+    let root: Value = serde_json::from_str(text)
+        .map_err(|e| PlacementError(format!("invalid Rockstar Creator JSON: {e}")))?;
+    let mission = root.get("mission")
+        .or_else(|| root.pointer("/content/data/mission"))
+        .ok_or_else(|| PlacementError("Creator file has no mission section".into()))?;
+    let prop = mission.get("prop")
+        .ok_or_else(|| PlacementError("Creator file has no mission.prop section".into()))?;
+    let models = prop.get("model").and_then(Value::as_array)
+        .ok_or_else(|| PlacementError("mission.prop.model must be an array".into()))?;
+    let positions = prop.get("loc").and_then(Value::as_array)
+        .ok_or_else(|| PlacementError("mission.prop.loc must be an array".into()))?;
+    let rotations = prop.get("vRot").and_then(Value::as_array)
+        .ok_or_else(|| PlacementError("mission.prop.vRot must be an array".into()))?;
+    let count = prop.get("no").and_then(Value::as_u64).unwrap_or(models.len() as u64) as usize;
+    if count > MAX_PLACEMENTS {
+        return Err(PlacementError(format!("Rockstar race has too many static props (limit {MAX_PLACEMENTS})")));
+    }
+    if models.len() < count || positions.len() < count || rotations.len() < count {
+        return Err(PlacementError("mission.prop arrays are shorter than mission.prop.no".into()));
+    }
+    let vector = |value: &Value, what: &str, index: usize| -> Result<[f32; 3], PlacementError> {
+        let fail = || PlacementError(format!("mission.prop.{what}[{index}] has an unsupported XYZ vector"));
+        let axes = if let Some(a) = value.as_array() {
+            if a.len() != 3 { return Err(fail()); }
+            [
+                a[0].as_f64().ok_or_else(fail)?,
+                a[1].as_f64().ok_or_else(fail)?,
+                a[2].as_f64().ok_or_else(fail)?,
+            ]
+        } else if let Some(o) = value.as_object() {
+            let axis = |name: &str| o.iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case(name))
+                .and_then(|(_, value)| value.as_f64()).ok_or_else(fail);
+            [axis("x")?, axis("y")?, axis("z")?]
+        } else {
+            return Err(fail());
+        };
+        valid_vector([axes[0] as f32, axes[1] as f32, axes[2] as f32], what, index)
+    };
+    let mut placements = Vec::with_capacity(count);
+    for index in 0..count {
+        let raw_model = &models[index];
+        let model = if let Some(name) = raw_model.as_str() {
+            name.to_owned()
+        } else {
+            let hash = raw_model.as_u64()
+                .map(|n| n as u32)
+                .or_else(|| raw_model.as_i64().map(|n| n as u32))
+                .ok_or_else(|| PlacementError(format!("mission.prop.model[{index}] must be a model name or hash")))?;
+            resolve_hash(hash).ok_or_else(|| PlacementError(format!(
+                "mission.prop.model[{index}] hash {hash:#010x} is not registered in this game build"
+            )))?
+        };
+        if !valid_model(&model) {
+            return Err(PlacementError(format!("mission.prop.model[{index}] resolved to an invalid model name")));
+        }
+        placements.push(Placement {
+            model,
+            position: vector(&positions[index], "loc", index)?,
+            rotation: vector(&rotations[index], "vRot", index)?,
+        });
+    }
+    Ok(PlacementSet { version: 1, placements })
+}
+
 /// Parse the public Rockstar Creator job JSON and extract its race checkpoint
 /// route. Supports the Creator's common vector-array representations while
 /// rejecting unknown encodings rather than guessing coordinates.
@@ -452,6 +527,34 @@ mod tests {
     fn rejects_invalid_models_and_unbounded_coordinates() {
         assert!(parse_manifest(r#"{"version":1,"placements":[{"model":"../bad","position":[0,0,0]}]}"#).is_err());
         assert!(parse_manifest(r#"{"version":1,"placements":[{"model":"prop","position":[99999,0,0]}]}"#).is_err());
+    }
+
+    #[test]
+    fn parses_rockstar_ugc_static_stunt_props() {
+        let json = r#"{
+            "mission": {
+                "prop": {
+                    "no": 2,
+                    "model": [123, -456],
+                    "loc": [{"x": 10, "y": 20, "z": 30}, {"x": -1, "y": -2, "z": -3}],
+                    "vRot": [{"x": 0, "y": 0, "z": 90}, {"x": 10, "y": 20, "z": 30}],
+                    "prpclr": [0, 1],
+                    "head": [0, 0]
+                }
+            }
+        }"#;
+        let set = parse_ugc_race_placements(json, |hash| Some(format!("stt_prop_{hash}"))).unwrap();
+        assert_eq!(set.placements.len(), 2);
+        assert_eq!(set.placements[0].model, "stt_prop_123");
+        assert_eq!(set.placements[0].position, [10.0, 20.0, 30.0]);
+        assert_eq!(set.placements[0].rotation, [0.0, 0.0, 90.0]);
+    }
+
+    #[test]
+    fn rejects_ugc_prop_array_count_mismatch() {
+        let json = r#"{"mission":{"prop":{"no":2,"model":[1],"loc":[{"x":0,"y":0,"z":0}],"vRot":[{"x":0,"y":0,"z":0}]}}}"#;
+        assert!(parse_ugc_race_placements(json, |_| Some("prop_test".into()))
+            .unwrap_err().0.contains("shorter than mission.prop.no"));
     }
 
     #[test]
