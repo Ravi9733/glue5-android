@@ -197,7 +197,7 @@ const PAUSE: Action = action("☰", "pause", button::START, At::MidTop(0.0, 30.0
 const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(111.0, 561.0), 36.0);
 /// Two columns on the left, between the game's help text and its radar.
 const LEFT_1: At = At::LeftBottom(108.0, 483.0);
-const LEFT_2: At = At::LeftBottom(101.0, 381.0);
+const LEFT_2: At = At::LeftBottom(101.0, 300.0);
 const LEFT_3: At = At::LeftBottom(99.0, 194.0);
 const LEFT_4: At = At::LeftBottom(101.0, 381.0);
 const LEFT_5: At = At::LeftBottom(180.0, 300.0);
@@ -205,8 +205,8 @@ const LEFT_5: At = At::LeftBottom(180.0, 300.0);
 const SWITCH: Action = wheel(does(19, action("Switch", "switch", button::DOWN, LEFT_4, 30.0)));
 const WEAPONS: Action = wheel(action("Weapons", "weapons", button::L1, LEFT_1, 30.0));
 const RADIO: Action = wheel(action("Radio", "radio", button::LEFT, LEFT_2, 28.0));
-const MELEE: Action = action("Melee\\nReload", "melee", button::EAST, LEFT_2, 30.0);
-const COVER: Action = action("Cover", "cover", button::R1, LEFT_3, 30.0);
+const MELEE: Action = action("Melee\\nReload", "melee", button::EAST, At::RightBottom(446.0, 90.0), 42.0);
+const COVER: Action = action("Cover", "cover", button::R1, At::RightBottom(576.0, 221.0), 40.0);
 const SPECIAL: Action = action("Special", "special", button::L3 | button::R3, LEFT_5, 28.0);
 
 /// The main buttons of the layouts in vehicles sit here: larger thumb targets.
@@ -228,10 +228,10 @@ static ON_FOOT: &[Action] = &[
     does(24, primary(turns(action("Fire", "ref-fire", button::R2, At::RightBottom(131.0, 90.0), 42.0)))),
     does(25, turns(action("Aim", "ref-aim", button::L2, At::RightBottom(576.0, 221.0), 40.0))),
     does(22, action("Jump", "ref-jump", button::WEST, At::RightBottom(131.0, 90.0), 40.0)),
-    does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(286.0, 90.0), 40.0)),
+    does(36, action("Crouch", "ref-crouch", button::L3, LEFT_3, 38.0)),
     does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(111.0, 421.0), 48.0))),
     // A dedicated sprint target in addition to sprinting by pushing the stick.
-    does(SPRINT, action("Sprint", "jump", button::SOUTH, At::RightBottom(446.0, 90.0), 42.0)),
+    does(SPRINT, action("Sprint", "jump", button::SOUTH, At::RightBottom(286.0, 90.0), 42.0)),
     PHONE,
     VIEW,
     PAUSE,
@@ -1629,7 +1629,7 @@ impl Look {
         let a = |v: f32, least: f32| ((v * opacity).max(least) * 255.0) as u8;
         // Reference overlay uses monochrome black buttons and white rings,
         // independent of the currently selected GTA character.
-        let accent = Color32::WHITE;
+        let _accent = Color32::WHITE;
 
         Look {
             fill: Color32::from_black_alpha(a(0.78, 0.72)),
