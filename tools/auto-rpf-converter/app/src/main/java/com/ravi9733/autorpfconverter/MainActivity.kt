@@ -15,6 +15,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -338,10 +339,11 @@ class MainActivity : Activity() {
     )
 
     private fun convertNestedRpfFiles(root: java.io.File, depth: Int, stats: NestedRpfStats) {
-        val nestedFiles = root.walkTopDown()
-            .filter { it.isFile && it.extension.equals("rpf", ignoreCase = true) }
-            .toList()
-        for (nested in nestedFiles) {
+        // Stream the filesystem walk instead of materializing every nested archive path.
+        // The RPF entry limit can still permit a very large tree; toList() could allocate
+        // hundreds of thousands of File objects before the nested-archive cap is checked.
+        for (nested in root.walkTopDown()) {
+            if (!nested.isFile || !nested.extension.equals("rpf", ignoreCase = true)) continue
             stats.seen++
             if (stats.seen > MAX_NESTED_ARCHIVES) {
                 error("Nested RPF count exceeds the " + MAX_NESTED_ARCHIVES + " archive limit")
@@ -502,8 +504,10 @@ class MainActivity : Activity() {
         }
         val partial = directory.createFile("application/octet-stream", partialName)
             ?: error("Cannot create temporary output file " + partialName)
+        var finalized: DocumentFile? = null
         try {
             var copied = 0L
+            val expectedDigest = MessageDigest.getInstance("SHA-256")
             contentResolver.openOutputStream(partial.uri, "w")?.use { out ->
                 source.inputStream().use { input ->
                     val buffer = ByteArray(64 * 1024)
@@ -511,6 +515,7 @@ class MainActivity : Activity() {
                         val count = input.read(buffer)
                         if (count < 0) break
                         copied += count
+                        expectedDigest.update(buffer, 0, count)
                         out.write(buffer, 0, count)
                     }
                     out.flush()
@@ -528,13 +533,35 @@ class MainActivity : Activity() {
             }
             val result = directory.findFile(requestedName)
                 ?: error("Final RPF output could not be found after rename")
+            finalized = result
             val finalLength = result.length()
             check(finalLength == 0L || finalLength == copied) {
                 "Final RPF output size does not match the completed archive"
             }
+
+            // Some SAF providers report length=0 even for non-empty files. Read the
+            // finalized document back and compare a streaming SHA-256 instead of
+            // trusting metadata alone. This uses a fixed 64 KiB buffer.
+            val actualDigest = MessageDigest.getInstance("SHA-256")
+            var verifiedBytes = 0L
+            contentResolver.openInputStream(result.uri)?.use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    verifiedBytes += count
+                    actualDigest.update(buffer, 0, count)
+                }
+            } ?: error("Cannot read back the finalized Android RPF output")
+            check(verifiedBytes == copied) {
+                "Final RPF read-back length mismatch: expected " + copied + " bytes, got " + verifiedBytes
+            }
+            check(MessageDigest.isEqual(expectedDigest.digest(), actualDigest.digest())) {
+                "Final RPF read-back SHA-256 does not match the generated archive"
+            }
             return result
         } catch (error: Throwable) {
-            partial.delete()
+            (finalized ?: partial).delete()
             throw error
         }
     }
