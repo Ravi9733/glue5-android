@@ -46,7 +46,7 @@ use glue5_runtime::prompts::{Pad, Prompt, SKIP_CUTSCENE};
 use crate::haptics;
 
 /// Stick travel, in points (scaled with the controls).
-const STICK_RADIUS: f32 = 64.0;
+const STICK_RADIUS: f32 = 88.0;
 /// Phones are held closer: their controls are this much smaller.
 const PHONE_SCALE: f32 = 0.82;
 /// Below this many points on its short side, a screen is a phone's.
@@ -64,7 +64,7 @@ enum At {
 
 /// Where the stick rests (drawn there until a thumb takes it): right of the
 /// game's radar.
-const MOVE_REST: At = At::LeftBottom(240.0, 104.0);
+const MOVE_REST: At = At::LeftBottom(132.0, 70.0);
 
 /// A button of the touch layouts, named for what it does: it presses the pad
 /// buttons the game maps that to (common/data/control/standard*.meta), or
@@ -196,11 +196,11 @@ const PAUSE: Action = action("☰", "pause", button::START, At::MidTop(0.0, 30.0
 /// The phone, on the right below the game's HUD.
 const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(46.0, 334.0), 28.0);
 /// Two columns on the left, between the game's help text and its radar.
-const LEFT_1: At = At::LeftBottom(46.0, 318.0);
-const LEFT_2: At = At::LeftBottom(46.0, 258.0);
-const LEFT_3: At = At::LeftBottom(46.0, 202.0);
-const LEFT_4: At = At::LeftBottom(104.0, 288.0);
-const LEFT_5: At = At::LeftBottom(104.0, 232.0);
+const LEFT_1: At = At::LeftBottom(50.0, 240.0);
+const LEFT_2: At = At::LeftBottom(50.0, 205.0);
+const LEFT_3: At = At::LeftBottom(50.0, 120.0);
+const LEFT_4: At = At::LeftBottom(50.0, 155.0);
+const LEFT_5: At = At::LeftBottom(108.0, 205.0);
 /// The character and weapon wheels: hold, then drag to choose.
 const SWITCH: Action = wheel(does(19, action("Switch", "switch", button::DOWN, LEFT_4, 30.0)));
 const WEAPONS: Action = wheel(action("Weapons", "weapons", button::L1, LEFT_1, 30.0));
@@ -225,7 +225,7 @@ static ON_FOOT: &[Action] = &[
     COVER,
     SWITCH,
     SPECIAL,
-    does(24, primary(turns(action("Fire", "ref-fire", button::R2, At::RightBottom(76.0, 166.0), 38.0)))),
+    does(24, primary(turns(action("Fire", "ref-fire", button::R2, At::RightBottom(76.0, 166.0), 30.0)))),
     does(25, turns(action("Aim", "ref-aim", button::L2, At::RightBottom(178.0, 150.0), 34.0))),
     does(22, action("Jump", "ref-jump", button::WEST, At::RightBottom(76.0, 64.0), 32.0)),
     does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 32.0)),
@@ -1476,9 +1476,9 @@ impl Touch {
         }
         painter.circle(
             knob,
-            radius * 0.32,
-            Color32::from_rgba_unmultiplied(225, 225, 225, 145),
-            Stroke::new(1.0 * self.scale, Color32::from_black_alpha(210)),
+            radius * 0.44,
+            Color32::from_rgba_unmultiplied(245, 245, 245, 245),
+            Stroke::new(1.5 * self.scale, Color32::from_black_alpha(235)),
         );
     }
 
