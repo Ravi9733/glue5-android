@@ -322,20 +322,42 @@ impl Vm {
             .load(
                 r#"
                 local loadPlacements = world.loadPlacements
+                local spawnedObjects = {}
+                world.clearSpawnedPlacements = function()
+                    local removed = 0
+                    for i = #spawnedObjects, 1, -1 do
+                        local handle = spawnedObjects[i]
+                        if entity.doesEntityExist(handle) then
+                            object.deleteObject(handle)
+                            removed += 1
+                        end
+                        spawnedObjects[i] = nil
+                    end
+                    return removed
+                end
                 return function(relative)
                     assert(type(relative) == "string", "world.spawnPlacements: expected a relative .json or .xml path")
                     local placements = loadPlacements(relative)
+                    assert(#spawnedObjects + #placements <= 2048, "world.spawnPlacements: clear some spawned track objects first (2048 object session limit)")
                     local taskThread = task.spawn(function()
+                        local created, missing = 0, 0
                         for _, item in placements do
                             if streaming.load(item.model) then
                                 local objectHandle = object.createObject(item.model, item.position, false, false, false)
                                 streaming.setModelAsNoLongerNeeded(item.model)
                                 if objectHandle then
                                     entity.setEntityRotation(objectHandle, item.rotation, 2, true)
+                                    table.insert(spawnedObjects, objectHandle)
+                                    created += 1
+                                else
+                                    missing += 1
                                 end
+                            else
+                                missing += 1
                             end
                             wait()
                         end
+                        ui.notify("Track objects: " .. tostring(created) .. " spawned, " .. tostring(missing) .. " unavailable")
                     end)
                     return taskThread
                 end
