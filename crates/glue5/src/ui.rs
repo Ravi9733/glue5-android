@@ -724,7 +724,7 @@ impl Ui {
         // Show the touch Mods button whenever mods are installed, even before a
         // script has registered a menu; tapping it can open the Mods page and
         // reveal load errors or let the user inspect the installed mods.
-        self.menus_button = gear.filter(|_| status.mods).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha));
+        self.menus_button = gear.filter(|_| status.mods || cfg!(target_os = "android")).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha));
         let overlay = hud.then(|| self.perf.draw(&ctx, safe, settings, status));
         // The notifications and the stream's sign keep off everything else
         // drawn over the game.
@@ -940,6 +940,13 @@ fn draw_menus_button(ctx: &egui::Context, safe: Rect, scale: f32, alpha: f32) ->
         painter.line_segment([pos2(c.x - 0.48 * r, y), pos2(c.x + 0.48 * r, y)], stroke);
         painter.circle_filled(pos2(c.x + knob * r, y), r * 0.15, look.icon);
     }
+    painter.text(
+        pos2(c.x, c.y + r * 0.72),
+        Align2::CENTER_TOP,
+        "TRAINER",
+        FontId::proportional(r * 0.30),
+        look.icon,
+    );
     (c, r)
 }
 
