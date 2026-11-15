@@ -130,6 +130,7 @@ impl Vm {
                     })
                     .collect::<Vec<_>>();
                 names.sort_by_key(|name| name.to_ascii_lowercase());
+                names.truncate(40);
                 Ok(names)
             })?,
         )?;
