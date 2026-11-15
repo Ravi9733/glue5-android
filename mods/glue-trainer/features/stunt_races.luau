@@ -26,6 +26,17 @@ local function clearRoute()
 	table.clear(routeBlips)
 end
 
+mod.onStop(function()
+	activeRace = false
+	pcall(clearRoute)
+	if raceVehicle and entity.doesEntityExist(raceVehicle) then
+		pcall(function()
+			entity.freezeEntityPosition(raceVehicle :: Vehicle, false)
+		end)
+	end
+	raceVehicle = nil
+end)
+
 local function showRoute(points: { vector }, current: number)
 	clearRoute()
 	for i = current, #points do
@@ -120,9 +131,11 @@ local function runRace(routeName: string, modelName: string): string?
 		local okRace, raceError = pcall(function()
 			game.notify("Stunt race starting")
 			for count = 3, 1, -1 do
+				if not activeRace then return end
 				game.notify(tostring(count))
 				wait(1000)
 			end
+			if not activeRace then return end
 			game.notify("GO!")
 			if raceVehicle and entity.doesEntityExist(raceVehicle) then
 				entity.freezeEntityPosition(raceVehicle, false)
@@ -275,6 +288,9 @@ function M.build(root: Menu)
 			end
 			activeRace = false
 			clearRoute()
+			if raceVehicle and entity.doesEntityExist(raceVehicle) then
+				entity.freezeEntityPosition(raceVehicle, false)
+			end
 			return "Stopping stunt race"
 		end)
 	end
