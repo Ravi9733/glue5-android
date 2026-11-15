@@ -151,6 +151,64 @@ fn shared_dir() -> PathBuf {
     own_dir().join("shared")
 }
 
+/// Extracts mission IDs from a Rockstar playlist UGC document.
+fn playlist_entries(data: &[u8]) -> Vec<(String, String)> {
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(data) else { return Vec::new() };
+    json.get("list").and_then(serde_json::Value::as_array).into_iter().flatten()
+        .filter_map(|item| {
+            let id = item.get("cid")?.as_str()?;
+            if !is_content_id(id) { return None; }
+            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or(id);
+            Some((id.to_owned(), name.to_owned()))
+        }).collect()
+}
+
+/// A playlist is only an index; never expose it as a playable mission.
+fn log_rockstar_playlists(dir: &Path) {
+    let index = dir.join("RockstarPlaylists_00.ugc");
+    let data = match std::fs::read(&index) {
+        Ok(data) => data,
+        Err(error) => {
+            log::info!("jobs: Rockstar playlist index unavailable ({}): {error}", index.display());
+            return;
+        }
+    };
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(&data) else {
+        log::warn!("jobs: invalid Rockstar playlist index {}", index.display());
+        return;
+    };
+    let Some(playlists) = json.get("list").and_then(serde_json::Value::as_array) else {
+        log::warn!("jobs: Rockstar playlist index has no list: {}", index.display());
+        return;
+    };
+    let mut inspected = 0usize;
+    for item in playlists {
+        let Some(id) = item.get("cid").and_then(|v| v.as_str()).filter(|id| is_content_id(id)) else { continue };
+        let name = item.get("name").and_then(|v| v.as_str()).unwrap_or(id);
+        let path = dir.join(format!("{id}0_00.ugc"));
+        let Ok(bytes) = std::fs::read(&path) else {
+            log::warn!("jobs: Rockstar playlist \"{name}\" ({id}) file missing");
+            continue;
+        };
+        inspected += 1;
+        let entries = playlist_entries(&bytes);
+        let total = entries.len();
+        let mut missing = 0usize;
+        for (mission_id, mission_name) in entries {
+            let mission_path = dir.join(format!("{mission_id}0_00.ugc"));
+            let valid = std::fs::read(&mission_path).ok()
+                .and_then(|data| serde_json::from_slice::<serde_json::Value>(&data).ok())
+                .is_some_and(|value| value.pointer("/mission/gen").is_some());
+            if !valid {
+                missing += 1;
+                log::warn!("jobs: playlist \"{name}\" references unavailable mission \"{mission_name}\" ({mission_id})");
+            }
+        }
+        log::info!("jobs: Rockstar playlist \"{name}\": {total} entries, {missing} unavailable");
+    }
+    log::info!("jobs: inspected {inspected} Rockstar playlist files");
+}
+
 /// The game data's jobs: `<22-character id><language digit>_00.ugc`, the
 /// English one (digit 0) for the header.
 fn game_jobs(dir: &Path) -> Vec<Job> {
@@ -170,6 +228,7 @@ fn game_jobs(dir: &Path) -> Vec<Job> {
         }
     }
     jobs.sort_by(|a, b| a.name.cmp(&b.name));
+    log_rockstar_playlists(dir);
     if jobs.is_empty() {
         log::warn!("jobs: no Rockstar-created UGC missions found in {} (expected <22-character-id>0_00.ugc files)", dir.display());
     } else {
@@ -585,6 +644,19 @@ mod tests {
         assert_eq!(param(p, "category"), Some("rstar"));
         assert_eq!(param_list(p, "lang"), ["en", "fr"]);
         assert_eq!(param_list(r#"{contentids:["fkg-TJjyiEqDtjKLRAdAMg"]}"#, "contentids"), ["fkg-TJjyiEqDtjKLRAdAMg"]);
+    }
+
+    #[test]
+    fn parses_rockstar_playlist_references() {
+        let data = br#"{ "list": [
+            { "cid": "fkg-TJjyiEqDtjKLRAdAMg", "name": "Mall Or Nothing", "type": 2 },
+            { "cid": "not-an-id", "name": "Invalid" },
+            { "name": "No content id" }
+        ] }"#;
+        assert_eq!(
+            playlist_entries(data),
+            vec![("fkg-TJjyiEqDtjKLRAdAMg".to_owned(), "Mall Or Nothing".to_owned())]
+        );
     }
 
     #[test]
