@@ -290,8 +290,36 @@ function M.build(root: Menu)
 		return "Removed " .. tostring(removed) .. " spawned track objects"
 	end)
 	for _, name in maps do
+		bind.action(menu, "Preview " .. name, {
+			note = "Show object count, map bounds and a sample of prop models",
+			action = "Preview",
+		}, function(): string?
+			local loaded, placements = pcall(function()
+				return world.loadPlacements("maps/" .. name)
+			end)
+			if not loaded then
+				return "Map preview failed: " .. tostring(placements)
+			end
+			local minX, minY, minZ = math.huge, math.huge, math.huge
+			local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
+			local models: { string } = {}
+			local seen: { [string]: boolean } = {}
+			for _, item in placements do
+				local p = item.position
+				minX, minY, minZ = math.min(minX, p.x), math.min(minY, p.y), math.min(minZ, p.z)
+				maxX, maxY, maxZ = math.max(maxX, p.x), math.max(maxY, p.y), math.max(maxZ, p.z)
+				if not seen[item.model] then
+					seen[item.model] = true
+					if #models < 4 then table.insert(models, item.model) end
+				end
+			end
+			return string.format(
+				"%s: %d objects | bounds X %.0f..%.0f Y %.0f..%.0f Z %.0f..%.0f | models: %s",
+				name, #placements, minX, maxX, minY, maxY, minZ, maxZ, table.concat(models, ", ")
+			)
+		end)
 		bind.action(menu, name, {
-			note = "Spawn validated track objects with Glue 5",
+			note = "Spawn validated and frozen track objects with Glue 5",
 			action = "Spawn",
 		}, function(): string?
 			local spawned, result = pcall(function()
