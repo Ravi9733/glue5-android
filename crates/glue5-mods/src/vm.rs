@@ -184,7 +184,7 @@ impl Vm {
                     mlua::Error::runtime(format!("world.loadPlacements: {e}"))
                 })?;
                 let set = if relative.ends_with(".xml") {
-                    crate::placements::parse_xml_placements(&source)
+                    crate::placements::parse_xml_placements_with_hashes(&source, crate::world::resolve_model_hash)
                 } else {
                     crate::placements::parse_manifest(&source)
                 }.map_err(|e| mlua::Error::runtime(format!("world.loadPlacements: {e}")))?;
