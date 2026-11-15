@@ -154,6 +154,37 @@ impl Vm {
                 Ok(())
             })?,
         )?;
+        let route_dir = dir.to_path_buf().join("maps");
+        world.set(
+            "loadRaceRoute",
+            lua.create_function(move |lua, relative: String| {
+                use std::path::Component;
+                let path = Path::new(&relative);
+                if relative.is_empty()
+                    || relative.len() > 128
+                    || path.is_absolute()
+                    || !path.components().all(|c| matches!(c, Component::Normal(_)))
+                    || !relative.to_ascii_lowercase().ends_with(".xml")
+                {
+                    return Err(mlua::Error::runtime("world.loadRaceRoute: expected a relative XML route inside maps/"));
+                }
+                let file = route_dir.join(path.file_name().ok_or_else(|| mlua::Error::runtime("invalid route filename"))?);
+                let metadata = std::fs::metadata(&file)
+                    .map_err(|e| mlua::Error::runtime(format!("world.loadRaceRoute: {e}")))?;
+                if metadata.len() > 4 * 1024 * 1024 {
+                    return Err(mlua::Error::runtime("world.loadRaceRoute: route XML exceeds 4 MiB"));
+                }
+                let source = std::fs::read_to_string(&file)
+                    .map_err(|e| mlua::Error::runtime(format!("world.loadRaceRoute: {e}")))?;
+                let points = crate::placements::parse_xml_checkpoints(&source)
+                    .map_err(|e| mlua::Error::runtime(format!("world.loadRaceRoute: {e}")))?;
+                let result = lua.create_table()?;
+                for (index, point) in points.iter().enumerate() {
+                    result.set(index + 1, mlua::Vector::new(point[0], point[1], point[2]))?;
+                }
+                Ok(result)
+            })?,
+        )?;
         world.set(
             "loadPlacements",
             lua.create_function(move |lua, relative: String| {
