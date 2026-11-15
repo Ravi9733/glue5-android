@@ -313,7 +313,8 @@ function M.build(root: Menu)
 	if not routeOk then
 		menu:label("Could not read race routes: " .. tostring(raceRoutes))
 	elseif #raceRoutes == 0 then
-		menu:label("No playable checkpoint routes yet. Use Create checkpoint route above.")
+		local raceMenu = menu:submenu("Start checkpoint race", "Import or create a route first, then restart Glue 5")
+		raceMenu:label("No race route found. Use Import Rockstar UGC JSON / ZIP, Import XML / ZIP, or Create checkpoint route above.")
 	else
 		local routeManage = menu:submenu("Manage race routes", "Delete imported Rockstar JSON or locally created XML routes")
 		for _, name in raceRoutes do
