@@ -616,6 +616,21 @@ mod tests {
     }
 
     #[test]
+    fn parses_ugc_dynamic_props_without_freezing_them() {
+        let json = r#"{
+            "mission": {
+                "prop": {"no":1,"model":[123],"loc":[{"x":1,"y":2,"z":3}],"vRot":[{"x":0,"y":0,"z":0}]},
+                "dprop": {"no":1,"model":[456],"loc":[{"x":4,"y":5,"z":6}],"vRot":[{"x":0,"y":0,"z":90}]}
+            }
+        }"#;
+        let set = parse_ugc_race_placements(json, |hash| Some(format!("prop_{hash}"))).unwrap();
+        assert_eq!(set.placements.len(), 2);
+        assert!(set.placements[0].frozen);
+        assert!(!set.placements[1].frozen);
+        assert_eq!(set.placements[1].position, [4.0, 5.0, 6.0]);
+    }
+
+    #[test]
     fn resolves_string_encoded_ugc_prop_hashes() {
         let json = r#"{"mission":{"prop":{"no":1,"model":["0x7B"],"loc":[{"x":1,"y":2,"z":3}],"vRot":[{"x":0,"y":0,"z":90}]}}}"#;
         let set = parse_ugc_race_placements(json, |hash| {
