@@ -88,7 +88,7 @@ pub fn parse_manifest(text: &str) -> Result<PlacementSet, PlacementError> {
             Ok(out)
         };
         placements.push(Placement {
-            model,
+            model: model.to_owned(),
             position: vector("position", [0.0; 3])?,
             rotation: vector("rotation", [0.0; 3])?,
             frozen: entry.get("frozen").and_then(Value::as_bool).unwrap_or(true),
