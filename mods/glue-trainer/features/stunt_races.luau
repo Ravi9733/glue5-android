@@ -153,6 +153,38 @@ function M.build(root: Menu)
 		return
 	end
 
+	local builder = menu:submenu("Create checkpoint route", "Stand at each checkpoint and save a local race route")
+	local routeName = builder:text("Route name", "my_stunt_route", { placeholder = "letters, numbers, _ or -", max = 64 })
+	local draft: { vector } = {}
+	builder:label("Checkpoints captured: 0")
+	bind.action(builder, "Add checkpoint at my position", {
+		note = "Stand in the middle of the next gate; add checkpoints in driving order",
+		action = "Add",
+	}, function(): string?
+		if #draft >= 128 then
+			return "Checkpoint limit reached (128)"
+		end
+		table.insert(draft, game.position())
+		return "Checkpoint " .. tostring(#draft) .. " captured"
+	end)
+	bind.action(builder, "Undo last checkpoint", { action = "Undo" }, function(): string?
+		if #draft == 0 then
+			return "No checkpoint to undo"
+		end
+		table.remove(draft)
+		return "Removed last checkpoint; " .. tostring(#draft) .. " remain"
+	end)
+	bind.action(builder, "Save route XML", { note = "Requires at least two checkpoints; existing files are not overwritten", action = "Save" }, function(): string?
+		local okSave, result = pcall(function()
+			return world.saveRaceRoute(routeName.value, draft)
+		end)
+		if not okSave then
+			return "Route save failed: " .. tostring(result)
+		end
+		draft = {}
+		return "Saved " .. tostring(result) .. ". Restart Glue 5 to refresh the route list."
+	end)
+
 	local raceMenu = menu:submenu("Start checkpoint race", "Select a route XML and race vehicle")
 	local route = raceMenu:choice("Route", maps, 1, "XML with Checkpoint position entries")
 	local vehicleName = raceMenu:text("Vehicle model", "adder", { placeholder = "e.g. adder, t20, dyfurai", max = 64 })
