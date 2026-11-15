@@ -1627,15 +1627,14 @@ pub struct Look {
 impl Look {
     pub fn new(opacity: f32, scale: f32, _character: Character) -> Self {
         let a = |v: f32, least: f32| ((v * opacity).max(least) * 255.0) as u8;
-        // Reference overlay uses monochrome black buttons and white rings,
-        // independent of the currently selected GTA character.
-        let accent = Color32::from_rgb(166, 218, 166);
+        // Soft green is the button fill; keep the outer border neutral white.
+        let accent = Color32::WHITE;
 
         Look {
             fill: Color32::from_rgba_unmultiplied(166, 218, 166, a(0.60, 0.48)),
             pressed: Color32::from_rgba_unmultiplied(125, 190, 130, a(0.78, 0.60)),
             knob: Color32::from_white_alpha(a(0.72, 0.62)),
-            line: Color32::from_rgba_unmultiplied(190, 235, 190, a(0.78, 0.62)),
+            line: Color32::from_white_alpha(a(0.82, 0.68)),
             accent: accent.gamma_multiply(opacity.max(0.6)),
             icon: Color32::from_white_alpha(a(0.95, 0.75)),
             width: 1.5 * scale,
