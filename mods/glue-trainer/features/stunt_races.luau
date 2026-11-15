@@ -197,33 +197,41 @@ function M.build(root: Menu)
 
 	if #maps == 0 then
 		menu:label("No XML maps imported yet. Create a checkpoint route above or import an XML map.")
-		return
 	end
 
-	local raceMenu = menu:submenu("Start checkpoint race", "Select a route XML and race vehicle")
-	local route = raceMenu:choice("Route", maps, 1, "XML with Checkpoint position entries")
-	local vehicleName = raceMenu:text("Vehicle model", "adder", { placeholder = "e.g. adder, t20, dyfurai", max = 64 })
-	bind.action(raceMenu, "Start race", {
-		note = "3-second countdown, route checkpoints, timer and finish",
-		action = "Race",
-	}, function(): string?
-		return runRace(maps[route.value], vehicleName.value)
+	local routeOk, raceRoutes = pcall(function()
+		return world.listRaceRoutes()
 	end)
-	bind.action(raceMenu, "Respawn at last checkpoint", { note = "Move your race vehicle back to the last passed checkpoint", action = "Respawn" }, function(): string?
-		if not activeRace then
-			return "No stunt race is running"
-		end
-		respawnRequested = true
-		return "Respawn requested"
-	end)
-	bind.action(raceMenu, "Stop race", { action = "Stop" }, function(): string?
-		if not activeRace then
-			return "No stunt race is running"
-		end
-		activeRace = false
-		clearRoute()
-		return "Stopping stunt race"
-	end)
+	if not routeOk then
+		menu:label("Could not read race routes: " .. tostring(raceRoutes))
+	elseif #raceRoutes == 0 then
+		menu:label("No playable checkpoint routes yet. Use Create checkpoint route above.")
+	else
+		local raceMenu = menu:submenu("Start checkpoint race", "Select a validated checkpoint route and vehicle")
+		local route = raceMenu:choice("Route", raceRoutes, 1, "Only XML files with at least two checkpoints appear here")
+		local vehicleName = raceMenu:text("Vehicle model", "adder", { placeholder = "e.g. adder, t20, dyfurai", max = 64 })
+		bind.action(raceMenu, "Start race", {
+			note = "3-second countdown, route checkpoints, timer and finish",
+			action = "Race",
+		}, function(): string?
+			return runRace(raceRoutes[route.value], vehicleName.value)
+		end)
+		bind.action(raceMenu, "Respawn at last checkpoint", { note = "Move your race vehicle back to the last passed checkpoint", action = "Respawn" }, function(): string?
+			if not activeRace then
+				return "No stunt race is running"
+			end
+			respawnRequested = true
+			return "Respawn requested"
+		end)
+		bind.action(raceMenu, "Stop race", { action = "Stop" }, function(): string?
+			if not activeRace then
+				return "No stunt race is running"
+			end
+			activeRace = false
+			clearRoute()
+			return "Stopping stunt race"
+		end)
+	end
 
 	menu:separator("Spawn stunt track objects")
 	for _, name in maps do
