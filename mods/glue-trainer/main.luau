@@ -16,23 +16,64 @@ end)
 
 hub.rows(root)
 
--- Put this first so it is immediately visible in the F7 menu.
+-- Put this first so it is immediately visible in the F7 / touch Trainer menu.
 require("./features/customs").build(root, "Car Customizer")
 
-for _, feature in {
-	require("./features/self"),
-	require("./features/looks"),
-	require("./features/teleport"),
-	require("./features/vehicle"),
-	require("./features/spawner"),
-	require("./features/world"),
-	require("./features/movement"),
-	require("./features/players"),
-	require("./features/misc"),
-	require("./features/settings"),
-	require("./features/stunt_races"),
+-- Load Stunt Races independently and first. A syntax/runtime error in one feature
+-- must never abort the whole trainer before its other menus can be registered.
+local stuntOk, stuntFeature = pcall(require, "./features/stunt_races")
+if stuntOk then
+	local buildOk, buildError = pcall(stuntFeature.build, root)
+	if not buildOk then
+		local recovery = root:submenu("STUNT RACES", "Stunt race import recovery")
+		recovery:label("Full race menu error: " .. tostring(buildError))
+		recovery:button("Import XML / ZIP", { note = "Choose a downloaded stunt-map XML or ZIP", action = "Import" }, function()
+			local ok, err = pcall(world.requestPlacementImport)
+			ui.notify(if ok then "Choose a stunt-map XML or ZIP" else "XML import unavailable: " .. tostring(err))
+		end)
+		recovery:button("Import Rockstar JSON / ZIP", { note = "Choose a Rockstar Creator race JSON or ZIP", action = "Import" }, function()
+			local ok, err = pcall(world.requestRaceImport)
+			ui.notify(if ok then "Choose a Rockstar Creator JSON or ZIP" else "Race import unavailable: " .. tostring(err))
+		end)
+	end
+else
+	local recovery = root:submenu("STUNT RACES", "Stunt race import recovery")
+	recovery:label("Stunt race module failed to load: " .. tostring(stuntFeature))
+	recovery:button("Import XML / ZIP", { note = "Choose a downloaded stunt-map XML or ZIP", action = "Import" }, function()
+		local ok, err = pcall(world.requestPlacementImport)
+		ui.notify(if ok then "Choose a stunt-map XML or ZIP" else "XML import unavailable: " .. tostring(err))
+	end)
+	recovery:button("Import Rockstar JSON / ZIP", { note = "Choose a Rockstar Creator race JSON or ZIP", action = "Import" }, function()
+		local ok, err = pcall(world.requestRaceImport)
+		ui.notify(if ok then "Choose a Rockstar Creator JSON or ZIP" else "Race import unavailable: " .. tostring(err))
+	end)
+end
+
+-- Isolate the rest of the feature modules too: one bad feature must not hide
+-- the menus registered before or after it.
+for _, path in {
+	"./features/self",
+	"./features/looks",
+	"./features/teleport",
+	"./features/vehicle",
+	"./features/spawner",
+	"./features/world",
+	"./features/movement",
+	"./features/players",
+	"./features/misc",
+	"./features/settings",
 } do
-	feature.build(root)
+	local ok, feature = pcall(require, path)
+	if ok then
+		local built, err = pcall(feature.build, root)
+		if not built then
+			local diagnostic = root:submenu("Feature error", path)
+			diagnostic:label(tostring(err))
+		end
+	else
+		local diagnostic = root:submenu("Feature load error", path)
+		diagnostic:label(tostring(feature))
+	end
 end
 
 -- Search and Favourites list every feature: filled last.
