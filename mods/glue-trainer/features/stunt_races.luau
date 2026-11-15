@@ -194,7 +194,8 @@ end
 function M.build(root: Menu)
 	local menu = root:submenu("STUNT RACES", "Offline stunt maps and checkpoint races using Glue 5 natives")
 	menu:label("Import one XML map or a ZIP containing XML maps.")
-	menu:label("Object XML supports named models and game-resolved ModelHash values.")
+	menu:label("For .RAR/.7z downloads, extract first and then select the XML file.")
+	menu:label("Object XML supports Menyoo PositionRotation and game-resolved ModelHash values.")
 	menu:label("Race route XML needs at least two <Checkpoint><Position><X/Y/Z> entries.")
 
 	bind.action(menu, "Import XML / ZIP", {
