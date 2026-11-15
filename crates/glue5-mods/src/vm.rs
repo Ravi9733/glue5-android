@@ -333,6 +333,7 @@ impl Vm {
                 for (index, placement) in set.placements.iter().enumerate() {
                     let item = lua.create_table()?;
                     item.set("model", placement.model.as_str())?;
+                    item.set("frozen", placement.frozen)?;
                     item.set(
                         "position",
                         mlua::Vector::new(
@@ -400,9 +401,10 @@ impl Vm {
                                     pcall(function()
                                         entity.setEntityAsMissionEntity(objectHandle, true, true)
                                     end)
-                                    -- Spooner maps are static track geometry: keep ramps,
-                                    -- platforms and props from falling under gravity.
-                                    entity.freezeEntityPosition(objectHandle, true)
+                                    -- Static Creator props are frozen; dprop keeps physics.
+                                    if item.frozen ~= false then
+                                        entity.freezeEntityPosition(objectHandle, true)
+                                    end
                                     table.insert(spawnedObjects, objectHandle)
                                     created += 1
                                 else
