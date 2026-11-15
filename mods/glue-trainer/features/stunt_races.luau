@@ -96,6 +96,8 @@ local function runRace(routeName: string, modelName: string): string?
 						error(spawnError or "Race vehicle could not respawn")
 					end
 					raceVehicle = replacement
+				elseif game.vehicle() ~= raceVehicle then
+					ped.setPedIntoVehicle(game.me(), raceVehicle, VehicleSeat.DRIVER)
 				end
 				local position = entity.getEntityCoords(raceVehicle, true)
 				if vector.magnitude(position - points[checkpoint]) <= 18 then
