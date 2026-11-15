@@ -1625,11 +1625,11 @@ pub struct Look {
 }
 
 impl Look {
-    pub fn new(opacity: f32, scale: f32, character: Character) -> Self {
+    pub fn new(opacity: f32, scale: f32, _character: Character) -> Self {
         let a = |v: f32, least: f32| ((v * opacity).max(least) * 255.0) as u8;
         // Reference overlay uses monochrome black buttons and white rings,
         // independent of the currently selected GTA character.
-        let _accent = Color32::WHITE;
+        let accent = Color32::WHITE;
 
         Look {
             fill: Color32::from_black_alpha(a(0.78, 0.72)),
