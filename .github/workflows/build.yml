@@ -2,6 +2,8 @@
 name: Build
 
 on:
+  push:
+    branches: [clean-ui-performance-priority]
   # Android Turnip builds are handled by turnip-android.yml to avoid
   # launching two identical Android builds for the same push.
   workflow_dispatch:
