@@ -293,7 +293,18 @@ pub fn parse_ugc_race_placements(
     for index in 0..count {
         let raw_model = &models[index];
         let model = if let Some(name) = raw_model.as_str() {
-            name.to_owned()
+            let raw = name.trim();
+            let hash = raw.strip_prefix("0x").or_else(|| raw.strip_prefix("0X"))
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                .or_else(|| raw.parse::<u32>().ok())
+                .or_else(|| raw.parse::<i32>().ok().map(|n| n as u32));
+            if let Some(hash) = hash {
+                resolve_hash(hash).ok_or_else(|| PlacementError(format!(
+                    "mission.prop.model[{index}] hash {hash:#010x} is not registered in this game build"
+                )))?
+            } else {
+                raw.to_owned()
+            }
         } else {
             let hash = raw_model.as_u64()
                 .map(|n| n as u32)
