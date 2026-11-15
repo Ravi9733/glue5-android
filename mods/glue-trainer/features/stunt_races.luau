@@ -193,10 +193,23 @@ end
 
 function M.build(root: Menu)
 	local menu = root:submenu("STUNT RACES", "Offline stunt maps and checkpoint races using Glue 5 natives")
-	menu:label("Import one XML map or a ZIP containing XML maps.")
-	menu:label("For .RAR/.7z downloads, extract first and then select the XML file.")
-	menu:label("Object XML supports Menyoo PositionRotation and game-resolved ModelHash values.")
-	menu:label("Race route XML needs at least two <Checkpoint><Position><X/Y/Z> entries.")
+	menu:label("Import Menyoo / CodeWalker object XML, or Rockstar Creator race JSON.")
+	menu:label("For .RAR/.7z downloads, extract first, then import the XML/JSON or ZIP.")
+	menu:label("Object XML supports Menyoo PositionRotation and CodeWalker CEntityDef.")
+	menu:label("Rockstar race JSON reads mission.race.chl checkpoint coordinates.")
+
+	bind.action(menu, "Import Rockstar UGC JSON / ZIP", {
+		note = "Import a Rockstar Creator job JSON or ZIP into maps/routes",
+		action = "Import UGC",
+	}, function(): string?
+		local imported, err = pcall(function()
+			world.requestRaceImport()
+		end)
+		if not imported then
+			return "Race import picker unavailable: " .. tostring(err)
+		end
+		return "Choose a Rockstar Creator .json file or ZIP containing UGC JSON"
+	end)
 
 	bind.action(menu, "Import XML / ZIP", {
 		note = "Choose an XML map or ZIP containing XML maps",
