@@ -390,7 +390,7 @@ impl Settings {
             settings.low_memory = false;
             settings.low_preset_written = false;
             settings.max_fps = 30;
-            settings.render_scale = Some(0.60);
+            settings.render_scale = Some(0.50);
             settings.upscaler = Upscaling::Bicubic;
             settings.android_balanced_performance_profile_applied = true;
         }
