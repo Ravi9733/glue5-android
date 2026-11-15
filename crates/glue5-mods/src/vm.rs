@@ -155,6 +155,47 @@ impl Vm {
             })?,
         )?;
         let route_dir = dir.to_path_buf().join("maps");
+        let save_route_dir = dir.to_path_buf().join("maps");
+        world.set(
+            "saveRaceRoute",
+            lua.create_function(move |_, (name, points): (String, Table)| {
+                if name.is_empty() || name.len() > 64
+                    || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+                {
+                    return Err(mlua::Error::runtime("saveRaceRoute: name must use 1-64 letters, digits, _ or -"));
+                }
+                let points = points.sequence_values::<mlua::Vector>()
+                    .collect::<mlua::Result<Vec<_>>>()?;
+                if points.len() < 2 || points.len() > 128 {
+                    return Err(mlua::Error::runtime("saveRaceRoute: route needs 2-128 checkpoints"));
+                }
+                let mut xml = String::from("<RaceRoute>
+");
+                for point in points {
+                    let (x, y, z) = (point.x(), point.y(), point.z());
+                    if !x.is_finite() || !y.is_finite() || !z.is_finite()
+                        || x.abs() > 20_000.0 || y.abs() > 20_000.0 || z.abs() > 20_000.0
+                    {
+                        return Err(mlua::Error::runtime("saveRaceRoute: checkpoint coordinates are outside allowed bounds"));
+                    }
+                    xml.push_str(&format!(
+                        "  <Checkpoint><Position><X>{x:.3}</X><Y>{y:.3}</Y><Z>{z:.3}</Z></Position></Checkpoint>
+"
+                    ));
+                }
+                xml.push_str("</RaceRoute>
+");
+                std::fs::create_dir_all(&save_route_dir)
+                    .map_err(|e| mlua::Error::runtime(format!("saveRaceRoute: {e}")))?;
+                let path = save_route_dir.join(format!("{name}.xml"));
+                use std::io::Write as _;
+                let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&path)
+                    .map_err(|e| mlua::Error::runtime(format!("saveRaceRoute: {e} (existing route is never overwritten)")))?;
+                file.write_all(xml.as_bytes())
+                    .map_err(|e| mlua::Error::runtime(format!("saveRaceRoute: {e}")))?;
+                Ok(format!("{name}.xml"))
+            })?,
+        )?;
         world.set(
             "loadRaceRoute",
             lua.create_function(move |lua, relative: String| {
