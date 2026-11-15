@@ -8,9 +8,16 @@ local M = {}
 local activeRace = false
 local respawnRequested = false
 local raceVehicle: Vehicle? = nil
+local raceCheckpoint: number? = nil
 local routeBlips: { Blip } = {}
 
 local function clearRoute()
+	if raceCheckpoint then
+		pcall(function()
+			graphics.deleteCheckpoint(raceCheckpoint :: number)
+		end)
+		raceCheckpoint = nil
+	end
 	for _, blip in routeBlips do
 		if hud.doesBlipExist(blip) then
 			hud.removeBlip(blip)
@@ -30,6 +37,32 @@ local function showRoute(points: { vector }, current: number)
 			hud.setBlipRoute(blip, i == current)
 			table.insert(routeBlips, blip)
 		end
+	end
+end
+
+local function setRaceCheckpoint(points: { vector }, index: number)
+	if raceCheckpoint then
+		pcall(function()
+			graphics.deleteCheckpoint(raceCheckpoint :: number)
+		end)
+		raceCheckpoint = nil
+	end
+	local current = points[index]
+	local nextPoint = points[math.min(index + 1, #points)]
+	local ok, handle = pcall(function()
+		return graphics.createCheckpoint(
+			10,
+			current.x, current.y, current.z,
+			nextPoint.x, nextPoint.y, nextPoint.z,
+			14.0, 40, 210, 255, 220, 0
+		)
+	end)
+	if ok and handle and handle ~= 0 then
+		raceCheckpoint = handle
+		pcall(function()
+			graphics.setCheckpointCylinderHeight(handle, 8.0, 8.0, 14.0)
+			graphics.setCheckpointRgba(handle, 40, 210, 255, 220)
+		end)
 	end
 end
 
@@ -93,6 +126,7 @@ local function runRace(routeName: string, modelName: string): string?
 			end
 			startedAt = os.clock()
 			showRoute(points, 2)
+			setRaceCheckpoint(points, 2)
 			checkpoint = 2
 			while activeRace and checkpoint <= #points do
 				wait(0)
@@ -118,6 +152,7 @@ local function runRace(routeName: string, modelName: string): string?
 					checkpoint += 1
 					if checkpoint <= #points then
 						showRoute(points, checkpoint)
+						setRaceCheckpoint(points, checkpoint)
 					end
 				end
 			end
