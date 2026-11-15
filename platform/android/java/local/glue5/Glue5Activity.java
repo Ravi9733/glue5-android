@@ -397,7 +397,7 @@ public class Glue5Activity extends SDLActivity {
                         String base = raw.substring(raw.lastIndexOf('/') + 1);
                         String name = safeStuntMapName(base, raceRoutes);
                         if (!names.add(name.toLowerCase(java.util.Locale.ROOT))) {
-                            throw new Exception("ZIP contains duplicate XML filenames: " + name);
+                            throw new Exception("ZIP contains duplicate map filenames: " + name);
                         }
                         File out = new File(staging, name);
                         long entryBytes = 0;
