@@ -285,6 +285,35 @@ function M.build(root: Menu)
 	else
 		local raceMenu = menu:submenu("Start checkpoint race", "Select a validated checkpoint route and vehicle")
 		local route = raceMenu:choice("Route", raceRoutes, 1, "Only XML files with at least two checkpoints appear here")
+		bind.action(raceMenu, "Preview selected route", {
+			note = "Show checkpoint count and approximate route length",
+			action = "Preview",
+		}, function(): string?
+			local okRoute, points = pcall(function()
+				return world.loadRaceRoute("maps/" .. raceRoutes[route.value])
+			end)
+			if not okRoute then return "Route preview failed: " .. tostring(points) end
+			local distance = 0.0
+			for i = 2, #points do
+				distance += vector.magnitude(points[i] - points[i - 1])
+			end
+			return string.format("%s | %d checkpoints | %.0f metres", raceRoutes[route.value], #points, distance)
+		end)
+		bind.action(raceMenu, "Spawn selected Rockstar track props", {
+			note = "Spawn mission.prop static objects from the selected Rockstar UGC JSON",
+			action = "Spawn props",
+		}, function(): string?
+			local name = raceRoutes[route.value]
+			if not string.lower(name):endsWith(".json") then
+				return "Select a Rockstar UGC .json race file to spawn its props"
+			end
+			if game.online() then return "Track spawning is Offline/Sandbox only" end
+			local spawned, result = pcall(function()
+				return world.spawnPlacements("maps/routes/" .. name)
+			end)
+			if not spawned then return "UGC prop spawn failed: " .. tostring(result) end
+			return "Rockstar UGC track props spawning: " .. name
+		end)
 		local vehicleName = raceMenu:text("Vehicle model", "adder", { placeholder = "e.g. adder, t20, dyfurai", max = 64 })
 		bind.action(raceMenu, "Start race", {
 			note = "3-second countdown, route checkpoints, timer and finish",
