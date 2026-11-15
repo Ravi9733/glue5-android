@@ -196,7 +196,7 @@ function M.build(root: Menu)
 	menu:label("Import Menyoo / CodeWalker object XML, or Rockstar Creator race JSON.")
 	menu:label("For .RAR/.7z downloads, extract first, then import the XML/JSON or ZIP.")
 	menu:label("Object XML supports Menyoo PositionRotation and CodeWalker CEntityDef.")
-	menu:label("Rockstar race JSON reads mission.race.chl checkpoint coordinates.")
+	menu:label("Rockstar JSON reads mission.race.chl and mission.prop/dprop track objects.")
 
 	bind.action(menu, "Import Rockstar UGC JSON / ZIP", {
 		note = "Import a Rockstar Creator job JSON or ZIP into maps/routes",
