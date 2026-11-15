@@ -162,8 +162,11 @@ pub fn parse_xml_placements_with_hashes(
             }
         }
         let index = placements.len();
+        let hash_name = child_text(node, &["HashName"])
+            .filter(|name| valid_model(name) && !name.starts_with("0x") && !name.starts_with("0X"));
         let named_model = child_text(node, &["ModelName", "Model", "archetypeName"])
-            .or_else(|| node.attribute("model"));
+            .or_else(|| node.attribute("model"))
+            .or(hash_name);
         let resolved_model = if let Some(model) = named_model {
             Some(model.to_owned())
         } else if let Some(raw_hash) = child_text(node, &["ModelHash", "modelHash"])
