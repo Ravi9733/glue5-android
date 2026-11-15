@@ -186,6 +186,17 @@ pub unsafe fn read_catalog(env: *mut Env) -> Catalog {
 }
 
 /// A name a Luau string type can hold as it is.
+/// Resolve a model hash through the active game's own hash-name table.
+pub fn resolve_model_hash(hash: u32) -> Option<String> {
+    let env = crate::natives::env()?;
+    let pointer = unsafe { orig::hash_name(env, 0, hash) };
+    if pointer == 0 {
+        return None;
+    }
+    let name = unsafe { Mem::of(env).str(pointer) };
+    valid(&name).then_some(name)
+}
+
 fn valid(n: &str) -> bool {
     !n.is_empty() && n.len() <= 64 && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
