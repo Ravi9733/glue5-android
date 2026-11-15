@@ -169,8 +169,7 @@ impl Vm {
                 if points.len() < 2 || points.len() > 128 {
                     return Err(mlua::Error::runtime("saveRaceRoute: route needs 2-128 checkpoints"));
                 }
-                let mut xml = String::from("<RaceRoute>
-");
+                let mut xml = String::from("<RaceRoute>\n");
                 for point in points {
                     let (x, y, z) = (point.x(), point.y(), point.z());
                     if !x.is_finite() || !y.is_finite() || !z.is_finite()
@@ -179,12 +178,10 @@ impl Vm {
                         return Err(mlua::Error::runtime("saveRaceRoute: checkpoint coordinates are outside allowed bounds"));
                     }
                     xml.push_str(&format!(
-                        "  <Checkpoint><Position><X>{x:.3}</X><Y>{y:.3}</Y><Z>{z:.3}</Z></Position></Checkpoint>
-"
+                        "  <Checkpoint><Position><X>{x:.3}</X><Y>{y:.3}</Y><Z>{z:.3}</Z></Position></Checkpoint>\n"
                     ));
                 }
-                xml.push_str("</RaceRoute>
-");
+                xml.push_str("</RaceRoute>\n");
                 std::fs::create_dir_all(&save_route_dir)
                     .map_err(|e| mlua::Error::runtime(format!("saveRaceRoute: {e}")))?;
                 let path = save_route_dir.join(format!("{name}.xml"));
