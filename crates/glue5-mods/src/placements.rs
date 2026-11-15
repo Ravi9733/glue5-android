@@ -212,6 +212,33 @@ pub fn parse_xml_placements_with_hashes(
     Ok(PlacementSet { version: 1, placements })
 }
 
+/// Parse an offline race route from <Checkpoint><Position><X/Y/Z>...</Position></Checkpoint> nodes.
+pub fn parse_xml_checkpoints(text: &str) -> Result<Vec<[f32; 3]>, PlacementError> {
+    const MAX_XML_BYTES: usize = 4 * 1024 * 1024;
+    const MAX_CHECKPOINTS: usize = 128;
+    if text.len() > MAX_XML_BYTES {
+        return Err(PlacementError("race route XML exceeds 4 MiB limit".into()));
+    }
+    let doc = roxmltree::Document::parse(text)
+        .map_err(|e| PlacementError(format!("invalid race route XML: {e}")))?;
+    let mut points = Vec::new();
+    for node in doc.descendants().filter(|n| n.is_element()
+        && (n.tag_name().name().eq_ignore_ascii_case("Checkpoint")
+            || n.tag_name().name().eq_ignore_ascii_case("RaceCheckpoint"))) {
+        let index = points.len();
+        let position = xml_vec(node, &["Position", "position"], index)?
+            .ok_or_else(|| PlacementError(format!("checkpoint {index}: missing Position vector")))?;
+        points.push(valid_vector(position, "checkpoint position", index)?);
+        if points.len() > MAX_CHECKPOINTS {
+            return Err(PlacementError(format!("too many race checkpoints (limit {MAX_CHECKPOINTS})")));
+        }
+    }
+    if points.len() < 2 {
+        return Err(PlacementError("race route needs at least 2 <Checkpoint> entries".into()));
+    }
+    Ok(points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,6 +289,12 @@ mod tests {
     fn rejects_invalid_models_and_unbounded_coordinates() {
         assert!(parse_manifest(r#"{"version":1,"placements":[{"model":"../bad","position":[0,0,0]}]}"#).is_err());
         assert!(parse_manifest(r#"{"version":1,"placements":[{"model":"prop","position":[99999,0,0]}]}"#).is_err());
+    }
+
+    #[test]
+    fn parses_offline_race_checkpoint_route() {
+        let xml = r#"<Race><Checkpoint><Position><X>1</X><Y>2</Y><Z>3</Z></Position></Checkpoint><Checkpoint><Position><X>4</X><Y>5</Y><Z>6</Z></Position></Checkpoint></Race>"#;
+        assert_eq!(parse_xml_checkpoints(xml).unwrap(), vec![[1.0,2.0,3.0],[4.0,5.0,6.0]]);
     }
 
     #[test]
