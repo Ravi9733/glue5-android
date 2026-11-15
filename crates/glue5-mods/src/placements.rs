@@ -14,6 +14,8 @@ pub struct Placement {
     pub model: String,
     pub position: [f32; 3],
     pub rotation: [f32; 3],
+    /// Static Creator props are frozen; mission.dprop objects retain physics.
+    pub frozen: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -89,6 +91,7 @@ pub fn parse_manifest(text: &str) -> Result<PlacementSet, PlacementError> {
             model,
             position: vector("position", [0.0; 3])?,
             rotation: vector("rotation", [0.0; 3])?,
+            frozen: entry.get("frozen").and_then(Value::as_bool).unwrap_or(true),
         });
     }
     Ok(PlacementSet { version: 1, placements })
@@ -228,6 +231,7 @@ pub fn parse_xml_placements_with_hashes(
             model: model.to_owned(),
             position: valid_vector(position, "position", index)?,
             rotation: valid_vector(rotation, "rotation", index)?,
+            frozen: true,
         });
         if placements.len() > MAX_PLACEMENTS {
             return Err(PlacementError(format!("too many XML placements (limit {MAX_PLACEMENTS})")));
@@ -321,7 +325,57 @@ pub fn parse_ugc_race_placements(
             model,
             position: vector(&positions[index], "loc", index)?,
             rotation: vector(&rotations[index], "vRot", index)?,
+            frozen: true,
         });
+    }
+
+    // Creator dynamic props (mission.dprop) are spawned with physics instead
+    // of being frozen like the main track geometry.
+    if let Some(dynamic) = mission.get("dprop") {
+        let dynamic_models = dynamic.get("model").and_then(Value::as_array).cloned().unwrap_or_default();
+        let dynamic_count = dynamic.get("no").and_then(Value::as_u64).unwrap_or(dynamic_models.len() as u64) as usize;
+        if placements.len().saturating_add(dynamic_count) > MAX_PLACEMENTS {
+            return Err(PlacementError(format!("Rockstar race has too many props (limit {MAX_PLACEMENTS})")));
+        }
+        let dynamic_positions = dynamic.get("loc").and_then(Value::as_array)
+            .ok_or_else(|| PlacementError("mission.dprop.loc must be an array".into()))?;
+        let dynamic_rotations = dynamic.get("vRot").and_then(Value::as_array)
+            .ok_or_else(|| PlacementError("mission.dprop.vRot must be an array".into()))?;
+        if dynamic_models.len() < dynamic_count || dynamic_positions.len() < dynamic_count
+            || dynamic_rotations.len() < dynamic_count {
+            return Err(PlacementError("mission.dprop arrays are shorter than mission.dprop.no".into()));
+        }
+        for index in 0..dynamic_count {
+            let raw_model = &dynamic_models[index];
+            let model = if let Some(name) = raw_model.as_str() {
+                let raw = name.trim();
+                let hash = raw.strip_prefix("0x").or_else(|| raw.strip_prefix("0X"))
+                    .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                    .or_else(|| raw.parse::<u32>().ok())
+                    .or_else(|| raw.parse::<i32>().ok().map(|n| n as u32));
+                if let Some(hash) = hash {
+                    resolve_hash(hash).ok_or_else(|| PlacementError(format!(
+                        "mission.dprop.model[{index}] hash {hash:#010x} is not registered in this game build"
+                    )))?
+                } else { raw.to_owned() }
+            } else {
+                let hash = raw_model.as_u64().map(|n| n as u32)
+                    .or_else(|| raw_model.as_i64().map(|n| n as u32))
+                    .ok_or_else(|| PlacementError(format!("mission.dprop.model[{index}] must be a model name or hash")))?;
+                resolve_hash(hash).ok_or_else(|| PlacementError(format!(
+                    "mission.dprop.model[{index}] hash {hash:#010x} is not registered in this game build"
+                )))?
+            };
+            if !valid_model(&model) {
+                return Err(PlacementError(format!("mission.dprop.model[{index}] resolved to an invalid model name")));
+            }
+            placements.push(Placement {
+                model,
+                position: vector(&dynamic_positions[index], "dprop.loc", index)?,
+                rotation: vector(&dynamic_rotations[index], "dprop.vRot", index)?,
+                frozen: false,
+            });
+        }
     }
     Ok(PlacementSet { version: 1, placements })
 }
