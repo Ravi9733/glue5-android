@@ -151,15 +151,16 @@ local function runRace(routeName: string, modelName: string, laps: number): stri
 			checkpoint = 2
 			while activeRace and checkpoint <= #points do
 				wait(0)
+				local lastPassed = if checkpoint == 1 then #points else checkpoint - 1
 				if respawnRequested and raceVehicle and entity.doesEntityExist(raceVehicle) then
-					entity.setEntityCoordsNoOffset(raceVehicle, points[checkpoint - 1], false, false, true)
+					entity.setEntityCoordsNoOffset(raceVehicle, points[lastPassed], false, false, true)
 					vehicle.setVehicleForwardSpeed(raceVehicle, 0)
 					vehicle.setVehicleOnGroundProperly(raceVehicle, 5)
 					respawnRequested = false
-					game.notify("Respawned at checkpoint " .. tostring(checkpoint - 1))
+					game.notify("Respawned at checkpoint " .. tostring(lastPassed))
 				end
 				if not raceVehicle or not entity.doesEntityExist(raceVehicle) then
-					local replacement, spawnError = spawnRaceVehicle(modelName, points[checkpoint - 1])
+					local replacement, spawnError = spawnRaceVehicle(modelName, points[lastPassed])
 					if not replacement then
 						error(spawnError or "Race vehicle could not respawn")
 					end
