@@ -316,7 +316,7 @@ function M.build(root: Menu)
 				local propsOk, props = pcall(function()
 					return world.loadPlacements("maps/routes/" .. raceRoutes[route.value])
 				end)
-				if propsOk then propCount = "static props: " .. tostring(#props) end
+				if propsOk then propCount = "track props: " .. tostring(#props) end
 			end
 			return string.format("%s | %d checkpoints | %.0f metres | %s",
 				raceRoutes[route.value], #points, distance, propCount)
