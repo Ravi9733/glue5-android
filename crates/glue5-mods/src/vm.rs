@@ -134,6 +134,39 @@ impl Vm {
                 Ok(names)
             })?,
         )?;
+        let race_route_dir = dir.to_path_buf().join("maps");
+        world.set(
+            "listRaceRoutes",
+            lua.create_function(move |_, ()| {
+                let _ = std::fs::create_dir_all(&race_route_dir);
+                let mut routes = std::fs::read_dir(&race_route_dir)
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.path().is_file())
+                    .filter_map(|entry| {
+                        let path = entry.path();
+                        if !path.extension()?.to_str()?.eq_ignore_ascii_case("xml") {
+                            return None;
+                        }
+                        let metadata = std::fs::metadata(&path).ok()?;
+                        if metadata.len() > 4 * 1024 * 1024 {
+                            return None;
+                        }
+                        let source = std::fs::read_to_string(&path).ok()?;
+                        crate::placements::parse_xml_checkpoints(&source).ok()?;
+                        let name = path.file_name()?.to_str()?.to_string();
+                        (name.len() <= 80 && name.bytes().all(|b|
+                            b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.'
+                        )).then_some(name)
+                    })
+                    .collect::<Vec<_>>();
+                routes.sort_by_key(|name| name.to_ascii_lowercase());
+                routes.truncate(40);
+                Ok(routes)
+            })?,
+        )?;
         let delete_map_dir = dir.to_path_buf().join("maps");
         world.set(
             "deletePlacementFile",
