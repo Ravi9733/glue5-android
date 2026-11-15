@@ -425,11 +425,15 @@ public class Glue5Activity extends SDLActivity {
 
     private String safeStuntXmlName(String raw) throws Exception {
         String name = new File(raw).getName();
-        if (!name.toLowerCase(java.util.Locale.ROOT).endsWith(".xml")
-                || !name.matches("(?i)[A-Za-z0-9_-]{1,64}\\.xml")) {
-            throw new Exception("XML filename must use letters, numbers, _ or - and end in .xml");
+        if (!name.toLowerCase(java.util.Locale.ROOT).endsWith(".xml")) {
+            throw new Exception("Selected map file must end in .xml");
         }
-        return name;
+        String stem = name.substring(0, name.length() - 4)
+                .replaceAll("[^A-Za-z0-9_-]+", "_")
+                .replaceAll("_+", "_");
+        if (stem.length() > 64) stem = stem.substring(0, 64);
+        if (stem.isEmpty()) throw new Exception("XML map filename has no usable characters");
+        return stem + ".xml";
     }
 
     private long copyStuntXml(InputStream input, File output, long limit) throws Exception {
