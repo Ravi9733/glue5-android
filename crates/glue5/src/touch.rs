@@ -157,7 +157,7 @@ const ICON_FILES: &[(&str, &[u8])] = icons![
     "down", "drive-special", "duck", "enter", "exit", "fire", "gas", "handbrake", "horn", "jump", "landing-gear",
     "left", "lights", "melee", "pad-a", "pad-b", "pad-lb", "pad-ls", "pad-lt", "pad-rb", "pad-rs", "pad-rt",
     "pad-x", "pad-y", "parachute", "pause", "phone", "radio", "reload", "right", "rise", "seat", "settings", "skip",
-    "special", "switch", "throw", "up", "view", "weapons", "yaw-left", "yaw-right",
+    "special", "sprint", "switch", "throw", "up", "view", "weapons", "yaw-left", "yaw-right",
     // Original gameplay icons extracted from the Android reference APK.
     "ref-aim", "ref-fire", "ref-jump", "ref-crouch", "ref-gas", "ref-brake", "ref-handbrake", "ref-horn", "ref-exit", "ref-enter",
 ];
@@ -231,7 +231,7 @@ static ON_FOOT: &[Action] = &[
     does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 30.0)), 
     does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(178.0, 232.0), 30.0))),
     // A dedicated sprint target in addition to sprinting by pushing the stick.
-    does(SPRINT, action("Sprint", "jump", button::SOUTH, At::LeftBottom(136.0, 126.0), 30.0)), 
+    does(SPRINT, action("Sprint", "sprint", button::SOUTH, At::LeftBottom(136.0, 126.0), 30.0)), 
     PHONE,
     VIEW,
     PAUSE,
