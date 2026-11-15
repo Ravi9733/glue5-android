@@ -103,7 +103,7 @@ local function spawnRaceVehicle(modelName: string, at: vector): (Vehicle?, strin
 	return car, nil
 end
 
-local function runRace(routeName: string, modelName: string): string?
+local function runRace(routeName: string, modelName: string, laps: number): string?
 	if game.online() then
 		return "Stunt races are Offline/Sandbox only; leave GTA Online first"
 	end
@@ -117,8 +117,9 @@ local function runRace(routeName: string, modelName: string): string?
 		return "Route load failed: " .. tostring(points)
 	end
 	if #points < 2 then
-		return "This XML needs at least two <Checkpoint><Position> entries"
+		return "This route needs at least two checkpoints"
 	end
+	laps = math.clamp(math.floor(laps), 1, 10)
 	local car, why = spawnRaceVehicle(modelName, points[1])
 	if not car then
 		return why
@@ -130,6 +131,7 @@ local function runRace(routeName: string, modelName: string): string?
 	task.spawn(function()
 		local finished = false
 		local checkpoint = 1
+		local currentLap = 1
 		local startedAt = 0
 		local okRace, raceError = pcall(function()
 			game.notify("Stunt race starting")
@@ -167,8 +169,22 @@ local function runRace(routeName: string, modelName: string): string?
 				end
 				local position = entity.getEntityCoords(raceVehicle, true)
 				if vector.magnitude(position - points[checkpoint]) <= 18 then
-					game.notify("Checkpoint " .. tostring(checkpoint - 1) .. "/" .. tostring(#points - 1))
-					checkpoint += 1
+					if checkpoint == #points then
+						if currentLap < laps then
+							currentLap += 1
+							checkpoint = 1
+							game.notify("Lap " .. tostring(currentLap) .. "/" .. tostring(laps))
+							showRoute(points, 1)
+							setRaceCheckpoint(points, 1)
+						else
+							checkpoint += 1
+						end
+					else
+						if checkpoint > 1 then
+							game.notify("Checkpoint " .. tostring(checkpoint - 1) .. "/" .. tostring(#points - 1))
+						end
+						checkpoint += 1
+					end
 					if checkpoint <= #points then
 						showRoute(points, checkpoint)
 						setRaceCheckpoint(points, checkpoint)
@@ -188,7 +204,7 @@ local function runRace(routeName: string, modelName: string): string?
 			game.notify("Stunt race cancelled")
 		end
 	end)
-	return "Race loaded: " .. tostring(#points) .. " checkpoints"
+	return "Race loaded: " .. tostring(#points) .. " checkpoints, " .. tostring(laps) .. " lap(s)"
 end
 
 function M.build(root: Menu)
@@ -337,11 +353,12 @@ function M.build(root: Menu)
 			return "Rockstar UGC track props spawning: " .. name
 		end)
 		local vehicleName = raceMenu:text("Vehicle model", "adder", { placeholder = "e.g. adder, t20, dyfurai", max = 64 })
+		local lapCount = raceMenu:slider("Laps", 1, 1, 10, 1)
 		bind.action(raceMenu, "Start race", {
-			note = "3-second countdown, route checkpoints, timer and finish",
+			note = "3-second countdown, route checkpoints, laps, timer and finish",
 			action = "Race",
 		}, function(): string?
-			return runRace(raceRoutes[route.value], vehicleName.value)
+			return runRace(raceRoutes[route.value], vehicleName.value, lapCount.value)
 		end)
 		bind.action(raceMenu, "Respawn at last checkpoint", { note = "Move your race vehicle back to the last passed checkpoint", action = "Respawn" }, function(): string?
 			if not activeRace then
