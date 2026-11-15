@@ -196,11 +196,11 @@ const PAUSE: Action = action("☰", "pause", button::START, At::MidTop(0.0, 30.0
 /// The phone, on the right below the game's HUD.
 const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(111.0, 561.0), 36.0);
 /// Two columns on the left, between the game's help text and its radar.
-const LEFT_1: At = At::LeftBottom(46.0, 318.0);
-const LEFT_2: At = At::LeftBottom(46.0, 258.0);
-const LEFT_3: At = At::LeftBottom(46.0, 202.0);
-const LEFT_4: At = At::LeftBottom(104.0, 288.0);
-const LEFT_5: At = At::LeftBottom(104.0, 232.0);
+const LEFT_1: At = At::LeftBottom(46.0, 350.0);
+const LEFT_2: At = At::LeftBottom(46.0, 270.0);
+const LEFT_3: At = At::LeftBottom(46.0, 190.0);
+const LEFT_4: At = At::LeftBottom(136.0, 310.0);
+const LEFT_5: At = At::LeftBottom(136.0, 220.0);
 /// The character and weapon wheels: hold, then drag to choose.
 const SWITCH: Action = wheel(does(19, action("Switch", "switch", button::DOWN, LEFT_4, 30.0)));
 const WEAPONS: Action = wheel(action("Weapons", "weapons", button::L1, LEFT_1, 30.0));
@@ -231,7 +231,7 @@ static ON_FOOT: &[Action] = &[
     does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 30.0)), 
     does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(178.0, 232.0), 30.0))),
     // A dedicated sprint target in addition to sprinting by pushing the stick.
-    does(SPRINT, action("Sprint", "jump", button::SOUTH, At::LeftBottom(104.0, 104.0), 30.0)), 
+    does(SPRINT, action("Sprint", "jump", button::SOUTH, At::LeftBottom(136.0, 126.0), 30.0)), 
     PHONE,
     VIEW,
     PAUSE,
@@ -1466,10 +1466,9 @@ impl Touch {
         let d = at - origin;
         let sprint = d.length() > SPRINT_REACH * radius;
         let knob = if d.length() > radius { origin + d.normalized() * radius } else { at };
-        // Reference-style movement pad: transparent centre with only a
-        // thin black outer border; the inner thumb dot moves independently.
-        let base_border = Stroke::new(1.25 * self.scale, Color32::from_black_alpha(240));
-        painter.circle_stroke(origin, radius, base_border);
+        // Green movement pad with a clean white border; the thumb dot moves independently.
+        let base_border = Stroke::new(look.width, look.line);
+        painter.circle(origin, radius, look.fill(false), base_border);
         if ring {
             let stroke = if sprint { look.ring(true) } else { Stroke::new(look.width, look.line.gamma_multiply(0.5)) };
             painter.circle_stroke(origin, SPRINT_REACH * radius, stroke);
@@ -1477,8 +1476,8 @@ impl Touch {
         painter.circle(
             knob,
             radius * 0.32,
-            Color32::from_rgba_unmultiplied(225, 225, 225, 145),
-            Stroke::new(1.0 * self.scale, Color32::from_black_alpha(210)),
+            look.pressed,
+            Stroke::new(1.0 * self.scale, Color32::WHITE),
         );
     }
 
@@ -1631,8 +1630,8 @@ impl Look {
         let accent = Color32::WHITE;
 
         Look {
-            fill: Color32::from_rgba_unmultiplied(166, 218, 166, a(0.60, 0.48)),
-            pressed: Color32::from_rgba_unmultiplied(125, 190, 130, a(0.78, 0.60)),
+            fill: Color32::from_rgba_unmultiplied(126, 205, 135, a(0.82, 0.72)),
+            pressed: Color32::from_rgba_unmultiplied(91, 170, 105, a(0.92, 0.82)),
             knob: Color32::from_white_alpha(a(0.72, 0.62)),
             line: Color32::from_white_alpha(a(0.82, 0.68)),
             accent: accent.gamma_multiply(opacity.max(0.6)),
