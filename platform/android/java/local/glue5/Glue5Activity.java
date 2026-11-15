@@ -336,10 +336,13 @@ public class Glue5Activity extends SDLActivity {
         if (stuntMapsTarget == null) throw new Exception("Import destination was lost; try again");
         File target = stuntMapsTarget.getCanonicalFile();
         File parent = target.getParentFile();
-        if (!"maps".equals(target.getName()) || parent == null || !"glue-trainer".equals(parent.getName())) {
-            throw new Exception("Unsafe stunt-map destination");
-        }
-        if (!target.isDirectory() && !target.mkdirs()) throw new Exception("Cannot create maps folder");
+        boolean objectMaps = "maps".equals(target.getName()) && parent != null
+                && "glue-trainer".equals(parent.getName());
+        boolean raceRoutes = "routes".equals(target.getName()) && parent != null
+                && "maps".equals(parent.getName()) && parent.getParentFile() != null
+                && "glue-trainer".equals(parent.getParentFile().getName());
+        if (!objectMaps && !raceRoutes) throw new Exception("Unsafe stunt-map/race-route destination");
+        if (!target.isDirectory() && !target.mkdirs()) throw new Exception("Cannot create import folder");
 
         String displayName = "stunt-map.xml";
         try (android.database.Cursor cursor = getContentResolver().query(
@@ -358,14 +361,18 @@ public class Glue5Activity extends SDLActivity {
         try (InputStream input = getContentResolver().openInputStream(uri)) {
             if (input == null) throw new Exception("Cannot read selected file");
             String lowerDisplayName = displayName.toLowerCase(java.util.Locale.ROOT);
-            if (lowerDisplayName.endsWith(".xml")) {
-                String name = safeStuntXmlName(displayName);
+            if (lowerDisplayName.endsWith(".xml") || (raceRoutes && lowerDisplayName.endsWith(".json"))) {
+                String name = safeStuntMapName(displayName, raceRoutes);
                 File out = new File(staging, name);
-                total = copyStuntXml(input, out, 4L * 1024L * 1024L);
+                long limit = name.toLowerCase(java.util.Locale.ROOT).endsWith(".json")
+                        ? 8L * 1024L * 1024L : 4L * 1024L * 1024L;
+                total = copyStuntXml(input, out, limit);
                 imported = 1;
             } else {
                 if (!lowerDisplayName.endsWith(".zip")) {
-                    throw new Exception("Choose an XML file or ZIP. Extract .rar/.7z archives first, then select the XML inside.");
+                    throw new Exception(raceRoutes
+                            ? "Choose a Rockstar Creator .json file or ZIP containing race JSON files. Extract .rar/.7z first."
+                            : "Choose an XML file or ZIP. Extract .rar/.7z archives first, then select the XML inside.");
                 }
                 try (ZipInputStream zip = new ZipInputStream(input)) {
                     ZipEntry entry;
@@ -380,12 +387,15 @@ public class Glue5Activity extends SDLActivity {
                         for (String part : raw.split("/")) {
                             if ("..".equals(part)) throw new Exception("ZIP contains a path traversal entry");
                         }
-                        if (entry.isDirectory() || !raw.toLowerCase(java.util.Locale.ROOT).endsWith(".xml")) {
+                        String lowerEntry = raw.toLowerCase(java.util.Locale.ROOT);
+                        boolean xmlEntry = lowerEntry.endsWith(".xml");
+                        boolean jsonEntry = raceRoutes && lowerEntry.endsWith(".json");
+                        if (entry.isDirectory() || (!xmlEntry && !jsonEntry)) {
                             zip.closeEntry();
                             continue;
                         }
                         String base = raw.substring(raw.lastIndexOf('/') + 1);
-                        String name = safeStuntXmlName(base);
+                        String name = safeStuntMapName(base, raceRoutes);
                         if (!names.add(name.toLowerCase(java.util.Locale.ROOT))) {
                             throw new Exception("ZIP contains duplicate XML filenames: " + name);
                         }
@@ -396,8 +406,10 @@ public class Glue5Activity extends SDLActivity {
                             while ((count = zip.read(buffer)) != -1) {
                                 entryBytes += count;
                                 total += count;
-                                if (entryBytes > 4L * 1024L * 1024L || total > 32L * 1024L * 1024L) {
-                                    throw new Exception("XML import exceeds 4 MB per map or 32 MB total");
+                                long entryLimit = name.toLowerCase(java.util.Locale.ROOT).endsWith(".json")
+                                        ? 8L * 1024L * 1024L : 4L * 1024L * 1024L;
+                                if (entryBytes > entryLimit || total > 32L * 1024L * 1024L) {
+                                    throw new Exception("Import exceeds 8 MB per JSON / 4 MB per XML or 32 MB total");
                                 }
                                 output.write(buffer, 0, count);
                             }
@@ -407,7 +419,9 @@ public class Glue5Activity extends SDLActivity {
                     }
                 }
             }
-            if (imported == 0) throw new Exception("No XML map files were found in the selected ZIP");
+            if (imported == 0) throw new Exception(raceRoutes
+                    ? "No Rockstar Creator JSON race files were found in the selected ZIP"
+                    : "No XML map files were found in the selected ZIP");
             File[] staged = staging.listFiles();
             if (staged == null || staged.length != imported) throw new Exception("Temporary import is incomplete");
             for (File source : staged) {
@@ -427,21 +441,24 @@ public class Glue5Activity extends SDLActivity {
             throw e;
         }
         deleteTree(staging);
-        return imported + " XML stunt map(s) imported to " + target.getAbsolutePath()
+        return imported + (raceRoutes ? " Rockstar race JSON file(s)" : " XML stunt map(s)")
+                + " imported to " + target.getAbsolutePath()
                 + ". Restart the game to refresh the STUNT RACES list.";
     }
 
-    private String safeStuntXmlName(String raw) throws Exception {
+    private String safeStuntMapName(String raw, boolean allowJson) throws Exception {
         String name = new File(raw).getName();
-        if (!name.toLowerCase(java.util.Locale.ROOT).endsWith(".xml")) {
-            throw new Exception("Selected map file must end in .xml");
-        }
-        String stem = name.substring(0, name.length() - 4)
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        String extension = lower.endsWith(".xml") ? ".xml" : (allowJson && lower.endsWith(".json") ? ".json" : "");
+        if (extension.isEmpty()) throw new Exception(allowJson
+                ? "Race route file must end in .json or .xml"
+                : "Object map file must end in .xml");
+        String stem = name.substring(0, name.length() - extension.length())
                 .replaceAll("[^A-Za-z0-9_-]+", "_")
                 .replaceAll("_+", "_");
         if (stem.length() > 64) stem = stem.substring(0, 64);
-        if (stem.isEmpty()) throw new Exception("XML map filename has no usable characters");
-        return stem + ".xml";
+        if (stem.isEmpty()) throw new Exception("Imported filename has no usable characters");
+        return stem + extension;
     }
 
     private long copyStuntXml(InputStream input, File output, long limit) throws Exception {
