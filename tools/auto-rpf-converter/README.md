@@ -53,6 +53,11 @@ The supported Gen9-to-Legacy transformations are limited to YTD/YDR/YDD/YFT/YPT;
 
 ## Glue5 compatibility gate
 
+The current Glue5 README explicitly says that files from a regular PC or console installation alone are not sufficient. Glue5 needs the supported WebAssembly build's `game.wasm` at build time, plus its prepared game assets and translated shaders at runtime. This converter only transforms selected resources inside RPF archives; it cannot generate the supported `game.wasm`, translated shader set, or the browser build's complete prepared data set.
+
+The converter emits structurally validated OPEN RPF7 archives. That proves the archive can be parsed by the pinned ragekit reader, not that Glue5's browser-build asset pipeline will accept or mount it. The exact target archive preparation/key requirements remain unverified; do not replace a working Glue5 game-data folder with this output. Keep a separate backup and use only a test copy until the runtime requirement is proven.
+
+
 The Glue5 project's own README and design notes say its runtime needs the supported browser build's prepared game data (re-keyed archives); a regular retail PC/console installation by itself is not sufficient. This converter currently emits structurally validated RPF7 archives with the OPEN encryption tag. It does not yet implement or verify the browser build's target re-keying/key scheme. Therefore this APK is a PC RPF extraction/resource-conversion prototype, not a certified Glue5-ready game-data converter.
 
 Before calling the project complete, the exact target archive/key requirements of the supported browser build must be verified, the corresponding safe re-key/output mode must be implemented (or OPEN archives must be proven accepted), and the resulting data must be tested by loading it in Glue5. The relevant runtime requirement is documented in the [Glue5 README](https://github.com/Ravi9733/glue5-android#notes) and [design notes](https://github.com/Ravi9733/glue5-android/blob/main/docs/design.md#game-files-are-never-in-the-app).
