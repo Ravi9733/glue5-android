@@ -315,7 +315,7 @@ function M.build(root: Menu)
 		end
 
 		local raceMenu = menu:submenu("Start checkpoint race", "Select a validated checkpoint route and vehicle")
-		local route = raceMenu:choice("Route", raceRoutes, 1, "Only XML files with at least two checkpoints appear here")
+		local route = raceMenu:choice("Route", raceRoutes, 1, "XML and Rockstar Creator JSON routes with at least two checkpoints appear here")
 		bind.action(raceMenu, "Preview selected route", {
 			note = "Show checkpoint count and approximate route length",
 			action = "Preview",
