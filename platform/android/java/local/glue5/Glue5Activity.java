@@ -353,12 +353,16 @@ public class Glue5Activity extends SDLActivity {
         java.util.HashSet<String> names = new java.util.HashSet<>();
         try (InputStream input = getContentResolver().openInputStream(uri)) {
             if (input == null) throw new Exception("Cannot read selected file");
-            if (displayName.toLowerCase(java.util.Locale.ROOT).endsWith(".xml")) {
+            String lowerDisplayName = displayName.toLowerCase(java.util.Locale.ROOT);
+            if (lowerDisplayName.endsWith(".xml")) {
                 String name = safeStuntXmlName(displayName);
                 File out = new File(staging, name);
                 total = copyStuntXml(input, out, 4L * 1024L * 1024L);
                 imported = 1;
             } else {
+                if (!lowerDisplayName.endsWith(".zip")) {
+                    throw new Exception("Choose an XML file or ZIP. Extract .rar/.7z archives first, then select the XML inside.");
+                }
                 try (ZipInputStream zip = new ZipInputStream(input)) {
                     ZipEntry entry;
                     byte[] buffer = new byte[16384];
