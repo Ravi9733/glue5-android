@@ -147,15 +147,23 @@ impl Vm {
                     .filter(|entry| entry.path().is_file())
                     .filter_map(|entry| {
                         let path = entry.path();
-                        if !path.extension()?.to_str()?.eq_ignore_ascii_case("xml") {
+                        let extension = path.extension()?.to_str()?;
+                        let is_xml = extension.eq_ignore_ascii_case("xml");
+                        let is_json = extension.eq_ignore_ascii_case("json");
+                        if !is_xml && !is_json {
                             return None;
                         }
                         let metadata = std::fs::metadata(&path).ok()?;
-                        if metadata.len() > 4 * 1024 * 1024 {
+                        let limit = if is_json { 8 * 1024 * 1024 } else { 4 * 1024 * 1024 };
+                        if metadata.len() > limit {
                             return None;
                         }
                         let source = std::fs::read_to_string(&path).ok()?;
-                        crate::placements::parse_xml_checkpoints(&source).ok()?;
+                        if is_json {
+                            crate::placements::parse_ugc_race_checkpoints(&source).ok()?;
+                        } else {
+                            crate::placements::parse_xml_checkpoints(&source).ok()?;
+                        }
                         let name = path.file_name()?.to_str()?.to_string();
                         (name.len() <= 80 && name.bytes().all(|b|
                             b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.'
@@ -235,20 +243,27 @@ impl Vm {
                     || relative.len() > 128
                     || path.is_absolute()
                     || !path.components().all(|c| matches!(c, Component::Normal(_)))
-                    || !relative.to_ascii_lowercase().ends_with(".xml")
+                    || !(relative.to_ascii_lowercase().ends_with(".xml")
+                        || relative.to_ascii_lowercase().ends_with(".json"))
                 {
-                    return Err(mlua::Error::runtime("world.loadRaceRoute: expected a relative XML route inside maps/routes/"));
+                    return Err(mlua::Error::runtime("world.loadRaceRoute: expected a relative XML route or Rockstar UGC JSON inside maps/routes/"));
                 }
                 let file = route_dir.join(path.file_name().ok_or_else(|| mlua::Error::runtime("invalid route filename"))?);
                 let metadata = std::fs::metadata(&file)
                     .map_err(|e| mlua::Error::runtime(format!("world.loadRaceRoute: {e}")))?;
-                if metadata.len() > 4 * 1024 * 1024 {
-                    return Err(mlua::Error::runtime("world.loadRaceRoute: route XML exceeds 4 MiB"));
+                let is_json = file.extension().and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"));
+                let limit = if is_json { 8 * 1024 * 1024 } else { 4 * 1024 * 1024 };
+                if metadata.len() > limit {
+                    return Err(mlua::Error::runtime(format!("world.loadRaceRoute: route file exceeds {} MiB", limit / 1024 / 1024)));
                 }
                 let source = std::fs::read_to_string(&file)
                     .map_err(|e| mlua::Error::runtime(format!("world.loadRaceRoute: {e}")))?;
-                let points = crate::placements::parse_xml_checkpoints(&source)
-                    .map_err(|e| mlua::Error::runtime(format!("world.loadRaceRoute: {e}")))?;
+                let points = if is_json {
+                    crate::placements::parse_ugc_race_checkpoints(&source)
+                } else {
+                    crate::placements::parse_xml_checkpoints(&source)
+                }.map_err(|e| mlua::Error::runtime(format!("world.loadRaceRoute: {e}")))?;
                 let result = lua.create_table()?;
                 for (index, point) in points.iter().enumerate() {
                     result.set(index + 1, mlua::Vector::new(point[0], point[1], point[2]))?;
