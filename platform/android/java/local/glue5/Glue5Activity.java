@@ -155,9 +155,13 @@ public class Glue5Activity extends SDLActivity {
                 if (!stuntRequest.delete()) throw new Exception("Cannot clear stunt-map import request");
                 File target = new File(requestedPath).getCanonicalFile();
                 File parent = target.getParentFile();
-                if (!"maps".equals(target.getName()) || parent == null
-                        || !"glue-trainer".equals(parent.getName())) {
-                    throw new Exception("Unsafe stunt-map destination");
+                boolean objectMaps = "maps".equals(target.getName()) && parent != null
+                        && "glue-trainer".equals(parent.getName());
+                boolean raceRoutes = "routes".equals(target.getName()) && parent != null
+                        && "maps".equals(parent.getName()) && parent.getParentFile() != null
+                        && "glue-trainer".equals(parent.getParentFile().getName());
+                if (!objectMaps && !raceRoutes) {
+                    throw new Exception("Unsafe stunt-map/race-route destination");
                 }
                 if (!target.isDirectory() && !target.mkdirs()) {
                     throw new Exception("Cannot create " + target.getAbsolutePath());
