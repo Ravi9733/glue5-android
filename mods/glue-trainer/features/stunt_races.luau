@@ -10,6 +10,7 @@ local respawnRequested = false
 local raceVehicle: Vehicle? = nil
 local raceCheckpoint: number? = nil
 local routeBlips: { Blip } = {}
+local checkpointNativeAvailable = true
 
 local function clearRoute()
 	if raceCheckpoint then
@@ -52,6 +53,9 @@ local function showRoute(points: { vector }, current: number)
 end
 
 local function setRaceCheckpoint(points: { vector }, index: number)
+	if not checkpointNativeAvailable then
+		return
+	end
 	if raceCheckpoint then
 		pcall(function()
 			graphics.deleteCheckpoint(raceCheckpoint :: number)
@@ -68,12 +72,18 @@ local function setRaceCheckpoint(points: { vector }, index: number)
 			14.0, 40, 210, 255, 220, 0
 		)
 	end)
-	if ok and handle and handle ~= 0 then
-		raceCheckpoint = handle
-		pcall(function()
-			graphics.setCheckpointCylinderHeight(handle, 8.0, 8.0, 14.0)
-			graphics.setCheckpointRgba(handle, 40, 210, 255, 220)
-		end)
+	if not ok or not handle or handle == 0 then
+		checkpointNativeAvailable = false
+		game.notify("Checkpoint ring native unavailable; following route blips instead")
+		return
+	end
+	raceCheckpoint = handle
+	local adjusted, adjustError = pcall(function()
+		graphics.setCheckpointCylinderHeight(handle, 8.0, 8.0, 14.0)
+		graphics.setCheckpointRgba(handle, 40, 210, 255, 220)
+	end)
+	if not adjusted then
+		game.notify("Checkpoint ring created; using default appearance")
 	end
 end
 
@@ -196,6 +206,11 @@ local function runRace(routeName: string, modelName: string, laps: number): stri
 		end)
 		clearRoute()
 		activeRace = false
+		if raceVehicle and entity.doesEntityExist(raceVehicle) then
+			pcall(function()
+				entity.freezeEntityPosition(raceVehicle :: Vehicle, false)
+			end)
+		end
 		if not okRace then
 			game.notify("Stunt race stopped: " .. tostring(raceError))
 		elseif finished then
