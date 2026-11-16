@@ -18,6 +18,7 @@ pub mod natives;
 pub mod placements;
 mod storage;
 pub mod studio;
+pub mod zip;
 mod vm;
 pub mod world;
 
