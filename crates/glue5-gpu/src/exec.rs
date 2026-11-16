@@ -943,6 +943,7 @@ impl Gpu {
             // two active workers. Each job owns a copy of its source bytes;
             // bounding this queue prevents a fast streaming producer from
             // building an unbounded CPU-memory backlog on Android.
+            self.make_decode_room();
             self.decoder.get_or_insert_with(|| Pool::new("gpu decode", 2))
                 .urgent_bounded(move || {
                     let texels =
@@ -953,7 +954,6 @@ impl Gpu {
                         texels
                     });
                 }, 16);
-            self.make_decode_room();
             self.decodes.push(Decode {
                 data: rx,
                 id,
