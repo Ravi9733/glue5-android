@@ -139,17 +139,6 @@ impl Mem {
     /// A view of `buf` as if it were wasm memory (tests).
     #[cfg(test)]
     pub(crate) fn over(buf: &mut [u8]) -> Mem {
-    #[test]
-    fn resource_heap_budget_only_applies_to_android_low_memory() {
-        assert_eq!(resource_heap_budget_mb(false), 0);
-        if cfg!(target_os = "android") {
-            assert_eq!(resource_heap_budget_mb(true), LOW_MEMORY_RESOURCE_HEAP_BUDGET_MB);
-        } else {
-            assert_eq!(resource_heap_budget_mb(true), 0);
-        }
-    }
-
-
         Mem { base: buf.as_mut_ptr() }
     }
 
@@ -362,4 +351,20 @@ pub(crate) fn hooks(hooks: &mut glue5_game::Hooks) {
     hooks.grow_heap = Some(grow_heap);
     hooks.memory_available = Some(memory_available);
     hooks.largest_block = Some(largest_block);
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resource_heap_budget_only_applies_to_android_low_memory() {
+        assert_eq!(resource_heap_budget_mb(false), 0);
+        if cfg!(target_os = "android") {
+            assert_eq!(resource_heap_budget_mb(true), LOW_MEMORY_RESOURCE_HEAP_BUDGET_MB);
+        } else {
+            assert_eq!(resource_heap_budget_mb(true), 0);
+        }
+    }
 }
