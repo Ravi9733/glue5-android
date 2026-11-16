@@ -107,8 +107,7 @@ pub struct Config {
     pub height: u32,
     /// 1 = story, 2 = sandbox (GTA V map), 3 = sandbox (env_test).
     pub start_mode: u32,
-    /// Smaller engine pools (with [`game_settings::apply_low_preset`], the
-    /// browser build's `?low=1`).
+    /// Low-memory runtime mode. It must not override the player's graphics settings.
     pub low_memory: bool,
     /// Frames per second at most: 0 lets the engine run as fast as the
     /// renderer presents (the display's refresh with vsync); 60 or 30 use
