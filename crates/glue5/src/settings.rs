@@ -24,8 +24,7 @@ pub struct Settings {
     /// The whole game comes from the server to this device (in its game
     /// folder), to play without it.
     pub download_all: bool,
-    /// Smaller engine pools, and the game's graphics settings lowered once
-    /// (the browser build's `?low=1`).
+    /// Low-memory runtime mode. It must not reduce graphics quality or render resolution.
     pub low_memory: bool,
     /// Optional lightweight rendering profile; uses existing renderer settings only.
     pub light_graphics_mode: bool,
