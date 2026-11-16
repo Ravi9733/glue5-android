@@ -166,7 +166,7 @@ const ICON_FILES: &[(&str, &[u8])] = icons![
     "pad-x", "pad-y", "parachute", "pause", "phone", "radio", "reload", "right", "rise", "seat", "settings", "skip",
     "special", "sprint", "switch", "throw", "up", "view", "weapons", "yaw-left", "yaw-right",
     // Original gameplay icons extracted from the Android reference APK.
-    "ref-aim", "ref-fire", "ref-jump", "ref-crouch", "ref-gas", "ref-brake", "ref-handbrake", "ref-horn", "ref-exit", "ref-enter",
+    "aim", "fire", "jump", "crouch", "gas", "brake", "handbrake", "horn", "exit", "enter",
 ];
 
 /// The icons' textures, by name.
@@ -232,11 +232,11 @@ static ON_FOOT: &[Action] = &[
     COVER,
     SWITCH,
     SPECIAL,
-    does(24, primary(turns(action("Fire", "ref-fire", button::R2, At::RightBottom(76.0, 166.0), 30.0)))),
-    does(25, turns(action("Aim", "ref-aim", button::L2, At::RightBottom(178.0, 150.0), 30.0))),
-    does(22, action("Jump", "ref-jump", button::WEST, At::RightBottom(76.0, 64.0), 30.0)), 
-    does(36, action("Crouch", "ref-crouch", button::L3, At::RightBottom(178.0, 64.0), 30.0)), 
-    does(23, near_vehicle(action("Enter", "ref-enter", button::NORTH, At::RightBottom(178.0, 232.0), 30.0))),
+    does(24, primary(turns(action("Fire", "fire", button::R2, At::RightBottom(76.0, 166.0), 30.0)))),
+    does(25, turns(action("Aim", "aim", button::L2, At::RightBottom(178.0, 150.0), 30.0))),
+    does(22, action("Jump", "jump", button::WEST, At::RightBottom(76.0, 64.0), 30.0)), 
+    does(36, action("Crouch", "crouch", button::L3, At::RightBottom(178.0, 64.0), 30.0)), 
+    does(23, near_vehicle(action("Enter", "enter", button::NORTH, At::RightBottom(178.0, 232.0), 30.0))),
     // A dedicated sprint target in addition to sprinting by pushing the stick.
     does(SPRINT, action("Sprint", "sprint", button::SOUTH, At::LeftBottom(136.0, 126.0), 30.0)), 
     PHONE,
@@ -246,11 +246,11 @@ static ON_FOOT: &[Action] = &[
 
 /// Driving: full pedal/vehicle cluster, radio and character wheels.
 static CAR: &[Action] = &[
-    primary(with_phone(action("Gas", "ref-gas", button::R2, At::RightBottom(76.0, 154.0), 38.0))),
-    with_phone(action("Brake", "ref-brake", button::L2, At::RightBottom(178.0, 78.0), 34.0)),
-    action("Exit", "ref-exit", button::NORTH, At::RightBottom(178.0, 226.0), 30.0),
-    with_phone(action("H.brake", "ref-handbrake", button::R1, At::RightBottom(76.0, 270.0), 30.0)),
-    action("Horn", "ref-horn", button::L3, At::RightBottom(280.0, 52.0), 28.0),
+    primary(with_phone(action("Gas", "gas", button::R2, At::RightBottom(76.0, 154.0), 38.0))),
+    with_phone(action("Brake", "brake", button::L2, At::RightBottom(178.0, 78.0), 34.0)),
+    action("Exit", "exit", button::NORTH, At::RightBottom(178.0, 226.0), 30.0),
+    with_phone(action("H.brake", "handbrake", button::R1, At::RightBottom(76.0, 270.0), 30.0)),
+    action("Horn", "horn", button::L3, At::RightBottom(280.0, 52.0), 28.0),
     // Vehicle steering uses explicit left/right touch arrows; no on-foot joystick.
     steer_left(action("Steer left", "left", 0, At::LeftBottom(70.0, 105.0), 36.0)),
     steer_right(action("Steer right", "right", 0, At::LeftBottom(164.0, 105.0), 36.0)),
@@ -263,9 +263,9 @@ static CAR: &[Action] = &[
 ];
 
 static BICYCLE: &[Action] = &[
-    primary(action("Pedal", "ref-gas", button::SOUTH, MAIN, 36.0)),
-    with_phone(action("Brake", "ref-brake", button::L2, SECOND, 32.0)),
-    action("Exit", "ref-exit", button::NORTH, THIRD, 26.0),
+    primary(action("Pedal", "gas", button::SOUTH, MAIN, 36.0)),
+    with_phone(action("Brake", "brake", button::L2, SECOND, 32.0)),
+    action("Exit", "exit", button::NORTH, THIRD, 26.0),
     action("Bell", "bell", button::L3, FIFTH, 22.0),
     steer_left(action("Steer left", "left", 0, At::LeftBottom(70.0, 105.0), 34.0)),
     steer_right(action("Steer right", "right", 0, At::LeftBottom(164.0, 105.0), 34.0)),
@@ -278,9 +278,9 @@ static BICYCLE: &[Action] = &[
 
 /// Helicopters (the stick pitches and rolls).
 static HELI: &[Action] = &[
-    primary(with_phone(action("Up", "ref-gas", button::R2, MAIN, 34.0))),
-    with_phone(action("Down", "ref-brake", button::L2, SECOND, 30.0)),
-    action("Exit", "ref-exit", button::NORTH, FIFTH, 24.0),
+    primary(with_phone(action("Up", "gas", button::R2, MAIN, 34.0))),
+    with_phone(action("Down", "brake", button::L2, SECOND, 30.0)),
+    action("Exit", "exit", button::NORTH, FIFTH, 24.0),
     with_phone(action("◀ Yaw", "yaw-left", button::L1, At::RightBottom(160.0, 250.0), 24.0)),
     with_phone(action("Yaw ▶", "yaw-right", button::R1, FOURTH, 24.0)),
     action("Fire", "fire", button::SOUTH, SIXTH, 24.0),
@@ -291,8 +291,8 @@ static HELI: &[Action] = &[
 ];
 
 static PLANE: &[Action] = &[
-    primary(with_phone(action("Throttle", "ref-gas", button::R2, MAIN, 34.0))),
-    with_phone(action("Brake", "ref-brake", button::L2, SECOND, 30.0)),
+    primary(with_phone(action("Throttle", "gas", button::R2, MAIN, 34.0))),
+    with_phone(action("Brake", "brake", button::L2, SECOND, 30.0)),
     action("Exit", "exit", button::NORTH, FIFTH, 24.0),
     with_phone(action("◀ Yaw", "yaw-left", button::L1, At::RightBottom(160.0, 250.0), 24.0)),
     with_phone(action("Yaw ▶", "yaw-right", button::R1, FOURTH, 24.0)),
@@ -305,8 +305,8 @@ static PLANE: &[Action] = &[
 ];
 
 static SUBMARINE: &[Action] = &[
-    primary(with_phone(action("Ahead", "ref-gas", button::R2, MAIN, 34.0))),
-    with_phone(action("Back", "ref-brake", button::L2, SECOND, 30.0)),
+    primary(with_phone(action("Ahead", "gas", button::R2, MAIN, 34.0))),
+    with_phone(action("Back", "brake", button::L2, SECOND, 30.0)),
     action("Rise", "rise", button::WEST, SIXTH, 24.0),
     action("Dive", "dive", button::SOUTH, FIFTH, 24.0),
     action("Exit", "exit", button::NORTH, At::RightBottom(160.0, 250.0), 24.0),
@@ -318,8 +318,8 @@ static SUBMARINE: &[Action] = &[
 
 /// A passenger: shooting from the window (LT aims, RT fires).
 static PASSENGER: &[Action] = &[
-    primary(turns(action("Shoot", "ref-fire", button::R2, MAIN, 34.0))),
-    turns(action("Aim", "ref-aim", button::L2, SECOND, 30.0)),
+    primary(turns(action("Shoot", "fire", button::R2, MAIN, 34.0))),
+    turns(action("Aim", "aim", button::L2, SECOND, 30.0)),
     action("Exit", "exit", button::NORTH, THIRD, 26.0),
     // The driver's seat, when free.
     action("Seat", "seat", button::RIGHT, FIFTH, 22.0),
@@ -1486,32 +1486,21 @@ impl Touch {
         }
     }
 
-    /// A stick where a thumb landed (`origin`) and is (`at`), with its sprint
-    /// ring if it has one.
-    fn draw_stick(&self, painter: &Painter, look: &Look, origin: Pos2, at: Pos2, ring: bool) {
+    /// Movement/look stick rendered as a large transparent PNG only.
+    /// Touch origin, radius and gamepad mapping remain unchanged.
+    fn draw_stick(&self, painter: &Painter, look: &Look, origin: Pos2, at: Pos2, _ring: bool) {
         let radius = self.stick_radius();
         let d = at - origin;
-        let sprint = d.length() > SPRINT_REACH * radius;
         let knob = if d.length() > radius { origin + d.normalized() * radius } else { at };
-        // Dark translucent movement pad with a brighter white border; thumb dot moves independently.
-        let base_border = Stroke::new(look.width, look.line);
-        painter.circle(origin, radius, look.fill(false), base_border);
-        if ring {
-            let stroke = if sprint { look.ring(true) } else { Stroke::new(look.width, look.line.gamma_multiply(0.5)) };
-            painter.circle_stroke(origin, SPRINT_REACH * radius, stroke);
-        }
-        painter.circle(
-            knob,
-            radius * 0.32,
-            look.pressed,
-            Stroke::new(1.0 * self.scale, Color32::WHITE),
-        );
+        // The L-stick PNG is the only visible joystick artwork: no drawn
+        // base, ring, border, fill or thumb circle.
+        self.draw_icon(painter, look, knob, radius * 1.45, "pad-ls");
     }
 
     /// Controls are transparent PNG icons only: no button fill, circle,
     /// rounded rectangle, outline or accent ring.
     fn draw_button(&self, painter: &Painter, look: &Look, b: &Button, _held: bool) {
-        self.draw_icon(painter, look, b.at, b.radius * 1.28, b.icon);
+        self.draw_icon(painter, look, b.at, b.radius * 1.65, b.icon);
     }
 
     /// The icon `name` (or two joined by `+`, side by side), `side` points.
@@ -1574,10 +1563,10 @@ fn action_icon(input: u32) -> Option<&'static str> {
         0 => "view",                    // NEXT_CAMERA
         18 => "skip",                   // SKIP_CUTSCENE
         19 => "switch",                 // CHARACTER_WHEEL
-        22 => "ref-jump",                   // JUMP
-        23 => "ref-enter",                  // ENTER
-        24 | 69 | 92 | 114 => "ref-fire",   // ATTACK, VEH_ATTACK, VEH_PASSENGER_ATTACK, VEH_FLY_ATTACK
-        25 | 68 | 91 => "ref-aim",          // AIM, VEH_AIM, VEH_PASSENGER_AIM
+        22 => "jump",                   // JUMP
+        23 => "enter",                  // ENTER
+        24 | 69 | 92 | 114 => "fire",   // ATTACK, VEH_ATTACK, VEH_PASSENGER_ATTACK, VEH_FLY_ATTACK
+        25 | 68 | 91 => "aim",          // AIM, VEH_AIM, VEH_PASSENGER_AIM
         26 | 79 => "behind",            // LOOK_BEHIND, VEH_LOOK_BEHIND
         27 => "phone",                  // PHONE
         28 | 29 => "special",           // SPECIAL_ABILITY(_SECONDARY)
@@ -1588,14 +1577,14 @@ fn action_icon(input: u32) -> Option<&'static str> {
         51 | 52 => "action",            // CONTEXT(_SECONDARY)
         54 | 74 => "lights",            // WEAPON_SPECIAL_TWO (the flashlight), VEH_HEADLIGHT
         65 => "drive-special",          // VEH_SPECIAL
-        71 | 87 => "ref-gas",               // VEH_ACCELERATE, VEH_FLY_THROTTLE_UP
-        72 | 88 => "ref-brake",             // VEH_BRAKE, VEH_FLY_THROTTLE_DOWN
+        71 | 87 => "gas",               // VEH_ACCELERATE, VEH_FLY_THROTTLE_UP
+        72 | 88 => "brake",             // VEH_BRAKE, VEH_FLY_THROTTLE_DOWN
         73 => "duck",                   // VEH_DUCK
-        75 => "ref-exit",                   // VEH_EXIT
-        76 => "ref-handbrake",              // VEH_HANDBRAKE
+        75 => "exit",                   // VEH_EXIT
+        76 => "handbrake",              // VEH_HANDBRAKE
         80 => "cinematic",              // VEH_CIN_CAM (the camera's focus on a target)
         85 => "radio",                  // VEH_RADIO_WHEEL
-        86 => "ref-horn",                   // VEH_HORN
+        86 => "horn",                   // VEH_HORN
         89 | 152 => "yaw-left",         // VEH_FLY_YAW_LEFT, PARACHUTE_BRAKE_LEFT
         90 | 153 => "yaw-right",        // VEH_FLY_YAW_RIGHT, PARACHUTE_BRAKE_RIGHT
         113 => "landing-gear",          // VEH_FLY_UNDERCARRIAGE
