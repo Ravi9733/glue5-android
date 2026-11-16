@@ -33,6 +33,7 @@ impl Pool {
                             let mut queues = lock.lock().unwrap();
                             loop {
                                 if let Some(job) = queues.urgent.pop_front().or_else(|| queues.background.pop_front()) {
+                                    cv.notify_all();
                                     break job;
                                 }
                                 queues = cv.wait(queues).unwrap();
@@ -49,6 +50,19 @@ impl Pool {
     pub fn urgent(&self, job: impl FnOnce() + Send + 'static) {
         let (lock, cv) = &*self.queues;
         lock.lock().unwrap().urgent.push_back(Box::new(job));
+        cv.notify_one();
+    }
+
+    /// Queue urgent work with backpressure. Useful for texture decoding:
+    /// each queued closure owns its compressed source bytes, so an unbounded
+    /// queue can grow by hundreds of MiB while the GPU command thread streams.
+    pub fn urgent_bounded(&self, job: impl FnOnce() + Send + 'static, max_queued: usize) {
+        let (lock, cv) = &*self.queues;
+        let mut queues = lock.lock().unwrap();
+        while queues.urgent.len() >= max_queued.max(1) {
+            queues = cv.wait(queues).unwrap();
+        }
+        queues.urgent.push_back(Box::new(job));
         cv.notify_one();
     }
 
