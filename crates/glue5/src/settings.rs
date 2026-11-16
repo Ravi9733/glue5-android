@@ -466,8 +466,9 @@ impl Settings {
         }
         #[cfg(target_os = "android")]
         {
-            // Never leave an old low-memory preset active on the Android build.
-            settings.low_memory = false;
+            // Preserve the player's saved Low Memory choice across launches.
+            // The one-time Android migrations above already set their defaults;
+            // overriding this here silently disabled the toggle on every restart.
             settings.mods = true;
         }
         settings
