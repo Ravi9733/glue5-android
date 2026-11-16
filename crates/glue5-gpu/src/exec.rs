@@ -278,43 +278,12 @@ pub struct Decode {
 const IDLE_BATCH: Duration = Duration::from_millis(4);
 
 impl Gpu {
-    /// Bound the number of decoded texture uploads that can be in flight.
-    /// Each entry owns a receiver for a decoded image, so limiting this list
-    /// also limits queued, running, and completed-but-not-uploaded decode jobs.
-    fn make_decode_room(&mut self) {
-        // Allow a short burst of world-texture uploads without stalling the
-        // renderer after only eight jobs. The worker queue remains bounded.
-        const MAX_PENDING_DECODES: usize = 16;
-        if self.decodes.len() < MAX_PENDING_DECODES {
-            return;
-        }
-        let d = self.decodes.remove(0);
-        if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
-            return;
-        }
-        let waiting = Instant::now();
-        let Ok(texels) = d.data.recv() else {
-            return;
-        };
-        let waited = waiting.elapsed();
-        if waited >= Duration::from_millis(8) {
-            log::warn!(
-                "texture streaming: decode backlog reached its limit; waited {:.1} ms for oldest upload",
-                waited.as_secs_f64() * 1000.0,
-            );
-        }
-        let target = wgpu::TexelCopyTextureInfo {
-            texture: &d.texture,
-            mip_level: d.level,
-            origin: d.origin,
-            aspect: wgpu::TextureAspect::All,
-        };
-        self.uploads.texture(target, &texels, d.bpr, d.src_rows, d.rows, d.extent, d.row_bytes);
-        if let Some(t) = self.objs.tex(d.id) {
-            t.uploaded.set(self.epoch);
-        }
-    }
-
+    // Texture decode work is bounded by Pool::urgent_bounded. Do not wait
+    // for the oldest decoded image here: it may be a large, unrelated world
+    // texture and would stall the GPU command thread before it can process
+    // the commands that mark actually-visible textures as used. The worker
+    // queue applies backpressure only when its queued-job limit is reached.
+    
     pub fn run(mut self) {
         let mut reader = self.ring.reader();
         self.ring.set_state(glue5_runtime::gpu::State::Running);
@@ -951,11 +920,8 @@ impl Gpu {
             // BC decode also parallelizes large textures internally. Keep
             // this outer queue bounded so nested workers cannot starve the
             // game and renderer threads on Android.
-            // Bound the complete in-flight set (queued, running, and
-            // completed-but-not-uploaded). Each job owns its compressed
-            // source and decoded output, so waiting on the oldest job here
-            // prevents an unbounded CPU-memory backlog during world streaming.
-            self.make_decode_room();
+            // The bounded worker queue below owns backpressure. Avoid waiting
+            // for an unrelated decode to finish on the GPU command thread.
             self.decoder.get_or_insert_with(|| Pool::new("gpu decode", 2))
                 .urgent_bounded(move || {
                     let texels =
