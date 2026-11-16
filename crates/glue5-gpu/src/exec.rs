@@ -288,6 +288,27 @@ impl Gpu {
         if self.decodes.len() < MAX_PENDING_DECODES {
             return;
         }
+        // Prefer a completed decode from another texture over blocking on
+        // the oldest job. Preserve per-texture region order: a later region
+        // must not be uploaded before an earlier region of the same texture.
+        let count = self.decodes.len();
+        for i in 0..count {
+            if self.decodes[..i].iter().any(|older| older.texture == self.decodes[i].texture) {
+                continue;
+            }
+            let d = self.decodes.remove(i);
+            match d.data.try_recv() {
+                Ok(texels) => {
+                    self.upload_decoded(d, &texels);
+                    return;
+                }
+                Err(TryRecvError::Empty) => self.decodes.insert(i, d),
+                Err(TryRecvError::Disconnected) => return,
+            }
+        }
+
+        // No independent decode is ready. Wait for the oldest region so the
+        // command ring remains bounded without dropping texture data.
         let d = self.decodes.remove(0);
         if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
             return;
@@ -306,13 +327,21 @@ impl Gpu {
                 queued_age.as_secs_f64() * 1000.0,
             );
         }
+        self.upload_decoded(d, &texels);
+    }
+
+    /// Uploads a completed BC decode if its texture still exists.
+    fn upload_decoded(&mut self, d: Decode, texels: &[u8]) {
+        if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
+            return;
+        }
         let target = wgpu::TexelCopyTextureInfo {
             texture: &d.texture,
             mip_level: d.level,
             origin: d.origin,
             aspect: wgpu::TextureAspect::All,
         };
-        self.uploads.texture(target, &texels, d.bpr, d.src_rows, d.rows, d.extent, d.row_bytes);
+        self.uploads.texture(target, texels, d.bpr, d.src_rows, d.rows, d.extent, d.row_bytes);
         if let Some(t) = self.objs.tex(d.id) {
             t.uploaded.set(self.epoch);
         }
