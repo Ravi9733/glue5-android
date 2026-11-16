@@ -292,6 +292,7 @@ impl Gpu {
         if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
             return;
         }
+        let queued_age = d.queued_at.elapsed();
         let waiting = Instant::now();
         let Ok(texels) = d.data.recv() else {
             return;
@@ -299,8 +300,10 @@ impl Gpu {
         let waited = waiting.elapsed();
         if waited >= Duration::from_millis(8) {
             log::warn!(
-                "texture streaming: decode backlog reached its limit; waited {:.1} ms for oldest upload",
+                "texture streaming: decode backlog reached its limit; texture {} waited {:.1} ms (queued {:.1} ms) for oldest upload",
+                d.id,
                 waited.as_secs_f64() * 1000.0,
+                queued_age.as_secs_f64() * 1000.0,
             );
         }
         let target = wgpu::TexelCopyTextureInfo {
