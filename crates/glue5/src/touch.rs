@@ -1508,20 +1508,10 @@ impl Touch {
         );
     }
 
-    /// A button: round, with its icon; ringed in the player's colour when it
-    /// is the layout's main one, the game asks for it, or it is held.
-    fn draw_button(&self, painter: &Painter, look: &Look, b: &Button, held: bool) {
-        let ring = if held || b.primary || b.asked { look.ring(held) } else { look.stroke(false) };
-        if matches!(b.kind, Kind::SteerLeft | Kind::SteerRight) {
-            // Driving arrows are broad rounded rectangles, not circular pads.
-            let rect = b.rect();
-            painter.rect_filled(rect, egui::CornerRadius::same(9), look.fill(held));
-            painter.rect_stroke(rect, egui::CornerRadius::same(9), ring, egui::StrokeKind::Inside);
-            self.draw_icon(painter, look, b.at, b.radius * 1.28, b.icon);
-        } else {
-            painter.circle(b.at, b.radius, look.fill(held), ring);
-            self.draw_icon(painter, look, b.at, b.radius * 1.28, b.icon);
-        }
+    /// Controls are transparent PNG icons only: no button fill, circle,
+    /// rounded rectangle, outline or accent ring.
+    fn draw_button(&self, painter: &Painter, look: &Look, b: &Button, _held: bool) {
+        self.draw_icon(painter, look, b.at, b.radius * 1.28, b.icon);
     }
 
     /// The icon `name` (or two joined by `+`, side by side), `side` points.
