@@ -86,6 +86,8 @@ pub struct Settings {
     /// Custom normalized positions and size multipliers for touch controls.
     pub touch_layout: HashMap<String, [f32; 3]>,
     pub touch_opacity: f32,
+    /// RGB tint applied to every touch-control PNG icon.
+    pub touch_icon_color: [u8; 3],
     pub touch_size: f32,
     /// How fast a finger's drag turns the camera.
     pub touch_camera: f32,
@@ -287,6 +289,7 @@ impl Default for Settings {
             button_tiki_layout: false,
             touch_layout: HashMap::new(),
             touch_opacity: 0.6,
+            touch_icon_color: [255, 255, 255],
             touch_size: 1.0,
             touch_camera: 1.0,
             touch_aim: TouchAim::LockOn,
