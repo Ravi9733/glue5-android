@@ -326,6 +326,17 @@ int main() {
         missing_key_rejected = true;
     }
     require(missing_key_rejected, "encrypted RPF must fail closed without matching keys");
+    const fs::path aes_missing_direct_output = archive_root / "aes_missing_direct_keys.rpf";
+    fs::remove(aes_missing_direct_output, ignored);
+    bool direct_aes_missing_key_rejected = false;
+    try {
+        (void)gta_asset_converter::convert_rpf_archive_to_open_rpf7(
+            encrypted_archive, aes_missing_direct_output, empty_keys);
+    } catch (const std::exception&) {
+        direct_aes_missing_key_rejected = true;
+    }
+    require(direct_aes_missing_key_rejected && !fs::exists(aes_missing_direct_output),
+            "direct AES conversion must reject missing keys without creating output");
 
     // A deterministic invertible synthetic NG table exercises the NG key-file import
     // and archive-name/size-dependent decryption path without using or bundling game keys.
@@ -406,6 +417,17 @@ int main() {
         missing_ng_rejected = true;
     }
     require(missing_ng_rejected, "NG archive must fail closed when matching NG key material is absent");
+    const fs::path ng_missing_direct_output = ng_archive_root / "ng_missing_direct_keys.rpf";
+    fs::remove(ng_missing_direct_output, ignored);
+    bool direct_ng_missing_key_rejected = false;
+    try {
+        (void)gta_asset_converter::convert_rpf_archive_to_open_rpf7(
+            ng_archive, ng_missing_direct_output, empty_keys);
+    } catch (const std::exception&) {
+        direct_ng_missing_key_rejected = true;
+    }
+    require(direct_ng_missing_key_rejected && !fs::exists(ng_missing_direct_output),
+            "direct NG conversion must reject missing keys without creating output");
 
     fs::remove_all(ng_key_root, ignored);
     fs::remove_all(ng_archive_root, ignored);
@@ -482,6 +504,14 @@ int main() {
     direct_child.add_file("scripts/preserved.ysc", gen9);
     rk::RpfBuilder direct_root;
     direct_root.add_file("stream/top_texture.ytd", gen9);
+    direct_root.add_file("stream/model.ydr", gen9_ydr);
+    direct_root.add_file("stream/models.ydd", gen9_ydd);
+    direct_root.add_file("stream/vehicle.yft", gen9_yft);
+    direct_root.add_file("effects/particles.ypt", gen9_ypt);
+    direct_root.add_file("collision/ground.ybn", gen_ybn);
+    direct_root.add_file("maps/test.ymap", gen_ymap);
+    direct_root.add_file("maps/test.ytyp", gen_ytyp);
+    direct_root.add_file("stream/legacy_model.ydr", legacy_ydr_fixture);
     direct_root.add_file("misc/keep.dat", untouched_data);
     direct_root.add_archive("dlcpacks/test/dlc.rpf", std::move(direct_child));
     rk::RpfWriteOptions direct_options;
@@ -508,10 +538,33 @@ int main() {
         direct_output_path.string(), std::make_shared<rk::RpfKeys>());
     require(direct_output.encryption() == rk::RpfEncryption::Open,
             "direct archive output must be OPEN");
-    const int top_texture_index = direct_output.find("stream/top_texture.ytd");
-    require(top_texture_index >= 0 &&
-            rk::rsc::Resource::load(direct_output.extract(top_texture_index)).version == 13,
+    const auto output_resource_version = [&](const std::string& path) -> std::uint32_t {
+        const int index = direct_output.find(path);
+        require(index >= 0, "direct archive output must retain a supported resource path");
+        return rk::rsc::Resource::load(direct_output.extract(index)).version;
+    };
+    require(output_resource_version("stream/top_texture.ytd") == 13,
             "direct archive output must contain Legacy top-level YTD");
+    require(output_resource_version("stream/model.ydr") == 165,
+            "direct archive output must convert YDR");
+    require(output_resource_version("stream/models.ydd") == 165,
+            "direct archive output must convert YDD");
+    require(output_resource_version("stream/vehicle.yft") == 162,
+            "direct archive output must convert YFT");
+    require(output_resource_version("effects/particles.ypt") == 68,
+            "direct archive output must convert YPT");
+    const int ybn_index = direct_output.find("collision/ground.ybn");
+    const int ymap_index = direct_output.find("maps/test.ymap");
+    const int ytyp_index = direct_output.find("maps/test.ytyp");
+    require(ybn_index >= 0 && direct_output.extract(ybn_index) == gen_ybn,
+            "direct archive output must validate and preserve YBN bytes");
+    require(ymap_index >= 0 && direct_output.extract(ymap_index) == gen_ymap,
+            "direct archive output must validate and preserve YMAP bytes");
+    require(ytyp_index >= 0 && direct_output.extract(ytyp_index) == gen_ytyp,
+            "direct archive output must validate and preserve YTYP bytes");
+    const int legacy_model_index = direct_output.find("stream/legacy_model.ydr");
+    require(legacy_model_index >= 0 && direct_output.extract(legacy_model_index) == legacy_ydr_fixture,
+            "direct archive output must preserve an already-Legacy YDR byte-for-byte");
     const auto nested_texture_location = direct_output.resolve(
         "dlcpacks/test/dlc.rpf/stream/nested_texture.ytd");
     require(nested_texture_location.archive && nested_texture_location.entry >= 0 &&
@@ -531,6 +584,29 @@ int main() {
     fs::remove_all(direct_key_root, ignored);
     fs::remove(direct_source_path, ignored);
     fs::remove(direct_output_path, ignored);
+
+    // A YPT with Enhanced-only behaviour must abort the archive conversion before
+    // any final output is created; a partial OPEN archive would be misleading.
+    const fs::path invalid_ypt_source = fs::temp_directory_path() / "gta-rpf-invalid-ypt-source.rpf";
+    const fs::path invalid_ypt_output = fs::temp_directory_path() / "gta-rpf-invalid-ypt-output.rpf";
+    fs::remove(invalid_ypt_source, ignored);
+    fs::remove(invalid_ypt_output, ignored);
+    rk::RpfBuilder invalid_ypt_builder;
+    invalid_ypt_builder.add_file("effects/unsupported_ptfx.ypt", gen9_ypt_with_gen9_behaviour);
+    rk::RpfWriteOptions invalid_ypt_options;
+    invalid_ypt_options.encryption = rk::RpfEncryption::Open;
+    invalid_ypt_options.name = "invalid_ypt_source.rpf";
+    invalid_ypt_builder.save(invalid_ypt_source.string(), invalid_ypt_options);
+    bool invalid_ypt_archive_rejected = false;
+    try {
+        (void)gta_asset_converter::convert_rpf_archive_to_open_rpf7(
+            invalid_ypt_source, invalid_ypt_output, direct_key_root);
+    } catch (const std::exception&) {
+        invalid_ypt_archive_rejected = true;
+    }
+    require(invalid_ypt_archive_rejected && !fs::exists(invalid_ypt_output),
+            "unsupported Enhanced-only YPT behaviour must fail closed without a final RPF");
+    fs::remove(invalid_ypt_source, ignored);
 
     std::cout << "Gen9 conversion, keyed extraction and large nested RPF7 tests passed\n";
     return 0;
