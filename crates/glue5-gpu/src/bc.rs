@@ -15,10 +15,12 @@ use crate::format::Bc;
 /// ending threads (stacks mapped, named and unmapped).
 const BLOCKS_PER_THREAD: usize = 16384;
 
-/// Threads for `blocks` blocks of work: one per [`BLOCKS_PER_THREAD`], at
-/// most 8.
+/// Threads for `blocks` blocks of work. Android keeps this to two workers:
+/// texture uploads run on the renderer's command thread, so four short-lived
+/// workers competing with it can make streaming frame times less consistent.
 fn threads_for(blocks: usize) -> usize {
-    (blocks / BLOCKS_PER_THREAD).clamp(1, glue5_runtime::cores().min(4))
+    let max = if cfg!(target_os = "android") { 2 } else { 4 };
+    (blocks / BLOCKS_PER_THREAD).clamp(1, glue5_runtime::cores().min(max))
 }
 
 impl Bc {
