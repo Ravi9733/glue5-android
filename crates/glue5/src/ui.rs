@@ -721,7 +721,15 @@ impl Ui {
         let mut back = false;
         ctx.begin_pass(raw);
         if let Some(touch) = touch {
-            touch.draw(&ctx.layer_painter(LayerId::background()), settings.touch_opacity);
+            touch.draw(
+                &ctx.layer_painter(LayerId::background()),
+                settings.touch_opacity,
+                Color32::from_rgb(
+                    settings.touch_icon_color[0],
+                    settings.touch_icon_color[1],
+                    settings.touch_icon_color[2],
+                ),
+            );
         }
         let scale = crate::touch::control_scale(screen.size(), settings.touch_size);
         self.gear = gear.map(|alpha| draw_gear(&ctx, safe, scale, alpha, self.gear_icon.as_ref()));
