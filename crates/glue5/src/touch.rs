@@ -172,13 +172,17 @@ const ICON_FILES: &[(&str, &[u8])] = icons![
 /// The icons' textures, by name.
 type Icons = HashMap<&'static str, egui::TextureHandle>;
 
-fn load_icons(ctx: &egui::Context) -> Icons {
-    ICON_FILES.iter().filter_map(|(name, _)| load_icon(ctx, name).map(|t| (*name, t))).collect()
+fn load_icons(ctx: &egui::Context, crisp: bool) -> Icons {
+    ICON_FILES.iter().filter_map(|(name, bytes)| load_icon_with_filter(ctx, name, bytes, crisp).map(|t| (*name, t))).collect()
 }
 
 /// The icon `name`'s texture (the settings button's too).
 pub fn load_icon(ctx: &egui::Context, name: &str) -> Option<egui::TextureHandle> {
     let (_, bytes) = ICON_FILES.iter().find(|(n, _)| *n == name)?;
+    load_icon_with_filter(ctx, name, bytes, true)
+}
+
+fn load_icon_with_filter(ctx: &egui::Context, name: &str, bytes: &[u8], crisp: bool) -> Option<egui::TextureHandle> {
     let decode = || -> Result<egui::ColorImage, png::DecodingError> {
         let mut reader = png::Decoder::new(std::io::Cursor::new(bytes)).read_info()?;
         let mut pixels = vec![0; reader.output_buffer_size().unwrap_or(0)];
@@ -187,7 +191,7 @@ pub fn load_icon(ctx: &egui::Context, name: &str) -> Option<egui::TextureHandle>
         Ok(egui::ColorImage::from_rgba_unmultiplied(size, &pixels[..info.buffer_size()]))
     };
     match decode() {
-        Ok(image) => Some(ctx.load_texture(format!("touch-{name}"), image, egui::TextureOptions::LINEAR)),
+        Ok(image) => Some(ctx.load_texture(format!("touch-{name}"), image, if crisp { egui::TextureOptions::NEAREST } else { egui::TextureOptions::LINEAR })),
         Err(e) => {
             log::warn!("touch icon {name}: {e}");
             None
@@ -1455,12 +1459,12 @@ impl Touch {
         self.fingers.values().any(|f| matches!(f, Finger::Button { kind: Kind::Wheel, .. }))
     }
 
-    pub fn draw(&self, painter: &Painter, opacity: f32, icon_tint: Color32) {
+    pub fn draw(&self, painter: &Painter, opacity: f32, icon_tint: Color32, brightness: f32, crisp: bool) {
         let mut look = Look::new(opacity, self.scale, self.context.character);
         look.icon = Color32::from_rgba_unmultiplied(
-            icon_tint.r(),
-            icon_tint.g(),
-            icon_tint.b(),
+            (icon_tint.r() as f32 * brightness).clamp(0.0, 255.0) as u8,
+            (icon_tint.g() as f32 * brightness).clamp(0.0, 255.0) as u8,
+            (icon_tint.b() as f32 * brightness).clamp(0.0, 255.0) as u8,
             look.icon.a(),
         );
         if self.menu_mode() {
@@ -1477,13 +1481,13 @@ impl Touch {
                     primary: *key == MenuKey::Enter,
                     asked: false,
                 };
-                self.draw_button(painter, &look, &b, held);
+                self.draw_button(painter, &look, &b, held, crisp);
             }
             return;
         }
         for b in &self.buttons() {
             let held = self.fingers.values().any(|f| matches!(f, Finger::Button { key, .. } if *key == b.key));
-            self.draw_button(painter, &look, b, held);
+            self.draw_button(painter, &look, b, held, crisp);
         }
         // Show only a small PNG thumb dot while a finger is actively using
         // a stick. No oversized idle joystick graphic.
@@ -1508,10 +1512,10 @@ impl Touch {
 
     /// Controls are transparent PNG icons only: no button fill, circle,
     /// rounded rectangle, outline or accent ring.
-    fn draw_button(&self, painter: &Painter, look: &Look, b: &Button, _held: bool) {
+    fn draw_button(&self, painter: &Painter, look: &Look, b: &Button, _held: bool, crisp: bool) {
         let side = (b.radius * 1.65).min(self.area.width()).min(self.area.height());
         let center = self.clamp_icon_center(b.at, side * 0.5);
-        self.draw_icon(painter, look, center, side, b.icon);
+        self.draw_icon(painter, look, center, side, b.icon, crisp);
     }
 
     /// Keep the whole PNG visible inside the non-fullscreen window's safe area.
@@ -1524,11 +1528,11 @@ impl Touch {
     }
 
     /// The icon `name` (or two joined by `+`, side by side), `side` points.
-    fn draw_icon(&self, painter: &Painter, look: &Look, c: Pos2, side: f32, name: &str) {
+    fn draw_icon(&self, painter: &Painter, look: &Look, c: Pos2, side: f32, name: &str, crisp: bool) {
         if name.is_empty() {
             return;
         }
-        let icons = self.icons.get_or_init(|| load_icons(painter.ctx()));
+        let icons = self.icons.get_or_init(|| load_icons(painter.ctx(), crisp));
         let names: Vec<&str> = name.split('+').collect();
         let side = if names.len() > 1 { side * 0.68 } else { side };
         let uv = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
