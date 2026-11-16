@@ -267,17 +267,12 @@ thread_local! {
     static ASKING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Conservative streaming-heap cap for Android's Low Memory mode.
-/// This is deliberately above the previously measured ~0.95 GiB streamed-asset
-/// working set, leaving headroom for transient allocations.
-const LOW_MEMORY_RESOURCE_HEAP_BUDGET_MB: u32 = 1536;
-
-pub(super) fn resource_heap_budget_mb(low_memory: bool) -> u32 {
-    if cfg!(target_os = "android") && low_memory {
-        LOW_MEMORY_RESOURCE_HEAP_BUDGET_MB
-    } else {
-        0
-    }
+/// The Android resource heap is budgeted from the engine's gameResourceMB
+/// setting for every phone in imports.rs. Do not impose a second, smaller
+/// Low Memory-only cap: that causes premature streamed-asset eviction and
+/// visible road/building/terrain texture pop-in.
+pub(super) fn resource_heap_budget_mb(_low_memory: bool) -> u32 {
+    0
 }
 
 /// Budgets the resource heap at `mb` MiB (the engine's `gameResourceMB`).
@@ -359,12 +354,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resource_heap_budget_only_applies_to_android_low_memory() {
+    fn low_memory_does_not_apply_a_separate_resource_heap_cap() {
         assert_eq!(resource_heap_budget_mb(false), 0);
-        if cfg!(target_os = "android") {
-            assert_eq!(resource_heap_budget_mb(true), LOW_MEMORY_RESOURCE_HEAP_BUDGET_MB);
-        } else {
-            assert_eq!(resource_heap_budget_mb(true), 0);
-        }
+        assert_eq!(resource_heap_budget_mb(true), 0);
     }
 }
