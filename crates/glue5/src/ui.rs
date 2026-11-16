@@ -286,6 +286,8 @@ pub struct Ui {
     text_rect: Option<Rect>,
     /// The settings button's icon.
     gear_icon: Option<egui::TextureHandle>,
+    /// The F7 trainer/mods button icon.
+    trainer_icon: Option<egui::TextureHandle>,
 }
 
 /// A notification: as Social Club's, a title, a name and a line; the
@@ -313,6 +315,7 @@ impl Ui {
         theme::install(&ctx);
         let background = theme::background(&ctx);
         let gear_icon = crate::touch::load_icon(&ctx, "settings");
+        let trainer_icon = crate::touch::load_icon(&ctx, "special");
         Ui {
             ctx,
             background,
@@ -342,6 +345,7 @@ impl Ui {
             menus_button: None,
             text_rect: None,
             gear_icon,
+            trainer_icon,
         }
     }
 
@@ -724,7 +728,7 @@ impl Ui {
         // Show the touch Mods button whenever mods are installed, even before a
         // script has registered a menu; tapping it can open the Mods page and
         // reveal load errors or let the user inspect the installed mods.
-        self.menus_button = gear.filter(|_| status.mods || cfg!(target_os = "android")).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha));
+        self.menus_button = gear.filter(|_| status.mods || cfg!(target_os = "android")).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha, self.trainer_icon.as_ref()));
         let overlay = hud.then(|| self.perf.draw(&ctx, safe, settings, status));
         // The notifications and the stream's sign keep off everything else
         // drawn over the game.
@@ -914,39 +918,29 @@ fn draw_gear(ctx: &egui::Context, safe: Rect, scale: f32, alpha: f32, icon: Opti
     let r = GEAR_RADIUS * scale;
     let look = crate::touch::Look::new(alpha, scale, glue5_runtime::input::Character::Other);
     let painter = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("gear")));
-    painter.circle(c, r, look.fill(false), look.stroke(false));
-    match icon {
-        Some(icon) => {
-            let uv = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
-            painter.image(icon.id(), Rect::from_center_size(c, Vec2::splat(r * 1.15)), uv, look.icon);
-        }
-        None => {
-            painter.text(c, Align2::CENTER_CENTER, "⚙", FontId::proportional(r * 0.95), look.icon);
-        }
+    if let Some(icon) = icon {
+        let uv = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
+        painter.image(icon.id(), Rect::from_center_size(c, Vec2::splat(r * 1.65)), uv, look.icon);
     }
     (c, r)
 }
 
 /// The mods' menus button, the settings button's right neighbour: sliders.
-fn draw_menus_button(ctx: &egui::Context, safe: Rect, scale: f32, alpha: f32) -> (Pos2, f32) {
+fn draw_menus_button(
+    ctx: &egui::Context,
+    safe: Rect,
+    scale: f32,
+    alpha: f32,
+    icon: Option<&egui::TextureHandle>,
+) -> (Pos2, f32) {
     let c = gear_center(safe, scale) + vec2(54.0 * scale, 0.0);
     let r = GEAR_RADIUS * scale;
     let look = crate::touch::Look::new(alpha, scale, glue5_runtime::input::Character::Other);
     let painter = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("gear")));
-    painter.circle(c, r, look.fill(false), look.stroke(false));
-    let stroke = egui::Stroke::new(r * 0.1, look.icon);
-    for (dy, knob) in [(-0.24, 0.18), (0.24, -0.2)] {
-        let y = c.y + dy * r;
-        painter.line_segment([pos2(c.x - 0.48 * r, y), pos2(c.x + 0.48 * r, y)], stroke);
-        painter.circle_filled(pos2(c.x + knob * r, y), r * 0.15, look.icon);
+    if let Some(icon) = icon {
+        let uv = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
+        painter.image(icon.id(), Rect::from_center_size(c, Vec2::splat(r * 1.65)), uv, look.icon);
     }
-    painter.text(
-        pos2(c.x, c.y + r * 0.72),
-        Align2::CENTER_TOP,
-        "TRAINER",
-        FontId::proportional(r * 0.30),
-        look.icon,
-    );
     (c, r)
 }
 
