@@ -11,7 +11,9 @@
 //! UI shows before the game starts, and the renderer takes the same device
 //! and window over when it does.
 
-#[cfg(target_os = "android")]\nmod adreno;\nmod bc;
+#[cfg(target_os = "android")]
+mod adreno;
+mod bc;
 mod done;
 mod draw;
 mod exec;
@@ -99,7 +101,13 @@ pub unsafe fn enable_metal_hud() {
     };
 }
 
-/// Create a Vulkan instance on an Android Adreno driver package.\n/// The package must be installed in app-private storage and libadrenotools\n/// must be shipped with the Android native libraries.\n#[cfg(target_os = "android")]\npub use adreno::instance as instance_with_driver;\n\n/// The wgpu instance for this platform (create surfaces with it).
+/// Create a Vulkan instance on an Android Adreno driver package.
+/// The package must be installed in app-private storage and libadrenotools
+/// must be shipped with the Android native libraries.
+#[cfg(target_os = "android")]
+pub use adreno::instance as instance_with_driver;
+
+/// The wgpu instance for this platform (create surfaces with it).
 pub fn instance() -> wgpu::Instance {
     let backends = if cfg!(target_vendor = "apple") { wgpu::Backends::METAL } else { wgpu::Backends::VULKAN };
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
