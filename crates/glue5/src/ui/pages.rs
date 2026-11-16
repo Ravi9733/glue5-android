@@ -938,21 +938,19 @@ fn settings_items(
                 |ui| toggle(ui, &mut settings.light_graphics_mode),
             )
             .on_hover_text(
-                "On: subtle colour boost, 50% render scale, Bicubic upscaling and a locked 30 FPS cap. VSync stays enabled.",
+                "On: subtle colour boost, 50% render scale and Bicubic upscaling. The saved FPS target and VSync choice are preserved.",
             );
             if mode.changed() {
                 if settings.light_graphics_mode {
                     settings.render_scale = Some(0.50);
                     settings.upscaler = Upscaling::Bicubic;
                     settings.sharpness = 0.35;
-                    settings.max_fps = 30;
                     settings.vsync = true;
                     settings.frame_generation = false;
                 } else {
                     settings.render_scale = Some(0.50);
                     settings.upscaler = Upscaling::Bicubic;
                     settings.sharpness = 0.5;
-                    settings.max_fps = 30;
                     settings.vsync = true;
                     settings.frame_generation = false;
                 }
@@ -970,10 +968,9 @@ fn settings_items(
                 settings.render_scale = Some(settings::round_scale(scale));
                 *scale_edit = None;
             }
-            // Keep the requested fixed render profile while allowing VSync
-            // to be switched on or off from the visible control below.
+            // Keep the requested reconstruction method. Do not overwrite
+            // the player's FPS target while drawing the settings page.
             settings.upscaler = Upscaling::Bicubic;
-            settings.max_fps = 30;
             settings.frame_generation = false;
             setting(ui, "VSync", Control::Toggle, None, |ui| {
                 toggle(ui, &mut settings.vsync)
@@ -1080,7 +1077,7 @@ fn settings_items(
                 next_start(started.is_some_and(|s| s.low_memory != settings.low_memory)),
                 |ui| toggle(ui, &mut settings.low_memory),
             )
-            .on_hover_text("Smaller engine pools; enabling this also lowers graphics settings once");
+            .on_hover_text("Runtime low-memory compatibility mode. It keeps your selected graphics quality and render resolution unchanged.");
             if r.changed() && settings.low_memory {
                 settings.low_preset_written = false;
             }
