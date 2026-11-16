@@ -912,8 +912,12 @@ impl Gpu {
             // BC decode also parallelizes large textures internally. Keep
             // this outer queue bounded so nested workers cannot starve the
             // game and renderer threads on Android.
+            // Keep at most 16 compressed uploads queued in addition to the
+            // two active workers. Each job owns a copy of its source bytes;
+            // bounding this queue prevents a fast streaming producer from
+            // building an unbounded CPU-memory backlog on Android.
             self.decoder.get_or_insert_with(|| Pool::new("gpu decode", 2))
-                .urgent(move || {
+                .urgent_bounded(move || {
                     let texels =
                         crate::bc::decode(bc, &src, bpr, src_rows, cols as usize, block_rows as usize, d as usize);
                     let _ = tx.send(if etc2 {
@@ -921,7 +925,7 @@ impl Gpu {
                     } else {
                         texels
                     });
-                });
+                }, 16);
             self.decodes.push(Decode {
                 data: rx,
                 id,
