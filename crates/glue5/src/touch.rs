@@ -97,6 +97,9 @@ struct Action {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Kind {
     Press,
+    /// A held steering arrow drives the left stick horizontally.
+    SteerLeft,
+    SteerRight,
     /// Held, the finger's drag also turns the camera.
     Turns,
     /// Held, it opens one of the game's wheels (weapons, characters, radio
@@ -123,6 +126,10 @@ const fn action(label: &'static str, icon: &'static str, bits: u16, at: At, radi
 const fn does(input: u32, a: Action) -> Action {
     Action { does: Some(input), ..a }
 }
+
+const fn steer_left(a: Action) -> Action { Action { kind: Kind::SteerLeft, bits: 0, ..a } }
+
+const fn steer_right(a: Action) -> Action { Action { kind: Kind::SteerRight, bits: 0, ..a } }
 
 const fn turns(a: Action) -> Action {
     Action { kind: Kind::Turns, ..a }
@@ -194,7 +201,7 @@ const VIEW: Action = action("View", "view", button::SELECT, At::MidTop(-54.0, 30
 const PAUSE: Action = action("☰", "pause", button::START, At::MidTop(0.0, 30.0), 20.0);
 
 /// The phone, on the right below the game's HUD.
-const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(111.0, 561.0), 36.0);
+const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(80.0, 230.0), 30.0);
 /// Two columns on the left, between the game's help text and its radar.
 const LEFT_1: At = At::LeftBottom(46.0, 350.0);
 const LEFT_2: At = At::LeftBottom(46.0, 270.0);
@@ -245,8 +252,8 @@ static CAR: &[Action] = &[
     with_phone(action("H.brake", "ref-handbrake", button::R1, At::RightBottom(76.0, 270.0), 30.0)),
     action("Horn", "ref-horn", button::L3, At::RightBottom(280.0, 52.0), 28.0),
     // Vehicle steering uses explicit left/right touch arrows; no on-foot joystick.
-    action("Steer left", "left", button::LEFT, At::LeftBottom(142.0, 105.0), 30.0),
-    action("Steer right", "right", button::RIGHT, At::LeftBottom(62.0, 105.0), 30.0),
+    steer_left(action("Steer left", "left", 0, At::LeftBottom(74.0, 105.0), 30.0)),
+    steer_right(action("Steer right", "right", 0, At::LeftBottom(154.0, 105.0), 30.0)),
     RADIO,
     SWITCH,
     action("Behind", "behind", button::R3, LEFT_3, 28.0),
@@ -260,8 +267,8 @@ static BICYCLE: &[Action] = &[
     with_phone(action("Brake", "ref-brake", button::L2, SECOND, 32.0)),
     action("Exit", "ref-exit", button::NORTH, THIRD, 26.0),
     action("Bell", "bell", button::L3, FIFTH, 22.0),
-    action("Steer left", "left", button::LEFT, At::LeftBottom(142.0, 105.0), 28.0),
-    action("Steer right", "right", button::RIGHT, At::LeftBottom(62.0, 105.0), 28.0),
+    steer_left(action("Steer left", "left", 0, At::LeftBottom(74.0, 105.0), 28.0)),
+    steer_right(action("Steer right", "right", 0, At::LeftBottom(154.0, 105.0), 28.0)),
     PHONE,
     action("Behind", "behind", button::R3, LEFT_3, 22.0),
     SWITCH,
@@ -1370,6 +1377,7 @@ impl Touch {
             let d = at - origin;
             if d.length() < pick { [0.0, 0.0] } else { stick_value(d.normalized()) }
         };
+        let (mut steer_left, mut steer_right) = (false, false);
         for finger in self.fingers.values() {
             match *finger {
                 Finger::Move { origin, at } => {
@@ -1384,6 +1392,8 @@ impl Touch {
                 Finger::Look { origin, at } => pad.right = stick(origin, at),
                 Finger::Camera { .. } | Finger::Mouse { .. } | Finger::Pinch(_) | Finger::MenuKey(_) => {}
                 Finger::Button { bits, kind, origin, last, .. } => {
+                    if kind == Kind::SteerLeft { steer_left = true; }
+                    if kind == Kind::SteerRight { steer_right = true; }
                     if kind == Kind::Wheel {
                         pad.right = toward(origin, last);
                     }
@@ -1397,6 +1407,7 @@ impl Touch {
                 }
             }
         }
+        pad.left = [f32::from(steer_right) - f32::from(steer_left), 0.0];
         // Locked on, the drags of this frame push the right stick.
         let drag = std::mem::take(&mut self.locked_drag);
         self.locked_stick = if !self.aim_locked {
@@ -1639,14 +1650,14 @@ pub struct Look {
 impl Look {
     pub fn new(opacity: f32, scale: f32, _character: Character) -> Self {
         let a = |v: f32, least: f32| ((v * opacity).max(least) * 255.0) as u8;
-        // Soft green is the button fill; keep the outer border neutral white.
-        let accent = Color32::WHITE;
+        // Smoked dark-glass look: translucent charcoal with a soft white edge.
+        let accent = Color32::from_white_alpha(a(0.72, 0.58));
 
         Look {
-            fill: Color32::from_rgba_unmultiplied(126, 205, 135, a(0.82, 0.72)),
-            pressed: Color32::from_rgba_unmultiplied(91, 170, 105, a(0.92, 0.82)),
+            fill: Color32::from_rgba_unmultiplied(22, 25, 30, a(0.72, 0.58)),
+            pressed: Color32::from_rgba_unmultiplied(48, 54, 62, a(0.86, 0.72)),
             knob: Color32::from_white_alpha(a(0.72, 0.62)),
-            line: Color32::from_white_alpha(a(0.82, 0.68)),
+            line: Color32::from_white_alpha(a(0.76, 0.58)),
             accent: accent.gamma_multiply(opacity.max(0.6)),
             icon: Color32::from_white_alpha(a(0.95, 0.75)),
             width: 1.5 * scale,
