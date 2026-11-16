@@ -1047,6 +1047,18 @@ fn settings_items(
             setting(ui, "Opacity", Control::Slider, None, |ui| {
                 slider(ui, &mut settings.touch_opacity, 0.2..=1.0, 0.01, "%", 0)
             });
+            setting(ui, "PNG icon color", Control::Choice, None, |ui| {
+                let mut color = Color32::from_rgb(
+                    settings.touch_icon_color[0],
+                    settings.touch_icon_color[1],
+                    settings.touch_icon_color[2],
+                );
+                let response = ui.color_edit_button_srgba(&mut color);
+                if response.changed() {
+                    settings.touch_icon_color = [color.r(), color.g(), color.b()];
+                }
+                response
+            }).on_hover_text("Change the tint of all touch-control PNG icons.");
             setting(ui, "Camera speed", Control::Slider, None, |ui| {
                 slider(ui, &mut settings.touch_camera, 0.25..=3.0, 0.05, "×", 2)
             });
