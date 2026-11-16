@@ -244,6 +244,9 @@ static CAR: &[Action] = &[
     action("Exit", "ref-exit", button::NORTH, At::RightBottom(178.0, 226.0), 30.0),
     with_phone(action("H.brake", "ref-handbrake", button::R1, At::RightBottom(76.0, 270.0), 30.0)),
     action("Horn", "ref-horn", button::L3, At::RightBottom(280.0, 52.0), 28.0),
+    // Vehicle steering uses explicit left/right touch arrows; no on-foot joystick.
+    action("Steer left", "left", button::LEFT, At::LeftBottom(142.0, 105.0), 30.0),
+    action("Steer right", "right", button::RIGHT, At::LeftBottom(62.0, 105.0), 30.0),
     RADIO,
     SWITCH,
     action("Behind", "behind", button::R3, LEFT_3, 28.0),
@@ -257,6 +260,8 @@ static BICYCLE: &[Action] = &[
     with_phone(action("Brake", "ref-brake", button::L2, SECOND, 32.0)),
     action("Exit", "ref-exit", button::NORTH, THIRD, 26.0),
     action("Bell", "bell", button::L3, FIFTH, 22.0),
+    action("Steer left", "left", button::LEFT, At::LeftBottom(142.0, 105.0), 28.0),
+    action("Steer right", "right", button::RIGHT, At::LeftBottom(62.0, 105.0), 28.0),
     PHONE,
     action("Behind", "behind", button::R3, LEFT_3, 22.0),
     SWITCH,
@@ -802,7 +807,15 @@ impl Touch {
     /// The layout has a stick at rest (a script's scene has its sticks
     /// where the thumbs land, a cutscene none).
     fn has_stick(&self) -> bool {
-        self.touch_layout().is_some() && !self.is(CUTSCENE) && !self.is(SCRIPTED) && !self.is(SCENE) && !self.is(ASKED) && !self.is(ALERT)
+        // Cars and bicycles use Android-style steering arrows and pedals, not
+        // the on-foot movement joystick. Aircraft/submarines retain analog input.
+        self.touch_layout().is_some()
+            && !matches!(self.context.activity, Activity::Driving(Driving::Car | Driving::Bicycle))
+            && !self.is(CUTSCENE)
+            && !self.is(SCRIPTED)
+            && !self.is(SCENE)
+            && !self.is(ASKED)
+            && !self.is(ALERT)
     }
 
     /// The game asks for a stick (the right one, or the left).
