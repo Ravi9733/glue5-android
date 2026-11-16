@@ -3,6 +3,10 @@ name: Turnip Android integration build
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - clean-ui-performance-priority
+    types: [opened, synchronize, reopened]
   push:
     branches:
       - turnip-driver-integration
