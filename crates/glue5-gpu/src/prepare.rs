@@ -51,7 +51,13 @@ pub(crate) fn prepare(gpu: &Device, settings: &Settings, progress: &Progress) ->
     progress.total.store(recipes.len(), Ordering::Relaxed);
     let cells: Vec<Arc<Cell>> = recipes.iter().map(|_| Arc::new(OnceLock::new())).collect();
     let next = AtomicUsize::new(0);
-    let threads = glue5_runtime::cores();
+    // Pipeline prewarming happens before gameplay, but compiling on every
+    // core can create a large CPU/memory burst on mobile Adreno devices.
+    // Cap Android's startup compiler fan-out to four workers; the saved
+    // Vulkan pipeline cache keeps subsequent launches fast. Other platforms
+    // retain their existing all-core preparation.
+    let cores = glue5_runtime::cores();
+    let threads = if cfg!(target_os = "android") { cores.clamp(2, 4) } else { cores };
     std::thread::scope(|s| {
         for _ in 0..threads {
             s.spawn(|| {
