@@ -1,6 +1,6 @@
-*** Begin Patch
-*** Update File: wgpu-hal/src/vulkan/instance.rs
-@@
+--- a/wgpu-hal/src/vulkan/instance.rs
++++ b/wgpu-hal/src/vulkan/instance.rs
+@@ -640,9 +640,31 @@
      pub unsafe fn init_with_callback(
          desc: &crate::InstanceDescriptor<'_>,
          callback: Option<Box<super::CreateInstanceCallback>>,
@@ -46,4 +46,3 @@
 -            crate::InstanceError::with_source(String::from("missing Vulkan entry points"), err)
 -        })?;
          let version = {
-*** End Patch
