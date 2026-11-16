@@ -14,24 +14,10 @@ fn path(user_dir: &Path) -> PathBuf {
     user_dir.join("Documents/Rockstar Games/GTA V/settings.xml")
 }
 
-/// Balanced low-memory preset for Android: retain sharp textures and a
-/// usable world LOD so nearby roads/buildings/mountains do not stay blank or
-/// blurry, while reducing crowd variety and expensive secondary effects.
-/// This deliberately avoids the old zero-texture/zero-LOD preset, which
-/// caused severe texture pop-in on memory-constrained devices.
-const LOW: &[(&str, &str)] = &[
-    ("TextureQuality", "2"),
-    ("ShadowQuality", "1"),
-    ("ReflectionQuality", "0"),
-    ("ParticleQuality", "0"),
-    ("GrassQuality", "0"),
-    ("CityDensity", "0.350000"),
-    ("PedVarietyMultiplier", "0.350000"),
-    ("VehicleVarietyMultiplier", "0.350000"),
-    ("LodScale", "0.600000"),
-    ("PedLodBias", "0.400000"),
-    ("VehicleLodBias", "0.400000"),
-];
+/// Low Memory must not write a different graphics preset. The player's
+/// settings.xml remains authoritative so ON and OFF have identical visual
+/// quality; resource management is handled separately by the runtime.
+const LOW: &[(&str, &str)] = &[];
 
 /// What the engine writes when it first starts without settings (its
 /// defaults for the adapter it is given, the same everywhere).
@@ -170,17 +156,8 @@ mod tests {
     }
 
     #[test]
-    fn low_memory_keeps_texture_detail_and_nonzero_world_lod() {
-        let value = |name: &str| LOW.iter().find(|(key, _)| *key == name).map(|(_, value)| *value);
-        assert_eq!(value("TextureQuality"), Some("2"));
-        for name in ["LodScale", "PedLodBias", "VehicleLodBias"] {
-            let parsed: f32 = value(name).expect(name).parse().unwrap();
-            assert!(parsed > 0.0 && parsed <= 1.0, "{name}={parsed}");
-        }
-        for name in ["CityDensity", "PedVarietyMultiplier", "VehicleVarietyMultiplier"] {
-            let parsed: f32 = value(name).expect(name).parse().unwrap();
-            assert!(parsed < 1.0, "{name} should remain reduced");
-        }
+    fn low_memory_does_not_override_player_graphics_settings() {
+        assert!(LOW.is_empty(), "Low Memory must not write graphics settings");
     }
 
     #[test]
