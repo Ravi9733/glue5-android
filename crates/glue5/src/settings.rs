@@ -30,6 +30,8 @@ pub struct Settings {
     pub light_graphics_mode: bool,
     /// Vulkan ICD selection on Android. Turnip takes effect on next launch.
     pub vulkan_driver: VulkanDriver,
+    /// Optional custom Adreno driver package installed under the app user directory.
+    pub gpu_driver: Option<String>,
     /// Whether the low-memory preset is in the game's settings (written at
     /// the first start with `low_memory`; the game's menu changes it after).
     pub low_preset_written: bool,
@@ -257,6 +259,7 @@ impl Default for Settings {
             // Android activity auto-selects an imported Turnip driver before Rust starts.
             // Keep an explicit saved System choice, but let older settings files
             // (which have no vulkan_driver field) inherit that startup selection.
+            gpu_driver: None,
             vulkan_driver: if cfg!(target_os = "android")
                 && std::env::var("GLUE5_VULKAN_DRIVER").ok().as_deref() == Some("turnip")
             {
