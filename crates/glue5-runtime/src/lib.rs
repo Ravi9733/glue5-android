@@ -264,6 +264,11 @@ pub fn start(config: Config, gpu: gpu::GpuBackend) -> Result<Game> {
     let data = layout::data_dir(&config.game_dir);
     std::fs::create_dir_all(&config.user_dir)?;
     let log = gamelog::start(&config.user_dir).context("creating the engine log")?;
+    let resource_heap_budget_mb = memory::resource_heap_budget_mb(config.low_memory);
+    memory::budget_resource_heap(resource_heap_budget_mb);
+    if resource_heap_budget_mb != 0 {
+        log::info!("Android low-memory resource heap budget: {resource_heap_budget_mb} MiB");
+    }
     log::info!("engine log: {} (GLUE5_ENGINE_LOG=stdout also prints it)", log.display());
     glue5_game::set_trap_hook(trap_site::record);
     time::fine_timers();
