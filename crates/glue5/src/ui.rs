@@ -729,14 +729,21 @@ impl Ui {
                     settings.touch_icon_color[1],
                     settings.touch_icon_color[2],
                 ),
+                settings.touch_icon_brightness,
+                settings.touch_png_crisp,
             );
         }
         let scale = crate::touch::control_scale(screen.size(), settings.touch_size);
-        self.gear = gear.map(|alpha| draw_gear(&ctx, safe, scale, alpha, self.gear_icon.as_ref()));
+        let icon_tint = Color32::from_rgb(
+            (settings.touch_icon_color[0] as f32 * settings.touch_icon_brightness).clamp(0.0, 255.0) as u8,
+            (settings.touch_icon_color[1] as f32 * settings.touch_icon_brightness).clamp(0.0, 255.0) as u8,
+            (settings.touch_icon_color[2] as f32 * settings.touch_icon_brightness).clamp(0.0, 255.0) as u8,
+        );
+        self.gear = gear.map(|alpha| draw_gear(&ctx, safe, scale, alpha, self.gear_icon.as_ref(), icon_tint));
         // Show the touch Mods button whenever mods are installed, even before a
         // script has registered a menu; tapping it can open the Mods page and
         // reveal load errors or let the user inspect the installed mods.
-        self.menus_button = gear.filter(|_| status.mods || cfg!(target_os = "android")).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha, self.trainer_icon.as_ref()));
+        self.menus_button = gear.filter(|_| status.mods || cfg!(target_os = "android")).map(|alpha| draw_menus_button(&ctx, safe, scale, alpha, self.trainer_icon.as_ref(), icon_tint));
         let overlay = hud.then(|| self.perf.draw(&ctx, safe, settings, status));
         // The notifications and the stream's sign keep off everything else
         // drawn over the game.
@@ -921,10 +928,11 @@ pub fn safe_rect(window: &Window) -> Rect {
 }
 
 /// The settings button: the touch controls' look, at their size.
-fn draw_gear(ctx: &egui::Context, safe: Rect, scale: f32, alpha: f32, icon: Option<&egui::TextureHandle>) -> (Pos2, f32) {
+fn draw_gear(ctx: &egui::Context, safe: Rect, scale: f32, alpha: f32, icon: Option<&egui::TextureHandle>, icon_tint: Color32) -> (Pos2, f32) {
     let c = gear_center(safe, scale);
     let r = GEAR_RADIUS * scale;
-    let look = crate::touch::Look::new(alpha, scale, glue5_runtime::input::Character::Other);
+    let mut look = crate::touch::Look::new(alpha, scale, glue5_runtime::input::Character::Other);
+    look.icon = Color32::from_rgba_unmultiplied(icon_tint.r(), icon_tint.g(), icon_tint.b(), look.icon.a());
     let painter = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("gear")));
     if let Some(icon) = icon {
         let uv = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
@@ -940,6 +948,7 @@ fn draw_menus_button(
     scale: f32,
     alpha: f32,
     icon: Option<&egui::TextureHandle>,
+    icon_tint: Color32,
 ) -> (Pos2, f32) {
     let c = gear_center(safe, scale) + vec2(54.0 * scale, 0.0);
     let r = GEAR_RADIUS * scale;
