@@ -276,6 +276,31 @@ pub struct Decode {
 const IDLE_BATCH: Duration = Duration::from_millis(4);
 
 impl Gpu {
+    /// Bound the number of decoded texture uploads that can be in flight.
+    /// Each entry owns a receiver for a decoded image, so limiting this list
+    /// also limits queued, running, and completed-but-not-uploaded decode jobs.
+    fn make_decode_room(&mut self) {
+        const MAX_PENDING_DECODES: usize = 8;
+        if self.decodes.len() < MAX_PENDING_DECODES {
+            return;
+        }
+        let d = self.decodes.remove(0);
+        let Some(t) = self.objs.tex(d.id).filter(|t| t.tex == d.texture) else {
+            return;
+        };
+        let Ok(texels) = d.data.recv() else {
+            return;
+        };
+        let target = wgpu::TexelCopyTextureInfo {
+            texture: &d.texture,
+            mip_level: d.level,
+            origin: d.origin,
+            aspect: wgpu::TextureAspect::All,
+        };
+        self.uploads.texture(target, &texels, d.bpr, d.src_rows, d.rows, d.extent, d.row_bytes);
+        t.uploaded.set(self.epoch);
+    }
+
     pub fn run(mut self) {
         let mut reader = self.ring.reader();
         self.ring.set_state(glue5_runtime::gpu::State::Running);
@@ -926,6 +951,7 @@ impl Gpu {
                         texels
                     });
                 }, 16);
+            self.make_decode_room();
             self.decodes.push(Decode {
                 data: rx,
                 id,
