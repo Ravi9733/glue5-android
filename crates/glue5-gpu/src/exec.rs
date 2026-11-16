@@ -260,6 +260,8 @@ pub struct Gpu {
 /// (a batch's uploads go before its commands anyway).
 pub struct Decode {
     data: std::sync::mpsc::Receiver<Vec<u8>>,
+    /// When CPU decoding was queued, for streaming-latency diagnostics.
+    queued_at: Instant,
     /// The texture's object, and the texture it was when the data came.
     id: u32,
     texture: wgpu::Texture,
@@ -966,6 +968,7 @@ impl Gpu {
                 }, 16);
             self.decodes.push(Decode {
                 data: rx,
+                queued_at: Instant::now(),
                 id,
                 texture,
                 level,
@@ -1026,7 +1029,10 @@ impl Gpu {
         let mut waited = Duration::ZERO;
         let mut waited_textures = 0usize;
         let mut later: Vec<Decode> = Vec::new();
+        let mut oldest_ready = Duration::ZERO;
+        let mut oldest_pending = Duration::ZERO;
         for d in std::mem::take(&mut self.decodes) {
+            let age = d.queued_at.elapsed();
             let Some(t) = self.objs.tex(d.id).filter(|t| t.tex == d.texture) else {
                 continue; // destroyed meanwhile
             };
@@ -1048,9 +1054,11 @@ impl Gpu {
                 }
             };
             let Some(texels) = texels else {
+                oldest_pending = oldest_pending.max(age);
                 later.push(d);
                 continue;
             };
+            oldest_ready = oldest_ready.max(age);
             let target = wgpu::TexelCopyTextureInfo {
                 texture: &d.texture,
                 mip_level: d.level,
@@ -1064,10 +1072,16 @@ impl Gpu {
         // Keep diagnostics quiet during normal streaming. A frame that blocks
         // on CPU BCn decode, or a large decode backlog, is a likely source of
         // visible texture pop-in and frame pacing spikes on mobile Vulkan.
-        if waited >= Duration::from_millis(8) || pending >= 64 {
+        if waited >= Duration::from_millis(8)
+            || pending >= 64
+            || oldest_pending >= Duration::from_millis(50)
+            || oldest_ready >= Duration::from_millis(50)
+        {
             log::warn!(
-                "texture streaming: waited {:.1} ms for {waited_textures} in-use decode(s); {pending} decode(s) still pending; pass took {:.1} ms",
+                "texture streaming: waited {:.1} ms for {waited_textures} in-use decode(s); {pending} pending (oldest {:.1} ms), oldest ready {:.1} ms; pass {:.1} ms",
                 waited.as_secs_f64() * 1000.0,
+                oldest_pending.as_secs_f64() * 1000.0,
+                oldest_ready.as_secs_f64() * 1000.0,
                 started.elapsed().as_secs_f64() * 1000.0,
             );
         }
