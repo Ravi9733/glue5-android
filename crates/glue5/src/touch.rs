@@ -201,7 +201,7 @@ const VIEW: Action = action("View", "view", button::SELECT, At::MidTop(-54.0, 30
 const PAUSE: Action = action("☰", "pause", button::START, At::MidTop(0.0, 30.0), 20.0);
 
 /// The phone, on the right below the game's HUD.
-const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(80.0, 230.0), 30.0);
+const PHONE: Action = action("Phone", "phone", button::UP, At::RightBottom(200.0, 330.0), 30.0);
 /// Two columns on the left, between the game's help text and its radar.
 const LEFT_1: At = At::LeftBottom(46.0, 350.0);
 const LEFT_2: At = At::LeftBottom(46.0, 270.0);
@@ -252,8 +252,8 @@ static CAR: &[Action] = &[
     with_phone(action("H.brake", "ref-handbrake", button::R1, At::RightBottom(76.0, 270.0), 30.0)),
     action("Horn", "ref-horn", button::L3, At::RightBottom(280.0, 52.0), 28.0),
     // Vehicle steering uses explicit left/right touch arrows; no on-foot joystick.
-    steer_left(action("Steer left", "left", 0, At::LeftBottom(74.0, 105.0), 30.0)),
-    steer_right(action("Steer right", "right", 0, At::LeftBottom(154.0, 105.0), 30.0)),
+    steer_left(action("Steer left", "left", 0, At::LeftBottom(70.0, 105.0), 36.0)),
+    steer_right(action("Steer right", "right", 0, At::LeftBottom(164.0, 105.0), 36.0)),
     RADIO,
     SWITCH,
     action("Behind", "behind", button::R3, LEFT_3, 28.0),
@@ -267,8 +267,8 @@ static BICYCLE: &[Action] = &[
     with_phone(action("Brake", "ref-brake", button::L2, SECOND, 32.0)),
     action("Exit", "ref-exit", button::NORTH, THIRD, 26.0),
     action("Bell", "bell", button::L3, FIFTH, 22.0),
-    steer_left(action("Steer left", "left", 0, At::LeftBottom(74.0, 105.0), 28.0)),
-    steer_right(action("Steer right", "right", 0, At::LeftBottom(154.0, 105.0), 28.0)),
+    steer_left(action("Steer left", "left", 0, At::LeftBottom(70.0, 105.0), 34.0)),
+    steer_right(action("Steer right", "right", 0, At::LeftBottom(164.0, 105.0), 34.0)),
     PHONE,
     action("Behind", "behind", button::R3, LEFT_3, 22.0),
     SWITCH,
@@ -1407,7 +1407,10 @@ impl Touch {
                 }
             }
         }
-        pad.left = [(if steer_right { 1.0 } else { 0.0 }) - (if steer_left { 1.0 } else { 0.0 }), 0.0];
+        // Keep the on-foot joystick value unless a vehicle steering arrow is held.
+        if steer_left || steer_right {
+            pad.left = [(if steer_right { 1.0 } else { 0.0 }) - (if steer_left { 1.0 } else { 0.0 }), 0.0];
+        }
         // Locked on, the drags of this frame push the right stick.
         let drag = std::mem::take(&mut self.locked_drag);
         self.locked_stick = if !self.aim_locked {
@@ -1490,7 +1493,7 @@ impl Touch {
         let d = at - origin;
         let sprint = d.length() > SPRINT_REACH * radius;
         let knob = if d.length() > radius { origin + d.normalized() * radius } else { at };
-        // Green movement pad with a clean white border; the thumb dot moves independently.
+        // Dark translucent movement pad with a brighter white border; thumb dot moves independently.
         let base_border = Stroke::new(look.width, look.line);
         painter.circle(origin, radius, look.fill(false), base_border);
         if ring {
@@ -1660,7 +1663,7 @@ impl Look {
             line: Color32::from_white_alpha(a(0.76, 0.58)),
             accent: accent.gamma_multiply(opacity.max(0.6)),
             icon: Color32::from_white_alpha(a(0.95, 0.75)),
-            width: 1.5 * scale,
+            width: 2.1 * scale,
         }
     }
 
