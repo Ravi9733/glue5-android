@@ -10,9 +10,13 @@
 use std::sync::{Arc, Mutex};
 
 const CHUNK: u64 = 4 << 20;
-/// Chunks kept for reuse, at most: loading needs many at once, play few,
-/// and memory is scarce on phones.
-const KEEP: usize = 16;
+/// Staging memory retained for reuse, at most. A count-only limit is unsafe:
+/// a few unusually large texture uploads can otherwise pin hundreds of MiB.
+const KEEP_BYTES: u64 = 32 << 20;
+
+fn can_keep(free_bytes: u64, chunk_bytes: u64) -> bool {
+    free_bytes.saturating_add(chunk_bytes) <= KEEP_BYTES
+}
 
 /// Mapped chunks, ready to be written.
 pub type FreeChunks = Arc<Mutex<Vec<wgpu::Buffer>>>;
@@ -156,11 +160,27 @@ pub fn recycle(chunks: Vec<wgpu::Buffer>, free: &FreeChunks) {
         let (back, free) = (chunk.clone(), free.clone());
         chunk.slice(..).map_async(wgpu::MapMode::Write, move |r| {
             let mut free = free.lock().unwrap();
-            if r.is_ok() && free.len() < KEEP {
+            let retained = free.iter().map(wgpu::Buffer::size).sum::<u64>();
+            if r.is_ok() && can_keep(retained, back.size()) {
                 free.push(back);
             } else {
                 back.destroy();
             }
         });
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn staging_reuse_cache_is_bounded_in_bytes() {
+        assert!(can_keep(0, KEEP_BYTES));
+        assert!(can_keep(KEEP_BYTES - 1, 1));
+        assert!(!can_keep(KEEP_BYTES, 1));
+        assert!(!can_keep(KEEP_BYTES / 2, KEEP_BYTES / 2 + 1));
+        assert!(!can_keep(u64::MAX, 1));
     }
 }
