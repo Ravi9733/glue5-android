@@ -38,6 +38,10 @@ objc2-metal = { version = "0.3", default-features = false, features = ["std", "b
 objc2-metal-fx = { version = "0.3", default-features = false, features = ["std", "MTLFXSpatialScaler", "MTLFXTemporalScaler", "MTLFXFrameInterpolator"] }
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "objc2-metal", "CALayer", "CAMetalLayer"] }
 
-[target.'cfg(target_os = "android")'.dependencies]\nash = { version = "0.38", default-features = false }\nlibc = "0.2"\n\n[dev-dependencies]
+[target.'cfg(target_os = "android")'.dependencies]
+ash = { version = "0.38", default-features = false }
+libc = "0.2"
+
+[dev-dependencies]
 half = "2"
 naga = { version = "30", features = ["wgsl-in"] }
