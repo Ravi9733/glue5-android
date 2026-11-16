@@ -14,23 +14,23 @@ fn path(user_dir: &Path) -> PathBuf {
     user_dir.join("Documents/Rockstar Games/GTA V/settings.xml")
 }
 
-/// The low-memory preset (the browser build's `?low=1`): the lowest texture,
-/// reflection, particle and grass quality, shadows at the lowest level,
-/// minimum ped and vehicle variety, city density and level of detail.
-/// Measured in a Node run at the world: GPU memory 1.16 GB -> 0.5 GB,
-/// streamed assets 1.38 GB -> 0.95 GB.
+/// Balanced low-memory preset for Android: retain sharp textures and a
+/// usable world LOD so nearby roads/buildings/mountains do not stay blank or
+/// blurry, while reducing crowd variety and expensive secondary effects.
+/// This deliberately avoids the old zero-texture/zero-LOD preset, which
+/// caused severe texture pop-in on memory-constrained devices.
 const LOW: &[(&str, &str)] = &[
-    ("TextureQuality", "0"),
+    ("TextureQuality", "2"),
     ("ShadowQuality", "1"),
     ("ReflectionQuality", "0"),
     ("ParticleQuality", "0"),
     ("GrassQuality", "0"),
-    ("CityDensity", "0.000000"),
-    ("PedVarietyMultiplier", "0.000000"),
-    ("VehicleVarietyMultiplier", "0.000000"),
-    ("LodScale", "0.000000"),
-    ("PedLodBias", "0.000000"),
-    ("VehicleLodBias", "0.000000"),
+    ("CityDensity", "0.350000"),
+    ("PedVarietyMultiplier", "0.350000"),
+    ("VehicleVarietyMultiplier", "0.350000"),
+    ("LodScale", "0.600000"),
+    ("PedLodBias", "0.400000"),
+    ("VehicleLodBias", "0.400000"),
 ];
 
 /// What the engine writes when it first starts without settings (its
