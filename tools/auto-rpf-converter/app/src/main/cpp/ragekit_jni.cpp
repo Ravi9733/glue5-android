@@ -87,3 +87,36 @@ Java_com_ravi9733_autorpconverter_NativeAssets_extractArchiveWithKeys(
     env->ReleaseStringUTFChars(key_directory, key_chars);
     return env->NewStringUTF(report.c_str());
 }
+
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ravi9733_autorpconverter_NativeAssets_convertArchiveToOpenRpf7(
+    JNIEnv* env, jclass, jstring source_path, jstring output_path, jstring key_directory) {
+    const char* source_chars = env->GetStringUTFChars(source_path, nullptr);
+    if (source_chars == nullptr) return nullptr;
+    const char* output_chars = env->GetStringUTFChars(output_path, nullptr);
+    if (output_chars == nullptr) {
+        env->ReleaseStringUTFChars(source_path, source_chars);
+        return nullptr;
+    }
+    const char* key_chars = env->GetStringUTFChars(key_directory, nullptr);
+    if (key_chars == nullptr) {
+        env->ReleaseStringUTFChars(source_path, source_chars);
+        env->ReleaseStringUTFChars(output_path, output_chars);
+        return nullptr;
+    }
+
+    std::string report;
+    try {
+        report = gta_asset_converter::convert_rpf_archive_to_open_rpf7(
+            source_chars, output_chars, key_chars);
+    } catch (const std::exception& error) {
+        report = std::string("RPF7 conversion failed: ") + error.what();
+    } catch (...) {
+        report = "RPF7 conversion failed: unknown native error";
+    }
+    env->ReleaseStringUTFChars(source_path, source_chars);
+    env->ReleaseStringUTFChars(output_path, output_chars);
+    env->ReleaseStringUTFChars(key_directory, key_chars);
+    return env->NewStringUTF(report.c_str());
+}

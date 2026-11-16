@@ -298,6 +298,21 @@ int main() {
             "encrypted archive must open with imported matching AES key");
     require(rk::rsc::read_file((output_root / "common/data/keyed.txt").string()) == bytes_of("legitimate test key"),
             "AES archive extraction must preserve the decrypted payload");
+    const fs::path aes_repacked_path = archive_root / "aes_fixture_android.rpf";
+    fs::remove(aes_repacked_path, ignored);
+    const auto aes_repack_report = gta_asset_converter::convert_rpf_archive_to_open_rpf7(
+        encrypted_archive, aes_repacked_path, key_root);
+    require(aes_repack_report.find("RPF7 conversion complete") == 0,
+            "direct converter must read a matching-key AES source archive");
+    const rk::Rpf aes_repacked = rk::Rpf::open(
+        aes_repacked_path.string(), std::make_shared<rk::RpfKeys>());
+    require(aes_repacked.encryption() == rk::RpfEncryption::Open,
+            "AES source must be rebuilt as OPEN RPF7");
+    const int aes_payload_index = aes_repacked.find("common/data/keyed.txt");
+    require(aes_payload_index >= 0 &&
+            aes_repacked.extract(aes_payload_index) == bytes_of("legitimate test key"),
+            "AES source payload must survive direct OPEN repacking");
+
 
     const fs::path empty_keys = fs::temp_directory_path() / "gta-rpf-empty-keys-smoke";
     fs::remove_all(empty_keys, ignored);
@@ -366,6 +381,21 @@ int main() {
             "NG archive must open with matching imported synthetic key material");
     require(rk::rsc::read_file((ng_output_root / "common/data/ng-keyed.txt").string()) == bytes_of("synthetic NG payload"),
             "NG archive extraction must preserve the decrypted payload");
+    const fs::path ng_repacked_path = ng_archive_root / "ng_fixture_android.rpf";
+    fs::remove(ng_repacked_path, ignored);
+    const auto ng_repack_report = gta_asset_converter::convert_rpf_archive_to_open_rpf7(
+        ng_archive, ng_repacked_path, ng_key_root);
+    require(ng_repack_report.find("RPF7 conversion complete") == 0,
+            "direct converter must read a matching-key NG source archive");
+    const rk::Rpf ng_repacked = rk::Rpf::open(
+        ng_repacked_path.string(), std::make_shared<rk::RpfKeys>());
+    require(ng_repacked.encryption() == rk::RpfEncryption::Open,
+            "NG source must be rebuilt as OPEN RPF7");
+    const int ng_payload_index = ng_repacked.find("common/data/ng-keyed.txt");
+    require(ng_payload_index >= 0 &&
+            ng_repacked.extract(ng_payload_index) == bytes_of("synthetic NG payload"),
+            "NG source payload must survive direct OPEN repacking");
+
 
     bool missing_ng_rejected = false;
     try {
@@ -434,6 +464,73 @@ int main() {
 
     fs::remove_all(large_source, ignored);
     fs::remove(large_output, ignored);
+
+    // Direct archive-to-archive conversion: nested Gen9 assets are converted without
+    // extracting the whole archive tree, while unsupported data and encrypted .ysc
+    // stored bytes remain source-backed and unchanged.
+    const fs::path direct_key_root = fs::temp_directory_path() / "gta-rpf-direct-key-root";
+    const fs::path direct_source_path = fs::temp_directory_path() / "gta-rpf-direct-source.rpf";
+    const fs::path direct_output_path = fs::temp_directory_path() / "gta-rpf-direct-output.rpf";
+    fs::remove_all(direct_key_root, ignored);
+    fs::remove(direct_source_path, ignored);
+    fs::remove(direct_output_path, ignored);
+    fs::create_directories(direct_key_root);
+
+    rk::RpfBuilder direct_child;
+    direct_child.add_file("stream/nested_texture.ytd", gen9);
+    direct_child.add_file("scripts/preserved.ysc", gen9);
+    rk::RpfBuilder direct_root;
+    direct_root.add_file("stream/top_texture.ytd", gen9);
+    direct_root.add_file("misc/keep.dat", untouched_data);
+    direct_root.add_archive("dlcpacks/test/dlc.rpf", std::move(direct_child));
+    rk::RpfWriteOptions direct_options;
+    direct_options.encryption = rk::RpfEncryption::Open;
+    direct_options.name = "direct_source.rpf";
+    direct_root.save(direct_source_path.string(), direct_options);
+
+    const rk::Rpf direct_source = rk::Rpf::open(
+        direct_source_path.string(), std::make_shared<rk::RpfKeys>());
+    const auto source_ysc_location = direct_source.resolve(
+        "dlcpacks/test/dlc.rpf/scripts/preserved.ysc");
+    require(source_ysc_location.archive && source_ysc_location.entry >= 0,
+            "source nested .ysc resource must resolve");
+    const auto source_ysc_raw = source_ysc_location.archive->extract_raw(source_ysc_location.entry);
+
+    const std::string direct_report = gta_asset_converter::convert_rpf_archive_to_open_rpf7(
+        direct_source_path, direct_output_path, direct_key_root);
+    require(direct_report.find("RPF7 conversion complete") == 0,
+            "direct archive pipeline must report completion");
+    require(direct_report.find("Nested RPFs rebuilt: 1 of 1") != std::string::npos,
+            "direct archive pipeline must rebuild its nested RPF");
+
+    const rk::Rpf direct_output = rk::Rpf::open(
+        direct_output_path.string(), std::make_shared<rk::RpfKeys>());
+    require(direct_output.encryption() == rk::RpfEncryption::Open,
+            "direct archive output must be OPEN");
+    const int top_texture_index = direct_output.find("stream/top_texture.ytd");
+    require(top_texture_index >= 0 &&
+            rk::rsc::Resource::load(direct_output.extract(top_texture_index)).version == 13,
+            "direct archive output must contain Legacy top-level YTD");
+    const auto nested_texture_location = direct_output.resolve(
+        "dlcpacks/test/dlc.rpf/stream/nested_texture.ytd");
+    require(nested_texture_location.archive && nested_texture_location.entry >= 0 &&
+            rk::rsc::Resource::load(nested_texture_location.archive->extract(nested_texture_location.entry)).version == 13,
+            "direct archive output must contain converted Legacy nested YTD");
+    const auto output_ysc_location = direct_output.resolve(
+        "dlcpacks/test/dlc.rpf/scripts/preserved.ysc");
+    require(output_ysc_location.archive && output_ysc_location.entry >= 0,
+            "direct archive output must retain nested .ysc");
+    require(output_ysc_location.archive->entries()[static_cast<std::size_t>(output_ysc_location.entry)].encrypted,
+            "nested .ysc resource must retain its encrypted entry marker");
+    require(output_ysc_location.archive->extract_raw(output_ysc_location.entry) == source_ysc_raw,
+            "nested .ysc stored bytes must be preserved byte-for-byte");
+    const int keep_index = direct_output.find("misc/keep.dat");
+    require(keep_index >= 0 && direct_output.extract(keep_index) == untouched_data,
+            "direct archive output must preserve unsupported binary data");
+    fs::remove_all(direct_key_root, ignored);
+    fs::remove(direct_source_path, ignored);
+    fs::remove(direct_output_path, ignored);
+
     std::cout << "Gen9 conversion, keyed extraction and large nested RPF7 tests passed\n";
     return 0;
 }

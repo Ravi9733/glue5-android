@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -396,4 +397,296 @@ std::string build_open_rpf7(const fs::path& source_directory, const fs::path& ou
     }
 }
 
+}
+
+
+namespace {
+constexpr std::uint64_t kDirectMaxArchiveBytes = 0xFFFFFFFFull;
+constexpr std::uint64_t kDirectMaxEntryBytes = 512ull * 1024ull * 1024ull;
+constexpr std::uint64_t kDirectMaxNestedArchiveBytes = 256ull * 1024ull * 1024ull;
+constexpr std::uint64_t kDirectMaxConvertedResourceBytes = 512ull * 1024ull * 1024ull;
+constexpr std::uint64_t kDirectMaxOutputBytes = 0xFFFFFFFFull;
+constexpr std::size_t kDirectMaxEntries = 1'000'000;
+constexpr std::size_t kDirectMaxNestedArchives = 500;
+constexpr int kDirectMaxNestedDepth = 8;
+constexpr int kDirectMaxDirectoryDepth = 64;
+
+struct ArchivePreflight {
+    std::size_t total_entries = 0;
+    std::size_t nested_archives = 0;
+};
+
+void preflight_archive_tree(const rk::Rpf& archive, int nested_depth, ArchivePreflight& stats);
+
+void preflight_archive_directory(const rk::Rpf& archive,
+                                 int directory_index,
+                                 int directory_depth,
+                                 int nested_depth,
+                                 ArchivePreflight& stats,
+                                 std::size_t& visited,
+                                 std::unordered_set<std::string>& paths) {
+    if (directory_depth > kDirectMaxDirectoryDepth) {
+        throw std::runtime_error("RPF directory nesting exceeds the 64-level safety limit");
+    }
+
+    for (int child_index : archive.children(directory_index)) {
+        ++visited;
+        ++stats.total_entries;
+        if (stats.total_entries > kDirectMaxEntries) {
+            throw std::runtime_error("RPF tree exceeds the one-million-entry safety limit");
+        }
+
+        const rk::RpfEntry& entry = archive.entries().at(static_cast<std::size_t>(child_index));
+        const std::string relative = safe_archive_relative_path(entry.path).generic_string();
+        if (!paths.insert(lower(relative)).second) {
+            throw std::runtime_error("duplicate case-insensitive RPF path rejected: " + entry.path);
+        }
+
+        if (entry.is_directory()) {
+            preflight_archive_directory(archive, child_index, directory_depth + 1,
+                                        nested_depth, stats, visited, paths);
+            continue;
+        }
+
+        if (entry.size() > kDirectMaxEntryBytes) {
+            throw std::runtime_error("RPF entry exceeds the 512 MiB per-entry safety limit: " + entry.path);
+        }
+
+        if (entry.is_archive()) {
+            ++stats.nested_archives;
+            if (stats.nested_archives > kDirectMaxNestedArchives) {
+                throw std::runtime_error("RPF tree exceeds the 500 nested-archive safety limit");
+            }
+            if (nested_depth >= kDirectMaxNestedDepth) {
+                throw std::runtime_error("nested RPF depth exceeds the supported limit of 8; no output was written");
+            }
+            if (entry.size() > kDirectMaxNestedArchiveBytes) {
+                throw std::runtime_error("nested RPF exceeds the 256 MiB in-memory rebuild limit: " + entry.path);
+            }
+
+            // Opening the child validates its RPF7 header and requires legitimate matching
+            // keys for AES/NG archives. We never copy an unreadable encrypted child silently.
+            rk::Rpf child = archive.open_child(child_index);
+            if (child.byte_size() > kDirectMaxNestedArchiveBytes) {
+                throw std::runtime_error("nested RPF exceeds the 256 MiB in-memory rebuild limit: " + entry.path);
+            }
+            preflight_archive_tree(child, nested_depth + 1, stats);
+        }
+    }
+}
+
+void preflight_archive_tree(const rk::Rpf& archive, int nested_depth, ArchivePreflight& stats) {
+    const auto& entries = archive.entries();
+    if (entries.empty() || entries.size() > kDirectMaxEntries) {
+        throw std::runtime_error("RPF entry table is empty or exceeds one million entries");
+    }
+
+    ++stats.total_entries; // count this archive's root directory
+    if (stats.total_entries > kDirectMaxEntries) {
+        throw std::runtime_error("RPF tree exceeds the one-million-entry safety limit");
+    }
+
+    std::size_t visited = 1;
+    std::unordered_set<std::string> paths;
+    preflight_archive_directory(archive, 0, 0, nested_depth, stats, visited, paths);
+    if (visited != entries.size()) {
+        throw std::runtime_error("RPF contains unreachable table entries; refusing to drop them during rebuild");
+    }
+}
+
+struct DirectArchiveConversionStats {
+    ConversionStats assets;
+    std::uint64_t inspected_resource_bytes = 0;
+    std::size_t nested_rebuilt = 0;
+    std::vector<std::pair<std::string, std::uint32_t>> converted_resources;
+};
+
+void convert_archive_resources(const rk::Rpf& archive,
+                               rk::RpfBuilder& builder,
+                               int directory_index,
+                               const std::string& archive_prefix,
+                               DirectArchiveConversionStats& stats) {
+    for (int child_index : archive.children(directory_index)) {
+        const rk::RpfEntry& entry = archive.entries().at(static_cast<std::size_t>(child_index));
+        const std::string relative = safe_archive_relative_path(entry.path).generic_string();
+
+        if (entry.is_directory()) {
+            convert_archive_resources(archive, builder, child_index, archive_prefix, stats);
+            continue;
+        }
+
+        ++stats.assets.files_scanned;
+
+        if (entry.is_archive()) {
+            rk::Rpf child = archive.open_child(child_index);
+            rk::RpfBuilder* child_builder = builder.nested(relative);
+            if (child_builder == nullptr) {
+                throw std::runtime_error("RAGEKIT did not expose the nested archive builder for " + entry.path);
+            }
+            convert_archive_resources(child, *child_builder, 0, archive_prefix + relative + "/", stats);
+            ++stats.nested_rebuilt;
+            continue;
+        }
+
+        std::string extension = lower(fs::path(entry.name).extension().string());
+        if (!extension.empty() && extension.front() == '.') extension.erase(extension.begin());
+        if (!supported_extension(extension)) {
+            ++stats.assets.unchanged_other;
+            continue; // the builder keeps the original entry lazy, including encrypted .ysc data
+        }
+        if (!entry.is_resource()) {
+            throw std::runtime_error("supported resource extension is stored as a binary entry: " + entry.path);
+        }
+        if (entry.size() > kDirectMaxEntryBytes) {
+            throw std::runtime_error("supported resource exceeds the 512 MiB conversion limit: " + entry.path);
+        }
+        if (entry.size() > kDirectMaxConvertedResourceBytes - stats.inspected_resource_bytes) {
+            throw std::runtime_error("supported resource conversion exceeds the 512 MiB aggregate memory budget; no output was written");
+        }
+
+        auto original = archive.extract(child_index);
+        if (original.size() > kDirectMaxEntryBytes) {
+            throw std::runtime_error("extracted resource exceeds the 512 MiB conversion limit: " + entry.path);
+        }
+        stats.inspected_resource_bytes += entry.size();
+        stats.assets.bytes_scanned += original.size();
+
+        auto converted = convert_asset_bytes(extension, original, stats.assets);
+        const bool changed = converted.size() != original.size() ||
+            !std::equal(converted.begin(), converted.end(), original.begin());
+        if (changed) {
+            builder.add_file(relative, std::move(converted));
+            const int expected_version = legacy_version(extension);
+            if (expected_version <= 0) {
+                throw std::runtime_error("converted resource has no known Legacy version: " + entry.path);
+            }
+            stats.converted_resources.emplace_back(archive_prefix + relative,
+                                                   static_cast<std::uint32_t>(expected_version));
+        }
+        // If unchanged, leave the RAGEKIT source-backed node alone. This preserves the
+        // original compression and, for .ysc, the encrypted stored bytes and resource flags.
+    }
+}
+
+void verify_open_archive_tree(const rk::Rpf& source, const rk::Rpf& output, int depth) {
+    if (depth > kDirectMaxNestedDepth) {
+        throw std::runtime_error("output nested RPF depth exceeds the validated limit");
+    }
+    if (output.encryption() != rk::RpfEncryption::Open &&
+        output.encryption() != rk::RpfEncryption::None) {
+        throw std::runtime_error("rebuilt nested archive is not OPEN/unencrypted: " + output.name());
+    }
+    if (source.entries().size() != output.entries().size()) {
+        throw std::runtime_error("RPF output entry count differs from its source: " + output.name());
+    }
+
+    for (std::size_t i = 1; i < source.entries().size(); ++i) {
+        const rk::RpfEntry& source_entry = source.entries()[i];
+        const int output_index = output.find(source_entry.path);
+        if (output_index < 0) {
+            throw std::runtime_error("RPF output is missing source path: " + source_entry.path);
+        }
+        const rk::RpfEntry& output_entry = output.entries().at(static_cast<std::size_t>(output_index));
+        if (source_entry.is_directory() != output_entry.is_directory() ||
+            source_entry.is_resource() != output_entry.is_resource() ||
+            source_entry.is_binary() != output_entry.is_binary()) {
+            throw std::runtime_error("RPF output entry kind changed: " + source_entry.path);
+        }
+        if (source_entry.is_archive()) {
+            rk::Rpf source_child = source.open_child(static_cast<int>(i));
+            rk::Rpf output_child = output.open_child(output_index);
+            verify_open_archive_tree(source_child, output_child, depth + 1);
+        }
+    }
+}
+} // namespace
+
+std::string convert_rpf_archive_to_open_rpf7(const fs::path& source_path,
+                                             const fs::path& output_path,
+                                             const fs::path& key_directory) {
+    const auto source_status = fs::symlink_status(source_path);
+    if (fs::is_symlink(source_status) || !fs::is_regular_file(source_status)) {
+        throw std::runtime_error("RPF source must be a regular, non-symlink file");
+    }
+    const std::uint64_t input_bytes = fs::file_size(source_path);
+    if (input_bytes > kDirectMaxArchiveBytes) {
+        throw std::runtime_error("RPF7 input exceeds the 4 GiB address/key-size safety limit");
+    }
+    if (fs::exists(output_path)) {
+        throw std::runtime_error("RPF7 output already exists; refusing to overwrite it");
+    }
+
+    auto keys = std::make_shared<rk::RpfKeys>(rk::RpfKeys::load(key_directory.string()));
+    const rk::Rpf source = rk::Rpf::open(source_path.string(), keys);
+    ArchivePreflight preflight;
+    preflight_archive_tree(source, 0, preflight);
+
+    // from_archive keeps source entries file-backed/lazy. Only supported resources are
+    // extracted into memory; unchanged binaries, compressed files and encrypted .ysc
+    // resources retain their original stored representation.
+    rk::RpfBuilder builder = rk::RpfBuilder::from_archive(source, rk::RpfBuilder::Nested::Rewrite);
+    DirectArchiveConversionStats stats;
+    convert_archive_resources(source, builder, 0, "", stats);
+
+    rk::RpfWriteOptions options;
+    options.encryption = rk::RpfEncryption::Open;
+    options.name = output_path.filename().string();
+    options.compress = true;
+
+    if (!output_path.parent_path().empty()) {
+        fs::create_directories(output_path.parent_path());
+    }
+    fs::path temporary = output_path;
+    temporary += ".tmp";
+    std::error_code ignored;
+    fs::remove(temporary, ignored);
+
+    try {
+        builder.save(temporary.string(), options);
+        const std::uint64_t output_bytes = fs::file_size(temporary);
+        if (output_bytes > kDirectMaxOutputBytes) {
+            throw std::runtime_error("generated RPF7 exceeds the 4 GiB output safety limit");
+        }
+
+        const rk::Rpf output = rk::Rpf::open(temporary.string(), std::make_shared<rk::RpfKeys>());
+        verify_open_archive_tree(source, output, 0);
+        if (output.encryption() != rk::RpfEncryption::Open) {
+            throw std::runtime_error("top-level RPF7 output is not OPEN/unencrypted");
+        }
+        for (const auto& converted : stats.converted_resources) {
+            const auto location = output.resolve(converted.first);
+            if (!location.archive || location.entry < 0) {
+                throw std::runtime_error("converted resource is missing from output: " + converted.first);
+            }
+            const rk::RpfEntry& entry = location.archive->entries().at(static_cast<std::size_t>(location.entry));
+            if (!entry.is_resource() || entry.resource_version() != converted.second) {
+                throw std::runtime_error("converted resource version was not preserved in output: " + converted.first);
+            }
+        }
+
+        fs::rename(temporary, output_path);
+        return "RPF7 conversion complete\n"
+               "Input encryption: " + rpf_encryption_name(source.encryption()) + "\n"
+               "Output encryption: OPEN\n"
+               "Files examined: " + std::to_string(stats.assets.files_scanned) + "\n"
+               "Gen9 to Legacy conversions: YTD=" + std::to_string(stats.assets.converted_ytd) +
+               ", YDR=" + std::to_string(stats.assets.converted_ydr) +
+               ", YDD=" + std::to_string(stats.assets.converted_ydd) +
+               ", YFT=" + std::to_string(stats.assets.converted_yft) +
+               ", YPT=" + std::to_string(stats.assets.converted_ypt) + "\n"
+               "Edition-independent resources validated and preserved: YBN=" + std::to_string(stats.assets.validated_ybn) +
+               ", YMAP=" + std::to_string(stats.assets.validated_ymap) +
+               ", YTYP=" + std::to_string(stats.assets.validated_ytyp) + "\n"
+               "Already Legacy resources preserved: " + std::to_string(stats.assets.already_legacy) + "\n"
+               "Other files preserved without format conversion: " + std::to_string(stats.assets.unchanged_other) + "\n"
+               "Nested RPFs rebuilt: " + std::to_string(stats.nested_rebuilt) +
+               " of " + std::to_string(preflight.nested_archives) + "\n"
+               "Supported resource bytes inspected: " + std::to_string(stats.assets.bytes_scanned) + "\n"
+               "Archive bytes: " + std::to_string(output_bytes) + "\n"
+               "Verified: RPF7 tree, nested OPEN archives, paths, entry kinds and converted resource versions.\n"
+               "Unchanged entries are copied from the source lazily; encrypted .ysc stored bytes are preserved.";
+    } catch (...) {
+        fs::remove(temporary, ignored);
+        throw;
+    }
 }

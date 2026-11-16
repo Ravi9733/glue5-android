@@ -28,4 +28,7 @@ std::string extract_rpf_archive(const std::filesystem::path& source,
                                 const std::filesystem::path& key_directory);
 std::string build_open_rpf7(const std::filesystem::path& source_directory,
                             const std::filesystem::path& output_path);
+std::string convert_rpf_archive_to_open_rpf7(const std::filesystem::path& source_path,
+                                             const std::filesystem::path& output_path,
+                                             const std::filesystem::path& key_directory);
 }

@@ -48,7 +48,7 @@ class MainActivity : Activity() {
         ))
 
         val subtitle = TextView(this).apply {
-            text = "Android converter 0.3.2 • Gen9 resources to Legacy"
+            text = "Android converter 0.3.3 • direct RPF7 conversion"
             textSize = 13f
             setTextColor(0xFFB9C6B5.toInt())
             gravity = Gravity.CENTER
@@ -115,7 +115,7 @@ class MainActivity : Activity() {
         }
         root.addView(chooseKeys)
         val extract = Button(this).apply {
-            text = "CONVERT SELECTED PC RPF → ANDROID RPF"
+            text = "CONVERT SELECTED PC RPF → OPEN RPF7"
             setOnClickListener { extractSelectedArchive() }
         }
         root.addView(extract)
@@ -128,7 +128,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. Gen9 YTD, YDR, YDD, YFT and YPT are converted to Legacy; YBN, YMAP and YTYP are validated and preserved byte-for-byte; unsupported formats remain unchanged. Output archives are OPEN RPF7. This tool does not turn a retail PC/console install into Glue5's prepared browser-build game-data set; game.wasm and translated shaders are separate requirements."
+            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. The converter reads RPF entries directly, converts supported Gen9 YTD/YDR/YDD/YFT/YPT resources to Legacy, validates and preserves YBN/YMAP/YTYP, and rebuilds nested archives as OPEN RPF7. Unsupported files and encrypted .ysc stored bytes are preserved unchanged. This output is not certified as Glue5 prepared game data; game.wasm and translated shaders are separate requirements."
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)
@@ -162,7 +162,7 @@ class MainActivity : Activity() {
             }
             REQUEST_DESTINATION -> {
                 outputTreeUri = uri
-                output.text = "Output folder selected. Tap CONVERT SELECTED PC RPF → ANDROID RPF."
+                output.text = "Output folder selected. Tap CONVERT SELECTED PC RPF → OPEN RPF7."
             }
             REQUEST_KEYS -> {
                 output.text = "Importing recognized GTA V key files into app-private storage..."
@@ -180,7 +180,7 @@ class MainActivity : Activity() {
         val destinationUri = outputTreeUri
         if (sourceUri == null || destinationUri == null) { output.text = "Select an RPF and output folder first."; return }
         if (!selectedArchiveName.endsWith(".rpf", true)) { output.text = "Choose a .rpf file."; return }
-        output.text = "Extracting. Keep the app open; this can take time."
+        output.text = "Converting the RPF directly. Keep the app open; this can take time."
         worker.execute {
             val result = try {
                 val work = java.io.File(cacheDir, "rpf-work")
@@ -190,28 +190,19 @@ class MainActivity : Activity() {
                 check(selectedArchiveName.isNotBlank() && !selectedArchiveName.contains('/')) {
                     "Unsafe selected archive filename"
                 }
-                // NG archive keys depend on the original filename and archive size.
+                // Keep the real basename: NG archive key selection depends on filename and archive size.
                 val source = java.io.File(work, selectedArchiveName)
                 copyUriToFile(sourceUri, source, MAX_ARCHIVE_BYTES)
-                val extracted = java.io.File(work, "extracted")
-                check(extracted.mkdir()) { "Cannot create extraction folder" }
-                val extractionReport = NativeAssets.extractArchiveWithKeys(
-                    source.absolutePath, extracted.absolutePath, rpfKeyDirectory.absolutePath
-                )
-                check(extractionReport.startsWith("Extraction complete")) { extractionReport }
-                val assetConversionReport = NativeAssets.convertDirectory(extracted.absolutePath)
-                check(assetConversionReport.startsWith("Asset conversion complete")) { assetConversionReport }
-                val nestedStats = NestedRpfStats()
-                convertNestedRpfFiles(extracted, 0, nestedStats)
                 val converted = java.io.File(work, safeName.substringBeforeLast('.', safeName) + ".converted.rpf")
-                val conversionReport = NativeAssets.buildOpenRpf7(extracted.absolutePath, converted.absolutePath)
-                check(conversionReport.startsWith("RPF7 build complete")) { conversionReport }
+                val conversionReport = NativeAssets.convertArchiveToOpenRpf7(
+                    source.absolutePath, converted.absolutePath, rpfKeyDirectory.absolutePath
+                )
+                check(conversionReport.startsWith("RPF7 conversion complete")) { conversionReport }
                 val root = DocumentFile.fromTreeUri(this, destinationUri) ?: error("Cannot open destination")
                 val target = writeOutputFileSafely(converted, root, selectedArchiveName)
-                extractionReport + "\n\n" + assetConversionReport + "\nNested RPFs rebuilt: " + nestedStats.converted + "; preserved/skipped: " + nestedStats.skipped +
-                    "\n" + nestedStats.notes.joinToString("\n") + "\n\n" + conversionReport + "\n\nSaved: " + target.name +
-                    "\nOriginal PC archive unchanged. Only reported Gen9 formats were converted; other files remain unchanged."
-            } catch (e: Throwable) { "Extraction failed: " + (e.message ?: e.javaClass.simpleName) }
+                conversionReport + "\n\nSaved: " + target.name +
+                    "\nOriginal PC archive unchanged. Only reported Gen9 resources were converted; unsupported files remain unchanged."
+            } catch (e: Throwable) { "Conversion failed: " + (e.message ?: e.javaClass.simpleName) }
             runOnUiThread { output.text = result }
         }
     }
@@ -287,30 +278,22 @@ class MainActivity : Activity() {
                         // Keep the real basename: NG decryption selects a key from filename + size.
                         val source = java.io.File(work, name)
                         copyUriToFile(archive.uri, source, MAX_ARCHIVE_BYTES)
-                        val extracted = java.io.File(work, "extracted")
-                        check(extracted.mkdir()) { "Cannot create extraction folder" }
-                        val extractionReport = NativeAssets.extractArchiveWithKeys(
-                    source.absolutePath, extracted.absolutePath, rpfKeyDirectory.absolutePath
-                )
-                        check(extractionReport.startsWith("Extraction complete")) { extractionReport }
-                        val assetReport = NativeAssets.convertDirectory(extracted.absolutePath)
-                        check(assetReport.startsWith("Asset conversion complete")) { assetReport }
-                        val nestedStats = NestedRpfStats()
-                        convertNestedRpfFiles(extracted, 0, nestedStats)
                         val converted = java.io.File(work, safeName.substringBeforeLast('.', safeName) + ".converted.rpf")
-                        val packageReport = NativeAssets.buildOpenRpf7(extracted.absolutePath, converted.absolutePath)
-                        check(packageReport.startsWith("RPF7 build complete")) { packageReport }
+                        val packageReport = NativeAssets.convertArchiveToOpenRpf7(
+                            source.absolutePath, converted.absolutePath, rpfKeyDirectory.absolutePath
+                        )
+                        check(packageReport.startsWith("RPF7 conversion complete")) { packageReport }
 
                         val outputDirectory = ensureOutputDirectory(destination!!, relativeDir)
                         val target = writeOutputFileSafely(converted, outputDirectory, name)
                         done++
                         totalBytes += converted.length()
                         report.appendLine("OK " + relativeDir + "/" + name + " → " + relativeDir + "/" + target.name)
-                        report.appendLine(assetReport.lineSequence().filter {
-                            it.startsWith("Gen9 to Legacy") || it.startsWith("Edition-independent resources") || it.startsWith("Already Legacy")
+                        report.appendLine(packageReport.lineSequence().filter {
+                            it.startsWith("Gen9 to Legacy") || it.startsWith("Edition-independent resources") ||
+                                it.startsWith("Already Legacy") || it.startsWith("Other files preserved") ||
+                                it.startsWith("Nested RPFs rebuilt")
                         }.joinToString(" | "))
-                        report.appendLine("Nested RPFs rebuilt=" + nestedStats.converted + ", preserved/skipped=" + nestedStats.skipped)
-                        nestedStats.notes.forEach { report.appendLine(it) }
                     } catch (e: Throwable) {
                         failed++
                         report.appendLine("FAIL " + relativeDir + "/" + name + " — " + (e.message ?: e.javaClass.simpleName))
@@ -328,66 +311,6 @@ class MainActivity : Activity() {
                 report.appendLine("Bulk operation stopped: " + (e.message ?: e.javaClass.simpleName))
             }
             runOnUiThread { latestReport = report.toString(); output.text = latestReport }
-        }
-    }
-
-    private data class NestedRpfStats(
-        var seen: Int = 0,
-        var converted: Int = 0,
-        var skipped: Int = 0,
-        val notes: MutableList<String> = mutableListOf()
-    )
-
-    private fun convertNestedRpfFiles(root: java.io.File, depth: Int, stats: NestedRpfStats) {
-        // Stream the filesystem walk instead of materializing every nested archive path.
-        // The RPF entry limit can still permit a very large tree; toList() could allocate
-        // hundreds of thousands of File objects before the nested-archive cap is checked.
-        for (nested in root.walkTopDown()) {
-            if (!nested.isFile || !nested.extension.equals("rpf", ignoreCase = true)) continue
-            stats.seen++
-            if (stats.seen > MAX_NESTED_ARCHIVES) {
-                error("Nested RPF count exceeds the " + MAX_NESTED_ARCHIVES + " archive limit")
-            }
-            if (depth >= MAX_NESTED_DEPTH) {
-                stats.skipped++
-                stats.notes.add("PRESERVED " + nested.name + " — nested depth limit reached")
-                continue
-            }
-            if (Files.isSymbolicLink(nested.toPath())) {
-                error("Symbolic link rejected in nested RPF tree: " + nested.absolutePath)
-            }
-
-            val work = java.io.File(cacheDir, "nested-rpf-work-" + stats.seen)
-            work.deleteRecursively()
-            check(work.mkdirs()) { "Cannot create nested RPF work folder" }
-            val extracted = java.io.File(work, "extracted")
-            check(extracted.mkdir()) { "Cannot create nested extraction folder" }
-
-            val extractionReport = NativeAssets.extractArchiveWithKeys(
-                nested.absolutePath, extracted.absolutePath, rpfKeyDirectory.absolutePath
-            )
-            if (!extractionReport.startsWith("Extraction complete")) {
-                stats.skipped++
-                stats.notes.add("PRESERVED " + nested.name + " — " + extractionReport.replace('\n', ' '))
-                work.deleteRecursively()
-                continue
-            }
-
-            val assetReport = NativeAssets.convertDirectory(extracted.absolutePath)
-            check(assetReport.startsWith("Asset conversion complete")) { assetReport }
-            convertNestedRpfFiles(extracted, depth + 1, stats)
-
-            val converted = java.io.File(work, "nested_android.rpf")
-            val packageReport = NativeAssets.buildOpenRpf7(extracted.absolutePath, converted.absolutePath)
-            check(packageReport.startsWith("RPF7 build complete")) { packageReport }
-
-            val replacement = java.io.File(nested.parentFile, nested.name + ".converted")
-            if (replacement.exists()) replacement.delete()
-            converted.copyTo(replacement, overwrite = true)
-            Files.move(replacement.toPath(), nested.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            stats.converted++
-            stats.notes.add("REBUILT " + nested.name + " — supported Gen9 resources converted to Legacy")
-            work.deleteRecursively()
         }
     }
 
@@ -757,9 +680,7 @@ class MainActivity : Activity() {
         private const val MAX_TOC_BYTES = 80L * 1024L * 1024L
         private const val MAX_BULK_ARCHIVES = 500
         private const val MAX_FOLDER_ITEMS = 250_000
-        private const val MAX_ARCHIVE_BYTES = 1024L * 1024L * 1024L
-        private const val MAX_NESTED_DEPTH = 8
-        private const val MAX_NESTED_ARCHIVES = 500
+        private const val MAX_ARCHIVE_BYTES = 4L * 1024L * 1024L * 1024L - 1L
         private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ysc", "awc", "rel", "dat")
     }
 }

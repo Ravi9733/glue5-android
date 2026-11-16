@@ -14,4 +14,5 @@ internal object NativeAssets {
         keyDirectoryAbsolutePath: String
     ): String
     external fun buildOpenRpf7(sourceDirectoryAbsolutePath: String, outputAbsolutePath: String): String
+    external fun convertArchiveToOpenRpf7(sourceAbsolutePath: String, outputAbsolutePath: String, keyDirectoryAbsolutePath: String): String
 }
