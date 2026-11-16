@@ -1507,7 +1507,7 @@ impl Touch {
         let radius = self.stick_radius();
         let d = at - origin;
         let knob = if d.length() > radius { origin + d.normalized() * radius } else { at };
-        painter.circle_filled(knob, radius * 0.19, Color32::WHITE);
+        painter.circle_filled(knob, radius * 0.19, _look.icon);
     }
 
     /// Controls are transparent PNG icons only: no button fill, circle,
