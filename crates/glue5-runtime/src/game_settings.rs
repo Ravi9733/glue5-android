@@ -170,6 +170,20 @@ mod tests {
     }
 
     #[test]
+    fn low_memory_keeps_texture_detail_and_nonzero_world_lod() {
+        let value = |name: &str| LOW.iter().find(|(key, _)| *key == name).map(|(_, value)| *value);
+        assert_eq!(value("TextureQuality"), Some("2"));
+        for name in ["LodScale", "PedLodBias", "VehicleLodBias"] {
+            let parsed: f32 = value(name).expect(name).parse().unwrap();
+            assert!(parsed > 0.0 && parsed <= 1.0, "{name}={parsed}");
+        }
+        for name in ["CityDensity", "PedVarietyMultiplier", "VehicleVarietyMultiplier"] {
+            let parsed: f32 = value(name).expect(name).parse().unwrap();
+            assert!(parsed < 1.0, "{name} should remain reduced");
+        }
+    }
+
+    #[test]
     fn preset_names_are_in_the_defaults() {
         for (name, _) in LOW {
             assert!(DEFAULTS.contains(&format!("<{name} value=\"")), "{name}");
