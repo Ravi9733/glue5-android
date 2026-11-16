@@ -872,10 +872,10 @@ impl Touch {
         let s = self.scale;
         let round = |key, at: Pos2, a: &Action| {
             let radius = a.radius * s;
-            // Keep the complete PNG artwork inside the usable screen area.
-            // The icon is drawn larger than its touch hitbox, so reserve extra
-            // space on every edge (including when a control is dragged to top).
-            let margin = (radius * 1.25 + 3.0).min(self.area.width().min(self.area.height()) * 0.45);
+            // The PNG is radius * 1.65 wide. Clamp its full visible bounds to
+            // the actual SDL safe-area rectangle (which excludes system bars).
+            let side = (radius * 1.65).min(self.area.width()).min(self.area.height());
+            let margin = side * 0.5;
             let at = pos2(
                 at.x.clamp(self.area.min.x + margin, self.area.max.x - margin),
                 at.y.clamp(self.area.min.y + margin, self.area.max.y - margin),
@@ -1462,7 +1462,7 @@ impl Touch {
                 let held = self.fingers.values().any(|f| matches!(f, Finger::MenuKey(k) if k == key));
                 let b = Button {
                     key: Key::Action(a),
-                    at: self.pos(a.at),
+                    at: self.clamp_icon_center(self.pos(a.at), a.radius * self.scale),
                     radius: a.radius * self.scale,
                     icon: a.icon,
                     bits: 0,
@@ -1503,7 +1503,18 @@ impl Touch {
     /// Controls are transparent PNG icons only: no button fill, circle,
     /// rounded rectangle, outline or accent ring.
     fn draw_button(&self, painter: &Painter, look: &Look, b: &Button, _held: bool) {
-        self.draw_icon(painter, look, b.at, b.radius * 1.65, b.icon);
+        let side = (b.radius * 1.65).min(self.area.width()).min(self.area.height());
+        let center = self.clamp_icon_center(b.at, side * 0.5);
+        self.draw_icon(painter, look, center, side, b.icon);
+    }
+
+    /// Keep the whole PNG visible inside the non-fullscreen window's safe area.
+    fn clamp_icon_center(&self, center: Pos2, half_side: f32) -> Pos2 {
+        let x = (self.area.min.x + half_side).min(self.area.center().x);
+        let right = (self.area.max.x - half_side).max(self.area.center().x);
+        let y = (self.area.min.y + half_side).min(self.area.center().y);
+        let bottom = (self.area.max.y - half_side).max(self.area.center().y);
+        pos2(center.x.clamp(x, right), center.y.clamp(y, bottom))
     }
 
     /// The icon `name` (or two joined by `+`, side by side), `side` points.
