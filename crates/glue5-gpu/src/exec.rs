@@ -285,9 +285,9 @@ impl Gpu {
             return;
         }
         let d = self.decodes.remove(0);
-        let Some(t) = self.objs.tex(d.id).filter(|t| t.tex == d.texture) else {
+        if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
             return;
-        };
+        }
         let Ok(texels) = d.data.recv() else {
             return;
         };
@@ -298,7 +298,9 @@ impl Gpu {
             aspect: wgpu::TextureAspect::All,
         };
         self.uploads.texture(target, &texels, d.bpr, d.src_rows, d.rows, d.extent, d.row_bytes);
-        t.uploaded.set(self.epoch);
+        if let Some(t) = self.objs.tex(d.id) {
+            t.uploaded.set(self.epoch);
+        }
     }
 
     pub fn run(mut self) {
