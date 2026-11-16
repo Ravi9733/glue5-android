@@ -150,10 +150,6 @@ pub fn run() -> Result<()> {
     if driver_note.is_some() {
         log::warn!("GPU driver fallback: {}", driver_note.as_deref().unwrap_or_default());
     }
-    #[cfg(target_os = "android")]
-    if settings.gpu_driver.is_some() {
-        drivers::shown(&user_dir);
-    }
     // While the system resizes the window in a loop of its own (macOS,
     // Windows), events wait for it to end, and so does this loop; SDL still
     // calls watches, and from there the renderer follows the window. The
@@ -719,11 +715,18 @@ impl App {
             let gear =
                 (in_game && (TOUCH || show)).then_some(if show { self.settings.touch_opacity } else { GEAR_ALONE });
             actions = self.ui.frame(&self.window, &mut self.settings, &status, show.then_some(&self.touch), gear);
-            if let Some(screen) = &mut self.screen
-                && !screen.show_ui()
-            {
-                // Not shown (the window not visible yet, ...): again soon.
-                self.ui.repaint_in(Duration::from_millis(100));
+            if let Some(screen) = &mut self.screen {
+                let shown = screen.show_ui();
+                #[cfg(target_os = "android")]
+                if shown {
+                    // Keep the crash-recovery mark until the first UI frame
+                    // is actually presented, not merely until GPU init succeeds.
+                    drivers::shown(&self.user_dir);
+                }
+                if !shown {
+                    // Not shown (the window not visible yet, ...): again soon.
+                    self.ui.repaint_in(Duration::from_millis(100));
+                }
             }
         }
         for action in actions {
