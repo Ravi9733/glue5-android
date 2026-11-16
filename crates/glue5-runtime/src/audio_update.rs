@@ -21,7 +21,8 @@
 //! the audio thread can still finish its frame: a few milliseconds, only
 //! when frames are that fast.
 
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use glue5_game::{Env, orig};
@@ -35,6 +36,13 @@ const READING: u64 = 12114820;
 /// How long a frame waits at most: the audio thread runs every 10 ms.
 const MAX_WAIT: Duration = Duration::from_millis(30);
 
+// Aggregate only the rare frame waits; never log from the per-frame hot path.
+static WAIT_TOTAL_US: AtomicU64 = AtomicU64::new(0);
+static WAIT_MAX_US: AtomicU64 = AtomicU64::new(0);
+static WAIT_EVENTS: AtomicU64 = AtomicU64::new(0);
+static LAST_REPORT_MS: AtomicU64 = AtomicU64::new(0);
+static REPORT_EPOCH: OnceLock<Instant> = OnceLock::new();
+
 /// Hook for `audNorthAudioEngine::StartUpdate()`.
 pub(crate) unsafe extern "C" fn start_update(env: *mut Env) {
     let mem = unsafe { Mem::of(env) };
@@ -43,9 +51,32 @@ pub(crate) unsafe extern "C" fn start_update(env: *mut Env) {
         let reading = mem.atomic_u32(READING).load(Ordering::Acquire);
         count.wrapping_sub(reading) & 3 == 3
     };
-    let deadline = Instant::now() + MAX_WAIT;
+    let started = Instant::now();
+    let deadline = started + MAX_WAIT;
     while two_behind() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_micros(500));
+    }
+    let waited_us = started.elapsed().as_micros().min(u64::MAX as u128) as u64;
+    if waited_us >= 1_000 {
+        WAIT_TOTAL_US.fetch_add(waited_us, Ordering::Relaxed);
+        WAIT_MAX_US.fetch_max(waited_us, Ordering::Relaxed);
+        WAIT_EVENTS.fetch_add(1, Ordering::Relaxed);
+    }
+    let elapsed_ms = REPORT_EPOCH.get_or_init(Instant::now).elapsed().as_millis() as u64;
+    let last = LAST_REPORT_MS.load(Ordering::Relaxed);
+    if elapsed_ms.saturating_sub(last) >= 10_000
+        && LAST_REPORT_MS.compare_exchange(last, elapsed_ms, Ordering::Relaxed, Ordering::Relaxed).is_ok()
+    {
+        let events = WAIT_EVENTS.swap(0, Ordering::Relaxed);
+        if events != 0 {
+            let total_us = WAIT_TOTAL_US.swap(0, Ordering::Relaxed);
+            let max_us = WAIT_MAX_US.swap(0, Ordering::Relaxed);
+            log::warn!(
+                "audio pacing: {events} frame waits in 10s, total {:.1} ms, max {:.1} ms",
+                total_us as f64 / 1_000.0,
+                max_us as f64 / 1_000.0,
+            );
+        }
     }
     unsafe { orig::audio_start_update(env) }
 }

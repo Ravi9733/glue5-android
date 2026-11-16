@@ -107,10 +107,8 @@ pub unsafe extern "C" fn wasm_has_page_js(_: *mut Env) -> u32 {
 
 pub unsafe extern "C" fn wasm_module_int_js(env: *mut Env, name: u64, default: u32) -> u32 {
     let name = mem(env).str(name);
-    let low = rt().config.low_memory;
     let value = match std::env::var(name.to_ascii_uppercase()).ok().and_then(|v| v.parse().ok()) {
         Some(v) => v,
-        None if name == "gameResourceMB" && low => default.min(768),
         // The engine skips some threads, unless their bit is set here.
         None if name == "keepThreads" => {
             // The videos' thread (bit 4, `AsyncBink`). TVs and some
@@ -125,11 +123,11 @@ pub unsafe extern "C" fn wasm_module_int_js(env: *mut Env, name: u64, default: u
         }
         None => default,
     };
-    // Phones and the Apple TV, and low memory anywhere: the resource heap's budget is its
-    // starting size. Unbudgeted, the streaming engine keeps it full and it
-    // grows by 256 MiB each time: past 2.5 GiB in the game's benchmark.
+    // On phones, use the engine's configured gameResourceMB as the streaming
+    // heap budget in both Low Memory states. A smaller Low Memory-only value
+    // makes the streamer evict world assets too early, causing texture pop-in.
     let phone = cfg!(any(target_os = "ios", target_os = "android", target_os = "tvos"));
-    if name == "gameResourceMB" && (low || phone) {
+    if name == "gameResourceMB" && phone {
         crate::memory::budget_resource_heap(value);
     }
     value

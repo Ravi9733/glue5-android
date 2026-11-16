@@ -267,6 +267,14 @@ thread_local! {
     static ASKING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// The Android resource heap is budgeted from the engine's gameResourceMB
+/// setting for every phone in imports.rs. Do not impose a second, smaller
+/// Low Memory-only cap: that causes premature streamed-asset eviction and
+/// visible road/building/terrain texture pop-in.
+pub(super) fn resource_heap_budget_mb(_low_memory: bool) -> u32 {
+    0
+}
+
 /// Budgets the resource heap at `mb` MiB (the engine's `gameResourceMB`).
 pub(crate) fn budget_resource_heap(mb: u32) {
     RESOURCE_BUDGET.store((mb as u64) << 20, Ordering::Relaxed);
@@ -338,4 +346,16 @@ pub(crate) fn hooks(hooks: &mut glue5_game::Hooks) {
     hooks.grow_heap = Some(grow_heap);
     hooks.memory_available = Some(memory_available);
     hooks.largest_block = Some(largest_block);
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn low_memory_does_not_apply_a_separate_resource_heap_cap() {
+        assert_eq!(resource_heap_budget_mb(false), 0);
+        assert_eq!(resource_heap_budget_mb(true), 0);
+    }
 }

@@ -14,24 +14,10 @@ fn path(user_dir: &Path) -> PathBuf {
     user_dir.join("Documents/Rockstar Games/GTA V/settings.xml")
 }
 
-/// The low-memory preset (the browser build's `?low=1`): the lowest texture,
-/// reflection, particle and grass quality, shadows at the lowest level,
-/// minimum ped and vehicle variety, city density and level of detail.
-/// Measured in a Node run at the world: GPU memory 1.16 GB -> 0.5 GB,
-/// streamed assets 1.38 GB -> 0.95 GB.
-const LOW: &[(&str, &str)] = &[
-    ("TextureQuality", "0"),
-    ("ShadowQuality", "1"),
-    ("ReflectionQuality", "0"),
-    ("ParticleQuality", "0"),
-    ("GrassQuality", "0"),
-    ("CityDensity", "0.000000"),
-    ("PedVarietyMultiplier", "0.000000"),
-    ("VehicleVarietyMultiplier", "0.000000"),
-    ("LodScale", "0.000000"),
-    ("PedLodBias", "0.000000"),
-    ("VehicleLodBias", "0.000000"),
-];
+/// Low Memory must not write a different graphics preset. The player's
+/// settings.xml remains authoritative so ON and OFF have identical visual
+/// quality; resource management is handled separately by the runtime.
+const LOW: &[(&str, &str)] = &[];
 
 /// What the engine writes when it first starts without settings (its
 /// defaults for the adapter it is given, the same everywhere).
@@ -167,6 +153,11 @@ mod tests {
         for (name, _) in SMOOTH_WORLD {
             assert!(DEFAULTS.contains(&format!(r#"<{name} value=""#)), "{name}");
         }
+    }
+
+    #[test]
+    fn low_memory_does_not_override_player_graphics_settings() {
+        assert!(LOW.is_empty(), "Low Memory must not write graphics settings");
     }
 
     #[test]

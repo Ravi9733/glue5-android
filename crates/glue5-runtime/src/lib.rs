@@ -107,8 +107,7 @@ pub struct Config {
     pub height: u32,
     /// 1 = story, 2 = sandbox (GTA V map), 3 = sandbox (env_test).
     pub start_mode: u32,
-    /// Smaller engine pools (with [`game_settings::apply_low_preset`], the
-    /// browser build's `?low=1`).
+    /// Low-memory runtime mode. It must not override the player's graphics settings.
     pub low_memory: bool,
     /// Frames per second at most: 0 lets the engine run as fast as the
     /// renderer presents (the display's refresh with vsync); 60 or 30 use
@@ -264,6 +263,11 @@ pub fn start(config: Config, gpu: gpu::GpuBackend) -> Result<Game> {
     let data = layout::data_dir(&config.game_dir);
     std::fs::create_dir_all(&config.user_dir)?;
     let log = gamelog::start(&config.user_dir).context("creating the engine log")?;
+    let resource_heap_budget_mb = memory::resource_heap_budget_mb(config.low_memory);
+    memory::budget_resource_heap(resource_heap_budget_mb);
+    if resource_heap_budget_mb != 0 {
+        log::info!("Android low-memory resource heap budget: {resource_heap_budget_mb} MiB");
+    }
     log::info!("engine log: {} (GLUE5_ENGINE_LOG=stdout also prints it)", log.display());
     glue5_game::set_trap_hook(trap_site::record);
     time::fine_timers();

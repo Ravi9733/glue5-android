@@ -24,8 +24,7 @@ pub struct Settings {
     /// The whole game comes from the server to this device (in its game
     /// folder), to play without it.
     pub download_all: bool,
-    /// Smaller engine pools, and the game's graphics settings lowered once
-    /// (the browser build's `?low=1`).
+    /// Low-memory runtime mode. It must not reduce graphics quality or render resolution.
     pub low_memory: bool,
     /// Optional lightweight rendering profile; uses existing renderer settings only.
     pub light_graphics_mode: bool,
@@ -58,6 +57,8 @@ pub struct Settings {
     pub android_smooth_settings_persisted: bool,
     /// One-time 50% render-scale smooth-play profile for Android; later user choices are preserved.
     pub android_smooth_50_profile_applied: bool,
+    /// One-time migration removing the old forced 30 FPS cap on Android.
+    pub android_smooth_fps_fix_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -86,10 +87,6 @@ pub struct Settings {
     /// Custom normalized positions and size multipliers for touch controls.
     pub touch_layout: HashMap<String, [f32; 3]>,
     pub touch_opacity: f32,
-    /// RGB tint applied to every touch-control PNG icon.
-    pub touch_icon_color: [u8; 3],
-    /// Brightness multiplier for touch PNG icons and the joystick thumb.
-    pub touch_icon_brightness: f32,
     /// Use nearest-neighbour sampling for sharper touch PNG edges.
     pub touch_png_crisp: bool,
     pub touch_size: f32,
@@ -279,6 +276,7 @@ impl Default for Settings {
             android_smooth_world_profile_applied: false,
             android_smooth_settings_persisted: false,
             android_smooth_50_profile_applied: false,
+            android_smooth_fps_fix_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -293,8 +291,6 @@ impl Default for Settings {
             button_tiki_layout: false,
             touch_layout: HashMap::new(),
             touch_opacity: 0.6,
-            touch_icon_color: [255, 255, 255],
-            touch_icon_brightness: 1.0,
             touch_png_crisp: true,
             touch_size: 1.0,
             touch_camera: 1.0,
@@ -464,10 +460,19 @@ impl Settings {
             settings.frame_generation = false;
             settings.android_smooth_50_profile_applied = true;
         }
+        // Old settings UI forced every Android session to 30 FPS, even
+        // when the player had selected a higher target. Repair existing
+        // installs once; subsequent user choices are preserved.
+        #[cfg(target_os = "android")]
+        if !settings.android_smooth_fps_fix_applied {
+            settings.max_fps = 60;
+            settings.android_smooth_fps_fix_applied = true;
+        }
         #[cfg(target_os = "android")]
         {
-            // Never leave an old low-memory preset active on the Android build.
-            settings.low_memory = false;
+            // Preserve the player's saved Low Memory choice across launches.
+            // The one-time Android migrations above already set their defaults;
+            // overriding this here silently disabled the toggle on every restart.
             settings.mods = true;
         }
         settings
@@ -504,10 +509,9 @@ pub fn round_scale(scale: f32) -> f32 {
 /// The game's back buffer for a window of `pixels` at `scale`, as the
 /// browser build sizes it: even sides (the engine halves them for its
 /// post-processing), at least the 320x240 the engine takes, at most 4K
-/// (1440p with low memory: render targets the size of the screen are most
-/// of the GPU's memory).
-pub fn render_size((w, h): (u32, u32), scale: f32, low_memory: bool) -> (u32, u32) {
-    let cap = if low_memory { (2560.0, 1440.0) } else { (3840.0, 2160.0) };
+/// of the GPU's memory). Low Memory never changes render-target dimensions.
+pub fn render_size((w, h): (u32, u32), scale: f32, _low_memory: bool) -> (u32, u32) {
+    let cap = (3840.0, 2160.0);
     let (w, h) = (w as f32 * scale, h as f32 * scale);
     let k = (cap.0 / w).min(cap.1 / h).min(1.0);
     let side = |v: f32, min: u32| ((v * k / 2.0).round() as u32 * 2).max(min);
@@ -524,7 +528,7 @@ mod tests {
         assert_eq!(render_size((2532, 1170), 0.6, false), (1520, 702));
         assert_eq!(render_size((300, 100), 0.5, false), (320, 240));
         assert_eq!(render_size((6016, 3384), 1.0, false), (3840, 2160));
-        assert_eq!(render_size((6016, 3384), 1.0, true), (2560, 1440));
+        assert_eq!(render_size((6016, 3384), 1.0, true), (3840, 2160));
     }
 
     #[test]

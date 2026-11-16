@@ -938,21 +938,19 @@ fn settings_items(
                 |ui| toggle(ui, &mut settings.light_graphics_mode),
             )
             .on_hover_text(
-                "On: subtle colour boost, 50% render scale, Bicubic upscaling and a locked 30 FPS cap. VSync stays enabled.",
+                "On: subtle colour boost, 50% render scale and Bicubic upscaling. The saved FPS target and VSync choice are preserved.",
             );
             if mode.changed() {
                 if settings.light_graphics_mode {
                     settings.render_scale = Some(0.50);
                     settings.upscaler = Upscaling::Bicubic;
                     settings.sharpness = 0.35;
-                    settings.max_fps = 30;
                     settings.vsync = true;
                     settings.frame_generation = false;
                 } else {
                     settings.render_scale = Some(0.50);
                     settings.upscaler = Upscaling::Bicubic;
                     settings.sharpness = 0.5;
-                    settings.max_fps = 30;
                     settings.vsync = true;
                     settings.frame_generation = false;
                 }
@@ -970,10 +968,9 @@ fn settings_items(
                 settings.render_scale = Some(settings::round_scale(scale));
                 *scale_edit = None;
             }
-            // Keep the requested fixed render profile while allowing VSync
-            // to be switched on or off from the visible control below.
+            // Keep the requested reconstruction method. Do not overwrite
+            // the player's FPS target while drawing the settings page.
             settings.upscaler = Upscaling::Bicubic;
-            settings.max_fps = 30;
             settings.frame_generation = false;
             setting(ui, "VSync", Control::Toggle, None, |ui| {
                 toggle(ui, &mut settings.vsync)
@@ -1047,48 +1044,6 @@ fn settings_items(
             setting(ui, "Opacity", Control::Slider, None, |ui| {
                 slider(ui, &mut settings.touch_opacity, 0.2..=1.0, 0.01, "%", 0)
             });
-            setting(ui, "PNG icon color", Control::Choice, None, |ui| {
-                // Use an inline palette instead of egui's nested color-picker
-                // popup. On touch screens that popup can be clipped by the
-                // settings sheet's ScrollArea and become impossible to scroll.
-                const COLORS: [(&str, [u8; 3]); 12] = [
-                    ("White", [255, 255, 255]),
-                    ("Red", [255, 64, 64]),
-                    ("Orange", [255, 145, 48]),
-                    ("Yellow", [255, 220, 64]),
-                    ("Lime", [160, 230, 80]),
-                    ("Green", [64, 200, 110]),
-                    ("Cyan", [64, 220, 220]),
-                    ("Blue", [70, 130, 255]),
-                    ("Purple", [160, 90, 255]),
-                    ("Pink", [255, 105, 180]),
-                    ("Gray", [180, 180, 190]),
-                    ("Black", [35, 35, 42]),
-                ];
-                let mut last_response = None;
-                ui.horizontal_wrapped(|ui| {
-                    for (name, rgb) in COLORS {
-                        let selected = settings.touch_icon_color == rgb;
-                        let color = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
-                        let button = egui::Button::new(" ")
-                            .fill(color)
-                            .stroke(Stroke::new(
-                                if selected { 2.5 } else { 1.0 },
-                                if selected { Color32::WHITE } else { Color32::from_gray(110) },
-                            ))
-                            .min_size(vec2(28.0, 28.0));
-                        let response = ui.add(button).on_hover_text(name);
-                        if response.clicked() {
-                            settings.touch_icon_color = rgb;
-                        }
-                        last_response = Some(response);
-                    }
-                });
-                last_response.expect("PNG icon palette always has color choices")
-            }).on_hover_text("Choose a tint for all touch-control PNG icons. The palette stays inside the settings panel.");
-            setting(ui, "PNG color brightness", Control::Slider, None, |ui| {
-                slider(ui, &mut settings.touch_icon_brightness, 0.5..=2.5, 0.05, "×", 2)
-            }).on_hover_text("Make the selected PNG tint lighter/brighter across gameplay controls, joystick dot, Settings and Mods icons.");
             setting(ui, "PNG blur reduction", Control::Toggle, None, |ui| toggle(ui, &mut settings.touch_png_crisp))
                 .on_hover_text("Use crisp nearest-neighbour sampling for touch PNG icons to reduce soft edges.");
             setting(ui, "Camera speed", Control::Slider, None, |ui| {
@@ -1122,7 +1077,7 @@ fn settings_items(
                 next_start(started.is_some_and(|s| s.low_memory != settings.low_memory)),
                 |ui| toggle(ui, &mut settings.low_memory),
             )
-            .on_hover_text("Smaller engine pools; enabling this also lowers graphics settings once");
+            .on_hover_text("Runtime low-memory compatibility mode. It keeps your selected graphics quality and render resolution unchanged.");
             if r.changed() && settings.low_memory {
                 settings.low_preset_written = false;
             }

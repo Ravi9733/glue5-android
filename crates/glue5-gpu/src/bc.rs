@@ -15,11 +15,11 @@ use crate::format::Bc;
 /// ending threads (stacks mapped, named and unmapped).
 const BLOCKS_PER_THREAD: usize = 16384;
 
-/// Threads for `blocks` blocks of work. Android keeps this to two workers:
-/// texture uploads run on the renderer's command thread, so four short-lived
-/// workers competing with it can make streaming frame times less consistent.
+/// Threads for `blocks` blocks of work. Android already decodes on a
+/// two-worker outer pool; keep each decode single-threaded there so nested
+/// short-lived workers do not compete with the game and renderer for CPU time.
 fn threads_for(blocks: usize) -> usize {
-    let max = if cfg!(target_os = "android") { 2 } else { 4 };
+    let max = if cfg!(target_os = "android") { 1 } else { 4 };
     (blocks / BLOCKS_PER_THREAD).clamp(1, glue5_runtime::cores().min(max))
 }
 

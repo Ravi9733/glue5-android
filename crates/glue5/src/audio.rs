@@ -61,18 +61,31 @@ impl AudioCallback<f32> for Pull {
         self.calls += 1;
         let _ = stream.put_data_f32(&self.buf);
 
-        if log::log_enabled!(log::Level::Debug) {
-            self.peak = self.buf.iter().fold(self.peak, |p, s| p.max(s.abs()));
-            if self.last_log.elapsed() >= Duration::from_secs(10) {
-                self.last_log = Instant::now();
+        self.peak = self.buf.iter().fold(self.peak, |p, s| p.max(s.abs()));
+        if self.last_log.elapsed() >= Duration::from_secs(10) {
+            self.last_log = Instant::now();
+            let silent = self.frames.saturating_sub(self.mixed);
+            let silence_ratio = silent as f64 / self.frames.max(1) as f64;
+            if silence_ratio >= 0.01 {
+                log::warn!(
+                    "audio underrun: {:.1}% silent frames over 10s ({} frames, {} per callback), peak {:.3}",
+                    silence_ratio * 100.0,
+                    silent,
+                    self.frames / self.calls.max(1),
+                    std::mem::take(&mut self.peak)
+                );
+            } else {
                 log::debug!(
-                    "audio: {} frames played ({} per request), {} silent (underrun or no mixer yet), peak {:.3}",
+                    "audio: {} frames played ({} per callback), {:.2}% silent, peak {:.3}",
                     self.frames,
                     self.frames / self.calls.max(1),
-                    self.frames - self.mixed,
+                    silence_ratio * 100.0,
                     std::mem::take(&mut self.peak)
                 );
             }
+            self.frames = 0;
+            self.mixed = 0;
+            self.calls = 0;
         }
     }
 }

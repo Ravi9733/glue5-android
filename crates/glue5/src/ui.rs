@@ -724,21 +724,13 @@ impl Ui {
             touch.draw(
                 &ctx.layer_painter(LayerId::background()),
                 settings.touch_opacity,
-                Color32::from_rgb(
-                    settings.touch_icon_color[0],
-                    settings.touch_icon_color[1],
-                    settings.touch_icon_color[2],
-                ),
-                settings.touch_icon_brightness,
+                Color32::WHITE,
+                1.0,
                 settings.touch_png_crisp,
             );
         }
         let scale = crate::touch::control_scale(screen.size(), settings.touch_size);
-        let icon_tint = Color32::from_rgb(
-            (settings.touch_icon_color[0] as f32 * settings.touch_icon_brightness).clamp(0.0, 255.0) as u8,
-            (settings.touch_icon_color[1] as f32 * settings.touch_icon_brightness).clamp(0.0, 255.0) as u8,
-            (settings.touch_icon_color[2] as f32 * settings.touch_icon_brightness).clamp(0.0, 255.0) as u8,
-        );
+        let icon_tint = Color32::WHITE;
         self.gear = gear.map(|alpha| draw_gear(&ctx, safe, scale, alpha, self.gear_icon.as_ref(), icon_tint));
         // Show the touch Mods button whenever mods are installed, even before a
         // script has registered a menu; tapping it can open the Mods page and

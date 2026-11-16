@@ -1019,7 +1019,7 @@ impl App {
                 start_mode: if self.mode == Mode::Sandbox { 2 } else { 1 },
                 benchmark: self.mode == Mode::Benchmark,
                 low_memory: s.low_memory,
-                max_fps: s.max_fps.min(30),
+                max_fps: s.max_fps,
                 online: (self.mode == Mode::Online).then(|| glue5_runtime::Online {
                     name: s.online_name.trim().into(),
                     lobby: self.join.take().unwrap_or_default(),
@@ -1036,7 +1036,7 @@ impl App {
             }
         };
         let started =
-            Started { game_dir, source: self.source, max_fps: s.max_fps.min(30), low_memory: s.low_memory, mods: s.mods };
+            Started { game_dir, source: self.source, max_fps: s.max_fps, low_memory: s.low_memory, mods: s.mods };
         self.game = Some(Running { game, input: None, started, back_buffer, _audio: audio });
         self.ui.game_started();
         Ok(())
