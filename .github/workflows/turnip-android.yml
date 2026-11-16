@@ -124,6 +124,15 @@ jobs:
           lscpu | sed -n '1,18p'
           ulimit -a
 
+      - name: Force a clean native Android game rebuild
+        run: |
+          # The game is translated from game.wasm to C by wasm2c, then compiled
+          # into the ARM64 native static library. Remove only this target's
+          # native object cache so all generated game C units are rebuilt;
+          # keep wasm2c tools and generated sources to avoid regenerating them.
+          rm -rf target/glue5-tools/objcache/aarch64-linux-android
+          test ! -e target/glue5-tools/objcache/aarch64-linux-android
+
       - name: Build Turnip-enabled APK
         run: |
           set -o pipefail
