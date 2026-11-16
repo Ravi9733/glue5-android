@@ -6,6 +6,7 @@
 #include <memory>
 #include <stdexcept>
 #include <vector>
+#include <utility>
 #include "ragekit/ragekit.h"
 
 static void require(bool condition, const char* message) {

@@ -14,7 +14,6 @@ import androidx.documentfile.provider.DocumentFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.concurrent.Executors
 
@@ -267,7 +266,7 @@ class MainActivity : Activity() {
                         }
                         if (archive.length() > MAX_ARCHIVE_BYTES) {
                             skipped++
-                            report.appendLine("SKIP " + name + " — archive exceeds the 1 GiB input limit")
+                            report.appendLine("SKIP " + name + " — archive exceeds the 4 GiB input limit")
                             continue
                         }
                         val work = java.io.File(cacheDir, "bulk-rpf-work")

@@ -1,23 +1,23 @@
 # GTA V PC RPF to Android RPF Converter
 
-Android ARM64 conversion prototype for GTA V RPF7 archives. It extracts a selected archive or recursively discovers RPF files in a selected GTA V folder, converts supported Enhanced (Gen9) resources to the Legacy resource layouts used by the classic PC edition, and builds new OPEN RPF7 archives. Original PC archives are never modified.
+Android ARM64 conversion prototype for GTA V RPF7 archives. It reads a selected archive directly from disk or recursively discovers RPF files in a selected GTA V folder, converts supported Enhanced (Gen9) resources to the Legacy resource layouts used by the classic PC edition, and builds new OPEN RPF7 archives. Original PC archives are never modified.
 
 ## Current supported pipeline
 
 1. Select one .rpf archive and an output folder, or select a GTA V folder and bulk-process up to 500 on-disk RPF files. Folder discovery is capped at 250,000 items. Bulk output mirrors the original relative folder paths and preserves each .rpf basename, so existing DLC path references can still match when the output tree is overlaid at the same relative location. Use an empty output folder; existing output filenames are rejected rather than renamed or overwritten.
-2. Extract RPF7 archives with the pinned ragekit reader. OPEN/None archives need no keys. AES and NG archives are attempted only when the matching key material is imported from the user's own installation; missing or invalid keys cause extraction to fail. No key is bundled, guessed, uploaded or bypassed.
-3. Convert Enhanced Gen9 resources to Legacy with the pinned ragekit v0.3.2 C++ library:
+2. Read RPF7 archives directly with the pinned ragekit reader. Unchanged entries stay source-backed/lazy; only supported resources are extracted for parsing and conversion. OPEN/None archives need no keys. AES and NG archives are opened only when matching key material is imported from the user's own installation; missing or invalid keys cause conversion to fail. No key is bundled, guessed, uploaded or bypassed.
+3. Convert Enhanced Gen9 resources to Legacy with the pinned ragekit v0.3.1 C++ library:
    - .ytd texture dictionaries: Gen9 version 5 to Legacy version 13
    - .ydr drawables and .ydd drawable dictionaries: Gen9 version 159 (and the CodeWalker-compatible 154 variant) to Legacy version 165
    - .yft fragments: Gen9 version 171 to Legacy version 162
    - .ypt particle dictionaries: Gen9 version 71 to Legacy version 68, except files containing the Enhanced-only ptfx_g9 behaviour are rejected safely
 4. Parse and validate .ybn, .ymap and .ytyp resources with ragekit, then preserve their original bytes. These formats are edition-independent in the upstream Gen9 format documentation; rewriting them is unnecessary and could introduce collision quantization or map serialization changes. They are not counted as Gen9-to-Legacy conversions.
 5. Preserve already-Legacy versions byte-for-byte. Unsupported extensions such as .ysc, .awc, .rel, .dat, PSO/meta and other files are preserved unchanged and are never reported as converted.
-6. Rebuild a new OPEN RPF7 archive with ragekit's RpfBuilder::save file-streaming writer. The output is reopened with the RPF reader and checked for OPEN encryption and the expected file-entry count. RSC7 resources are written as resource entries with their page flags; nested .rpf files are stored as uncompressed binary entries.
+6. Rebuild a new OPEN RPF7 archive with ragekit's RpfBuilder::save file-streaming writer. The output is reopened with the RPF reader and checked for OPEN encryption, paths, entry kinds, nested archives and converted resource versions. RSC7 resources are written as resource entries with their page flags. Nested .rpf files are rebuilt as child OPEN archives.
 
 ## Nested RPF and DLC layout
 
-- Nested .rpf entries are recursively extracted, converted and rebuilt up to depth 8, with at most 500 nested archives per top-level archive. The rebuilt nested archive is put back under the same internal filename and path.
+- Nested .rpf entries are opened directly, converted and rebuilt up to depth 8, with at most 500 nested archives per top-level archive. The rebuilt nested archive is put back under the same internal filename and path.
 - Nested RPF entries are rebuilt as child OPEN RPF7 archives. Their original relative paths and filenames are retained. A nested archive is limited to 256 MiB because the pinned RAGEKIT writer materializes each child archive before writing its parent.
 - Bulk output mirrors the selected folder's relative paths. For example, dlcpacks/dyfurai/dlc.rpf is emitted as dlcpacks/dyfurai/dlc.rpf under the selected output folder. The converter does not rename dlc.rpf or other referenced archives. It does not install or mount the output in Glue5; copy the output tree over the same relative paths in the game root configured by your Glue5 build, keeping a backup.
 - dlclist.xml and setup2.xml are not edited. Preserving the existing path and filename avoids breaking references, but DLC registration, load order and runtime mounting still depend on the target Android port.
@@ -38,12 +38,12 @@ AES archives require the matching AES key. NG archives require all NG keys, decr
 
 ## Safety and resource limits
 
-- Source PC archives are read-only; extraction and conversion run in app-private cache, then write a separate output archive.
+- Source PC archives are read-only. The selected archive is copied to app-private cache, read file-backed by ragekit, and written to a separate temporary output archive before SAF export.
 - Top-level RPF7 input/output archives are limited to 4 GiB minus one byte (the RPF7 header/key-size and resource-offset safety bound). Each entry is limited to 512 MiB; nested archives are limited to 256 MiB and depth 8.
 - The converter validates at most one million RPF entries across the nested tree. Individual entries are limited to 512 MiB; nested archives are limited to 256 MiB so the RAGEKIT nested writer remains memory-bounded.
 - The Android app now converts archives directly: RAGEKIT reads the source archive from disk, unchanged entries remain source-backed/lazy, and only supported resources are extracted for parsing/conversion. Supported resource inspection is limited to 512 MiB aggregate per top-level archive; one entry is limited to 512 MiB. RAGEKIT streams the top-level OPEN RPF7 writer to disk. Nested RPFs are rebuilt recursively but their completed child archives are materialized in memory, hence the stricter 256 MiB nested-archive limit.
-- Symlinks, path traversal, absolute/drive-qualified paths, duplicate case-insensitive extracted paths, oversized inputs and output collisions are rejected. Failed nested archives are preserved and reported as skipped; they are not claimed as converted.
-- Ensure sufficient free storage for the temporary extracted tree and the rebuilt output.
+- Symlinks, path traversal, absolute/drive-qualified paths, duplicate case-insensitive paths, oversized inputs and output collisions are rejected. An invalid nested archive, missing nested AES/NG key, excessive nesting or size-limit violation aborts the top-level conversion; no partial final archive is reported as successful.
+- Ensure sufficient free storage for the cached source copy, temporary output archive and SAF destination.
 
 ## Compatibility status and remaining work
 
@@ -64,7 +64,7 @@ Before calling the project complete, the exact target archive/key requirements o
 
 ## Pinned upstream implementation
 
-The C++ conversion, keyed RPF extraction and OPEN RPF7 writer use RatPrez/ragekit v0.3.1, commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b. The pin matches the upstream v0.3.1 tag. Its Gen9 layout and conversion behavior are documented in [ragekit's Enhanced format notes](https://github.com/RatPrez/ragekit/blob/v0.3.2/docs/enhanced.md), and its RPF7 reader/writer API is in [ragekit's RPF header](https://github.com/RatPrez/ragekit/blob/v0.3.2/include/ragekit/rpf.h).
+The C++ conversion, keyed RPF extraction and OPEN RPF7 writer use RatPrez/ragekit v0.3.1, commit 9d4110ef0fce900787aaeccb52b67fa5402ff41b. The pin matches the upstream v0.3.1 tag. Its Gen9 layout and conversion behavior are documented in [ragekit's Enhanced format notes](https://github.com/RatPrez/ragekit/blob/v0.3.1/docs/enhanced.md), and its RPF7 reader/writer API is in [ragekit's RPF header](https://github.com/RatPrez/ragekit/blob/v0.3.1/include/ragekit/rpf.h).
 
 ## Tests and build
 
@@ -83,6 +83,6 @@ Fixtures are synthetic, not a full retail GTA V installation. Physical Android a
 
 ## Output integrity and Android packaging
 
-- Nested RPF discovery uses a streaming filesystem walk and enforces the nested-archive limit while traversing; it does not first materialize a list of every nested archive path.
+- Native preflight walks the RPF entry tree, rejects unreachable/duplicate paths and enforces the nested depth/count/size limits before the writer is created.
 - After a converted RPF is copied to the selected SAF output folder, the app reads the finalized document back with a fixed-size buffer and compares SHA-256 plus the byte count against the generated archive. A failed verification deletes the partial/finalized output and reports failure.
 - The Android APK links the pinned ragekit C++ JNI library. The older Rust native-core crate remains covered by a separate CI test job as legacy prototype code, but its unused JNI wrapper and shared library are no longer packaged into the APK.

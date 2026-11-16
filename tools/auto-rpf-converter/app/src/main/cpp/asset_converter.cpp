@@ -400,6 +400,7 @@ std::string build_open_rpf7(const fs::path& source_directory, const fs::path& ou
 }
 
 
+namespace gta_asset_converter {
 namespace {
 constexpr std::uint64_t kDirectMaxArchiveBytes = 0xFFFFFFFFull;
 constexpr std::uint64_t kDirectMaxEntryBytes = 512ull * 1024ull * 1024ull;
@@ -690,3 +691,6 @@ std::string convert_rpf_archive_to_open_rpf7(const fs::path& source_path,
         throw;
     }
 }
+
+
+} // namespace gta_asset_converter
