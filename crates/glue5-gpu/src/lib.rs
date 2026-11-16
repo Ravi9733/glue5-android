@@ -381,7 +381,18 @@ fn init(ring: GpuRing, settings: Settings, screen: Option<Screen>) -> Result<exe
     device.on_uncaptured_error(error_handler(Some(ring)));
     let caps = compiler.caps;
     let saved_compiled = compiler.compiled.load(Ordering::Relaxed);
-    let threads = glue5_runtime::cores().saturating_sub(2).clamp(2, 6);
+    // Android has several other latency-sensitive workers (game, command,
+    // submit, audio and texture decode). Six concurrent shader compilers can
+    // oversubscribe an 8-core phone while new areas stream in, causing frame
+    // and audio pacing spikes. Keep two cores' worth of headroom and cap the
+    // background compilation burst at four workers on Android. Desktop and
+    // Apple retain the original wider parallelism.
+    let cores = glue5_runtime::cores();
+    let threads = if cfg!(target_os = "android") {
+        cores.saturating_sub(3).clamp(2, 4)
+    } else {
+        cores.saturating_sub(2).clamp(2, 6)
+    };
     let staging = Arc::new(done::StagingPool::default());
     let limits = device.limits();
     let window = output.is_some();
