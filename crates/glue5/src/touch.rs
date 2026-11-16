@@ -1480,15 +1480,13 @@ impl Touch {
         }
     }
 
-    /// Movement/look stick rendered as a large transparent PNG only.
+    /// Movement/look stick shown as a small, solid white dot with no artwork.
     /// Touch origin, radius and gamepad mapping remain unchanged.
-    fn draw_stick(&self, painter: &Painter, look: &Look, origin: Pos2, at: Pos2, _ring: bool) {
+    fn draw_stick(&self, painter: &Painter, _look: &Look, origin: Pos2, at: Pos2, _ring: bool) {
         let radius = self.stick_radius();
         let d = at - origin;
         let knob = if d.length() > radius { origin + d.normalized() * radius } else { at };
-        // The L-stick PNG is the only visible joystick artwork: no drawn
-        // base, ring, border, fill or thumb circle.
-        self.draw_icon(painter, look, knob, radius * 0.38, "pad-ls");
+        painter.circle_filled(knob, radius * 0.19, Color32::WHITE);
     }
 
     /// Controls are transparent PNG icons only: no button fill, circle,
