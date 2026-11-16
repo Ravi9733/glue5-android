@@ -1,5 +1,5 @@
---- a/wgpu-hal/src/vulkan/instance.rs
-+++ b/wgpu-hal/src/vulkan/instance.rs
+--- a/src/vulkan/instance.rs
++++ b/src/vulkan/instance.rs
 @@ -640,20 +640,31 @@
      pub unsafe fn init_with_callback(
          desc: &crate::InstanceDescriptor<'_>,
