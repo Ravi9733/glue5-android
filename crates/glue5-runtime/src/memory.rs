@@ -272,7 +272,7 @@ thread_local! {
 /// working set, leaving headroom for transient allocations.
 const LOW_MEMORY_RESOURCE_HEAP_BUDGET_MB: u32 = 1536;
 
-fn resource_heap_budget_mb(low_memory: bool) -> u32 {
+pub(super) fn resource_heap_budget_mb(low_memory: bool) -> u32 {
     if cfg!(target_os = "android") && low_memory {
         LOW_MEMORY_RESOURCE_HEAP_BUDGET_MB
     } else {
