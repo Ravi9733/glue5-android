@@ -1455,8 +1455,14 @@ impl Touch {
         self.fingers.values().any(|f| matches!(f, Finger::Button { kind: Kind::Wheel, .. }))
     }
 
-    pub fn draw(&self, painter: &Painter, opacity: f32) {
-        let look = Look::new(opacity, self.scale, self.context.character);
+    pub fn draw(&self, painter: &Painter, opacity: f32, icon_tint: Color32) {
+        let mut look = Look::new(opacity, self.scale, self.context.character);
+        look.icon = Color32::from_rgba_unmultiplied(
+            icon_tint.r(),
+            icon_tint.g(),
+            icon_tint.b(),
+            look.icon.a(),
+        );
         if self.menu_mode() {
             for (key, a) in self.menu_keys() {
                 let held = self.fingers.values().any(|f| matches!(f, Finger::MenuKey(k) if k == key));
