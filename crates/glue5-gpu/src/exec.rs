@@ -939,10 +939,10 @@ impl Gpu {
             // BC decode also parallelizes large textures internally. Keep
             // this outer queue bounded so nested workers cannot starve the
             // game and renderer threads on Android.
-            // Keep at most 16 compressed uploads queued in addition to the
-            // two active workers. Each job owns a copy of its source bytes;
-            // bounding this queue prevents a fast streaming producer from
-            // building an unbounded CPU-memory backlog on Android.
+            // Bound the complete in-flight set (queued, running, and
+            // completed-but-not-uploaded). Each job owns its compressed
+            // source and decoded output, so waiting on the oldest job here
+            // prevents an unbounded CPU-memory backlog during world streaming.
             self.make_decode_room();
             self.decoder.get_or_insert_with(|| Pool::new("gpu decode", 2))
                 .urgent_bounded(move || {
