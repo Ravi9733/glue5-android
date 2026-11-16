@@ -615,7 +615,7 @@ fn an_open_wheel_picks_with_the_thumb_on_the_gas() {
 }
 
 #[test]
-fn driving_has_its_pedals() {
+fn driving_has_pedals_and_analog_steering_arrows() {
     let mut t = phone();
     t.set_context(context(Activity::Driving(Driving::Car)));
     for (id, label) in [(1, "Gas"), (2, "Brake")] {
@@ -624,13 +624,20 @@ fn driving_has_its_pedals() {
     }
     let pad = t.gamepad();
     assert_eq!((pad.r2, pad.l2), (1.0, 1.0));
-    // Steering, without a sprint.
-    let (x, y) = at(&t, pos2(200.0, 250.0));
+    assert!(!t.has_stick(), "a car must not show the on-foot joystick");
+
+    let left = spot(&t, "Steer left");
+    let (x, y) = at(&t, left);
     t.finger_down(3, x, y);
-    let (x, y) = at(&t, pos2(200.0 - 2.0 * t.stick_radius(), 250.0));
-    t.finger_motion(3, x, y);
     let pad = t.gamepad();
-    assert_eq!((pad.left, pad.buttons & button::SOUTH), ([-1.0, 0.0], 0));
+    assert_eq!(pad.left, [-1.0, 0.0], "left arrow must steer the analog left stick");
+    assert_eq!(pad.buttons & (button::LEFT | button::RIGHT), 0, "steering must not be a D-pad press");
+    t.finger_up(3);
+
+    let right = spot(&t, "Steer right");
+    let (x, y) = at(&t, right);
+    t.finger_down(4, x, y);
+    assert_eq!(t.gamepad().left, [1.0, 0.0], "right arrow must steer the analog left stick");
 }
 
 #[test]
