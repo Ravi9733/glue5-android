@@ -655,16 +655,17 @@ impl Gpu {
             depth_or_array_layers: layers.max(1),
         };
         // BC decoded to uncompressed texels can multiply memory use by 4-8x.
-        // In that fallback, omit the largest mip of large mipmapped textures
-        // to protect mobile memory. If BC is re-encoded as ETC2, keep mip 0:
-        // ETC2 remains compressed and dropping the top mip makes roads and
-        // buildings visibly blurry while the game streams their smaller mips.
+        // Keep mip 0 for ordinary 512-1024px world textures: dropping it makes
+        // roads and buildings visibly blurry even after their smaller mips load.
+        // Only very large decoded textures (2K and above) omit the top mip as a
+        // last-resort mobile memory safeguard. Compressed ETC2/BC textures keep it.
+        const LARGE_DECODED_TEXTURE: u32 = 2048;
         let dropped = match tf.upload {
             format::Upload::Bc(_)
                 if !tf.format.is_compressed()
                     && mips >= 2
                     && dimension == wgpu::TextureDimension::D2
-                    && size.width.max(size.height) >= 512 =>
+                    && size.width.max(size.height) >= LARGE_DECODED_TEXTURE =>
             {
                 1
             }
