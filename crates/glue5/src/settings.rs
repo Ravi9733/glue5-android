@@ -505,10 +505,9 @@ pub fn round_scale(scale: f32) -> f32 {
 /// The game's back buffer for a window of `pixels` at `scale`, as the
 /// browser build sizes it: even sides (the engine halves them for its
 /// post-processing), at least the 320x240 the engine takes, at most 4K
-/// (1440p with low memory: render targets the size of the screen are most
-/// of the GPU's memory).
-pub fn render_size((w, h): (u32, u32), scale: f32, low_memory: bool) -> (u32, u32) {
-    let cap = if low_memory { (2560.0, 1440.0) } else { (3840.0, 2160.0) };
+/// of the GPU's memory). Low Memory never changes render-target dimensions.
+pub fn render_size((w, h): (u32, u32), scale: f32, _low_memory: bool) -> (u32, u32) {
+    let cap = (3840.0, 2160.0);
     let (w, h) = (w as f32 * scale, h as f32 * scale);
     let k = (cap.0 / w).min(cap.1 / h).min(1.0);
     let side = |v: f32, min: u32| ((v * k / 2.0).round() as u32 * 2).max(min);
@@ -525,7 +524,7 @@ mod tests {
         assert_eq!(render_size((2532, 1170), 0.6, false), (1520, 702));
         assert_eq!(render_size((300, 100), 0.5, false), (320, 240));
         assert_eq!(render_size((6016, 3384), 1.0, false), (3840, 2160));
-        assert_eq!(render_size((6016, 3384), 1.0, true), (2560, 1440));
+        assert_eq!(render_size((6016, 3384), 1.0, true), (3840, 2160));
     }
 
     #[test]
