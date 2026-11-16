@@ -1086,6 +1086,11 @@ fn settings_items(
                 });
                 last_response.expect("PNG icon palette always has color choices")
             }).on_hover_text("Choose a tint for all touch-control PNG icons. The palette stays inside the settings panel.");
+            setting(ui, "PNG color brightness", Control::Slider, None, |ui| {
+                slider(ui, &mut settings.touch_icon_brightness, 0.5..=2.5, 0.05, "×", 2)
+            }).on_hover_text("Make the selected PNG tint lighter/brighter across gameplay controls, joystick dot, Settings and Mods icons.");
+            setting(ui, "PNG blur reduction", Control::Toggle, None, |ui| toggle(ui, &mut settings.touch_png_crisp))
+                .on_hover_text("Use crisp nearest-neighbour sampling for touch PNG icons to reduce soft edges.");
             setting(ui, "Camera speed", Control::Slider, None, |ui| {
                 slider(ui, &mut settings.touch_camera, 0.25..=3.0, 0.05, "×", 2)
             });
