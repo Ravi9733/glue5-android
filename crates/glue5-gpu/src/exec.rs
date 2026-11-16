@@ -280,7 +280,9 @@ impl Gpu {
     /// Each entry owns a receiver for a decoded image, so limiting this list
     /// also limits queued, running, and completed-but-not-uploaded decode jobs.
     fn make_decode_room(&mut self) {
-        const MAX_PENDING_DECODES: usize = 8;
+        // Allow a short burst of world-texture uploads without stalling the
+        // renderer after only eight jobs. The worker queue remains bounded.
+        const MAX_PENDING_DECODES: usize = 16;
         if self.decodes.len() < MAX_PENDING_DECODES {
             return;
         }
