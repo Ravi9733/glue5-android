@@ -238,7 +238,7 @@ static ON_FOOT: &[Action] = &[
     does(36, action("Crouch", "crouch", button::L3, At::RightBottom(178.0, 64.0), 30.0)), 
     does(23, near_vehicle(action("Enter", "enter", button::NORTH, At::RightBottom(178.0, 232.0), 30.0))),
     // A dedicated sprint target in addition to sprinting by pushing the stick.
-    does(SPRINT, action("Sprint", "sprint", button::SOUTH, At::LeftBottom(136.0, 126.0), 30.0)), 
+    does(SPRINT, action("Sprint", "sprint", button::SOUTH, At::RightBottom(76.0, 238.0), 27.0)), 
     PHONE,
     VIEW,
     PAUSE,
@@ -1468,21 +1468,15 @@ impl Touch {
             let held = self.fingers.values().any(|f| matches!(f, Finger::Button { key, .. } if *key == b.key));
             self.draw_button(painter, &look, b, held);
         }
-        // The sticks held, or at rest (on foot, with its sprint ring).
-        let rest = self.has_stick().then(|| self.move_rest());
-        let mut moved = false;
+        // Show only a small PNG thumb dot while a finger is actively using
+        // a stick. No oversized idle joystick graphic.
         for f in self.fingers.values() {
             match *f {
-                Finger::Move { origin, at } => {
-                    moved = true;
-                    self.draw_stick(painter, &look, origin, at, self.sprints());
+                Finger::Move { origin, at } | Finger::Look { origin, at } => {
+                    self.draw_stick(painter, &look, origin, at, false);
                 }
-                Finger::Look { origin, at } => self.draw_stick(painter, &look, origin, at, false),
                 _ => {}
             }
-        }
-        if let (false, Some(rest)) = (moved, rest) {
-            self.draw_stick(painter, &look, rest, rest, self.sprints());
         }
     }
 
@@ -1494,7 +1488,7 @@ impl Touch {
         let knob = if d.length() > radius { origin + d.normalized() * radius } else { at };
         // The L-stick PNG is the only visible joystick artwork: no drawn
         // base, ring, border, fill or thumb circle.
-        self.draw_icon(painter, look, knob, radius * 1.45, "pad-ls");
+        self.draw_icon(painter, look, knob, radius * 0.38, "pad-ls");
     }
 
     /// Controls are transparent PNG icons only: no button fill, circle,
