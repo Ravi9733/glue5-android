@@ -56,6 +56,8 @@ pub struct Settings {
     pub android_smooth_world_profile_applied: bool,
     /// One-time migration to stop overwriting saved FPS and render-scale choices.
     pub android_smooth_settings_persisted: bool,
+    /// One-time 50% render-scale smooth-play profile for Android; later user choices are preserved.
+    pub android_smooth_50_profile_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -270,6 +272,7 @@ impl Default for Settings {
             android_high_graphics_profile_applied: false,
             android_smooth_world_profile_applied: false,
             android_smooth_settings_persisted: false,
+            android_smooth_50_profile_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -438,6 +441,19 @@ impl Settings {
             settings.upscaler = Upscaling::Bicubic;
             settings.frame_generation = false;
             settings.android_smooth_settings_persisted = true;
+        }
+        // The requested balanced profile: 50% render scale, Bicubic reconstruction,
+        // normal game graphics (not the low-memory preset), and a 40 FPS frame-time
+        // target. Apply once only so the player can tune it later without being reset.
+        #[cfg(target_os = "android")]
+        if !settings.android_smooth_50_profile_applied {
+            settings.low_memory = false;
+            settings.low_preset_written = false;
+            settings.max_fps = 40;
+            settings.render_scale = Some(0.50);
+            settings.upscaler = Upscaling::Bicubic;
+            settings.frame_generation = false;
+            settings.android_smooth_50_profile_applied = true;
         }
         #[cfg(target_os = "android")]
         {
