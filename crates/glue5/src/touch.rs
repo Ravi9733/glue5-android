@@ -870,16 +870,27 @@ impl Touch {
     /// Every button shown now, where it is.
     fn buttons(&self) -> Vec<Button> {
         let s = self.scale;
-        let round = |key, at, a: &Action| Button {
-            key,
-            at,
-            radius: a.radius * s,
-            icon: a.icon,
-            bits: self.bits_of(a),
-            input: a.input,
-            kind: a.kind,
-            primary: a.primary,
-            asked: false,
+        let round = |key, at: Pos2, a: &Action| {
+            let radius = a.radius * s;
+            // Keep the complete PNG artwork inside the usable screen area.
+            // The icon is drawn larger than its touch hitbox, so reserve extra
+            // space on every edge (including when a control is dragged to top).
+            let margin = (radius * 1.25 + 3.0).min(self.area.width().min(self.area.height()) * 0.45);
+            let at = pos2(
+                at.x.clamp(self.area.min.x + margin, self.area.max.x - margin),
+                at.y.clamp(self.area.min.y + margin, self.area.max.y - margin),
+            );
+            Button {
+                key,
+                at,
+                radius,
+                icon: a.icon,
+                bits: self.bits_of(a),
+                input: a.input,
+                kind: a.kind,
+                primary: a.primary,
+                asked: false,
+            }
         };
         let phone = self.context.phone && self.has_stick();
         let keys = self.phone_keys();
