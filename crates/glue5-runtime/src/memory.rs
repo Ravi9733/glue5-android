@@ -139,6 +139,17 @@ impl Mem {
     /// A view of `buf` as if it were wasm memory (tests).
     #[cfg(test)]
     pub(crate) fn over(buf: &mut [u8]) -> Mem {
+    #[test]
+    fn resource_heap_budget_only_applies_to_android_low_memory() {
+        assert_eq!(resource_heap_budget_mb(false), 0);
+        if cfg!(target_os = "android") {
+            assert_eq!(resource_heap_budget_mb(true), LOW_MEMORY_RESOURCE_HEAP_BUDGET_MB);
+        } else {
+            assert_eq!(resource_heap_budget_mb(true), 0);
+        }
+    }
+
+
         Mem { base: buf.as_mut_ptr() }
     }
 
@@ -265,6 +276,19 @@ static RESOURCE_BUDGET: AtomicU64 = AtomicU64::new(0);
 thread_local! {
     /// The streaming engine is asking how much memory is left.
     static ASKING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Conservative streaming-heap cap for Android's Low Memory mode.
+/// This is deliberately above the previously measured ~0.95 GiB streamed-asset
+/// working set, leaving headroom for transient allocations.
+const LOW_MEMORY_RESOURCE_HEAP_BUDGET_MB: u32 = 1536;
+
+fn resource_heap_budget_mb(low_memory: bool) -> u32 {
+    if cfg!(target_os = "android") && low_memory {
+        LOW_MEMORY_RESOURCE_HEAP_BUDGET_MB
+    } else {
+        0
+    }
 }
 
 /// Budgets the resource heap at `mb` MiB (the engine's `gameResourceMB`).
