@@ -27,7 +27,7 @@ use crate::paths::{self, MOBILE, TOUCH, TV};
 use crate::settings::{self, PerfOverlay, Settings, Source, TouchMode, Upscaling};
 use crate::touch::{self, Touch};
 use crate::ui::{self, Action, Mode, Page, Started, Status, Ui};
-use crate::{audio, benchmark, keymap, pads};
+use crate::{audio, benchmark, drivers, keymap, pads};
 
 /// The settings button's opacity over the game while the touch controls
 /// are hidden (a controller in use, or touch off): there, but faint.
@@ -104,9 +104,12 @@ pub fn run() -> Result<()> {
     let presentation = Presentation::new(pixels, settings.vsync, upscaler(&settings));
     presentation.set_metal_hud(settings.overlay == PerfOverlay::MetalHud);
     let overlay = glue5_gpu::Overlay::default();
-    let instance = glue5_gpu::instance();
     #[cfg(target_os = "android")]
-    let surfaces = instance.clone();
+    let (instance, mut driver_note) = drivers::instance(&user_dir, &mut settings.gpu_driver);
+    #[cfg(not(target_os = "android"))]
+    let (instance, driver_note) = (glue5_gpu::instance(), None::<String>);
+    #[cfg(target_os = "android")]
+    let mut surfaces = instance.clone();
     // The window outlives the renderer: the process exits with it.
     #[cfg(not(target_os = "tvos"))]
     let surface = unsafe {
@@ -127,7 +130,30 @@ pub fn run() -> Result<()> {
         surface,
         presentation: presentation.clone(),
         overlay: overlay.clone(),
-    })?;
+    });
+    #[cfg(target_os = "android")]
+    let screen = match screen {
+        Err(e) if settings.gpu_driver.is_some() => {
+            driver_note = Some(drivers::device_failed(&user_dir, &mut settings.gpu_driver, &e));
+            let instance = glue5_gpu::instance();
+            surfaces = instance.clone();
+            let surface = unsafe {
+                instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::from_display_and_window(&window, &window)?)?
+            };
+            Screen::open(glue5_gpu::Window {
+                instance, surface, presentation: presentation.clone(), overlay: overlay.clone()
+            })
+        }
+        screen => screen,
+    };
+    let screen = screen?;
+    if driver_note.is_some() {
+        log::warn!("GPU driver fallback: {}", driver_note.as_deref().unwrap_or_default());
+    }
+    #[cfg(target_os = "android")]
+    if settings.gpu_driver.is_some() {
+        drivers::shown(&user_dir);
+    }
     // While the system resizes the window in a loop of its own (macOS,
     // Windows), events wait for it to end, and so does this loop; SDL still
     // calls watches, and from there the renderer follows the window. The
