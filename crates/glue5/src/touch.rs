@@ -1674,8 +1674,8 @@ impl Look {
         let accent = Color32::from_white_alpha(a(0.72, 0.58));
 
         Look {
-            fill: Color32::from_rgba_unmultiplied(22, 25, 30, a(0.72, 0.58)),
-            pressed: Color32::from_rgba_unmultiplied(48, 54, 62, a(0.86, 0.72)),
+            fill: Color32::from_rgba_unmultiplied(32, 34, 38, a(0.72, 0.58)),
+            pressed: Color32::from_rgba_unmultiplied(54, 58, 64, a(0.86, 0.72)),
             knob: Color32::from_white_alpha(a(0.72, 0.62)),
             line: Color32::from_white_alpha(a(0.76, 0.58)),
             accent: accent.gamma_multiply(opacity.max(0.6)),
