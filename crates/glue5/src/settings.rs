@@ -90,6 +90,8 @@ pub struct Settings {
     pub touch_icon_color: [u8; 3],
     /// Brightness multiplier for touch PNG icons and the joystick thumb.
     pub touch_icon_brightness: f32,
+    /// Use nearest-neighbour sampling for sharper touch PNG edges.
+    pub touch_png_crisp: bool,
     pub touch_size: f32,
     /// How fast a finger's drag turns the camera.
     pub touch_camera: f32,
@@ -293,6 +295,7 @@ impl Default for Settings {
             touch_opacity: 0.6,
             touch_icon_color: [255, 255, 255],
             touch_icon_brightness: 1.0,
+            touch_png_crisp: true,
             touch_size: 1.0,
             touch_camera: 1.0,
             touch_aim: TouchAim::LockOn,
