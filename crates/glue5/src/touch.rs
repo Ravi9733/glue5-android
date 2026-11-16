@@ -210,7 +210,7 @@ const LEFT_4: At = At::LeftBottom(136.0, 310.0);
 const LEFT_5: At = At::LeftBottom(136.0, 220.0);
 /// The character and weapon wheels: hold, then drag to choose.
 const SWITCH: Action = wheel(does(19, action("Switch", "switch", button::DOWN, LEFT_4, 30.0)));
-const WEAPONS: Action = wheel(action("Weapons", "weapons", button::L1, LEFT_1, 30.0));
+const WEAPONS: Action = wheel(action("Weapons", "weapons", button::L1, At::LeftBottom(46.0, 330.0), 30.0));
 const RADIO: Action = wheel(action("Radio", "radio", button::LEFT, LEFT_2, 28.0));
 const MELEE: Action = action("Melee\\nReload", "melee", button::EAST, LEFT_2, 30.0);
 const COVER: Action = action("Cover", "cover", button::R1, LEFT_3, 30.0);
@@ -1512,8 +1512,16 @@ impl Touch {
     /// is the layout's main one, the game asks for it, or it is held.
     fn draw_button(&self, painter: &Painter, look: &Look, b: &Button, held: bool) {
         let ring = if held || b.primary || b.asked { look.ring(held) } else { look.stroke(false) };
-        painter.circle(b.at, b.radius, look.fill(held), ring);
-        self.draw_icon(painter, look, b.at, b.radius * 1.28, b.icon);
+        if matches!(b.kind, Kind::SteerLeft | Kind::SteerRight) {
+            // Driving arrows are broad rounded rectangles, not circular pads.
+            let rect = b.rect();
+            painter.rect_filled(rect, egui::CornerRadius::same(9), look.fill(held));
+            painter.rect_stroke(rect, egui::CornerRadius::same(9), ring, egui::StrokeKind::Inside);
+            self.draw_icon(painter, look, b.at, b.radius * 1.28, b.icon);
+        } else {
+            painter.circle(b.at, b.radius, look.fill(held), ring);
+            self.draw_icon(painter, look, b.at, b.radius * 1.28, b.icon);
+        }
     }
 
     /// The icon `name` (or two joined by `+`, side by side), `side` points.
@@ -1537,12 +1545,21 @@ impl Touch {
 impl Button {
     /// Where it is on the screen.
     fn rect(&self) -> Rect {
-        Rect::from_center_size(self.at, Vec2::splat(2.0 * self.radius))
+        let size = if matches!(self.kind, Kind::SteerLeft | Kind::SteerRight) {
+            vec2(self.radius * 2.35, self.radius * 1.65)
+        } else {
+            Vec2::splat(2.0 * self.radius)
+        };
+        Rect::from_center_size(self.at, size)
     }
 
     /// A finger at `p` takes it (a little around it).
     fn hit(&self, p: Pos2) -> bool {
-        self.at.distance(p) <= self.radius * 1.2
+        if matches!(self.kind, Kind::SteerLeft | Kind::SteerRight) {
+            self.rect().expand(self.radius * 0.12).contains(p)
+        } else {
+            self.at.distance(p) <= self.radius * 1.2
+        }
     }
 }
 
