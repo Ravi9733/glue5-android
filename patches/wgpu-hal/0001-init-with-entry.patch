@@ -1,0 +1,49 @@
+*** Begin Patch
+*** Update File: wgpu-hal/src/vulkan/instance.rs
+@@
+     pub unsafe fn init_with_callback(
+         desc: &crate::InstanceDescriptor<'_>,
+         callback: Option<Box<super::CreateInstanceCallback>>,
+     ) -> Result<Self, crate::InstanceError> {
++        let entry = unsafe {
++            // ohos support is already fixed on ash main, but it's unclear when
++            // a new release can happen.
++            #[cfg(target_env = "ohos")]
++            let loaded = ash::Entry::load_from("libvulkan.so");
++            #[cfg(not(target_env = "ohos"))]
++            let loaded = ash::Entry::load();
++            loaded
++        }
++        .map_err(|err| {
++            crate::InstanceError::with_source(String::from("missing Vulkan entry points"), err)
++        })?;
++        unsafe { Self::init_with_entry(entry, desc, callback) }
++    }
++
++    /// Initialize Vulkan using an already loaded entry point table.
++    /// This is used by Android's AdrenoTools loader to select a private driver.
++    ///
++    /// # Safety
++    /// The entry must remain valid for the lifetime of the returned instance.
++    pub unsafe fn init_with_entry(
++        entry: ash::Entry,
++        desc: &crate::InstanceDescriptor<'_>,
++        callback: Option<Box<super::CreateInstanceCallback>>,
++    ) -> Result<Self, crate::InstanceError> {
+         profiling::scope!("Init Vulkan Backend");
+-
+-        let entry = unsafe {
+-            profiling::scope!("Load vk library");
+-            // ohos support is already fixed on ash main, but it's unclear when
+-            // a new release can happen.
+-            #[cfg(target_env = "ohos")]
+-            let loaded = ash::Entry::load_from("libvulkan.so");
+-            #[cfg(not(target_env = "ohos"))]
+-            let loaded = ash::Entry::load();
+-            loaded
+-        }
+-        .map_err(|err| {
+-            crate::InstanceError::with_source(String::from("missing Vulkan entry points"), err)
+-        })?;
+         let version = {
+*** End Patch
