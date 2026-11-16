@@ -1071,7 +1071,7 @@ impl Gpu {
         // on CPU BCn decode, or a large decode backlog, is a likely source of
         // visible texture pop-in and frame pacing spikes on mobile Vulkan.
         if waited >= Duration::from_millis(8)
-            || pending >= 64
+            || pending >= 12
             || oldest_pending >= Duration::from_millis(50)
             || oldest_ready >= Duration::from_millis(50)
         {
