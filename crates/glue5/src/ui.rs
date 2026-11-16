@@ -952,7 +952,8 @@ fn draw_menus_button(
 ) -> (Pos2, f32) {
     let c = gear_center(safe, scale) + vec2(54.0 * scale, 0.0);
     let r = GEAR_RADIUS * scale;
-    let look = crate::touch::Look::new(alpha, scale, glue5_runtime::input::Character::Other);
+    let mut look = crate::touch::Look::new(alpha, scale, glue5_runtime::input::Character::Other);
+    look.icon = Color32::from_rgba_unmultiplied(icon_tint.r(), icon_tint.g(), icon_tint.b(), look.icon.a());
     let painter = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("gear")));
     if let Some(icon) = icon {
         let uv = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
