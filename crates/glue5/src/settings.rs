@@ -57,6 +57,8 @@ pub struct Settings {
     pub android_smooth_settings_persisted: bool,
     /// One-time 50% render-scale smooth-play profile for Android; later user choices are preserved.
     pub android_smooth_50_profile_applied: bool,
+    /// One-time migration removing the old forced 30 FPS cap on Android.
+    pub android_smooth_fps_fix_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -274,6 +276,7 @@ impl Default for Settings {
             android_smooth_world_profile_applied: false,
             android_smooth_settings_persisted: false,
             android_smooth_50_profile_applied: false,
+            android_smooth_fps_fix_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -456,6 +459,14 @@ impl Settings {
             settings.upscaler = Upscaling::Bicubic;
             settings.frame_generation = false;
             settings.android_smooth_50_profile_applied = true;
+        }
+        // Old settings UI forced every Android session to 30 FPS, even
+        // when the player had selected a higher target. Repair existing
+        // installs once; subsequent user choices are preserved.
+        #[cfg(target_os = "android")]
+        if !settings.android_smooth_fps_fix_applied {
+            settings.max_fps = 60;
+            settings.android_smooth_fps_fix_applied = true;
         }
         #[cfg(target_os = "android")]
         {
