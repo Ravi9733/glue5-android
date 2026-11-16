@@ -1407,7 +1407,7 @@ impl Touch {
                 }
             }
         }
-        pad.left = [f32::from(steer_right) - f32::from(steer_left), 0.0];
+        pad.left = [(if steer_right { 1.0 } else { 0.0 }) - (if steer_left { 1.0 } else { 0.0 }), 0.0];
         // Locked on, the drags of this frame push the right stick.
         let drag = std::mem::take(&mut self.locked_drag);
         self.locked_stick = if !self.aim_locked {
