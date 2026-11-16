@@ -288,9 +288,17 @@ impl Gpu {
         if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
             return;
         }
+        let waiting = Instant::now();
         let Ok(texels) = d.data.recv() else {
             return;
         };
+        let waited = waiting.elapsed();
+        if waited >= Duration::from_millis(8) {
+            log::warn!(
+                "texture streaming: decode backlog reached its limit; waited {:.1} ms for oldest upload",
+                waited.as_secs_f64() * 1000.0,
+            );
+        }
         let target = wgpu::TexelCopyTextureInfo {
             texture: &d.texture,
             mip_level: d.level,
