@@ -120,6 +120,7 @@ pub(crate) fn on() -> bool {
 
 pub fn snapshot() -> Snapshot {
     let live = LIVE.lock().unwrap();
+    let smart = SMART.lock().unwrap();
     Snapshot {
         frame_ms: live.frame_ms.iter().copied().collect(),
         render_ms: live.render_ms.iter().copied().collect(),
@@ -128,8 +129,8 @@ pub fn snapshot() -> Snapshot {
         passes: live.counts.1,
         submits: live.counts.2,
         gpu_bytes: live.gpu_bytes,
-        smart_enabled: SMART.lock().unwrap().enabled,
-        smart_recommended_cap: SMART.lock().unwrap().recommendation,
+        smart_enabled: smart.enabled,
+        smart_recommended_cap: smart.recommendation,
     }
 }
 
