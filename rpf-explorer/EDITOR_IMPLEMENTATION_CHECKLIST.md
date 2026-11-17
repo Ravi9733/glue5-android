@@ -14,7 +14,7 @@ This branch is for the standalone Android RPF Explorer only. Do not change the G
 ## Format and compatibility
 - [x] Parse RPF7 directory, binary and resource entries, including RSC7 size sentinel and 23-bit offsets.
 - [x] Handle NONE and OPEN TOCs.
-- [ ] Add AES TOC/data decryption using key material extracted from the user's own compatible game installation.
+- [x] Add AES TOC/data decryption using the AES key extracted locally from the user's own compatible PC GTA5.exe.
 - [ ] Add NG TOC/data decryption using key material extracted from the user's own compatible game installation; do not bundle Rockstar keys.
 - [x] Preserve untouched resource entries byte-for-byte and retain page flags when rebuilding.
 - [x] Add/replace resource assets only after validating RSC7 header and reading resource page flags (large new RSC7 assets are blocked safely).
