@@ -270,6 +270,9 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         if (!file.isFile || file.length() < 16L) return null
         RandomAccessFile(file, "r").use { r ->
             if (readU32(r, 0) != 0x37435352L) return null
+            require(file.length() < 0xFFFFFFL) {
+                "Adding or replacing RSC7 resources of 16 MiB or larger is blocked because the size sentinel overlaps header metadata. Existing large resources can still be preserved unchanged."
+            }
             return readU32(r, 8) to readU32(r, 12)
         }
     }
