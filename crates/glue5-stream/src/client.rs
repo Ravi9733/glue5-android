@@ -117,6 +117,20 @@ pub enum Phase {
 }
 
 #[derive(Clone, Debug)]
+/// Read-only counters for Smart Streaming decisions; cumulative per client.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StreamTelemetry {
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub demand_waits: u64,
+    pub demand_wait_us: u64,
+    pub late_hints: u64,
+    pub hints: u64,
+    pub bytes_received: u64,
+    pub waiting_reads: u32,
+    pub inflight_requests: usize,
+}
+
 pub struct Status {
     pub phase: Phase,
     pub connected: bool,
@@ -227,6 +241,8 @@ struct Waiter {
 #[derive(Default)]
 struct Stats {
     received: AtomicU64,
+    cache_hits: AtomicU64,
+    cache_misses: AtomicU64,
     waits: AtomicU64,
     wait_us: AtomicU64,
     cold: AtomicU64,
@@ -330,6 +346,22 @@ impl Client {
     #[cfg(test)]
     pub(crate) fn has(&self, id: u32, off: u64) -> bool {
         self.ready.get().is_some_and(|r| r.cache.has_block(id, off / BLOCK))
+    }
+
+    /// Cheap HUD/AI snapshot: no cache walk and no filesystem I/O.
+    pub fn telemetry(&self) -> StreamTelemetry {
+        let inflight_requests = self.inflight.lock().unwrap().reqs.len();
+        StreamTelemetry {
+            cache_hits: self.stats.cache_hits.load(Ordering::Relaxed),
+            cache_misses: self.stats.cache_misses.load(Ordering::Relaxed),
+            demand_waits: self.stats.waits.load(Ordering::Relaxed),
+            demand_wait_us: self.stats.wait_us.load(Ordering::Relaxed),
+            late_hints: self.stats.cold.load(Ordering::Relaxed),
+            hints: self.stats.hints.load(Ordering::Relaxed),
+            bytes_received: self.stats.received.load(Ordering::Relaxed),
+            waiting_reads: self.stats.waiting.load(Ordering::Relaxed),
+            inflight_requests,
+        }
     }
 
     pub fn status(&self) -> Status {
@@ -454,11 +486,12 @@ impl Client {
         self.read_ahead(r, id, off, n as u64);
         match r.cache.read(id, off, &mut buf[..n]) {
             Ok(Some(got)) => {
+                self.stats.cache_hits.fetch_add(1, Ordering::Relaxed);
                 r.read_done(id);
                 return Some(got);
             }
-            Ok(None) => {}
-            Err(e) => log::warn!("stream cache: reading {}: {e}", r.catalog.entries[id as usize].path),
+            Ok(None) => { self.stats.cache_misses.fetch_add(1, Ordering::Relaxed); }
+            Err(e) => { self.stats.cache_misses.fetch_add(1, Ordering::Relaxed); log::warn!("stream cache: reading {}: {e}", r.catalog.entries[id as usize].path); },
         }
         let (first, last) = (off / BLOCK, (off + n as u64 - 1) / BLOCK);
         let started = Instant::now();
