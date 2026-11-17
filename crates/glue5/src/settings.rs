@@ -80,8 +80,7 @@ pub struct Settings {
     pub frame_generation: bool,
     /// The performance overlay over the game, and how the application's
     /// own shows.
-    pub overlay: PerfOverlay,
-    pub overlay_detail: OverlayDetail,
+    /// Opt-in measurement-driven Smart Performance recommendations (no automatic quality reduction).\n    pub smart_performance: bool,\n    pub overlay: PerfOverlay,\n    pub overlay_detail: OverlayDetail,
     pub overlay_corner: Corner,
     pub touch: TouchMode,
     /// Alternate Button Tiki touch-button arrangement; off preserves the original layout.
@@ -287,8 +286,7 @@ impl Default for Settings {
             upscaler: Upscaling::MetalFx,
             sharpness: 0.5,
             frame_generation: false,
-            overlay: PerfOverlay::Off,
-            overlay_detail: OverlayDetail::Standard,
+            smart_performance: false,\n            overlay: PerfOverlay::Off,\n            overlay_detail: OverlayDetail::Standard,
             overlay_corner: Corner::TopLeft,
             touch: TouchMode::Auto,
             button_tiki_layout: false,
