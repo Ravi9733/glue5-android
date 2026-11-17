@@ -10,12 +10,12 @@ import java.security.MessageDigest
 import java.util.ArrayDeque
 
 /**
- * Non-destructive RPF7 OPEN/NONE writer.
+ * Non-destructive RPF7 writer.
  *
  * It rebuilds the TOC/name table and 512-byte payload alignment into a new file.
- * Existing compressed binaries are decoded through RpfArchive.extract and emitted
- * as uncompressed entries. Resource entries are rejected until their RSC7 payload
- * lengths and page flags can be preserved correctly.
+ * Existing compressed/encrypted binaries are decoded through RpfArchive.extract
+ * and emitted as uncompressed entries. Unencrypted RSC7 resources retain their
+ * raw payload and page flags; encrypted YSC resources are blocked.
  */
 internal class RpfEditSession(private val archive: RpfArchive, private val workDir: File) {
     private val replacements = linkedMapOf<Int, File>()
@@ -39,7 +39,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         val copy = File(workDir, "add-${System.nanoTime()}").also { source.copyTo(it, overwrite = true) }
         try {
             val meta = readResourceMeta(copy)
-                        additions += Added(parentDirectory, name, copy, meta != null, meta?.first ?: 0L, meta?.second ?: 0L)
+            additions += Added(parentDirectory, name, copy, meta != null, meta?.first ?: 0L, meta?.second ?: 0L)
         } catch (e: Exception) {
             copy.delete()
             throw e
