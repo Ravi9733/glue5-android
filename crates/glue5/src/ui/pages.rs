@@ -984,6 +984,15 @@ fn settings_items(
             );
             setting(
                 ui,
+                "Automatic FPS pacing (AI)",
+                Control::Toggle,
+                Some(
+                    "When enabled, applies only sustained AI FPS recommendations to live frame pacing. It never changes resolution, graphics quality or Bicubic.",
+                ),
+                |ui| toggle(ui, &mut settings.smart_auto_fps),
+            );
+            setting(
+                ui,
                 "Soft Blur graphics mod",
                 Control::Action,
                 Some("One optional, low-strength GTA timecycle blur effect"),
