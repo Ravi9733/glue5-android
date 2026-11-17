@@ -139,3 +139,11 @@ constraint, not a claim that the streaming hitch is fixed.
 - Added runtime unit tests that construct an in-memory GPU command ring and verify `Reader::peek` returns the pending upload command without advancing the published tail or incrementing the executed-command count.
 - Repeated peeks return the same pending command; `next` then consumes it exactly once and `release` publishes the new tail.
 - These tests have been committed but not run in this environment. The renderer still needs the actual preflight/backpressure integration before the blocking decode wait can be removed.
+
+## First live texture-upload backpressure integration
+
+- `Gpu::execute_until` now peeks the next ring command before consuming it. For BC texture uploads it estimates peak CPU working-set bytes (compressed input + BC intermediate + ETC2 output when applicable), reserves that amount, and enforces a 16-entry in-flight cap.
+- If the reservation cannot be admitted, the renderer polls completed decodes and leaves the upload command unconsumed in the ring. The source payload therefore remains protected by the ring's tail; the renderer no longer needs to copy a backlog into an unbounded deferred queue. Saturation polling sleeps for 1 ms rather than blocking on a decode receiver.
+- Reservations are attached to decode entries and released on successful upload, stale texture destruction, or worker disconnection. The previous `make_decode_room()` blocking `recv()` path and its upload helper have been removed.
+- The nominal working-set budget is 256 MiB. A single oversized job is allowed only when no other decode reservation is active, avoiding a permanent ring deadlock on a texture larger than the nominal cap while still preventing concurrent oversubscription.
+- This is the first runtime integration, not yet a verified performance fix. Code has not been compiled or tested here; validate Rust borrow/type correctness, ring behavior under saturation, per-texture region ordering, and Android memory/latency before treating it as ready. Add stress tests for reservation release and blocked-command replay next.
