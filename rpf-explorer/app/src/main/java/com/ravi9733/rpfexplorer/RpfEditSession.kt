@@ -35,6 +35,9 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         require(name.lowercase() !in siblings) { "A file or folder with this name already exists" }
         val copy = File(workDir, "add-${System.nanoTime()}").also { source.copyTo(it, overwrite = true) }
         val meta = readResourceMeta(copy)
+        require(meta == null || archive.encryptionLabel != "AES") {
+            "Adding RSC7 resources to AES-encrypted archives is not enabled yet."
+        }
         additions += Added(parentDirectory, name, copy, meta != null, meta?.first ?: 0L, meta?.second ?: 0L)
     }
 
@@ -45,6 +48,9 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         require(!entry.encrypted || archive.encryptionLabel == "AES") { "NG-encrypted files cannot be replaced without NG key support" }
         require(source.isFile) { "Selected source is not a file" }
         val meta = readResourceMeta(source)
+        require(!entry.isResource || archive.encryptionLabel != "AES") {
+            "Replacing RSC7 resources in AES-encrypted archives is not enabled yet."
+        }
         require(entry.isResource == (meta != null)) {
             if (entry.isResource) "Replace this RSC7 resource with another RSC7 file" else "A binary entry cannot be replaced by an RSC7 resource"
         }
