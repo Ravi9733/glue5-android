@@ -113,3 +113,10 @@ constraint, not a claim that the streaming hitch is fixed.
 - Added a multi-layer allocation test that invokes the real BC decoder for BC1, BC4, BC5, BC6H and BC7, then compares `Vec::len()` against `decoded_bytes`. This checks the helper against the decoder's actual allocation expression, not only a duplicated expected formula.
 - The ETC2 stacked-layer test and this BC test are committed, but neither has been run in CI or on-device yet.
 - Implementation gate before changing the streaming scheduler: deferred jobs must be bounded by both count and bytes; reservations must include compressed source plus worst-case decoded intermediate and final ETC2 output; per-texture FIFO must survive deferred admission; destroyed textures and disconnected workers must release all accounting. If the incoming upload cannot be admitted within the budget, backpressure must happen at a safe command-ring boundary rather than allocating an unbounded deferred list or dropping the upload.
+
+## Peak decode working-set reservation primitive
+
+- Added `decode_working_bytes`, a checked upper-bound estimate for one job's peak owned CPU bytes: copied compressed input + BC-decoded intermediate + ETC2 output (when ETC2 conversion is enabled). The intermediate and final ETC2 buffers coexist during encoding, so both are counted.
+- Added tests for ETC2 and non-ETC2 reservation arithmetic and overflow rejection.
+- This is the accounting primitive needed by the deferred scheduler; it is not yet wired into `Gpu` admission. The current `make_decode_room()` blocking receive and `urgent_bounded()` queue wait remain unchanged. No runtime performance improvement is claimed from this commit.
+- Next: locate and update every `Gpu` construction site, add a bounded deferred-job queue with explicit byte reservations, then pump it nonblocking from flush completion. The integration must preserve FIFO ordering per texture and account for cancellation/disconnection.
