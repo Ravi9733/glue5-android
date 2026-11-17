@@ -98,11 +98,7 @@ impl Controller {
 }
 
 fn normalize_cap(cap: u32) -> u32 {
-    match cap {
-        0..=30 => 30,
-        31..=45 => 45,
-        _ => 60,
-    }
+    cap.clamp(30, 60)
 }
 
 #[cfg(test)]
@@ -153,7 +149,7 @@ mod tests {
     #[test]
     fn cap_is_bounded_to_supported_steps() {
         assert_eq!(Controller::new(0).fps_cap(), 30);
-        assert_eq!(Controller::new(44).fps_cap(), 45);
+        assert_eq!(Controller::new(44).fps_cap(), 44);
         assert_eq!(Controller::new(120).fps_cap(), 60);
     }
 }
