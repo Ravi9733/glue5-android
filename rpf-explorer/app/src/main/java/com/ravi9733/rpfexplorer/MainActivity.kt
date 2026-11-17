@@ -101,13 +101,13 @@ private class SimpleWatcher(val changed: () -> Unit) : android.text.TextWatcher 
     override fun afterTextChanged(s: android.text.Editable?) {}
 }
 
-private data class RpfEntry(
+internal data class RpfEntry(
     val index: Int, val name: String, val parent: Int, val isDirectory: Boolean, val isResource: Boolean,
     val offset: Long = 0, val storedSize: Long = 0, val uncompressedSize: Long = 0,
     val encrypted: Boolean = false, val childrenStart: Int = 0, val childrenCount: Int = 0
 )
 
-private class RpfArchive private constructor(private val file: RandomAccessFile, val entries: List<RpfEntry>, val encryptionLabel: String) {
+internal class RpfArchive private constructor(private val file: RandomAccessFile, val entries: List<RpfEntry>, val encryptionLabel: String) {
     fun children(parent: Int) = entries.filter { it.parent == parent && it.index != parent }
     fun parentOf(index: Int) = entries.firstOrNull { it.index == index }?.parent ?: 0
 
