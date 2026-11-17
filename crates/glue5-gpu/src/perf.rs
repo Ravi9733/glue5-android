@@ -9,8 +9,7 @@
 //! (GPUs without timestamps leave it out).
 
 use std::collections::VecDeque;
-use std::sync::Mutex;\nuse std::sync::atomic::AtomicU32;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;\nuse std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::done::{Staging, StagingPool, Work};
@@ -121,7 +120,7 @@ impl Mark {
                 let budget_ms = 1000.0 / smart.target_fps as f32;
                 if let Some(controller) = smart.controller.as_mut() {
                     if let crate::adaptive::Decision::RecommendCap { fps_cap } =
-                        controller.observe(crate::adaptive::FrameMetrics { frame_ms: ms, render_ms: None, gpu_ms: None }, budget_ms)
+                        controller.observe(crate::adaptive::FrameMetrics { frame_ms: ms, render_ms: live.render_ms.back().copied(), gpu_ms: live.gpu_ms.back().copied() }, budget_ms)
                     {
                         smart.recommendation = Some(fps_cap);
                     }
