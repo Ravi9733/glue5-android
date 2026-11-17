@@ -157,7 +157,11 @@ impl PerfHud {
                 add(&format!(" · GPU {gpu:.1}"), TEXT);
             }
             if snapshot.smart_enabled {
-                let status = snapshot.smart_recommended_cap.map_or(" · AI: monitoring".to_owned(), |cap| format!(" · AI: try {cap} FPS"));
+                let diagnosis = snapshot.smart_bottleneck.unwrap_or("measuring");
+                let status = snapshot.smart_recommended_cap.map_or_else(
+                    || format!(" · AI: {diagnosis}"),
+                    |cap| format!(" · AI: {diagnosis}, try {cap} FPS"),
+                );
                 add(&status, snapshot.smart_recommended_cap.map_or(GOOD, |_| SLOW));
             }
             let galley = painter.layout_job(job);
@@ -218,7 +222,11 @@ impl PerfHud {
             y += ROW;
         }
         if snapshot.smart_enabled {
-            let value = snapshot.smart_recommended_cap.map_or("Monitoring".to_owned(), |cap| format!("Recommend {cap} FPS"));
+            let diagnosis = snapshot.smart_bottleneck.unwrap_or("measuring");
+            let value = snapshot.smart_recommended_cap.map_or_else(
+                || diagnosis.to_owned(),
+                |cap| format!("{diagnosis} · {cap} FPS"),
+            );
             row(y, "AI Assist", value, snapshot.smart_recommended_cap.map_or(GOOD, |_| SLOW));
             y += ROW;
         }
