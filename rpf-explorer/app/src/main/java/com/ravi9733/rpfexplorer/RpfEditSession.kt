@@ -42,7 +42,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         require(entryIndex in archive.entries.indices) { "Invalid entry" }
         val entry = archive.entries[entryIndex]
         require(!entry.isDirectory) { "Directories cannot be replaced" }
-        require(!entry.encrypted) { "Encrypted files cannot be replaced without the matching GTA V key" }
+        require(!entry.encrypted || archive.encryptionLabel == "AES") { "NG-encrypted files cannot be replaced without NG key support" }
         require(source.isFile) { "Selected source is not a file" }
         val meta = readResourceMeta(source)
         require(entry.isResource == (meta != null)) {
@@ -82,11 +82,14 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
     }
 
     fun saveAs(destination: File) {
-        require(archive.encryptionLabel == "OPEN" || archive.encryptionLabel == "NONE") {
-            "Only OPEN/NONE archives can be written"
+        require(archive.encryptionLabel == "OPEN" || archive.encryptionLabel == "NONE" || archive.encryptionLabel == "AES") {
+            "This archive encryption mode cannot be repacked"
         }
-        require(archive.entries.none { it.encrypted && it.index !in removals }) {
-            "Archive contains encrypted payloads. Matching GTA V keys are required before repacking."
+        require(archive.encryptionLabel != "AES" || archive.entries.none { it.isResource && it.index !in removals }) {
+            "AES-encrypted RSC7 resource repacking is not enabled; remove those resources or use an OPEN/NONE archive."
+        }
+        require(archive.encryptionLabel == "AES" || archive.entries.none { it.encrypted && it.index !in removals }) {
+            "Encrypted payloads need compatible keys before repacking."
         }
 
         data class Node(
