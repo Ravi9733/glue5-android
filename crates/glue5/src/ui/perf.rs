@@ -155,6 +155,10 @@ impl PerfHud {
             if let Some(gpu) = f.gpu {
                 add(&format!(" · GPU {gpu:.1}"), TEXT);
             }
+            if snapshot.smart_enabled {
+                let status = snapshot.smart_recommended_cap.map_or(" · AI: monitoring".to_owned(), |cap| format!(" · AI: try {cap} FPS"));
+                add(&status, snapshot.smart_recommended_cap.map_or(GOOD, |_| SLOW));
+            }
             let galley = painter.layout_job(job);
             let rect = place(safe, settings.overlay_corner, galley.size() + vec2(PAD * 2.0, PAD * 1.4));
             painter.rect_filled(rect, 5.0, BACKGROUND);
@@ -171,7 +175,7 @@ impl PerfHud {
         let costs: Vec<_> = costs.into_iter().filter_map(|(l, ms, c)| ms.map(|ms| (l, ms, c))).collect();
         let bound = costs.iter().map(|c| c.1).fold(0.0, f32::max);
         let threads = if full { self.threads.busiest.len() } else { 0 };
-        let mut height = PAD * 2.0 + 18.0 + GRAPH + 6.0 + ROW * (1 + costs.len()) as f32;
+        let mut height = PAD * 2.0 + 18.0 + GRAPH + 6.0 + ROW * (1 + costs.len() + snapshot.smart_enabled as usize) as f32;
         let (w, h) = status.window;
         let scaled = status.back_buffer.filter(|&b| b != (w, h));
         if full {
@@ -209,6 +213,11 @@ impl PerfHud {
             // The one a frame waits on, when it takes most of the frame.
             let limits = *ms == bound && f.frame.is_some_and(|frame| *ms >= frame * 0.8);
             row(y, label, format!("{ms:.1} ms"), if limits { SLOW } else { *color });
+            y += ROW;
+        }
+        if snapshot.smart_enabled {
+            let value = snapshot.smart_recommended_cap.map_or("Monitoring".to_owned(), |cap| format!("Recommend {cap} FPS"));
+            row(y, "AI Assist", value, snapshot.smart_recommended_cap.map_or(GOOD, |_| SLOW));
             y += ROW;
         }
         if !full {
