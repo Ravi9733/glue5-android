@@ -19,6 +19,9 @@ import java.util.ArrayDeque
  */
 internal class RpfEditSession(private val archive: RpfArchive, private val workDir: File) {
     private val replacements = linkedMapOf<Int, File>()
+    // Capture resource page flags from the exact replacement selected by the user.
+    // Do not infer them later from an intermediate writer payload.
+    private val replacementResourceMeta = linkedMapOf<Int, Pair<Long, Long>>()
     private val removals = linkedSetOf<Int>()
     private val additions = mutableListOf<Added>()
 
@@ -62,8 +65,21 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         val staged = File(workDir, "replace-$entryIndex-${System.nanoTime()}").also {
             source.copyTo(it, overwrite = true)
         }
-        replacements.put(entryIndex, staged)?.delete()
-        removals.remove(entryIndex)
+        try {
+            // Re-read the staged copy so the TOC metadata and payload are guaranteed
+            // to describe the same bytes that will be written into the new archive.
+            val stagedMeta = readResourceMeta(staged)
+            require(entry.isResource == (stagedMeta != null)) {
+                "Staged replacement changed type while being copied; choose the file again."
+            }
+            replacements.put(entryIndex, staged)?.delete()
+            if (stagedMeta != null) replacementResourceMeta[entryIndex] = stagedMeta
+            else replacementResourceMeta.remove(entryIndex)
+            removals.remove(entryIndex)
+        } catch (e: Exception) {
+            staged.delete()
+            throw e
+        }
     }
 
     private fun hasRemovedAncestor(index: Int): Boolean {
@@ -89,7 +105,10 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
             }
         }
         removals.addAll(removeSet)
-        removeSet.forEach { replacements.remove(it) }
+        removeSet.forEach {
+            replacements.remove(it)
+            replacementResourceMeta.remove(it)
+        }
         additions.filter { it.parent in removeSet }.toList().forEach {
             it.file.delete()
             additions.remove(it)
@@ -141,7 +160,10 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
             val start = nodes.size
             childrenByOld[oldParent].orEmpty().forEach { e ->
                 val f = if (e.isDirectory) null else replacements[e.index]
-                val newResourceMeta = if (e.isResource && f != null) readResourceMeta(f) else null
+                val newResourceMeta = if (e.isResource && f != null) {
+                    replacementResourceMeta[e.index]
+                        ?: error("Missing validated RSC7 page flags for replacement: ${e.name}")
+                } else null
                 nodes += Node(e, e.name, oldParent, f, e.isDirectory, e.isResource,
                     newResourceMeta?.first ?: e.systemFlags, newResourceMeta?.second ?: e.graphicsFlags)
             }
@@ -266,6 +288,11 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
                         val expectedCount = directoryRanges[node.old?.index ?: -1]?.second ?: 0
                         require(actual.childrenCount == expectedCount) { "Saved RPF directory range validation failed at entry $i" }
                     } else {
+                        if (node.resource) {
+                            require(actual.systemFlags == node.systemFlags && actual.graphicsFlags == node.graphicsFlags) {
+                                "Saved RPF resource page-flag validation failed at entry $i: expected system=0x${node.systemFlags.toString(16)}, graphics=0x${node.graphicsFlags.toString(16)}; got system=0x${actual.systemFlags.toString(16)}, graphics=0x${actual.graphicsFlags.toString(16)}"
+                            }
+                        }
                         val expectedFile = payloadFiles[i] ?: error("Missing writer validation payload")
                         val actualFile = File(workDir, "verify-$i-${System.nanoTime()}")
                         FileOutputStream(actualFile).use { output ->
