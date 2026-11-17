@@ -221,7 +221,7 @@ class RpfEditSessionTest {
         val dir = createTempDir(prefix = "rpf-nested-dir-test-")
         try {
             val f = File(dir, "nested-dir.rpf")
-            val names = "root\\u0000sub\\u0000top.txt\\u0000inside.txt\\u0000".toByteArray(Charsets.UTF_8)
+            val names = "root\u0000sub\u0000top.txt\u0000inside.txt\u0000".toByteArray(Charsets.UTF_8)
             RandomAccessFile(f, "rw").use { r ->
                 r.setLength(0)
                 u32(r, 0x52504637L); u32(r, 4); u32(r, names.size.toLong()); u32(r, 0)
