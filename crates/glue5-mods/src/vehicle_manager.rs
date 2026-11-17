@@ -96,7 +96,13 @@ fn hash_file(path: &Path) -> Result<String, String> {
         if count == 0 { break; }
         hash.update(&buffer[..count]);
     }
-    Ok(format!("{:x}", hash.finalize()))
+    let digest = hash.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        write!(&mut hex, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    Ok(hex)
 }
 
 fn valid_id(id: &str) -> bool {
@@ -108,6 +114,14 @@ fn valid_id(id: &str) -> bool {
 mod tests {
     use super::*;
     use crate::vehicle_hub::VehiclePackage;
+
+    #[test]
+    fn hashes_file_as_lowercase_sha256_hex() {
+        let path = std::env::temp_dir().join(format!("glue5-hash-test-{}", std::process::id()));
+        std::fs::write(&path, b"abc").unwrap();
+        assert_eq!(hash_file(&path).unwrap(), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        std::fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn rejects_catalog_that_claims_native_spawn_support() {
