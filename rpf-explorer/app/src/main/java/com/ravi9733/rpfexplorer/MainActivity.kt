@@ -188,15 +188,26 @@ class MainActivity : Activity() {
     }
 
     private fun saveEditedArchive() {
+        val count = editor?.stagedCount() ?: 0
         if (nestedStack.isNotEmpty()) {
-            applyNestedToParent()
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Apply nested archive")
+                .setMessage("$count staged changes will be packed into the parent RPF. The original archive file will remain unchanged.")
+                .setPositiveButton("Apply to parent") { _, _ -> applyNestedToParent() }
+                .setNegativeButton("Cancel", null).show()
             return
         }
-        val i = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"
-            putExtra(Intent.EXTRA_TITLE, "edited-gta-v.rpf")
-        }
-        startActivityForResult(i, SAVE_RPF)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Save as a new RPF")
+            .setMessage("$count staged changes will be written to a separate output file. The selected source archive will not be modified.")
+            .setPositiveButton("Choose output") { _, _ ->
+                val i = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"
+                    putExtra(Intent.EXTRA_TITLE, "edited-gta-v.rpf")
+                }
+                startActivityForResult(i, SAVE_RPF)
+            }
+            .setNegativeButton("Cancel", null).show()
     }
 
     private fun render() {
