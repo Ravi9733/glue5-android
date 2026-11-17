@@ -972,14 +972,14 @@ fn settings_items(
             // the player's FPS target while drawing the settings page.
             settings.upscaler = Upscaling::Bicubic;
             settings.frame_generation = false;
-            setting(ui, "VSync", Control::Toggle, None, |ui| {
-                toggle(ui, &mut settings.vsync)
-            });
+            setting(ui, "VSync", Control::Toggle, None, |ui| toggle(ui, &mut settings.vsync));
             setting(
                 ui,
                 "Smart Performance (AI Assist)",
                 Control::Toggle,
-                Some("Analyses live frame pacing and recommends an FPS target. It does not lower graphics quality or change Bicubic."),
+                Some(
+                    "Analyses live frame pacing and recommends an FPS target. It does not lower graphics quality or change Bicubic.",
+                ),
                 |ui| toggle(ui, &mut settings.smart_performance),
             );
             setting(
