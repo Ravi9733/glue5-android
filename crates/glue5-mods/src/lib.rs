@@ -11,6 +11,7 @@ pub mod pc_runtime;
 pub mod vehicle_hub;
 pub mod vehicle_ai;
 pub mod vehicle_download;
+pub mod vehicle_extract;
 mod checker;
 mod bundled_trainer;
 mod engine;
