@@ -666,9 +666,9 @@ impl Ui {
     ) -> Vec<Action> {
         let mut actions = Vec::new();
         let gear = gear.filter(|_| self.page.is_none());
-        let hud = status.started.is_some() && self.page.is_none() && (settings.overlay == PerfOverlay::Glue5 || settings.smart_performance);
-        let smart_active = status.started.is_some() && settings.smart_performance;
-        glue5_gpu::perf::set_smart_performance(smart_active, settings.max_fps);
+        let hud = status.started.is_some() && self.page.is_none() && (settings.overlay == PerfOverlay::Glue5 || settings.smart_performance || settings.smart_auto_fps);
+        let smart_active = status.started.is_some() && (settings.smart_performance || settings.smart_auto_fps);
+        glue5_gpu::perf::set_smart_performance(smart_active, settings.max_fps, settings.smart_auto_fps);
         glue5_gpu::perf::set_on(hud || smart_active);
         if !hud {
             self.perf.hide();
