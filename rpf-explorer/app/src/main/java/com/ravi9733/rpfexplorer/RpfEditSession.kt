@@ -112,19 +112,16 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
 
         // Breadth-first order ensures every directory's direct children occupy a
         // contiguous range, as required by the RPF directory entry.
-        val oldToNew = mutableMapOf(0 to 0)
         val queue = ArrayDeque<Int>()
         queue.add(0)
         while (queue.isNotEmpty()) {
             val oldParent = queue.removeFirst()
-            val parentNew = oldToNew.getValue(oldParent)
             val start = nodes.size
             childrenByOld[oldParent].orEmpty().forEach { e ->
                 val f = if (e.isDirectory) null else replacements[e.index]
                 val newResourceMeta = if (e.isResource && f != null) readResourceMeta(f) else null
                 nodes += Node(e, e.name, oldParent, f, e.isDirectory, e.isResource,
                     newResourceMeta?.first ?: e.systemFlags, newResourceMeta?.second ?: e.graphicsFlags)
-                oldToNew[e.index] = nodes.lastIndex
             }
             additions.filter { it.parent == oldParent }.forEach { a ->
                 nodes += Node(null, a.name, oldParent, a.file, false, a.resource, a.systemFlags, a.graphicsFlags)
