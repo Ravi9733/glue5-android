@@ -309,6 +309,21 @@ impl Device {
         }))
         .context("creating the GPU device")?;
         log::info!("gpu: {} ({:?}, {}), features {:?}", info.name, info.backend, info.driver_info, features);
+        let bc_native = features.contains(wgpu::Features::TEXTURE_COMPRESSION_BC);
+        let etc2 = features.contains(wgpu::Features::TEXTURE_COMPRESSION_ETC2);
+        let timestamps = features.contains(wgpu::Features::TIMESTAMP_QUERY);
+        log::info!(
+            "gpu capabilities: BC compression {}, ETC2 compression {}, GPU timestamps {}; texture upload path {}",
+            if bc_native { "native" } else { "CPU decode fallback" },
+            if etc2 { "available" } else { "unavailable" },
+            if timestamps { "available" } else { "unavailable" },
+            if bc_native { "direct compressed upload" } else if etc2 { "CPU BC decode + ETC2 re-encode" } else { "CPU BC decode + RGBA upload" },
+        );
+        if !bc_native {
+            log::warn!(
+                "gpu: native BC compression is unavailable; world texture streaming uses CPU decoding, which can increase CPU load and texture pop-in"
+            );
+        }
         device.on_uncaptured_error(error_handler(None));
         device.set_device_lost_callback(|reason, message| log::error!("gpu: device lost ({reason:?}): {message}"));
         Ok(Device { adapter, device, queue, features, profile })
