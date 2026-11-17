@@ -333,16 +333,17 @@ mod reader_tests {
         mem.set_u32(RING_DATA as u64 + 12, 0x5678);
 
         let mut reader = ring.reader();
-        let peeked = reader.peek(reader.head()).expect("command should be visible");
+        let head = reader.head();
+        let peeked = reader.peek(head).expect("command should be visible");
         assert_eq!(peeked.op, op::UPLOAD_TEXTURE);
         assert_eq!(peeked.w(0), 0x1234);
         assert_eq!(mem.u32(4), RING_DATA);
         assert_eq!(mem.u32(12), 0);
 
-        let consumed = reader.next(reader.head()).expect("same command should remain");
+        let consumed = reader.next(head).expect("same command should remain");
         assert_eq!(consumed.op, op::UPLOAD_TEXTURE);
         assert_eq!(consumed.w(1), 0x5678);
-        assert!(reader.next(reader.head()).is_none());
+        assert!(reader.next(head).is_none());
         reader.release();
         assert_eq!(mem.u32(4), RING_DATA + 16);
         assert_eq!(mem.u32(12), 1);
@@ -360,12 +361,14 @@ mod reader_tests {
 
         let mut reader = ring.reader();
         for _ in 0..3 {
-            let command = reader.peek(reader.head()).expect("command remains pending");
+            let head = reader.head();
+            let command = reader.peek(head).expect("command remains pending");
             assert_eq!(command.op, op::NOP);
             assert_eq!(command.w(0), 99);
             assert_eq!(mem.u32(4), RING_DATA);
             assert_eq!(mem.u32(12), 0);
         }
-        assert!(reader.next(reader.head()).is_some());
+        let head = reader.head();
+        assert!(reader.next(head).is_some());
     }
 }
