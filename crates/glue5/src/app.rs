@@ -105,7 +105,16 @@ pub fn run() -> Result<()> {
     presentation.set_metal_hud(settings.overlay == PerfOverlay::MetalHud);
     let overlay = glue5_gpu::Overlay::default();
     #[cfg(target_os = "android")]
-    let (instance, mut driver_note) = drivers::instance(&user_dir, &mut settings.gpu_driver);
+    let (instance, mut driver_note) = drivers::instance(
+        &user_dir,
+        &mut settings.gpu_driver,
+        settings.vulkan_driver,
+    );
+    #[cfg(target_os = "android")]
+    if settings.vulkan_driver == settings::VulkanDriver::Turnip && driver_note.is_some() {
+        // Do not repeatedly retry a driver that failed before renderer startup.
+        settings.vulkan_driver = settings::VulkanDriver::System;
+    }
     #[cfg(not(target_os = "android"))]
     let (instance, driver_note) = (glue5_gpu::instance(), None::<String>);
     #[cfg(target_os = "android")]
@@ -133,8 +142,13 @@ pub fn run() -> Result<()> {
     });
     #[cfg(target_os = "android")]
     let screen = match screen {
-        Err(e) if settings.gpu_driver.is_some() => {
-            driver_note = Some(drivers::device_failed(&user_dir, &mut settings.gpu_driver, &e));
+        Err(e) if settings.vulkan_driver == settings::VulkanDriver::Turnip || settings.gpu_driver.is_some() => {
+            if settings.vulkan_driver == settings::VulkanDriver::Turnip {
+                driver_note = Some(drivers::turnip_device_failed(&user_dir, &e));
+                settings.vulkan_driver = settings::VulkanDriver::System;
+            } else {
+                driver_note = Some(drivers::device_failed(&user_dir, &mut settings.gpu_driver, &e));
+            }
             let instance = glue5_gpu::instance();
             surfaces = instance.clone();
             let surface = unsafe {

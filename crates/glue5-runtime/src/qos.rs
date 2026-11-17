@@ -27,11 +27,25 @@ pub fn set(qos: Qos) {
         libc::pthread_set_qos_class_self_np(class, 0);
     }
     #[cfg(target_os = "android")]
-    if let Qos::Interactive = qos {
-        hint::join();
+    match qos {
+        Qos::Interactive => hint::join(),
+        Qos::Initiated => set_android_thread_priority(0),
+        Qos::Utility => set_android_thread_priority(5),
     }
     #[cfg(not(any(target_vendor = "apple", target_os = "android")))]
     let _ = qos;
+}
+
+/// Lower-priority Android workers must not compete with the game, renderer or audio callback.
+#[cfg(target_os = "android")]
+fn set_android_thread_priority(nice: i32) {
+    // Linux/Android applies PRIO_PROCESS to the calling thread when id is its TID.
+    unsafe {
+        let tid = libc::gettid() as u32;
+        if libc::setpriority(libc::PRIO_PROCESS, tid, nice) != 0 {
+            log::debug!("thread priority: could not set nice={nice}: {}", std::io::Error::last_os_error());
+        }
+    }
 }
 
 /// A frame was shown `took` after the one before, for `target`.
