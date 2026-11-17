@@ -175,7 +175,7 @@ class RpfEditSessionTest {
             val compressedOut = ByteArrayOutputStream()
             DeflaterOutputStream(compressedOut, Deflater(Deflater.DEFAULT_COMPRESSION, true)).use { it.write(plain) }
             val compressed = compressedOut.toByteArray()
-            val names = "root\\u0000stream.dat\\u0000".toByteArray(Charsets.UTF_8)
+            val names = "root\u0000stream.dat\u0000".toByteArray(Charsets.UTF_8)
             val source = File(dir, "compressed.rpf")
             RandomAccessFile(source, "rw").use { r ->
                 r.setLength(0)
