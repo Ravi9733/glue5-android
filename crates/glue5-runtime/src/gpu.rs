@@ -312,3 +312,57 @@ fn run_null(ring: GpuRing) {
         reader.release();
     }
 }
+
+#[cfg(test)]
+mod reader_tests {
+    use super::{GpuRing, RING_DATA, op};
+    use crate::memory::Mem;
+
+    #[test]
+    fn peek_does_not_consume_or_count_command() {
+        let mut bytes = [0u8; 128];
+        let mem = Mem::over(&mut bytes);
+        let ring = GpuRing::new(mem, 0, 128);
+        mem.set_u32(0, RING_DATA + 16);
+        mem.set_u32(RING_DATA as u64, op::UPLOAD_TEXTURE);
+        mem.set_u32(RING_DATA as u64 + 4, 2);
+        mem.set_u32(RING_DATA as u64 + 8, 0x1234);
+        mem.set_u32(RING_DATA as u64 + 12, 0x5678);
+
+        let mut reader = ring.reader();
+        let peeked = reader.peek(reader.head()).expect("command should be visible");
+        assert_eq!(peeked.op, op::UPLOAD_TEXTURE);
+        assert_eq!(peeked.w(0), 0x1234);
+        assert_eq!(mem.u32(4), RING_DATA);
+        assert_eq!(mem.u32(12), 0);
+
+        let consumed = reader.next(reader.head()).expect("same command should remain");
+        assert_eq!(consumed.op, op::UPLOAD_TEXTURE);
+        assert_eq!(consumed.w(1), 0x5678);
+        assert!(reader.next(reader.head()).is_none());
+        reader.release();
+        assert_eq!(mem.u32(4), RING_DATA + 16);
+        assert_eq!(mem.u32(12), 1);
+    }
+
+    #[test]
+    fn repeated_peek_returns_same_command() {
+        let mut bytes = [0u8; 128];
+        let mem = Mem::over(&mut bytes);
+        let ring = GpuRing::new(mem, 0, 128);
+        mem.set_u32(0, RING_DATA + 12);
+        mem.set_u32(RING_DATA as u64, op::NOP);
+        mem.set_u32(RING_DATA as u64 + 4, 1);
+        mem.set_u32(RING_DATA as u64 + 8, 99);
+
+        let mut reader = ring.reader();
+        for _ in 0..3 {
+            let command = reader.peek(reader.head()).expect("command remains pending");
+            assert_eq!(command.op, op::NOP);
+            assert_eq!(command.w(0), 99);
+            assert_eq!(mem.u32(4), RING_DATA);
+            assert_eq!(mem.u32(12), 0);
+        }
+        assert!(reader.next(reader.head()).is_some());
+    }
+}
