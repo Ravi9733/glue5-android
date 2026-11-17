@@ -27,6 +27,8 @@ pub struct VehiclePackage {
     pub sha256: String,
     pub size_bytes: u64,
     pub format: PackageFormat,
+    /// Curated catalog tags such as supercar, drift, offroad, or electric.
+    pub tags: Vec<String>,
     /// False until the native asset loader can mount this package format.
     pub spawn_supported: bool,
 }
@@ -88,10 +90,27 @@ impl Catalog {
                 "rpf_dlc" => PackageFormat::RpfDlc,
                 other => return Err(format!("vehicle {index}: unsupported package format {other:?}")),
             };
+            let tags = match entry.get("tags") {
+                None => Vec::new(),
+                Some(value) => {
+                    let values = value.as_array().ok_or_else(|| format!("vehicle {index}: tags must be an array"))?;
+                    if values.len() > 16 { return Err(format!("vehicle {index}: too many tags")); }
+                    let mut parsed = Vec::with_capacity(values.len());
+                    for tag in values {
+                        let tag = tag.as_str().ok_or_else(|| format!("vehicle {index}: tag must be a string"))?;
+                        let tag = tag.to_ascii_lowercase();
+                        if tag.is_empty() || tag.len() > 24 || !tag.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-') {
+                            return Err(format!("vehicle {index}: invalid tag"));
+                        }
+                        if !parsed.contains(&tag) { parsed.push(tag); }
+                    }
+                    parsed
+                }
+            };
             // Current Glue 5 does not yet mount third-party vehicle assets.
             let spawn_supported = false;
             vehicles.push(VehiclePackage {
-                id, name, version, author, download_url, sha256, size_bytes, format, spawn_supported,
+                id, name, version, author, download_url, sha256, size_bytes, format, tags, spawn_supported,
             });
         }
         Ok(Self { version: version as u32, vehicles })
