@@ -230,6 +230,8 @@ pub struct Gpu {
     /// the first one comes): copied in at a flush once decoded.
     pub decoder: Option<Pool>,
     pub decodes: Vec<Decode>,
+    /// Jobs deferred when the worker queue is full; retried during completion polling.
+    pub deferred_decode_jobs: std::collections::VecDeque<Box<dyn FnOnce() + Send>>,
     /// Peak CPU memory reserved by queued, running, and completed decodes.
     pub(crate) decode_budget: crate::decode_budget::DecodeBudget,
     /// Reservation made while preflighting the next ring command.
@@ -971,8 +973,7 @@ impl Gpu {
             // game and renderer threads on Android.
             // The command-ring preflight bounds queued, running, and completed
             // work by both count and peak CPU working-set bytes.
-            self.decoder.get_or_insert_with(|| Pool::new("gpu decode", 2))
-                .urgent_bounded(move || {
+            let job: Box<dyn FnOnce() + Send> = Box::new(move || {
                     let started = Instant::now();
                     let texels =
                         crate::bc::decode(bc, &src, bpr, src_rows, cols as usize, block_rows as usize, d as usize);
@@ -1000,7 +1001,12 @@ impl Gpu {
                         );
                     }
                     let _ = tx.send(output);
-                }, 16);
+                });
+            let pool = self.decoder.get_or_insert_with(|| Pool::new("gpu decode", 2));
+            match pool.try_urgent_bounded(job, 16) {
+                Ok(()) => {}
+                Err(job) => self.deferred_decode_jobs.push_back(job),
+            }
             self.decodes.push(Decode {
                 data: rx,
                 queued_at: Instant::now(),
@@ -1055,6 +1061,17 @@ impl Gpu {
         );
     }
 
+    /// Admit deferred jobs without waiting for worker queue capacity.
+    fn queue_deferred_decodes(&mut self) {
+        let Some(pool) = self.decoder.as_ref() else { return; };
+        while let Some(job) = self.deferred_decode_jobs.pop_front() {
+            match pool.try_urgent_bounded(job, 16) {
+                Ok(()) => {}
+                Err(job) => { self.deferred_decode_jobs.push_front(job); break; }
+            }
+        }
+    }
+
     /// Copies in the textures decoded so far. One still decoding waits for
     /// a later flush, unless the commands being handed over use its texture:
     /// the frame waits only for the textures it draws (streaming brings
@@ -1104,6 +1121,7 @@ impl Gpu {
         }
         let pending = later.len();
         self.decodes = later;
+        self.queue_deferred_decodes();
         // A growing decode backlog can cause texture pop-in even when it no
         // longer blocks frame submission. Keep a diagnostic for sustained load.
         if pending >= 12
