@@ -13,9 +13,11 @@ const CHUNK: u64 = 4 << 20;
 /// Staging memory retained for reuse, at most. A count-only limit is unsafe:
 /// a few unusually large texture uploads can otherwise pin hundreds of MiB.
 const KEEP_BYTES: u64 = 32 << 20;
+const PRESSURE_KEEP_BYTES: u64 = 8 << 20;
 
 fn can_keep(free_bytes: u64, chunk_bytes: u64) -> bool {
-    free_bytes.saturating_add(chunk_bytes) <= KEEP_BYTES
+    let limit = if crate::perf::memory_pressure() { PRESSURE_KEEP_BYTES } else { KEEP_BYTES };
+    free_bytes.saturating_add(chunk_bytes) <= limit
 }
 
 /// Mapped chunks, ready to be written.
