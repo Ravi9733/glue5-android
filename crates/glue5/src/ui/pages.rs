@@ -977,6 +977,13 @@ fn settings_items(
             });
             setting(
                 ui,
+                "Smart Performance (AI Assist)",
+                Control::Toggle,
+                Some("Analyses live frame pacing and recommends an FPS target. It does not lower graphics quality or change Bicubic."),
+                |ui| toggle(ui, &mut settings.smart_performance),
+            );
+            setting(
+                ui,
                 "Soft Blur graphics mod",
                 Control::Action,
                 Some("One optional, low-strength GTA timecycle blur effect"),
