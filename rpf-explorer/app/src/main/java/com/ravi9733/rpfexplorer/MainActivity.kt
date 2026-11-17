@@ -228,6 +228,20 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancel", null).show()
     }
 
+    private fun rscPageBytes(flags: Long): Long {
+        val count =
+            (((flags ushr 27) and 1L) shl 0) +
+            (((flags ushr 26) and 1L) shl 1) +
+            (((flags ushr 25) and 1L) shl 2) +
+            (((flags ushr 24) and 1L) shl 3) +
+            (((flags ushr 17) and 0x7FL) shl 4) +
+            (((flags ushr 11) and 0x3FL) shl 5) +
+            (((flags ushr 7) and 0xFL) shl 6) +
+            (((flags ushr 5) and 0x3L) shl 7) +
+            (((flags ushr 4) and 1L) shl 8)
+        return (0x200L shl (flags and 0xFL).toInt()) * count
+    }
+
     private fun showResourceInspector(entry: RpfEntry) {
         try {
             val stagedResource = editor?.replacementFile(entry.index)
@@ -238,9 +252,16 @@ class MainActivity : Activity() {
             } else archive!!.readRawPrefix(entry, 32)
             val hex = bytes.joinToString(" ") { "%02X".format(it) }
             val magic = if (bytes.size >= 4) String(bytes.copyOfRange(0, 4), Charsets.US_ASCII) else "Unknown"
+            val version = if (bytes.size >= 8) {
+                (bytes[4].toLong() and 255L) or ((bytes[5].toLong() and 255L) shl 8) or
+                    ((bytes[6].toLong() and 255L) shl 16) or ((bytes[7].toLong() and 255L) shl 24)
+            } else 0L
             val info = buildString {
                 appendLine("Name: ${entry.name}")
                 appendLine("RSC7 header: ${if (magic == "RSC7") "valid magic" else "unrecognized ($magic)"}")
+                appendLine("RSC7 version: 0x${version.toString(16).uppercase()}")
+                appendLine("System pages: ${rscPageBytes(entry.systemFlags)} bytes")
+                appendLine("Graphics pages: ${rscPageBytes(entry.graphicsFlags)} bytes")
                 appendLine("Payload: ${stagedResource?.length() ?: entry.storedSize} bytes${if (stagedResource != null) " (staged replacement)" else ""}")
                 appendLine("System page flags: 0x${entry.systemFlags.toString(16).uppercase()}")
                 appendLine("Graphics page flags: 0x${entry.graphicsFlags.toString(16).uppercase()}")
