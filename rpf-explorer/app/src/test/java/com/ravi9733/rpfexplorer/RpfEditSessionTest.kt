@@ -5,6 +5,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.security.MessageDigest
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -83,6 +85,65 @@ class RpfEditSessionTest {
             r.write(byteArrayOf(0x52,0x53,0x43,0x37, 1,0,0,0, 0x78,0x56,0x34,0x12, 0x89.toByte(),0x67,0x45,0x23))
         }
         return f
+    }
+
+    private fun encryptAes(bytes: ByteArray, key: ByteArray): ByteArray {
+        val full = bytes.size - bytes.size % 16
+        val result = bytes.clone()
+        if (full > 0) {
+            val cipher = Cipher.getInstance("AES/ECB/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"))
+            val encrypted = cipher.doFinal(bytes, 0, full)
+            System.arraycopy(encrypted, 0, result, 0, full)
+        }
+        return result
+    }
+
+    private fun aesFixture(dir: File, key: ByteArray): Pair<File, ByteArray> {
+        val f = File(dir, "aes-fixture.rpf")
+        val names = "root\\u0000hello.txt\\u0000\\u0000".toByteArray(Charsets.UTF_8)
+        val payload = "0123456789ABCDEF".toByteArray(Charsets.UTF_8)
+        val toc = ByteArrayOutputStream()
+        val tocFile = File(dir, "toc-plain.bin")
+        RandomAccessFile(tocFile, "rw").use { r ->
+            r.setLength(0)
+            u32(r, 0); u32(r, 0x7FFFFF00L); u32(r, 1); u32(r, 1)
+            r.write(5); r.write(0); r.write(0); r.write(0); r.write(0)
+            r.write(1); r.write(0); r.write(0)
+            u32(r, payload.size.toLong()); u32(r, 1)
+        }
+        val encryptedToc = encryptAes(tocFile.readBytes(), key)
+        val encryptedNames = encryptAes(names, key)
+        val encryptedPayload = encryptAes(payload, key)
+        RandomAccessFile(f, "rw").use { r ->
+            r.setLength(0)
+            u32(r, 0x52504637L); u32(r, 2); u32(r, names.size.toLong()); u32(r, 0x0FFFFFF9L)
+            r.write(encryptedToc); r.write(encryptedNames)
+            r.seek(512); r.write(encryptedPayload)
+        }
+        return f to payload
+    }
+
+    @Test fun aesTocAndBinaryPayloadDecryptThenRepackAsOpen() {
+        val dir = createTempDir(prefix = "rpf-aes-test-")
+        try {
+            val key = ByteArray(32) { (it * 7 + 3).toByte() }
+            val (source, expected) = aesFixture(dir, key)
+            val archive = RpfArchive.open(source, key)
+            assertEquals("AES", archive.encryptionLabel)
+            val entry = archive.entries.single { it.name == "hello.txt" }
+            val extracted = ByteArrayOutputStream().also { archive.extract(entry, it) }.toByteArray()
+            assertTrue(expected.contentEquals(extracted))
+            val output = File(dir, "decrypted-open.rpf")
+            RpfEditSession(archive, File(dir, "work").apply { mkdirs() }).saveAs(output)
+            val reopened = RpfArchive.open(output)
+            assertEquals("NONE", reopened.encryptionLabel)
+            val outputEntry = reopened.entries.single { it.name == "hello.txt" }
+            val outputBytes = ByteArrayOutputStream().also { reopened.extract(outputEntry, it) }.toByteArray()
+            assertTrue(expected.contentEquals(outputBytes))
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     @Test fun resourcePayloadAndPageFlagsSurviveRepack() {
