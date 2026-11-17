@@ -52,3 +52,38 @@ change image quality until the renderer has repeatable frame-time measurements.
 - Compare repeatable 10-minute runs in the same game area, reporting average
   frame time, 1% low, decode wait time, audio symptoms, temperature and memory.
 - Build and run Android Vulkan tests before calling any change complete.
+
+
+## Queue/backpressure design notes (follow-up audit)
+
+The GPU command ring is consumed by a dedicated thread in `Gpu::run`; BCn
+uploads are scheduled from `exec_texture_upload` and completed at flushes.
+The current pool has two decode workers and a queue-capacity wait in
+`Pool::urgent_bounded`. The decoder closures own both compressed input and
+the decoded output until it is sent through the channel. A correct non-blocking
+change therefore cannot simply replace `recv` with `try_recv` and keep
+submitting jobs: that would move the unbounded backlog into `Gpu::decodes`.
+
+A safe follow-up needs one admission-control owner for the complete lifecycle:
+
+- Account compressed input bytes before accepting a decode job.
+- Reserve a conservative decoded-output byte estimate before scheduling it
+  (BC formats expand to uncompressed texels; ETC2 conversion has a separate
+  output size).
+- Keep deferred jobs in a bounded byte-budgeted queue, not in an unbounded
+  vector of closures or receivers.
+- Let the GPU thread poll completed jobs and schedule deferred work without
+  waiting on a worker condition variable or channel receive.
+- Preserve FIFO ordering for regions of the same texture while allowing
+  independent textures to upload as soon as ready.
+- Release reservations on success, cancellation, stale texture destruction,
+  and worker disconnect; add unit tests for every release path.
+
+The current `Decode` struct does not retain an explicit output-byte estimate,
+and `Pool` exposes no non-blocking admission API or queue accounting. The
+next implementation should introduce these together rather than make an
+isolated change that trades a visible hitch for unbounded memory growth or
+lost texture regions.
+
+No renderer behavior was changed in this audit. This is an implementation
+constraint, not a claim that the streaming hitch is fixed.
