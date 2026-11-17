@@ -80,6 +80,8 @@ pub struct Settings {
     pub frame_generation: bool,
     /// Opt-in measurement-driven Smart Performance recommendations (no automatic quality reduction).
     pub smart_performance: bool,
+    /// Apply sustained Smart Performance FPS recommendations to the live presentation limiter.
+    pub smart_auto_fps: bool,
     /// The performance overlay over the game, and how the application's own shows.
     pub overlay: PerfOverlay,
     pub overlay_detail: OverlayDetail,
@@ -289,6 +291,7 @@ impl Default for Settings {
             sharpness: 0.5,
             frame_generation: false,
             smart_performance: false,
+            smart_auto_fps: false,
             overlay: PerfOverlay::Off,
             overlay_detail: OverlayDetail::Standard,
             overlay_corner: Corner::TopLeft,
