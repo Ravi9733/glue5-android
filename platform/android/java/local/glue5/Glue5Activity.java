@@ -10,6 +10,7 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.provider.OpenableColumns;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.widget.Toast;
@@ -45,6 +46,39 @@ public class Glue5Activity extends SDLActivity {
     private boolean reshadePickerOpen = false;
     private boolean stuntMapsPickerOpen = false;
     private File stuntMapsTarget = null;
+    private PowerManager thermalPowerManager;
+    private PowerManager.OnThermalStatusChangedListener thermalStatusListener;
+
+    /** Publish Android's thermal severity for the native adaptive frame pacer. */
+    private void publishThermalStatus(int status) {
+        try (FileOutputStream out = new FileOutputStream(new File(getFilesDir(), "thermal-status"), false)) {
+            out.write(Integer.toString(status).getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        } catch (Exception ignored) {
+            // Missing telemetry must never affect game startup or rendering.
+        }
+    }
+
+    private void startThermalMonitoring() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return;
+        try {
+            thermalPowerManager = (PowerManager) getSystemService(POWER_SERVICE);
+            if (thermalPowerManager == null) return;
+            publishThermalStatus(thermalPowerManager.getCurrentThermalStatus());
+            thermalStatusListener = status -> publishThermalStatus(status);
+            thermalPowerManager.addThermalStatusListener(getMainExecutor(), thermalStatusListener);
+        } catch (Exception ignored) {
+            thermalStatusListener = null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (thermalPowerManager != null && thermalStatusListener != null) {
+            try { thermalPowerManager.removeThermalStatusListener(thermalStatusListener); }
+            catch (Exception ignored) {}
+        }
+        super.onDestroy();
+    }
     private final Runnable turnipImportWatcher = new Runnable() {
         @Override public void run() { checkTurnipImportRequest(); }
     };
@@ -96,6 +130,7 @@ public class Glue5Activity extends SDLActivity {
             }
         }
         super.onCreate(savedInstanceState);
+        startThermalMonitoring();
         requestPublicStorageAccess();
         // The native Settings page requests the document picker through a
         // marker in this private files directory. No broad storage permission
