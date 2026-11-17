@@ -470,13 +470,21 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                     }
                 }
                 val parents=IntArray(count){0}
+                val assigned=BooleanArray(count)
+                assigned[0] = true
                 fun assign(dir:Int, depth:Int) {
                     require(depth<256) { "Directory nesting is invalid" }
-                    val t=temps[dir]; val from=t.start.coerceAtLeast(0); val to=(from+t.cnt).coerceAtMost(count)
-                    for (child in from until to) { if(child==dir) continue; parents[child]=dir; if(temps[child].dir) assign(child,depth+1) }
+                    val t=temps[dir]; val from=t.start; val to=from+t.cnt
+                    for (child in from until to) {
+                        require(child != dir && !assigned[child]) { "RPF directory ranges overlap or contain a cycle" }
+                        assigned[child] = true
+                        parents[child] = dir
+                        if (temps[child].dir) assign(child, depth + 1)
+                    }
                 }
                 require(temps[0].dir) { "RPF root entry must be a directory" }
-                if(temps[0].dir) assign(0,0)
+                assign(0,0)
+                require(assigned.all { it }) { "RPF archive contains entries not referenced by the directory tree" }
                 val result=temps.map { t ->
                     val rawEntry = raw[t.idx]
                     val sys = if (t.res) u32(rawEntry, 8) else 0L
