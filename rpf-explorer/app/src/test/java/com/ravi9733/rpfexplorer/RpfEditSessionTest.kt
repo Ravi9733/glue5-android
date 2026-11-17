@@ -73,9 +73,9 @@ class RpfEditSessionTest {
         }
     }
  
-    private fun resourceFixture(dir: File): File {
+    private fun resourceFixture(dir: File, resourceName: String = "sample.ytd"): File {
         val f = File(dir, "resource.rpf")
-        val names = "root\u0000sample.ytd\u0000".toByteArray(Charsets.UTF_8)
+        val names = "root\u0000${resourceName}\u0000".toByteArray(Charsets.UTF_8)
         RandomAccessFile(f, "rw").use { r ->
             r.setLength(0)
             u32(r, 0x52504637L); u32(r, 2); u32(r, names.size.toLong()); u32(r, 0x4E45504FL)
@@ -217,6 +217,26 @@ class RpfEditSessionTest {
             assertEquals(0x44444444L, added.graphicsFlags)
             val after = ByteArrayOutputStream().also { reopened.copyRaw(copied, it) }.toByteArray()
             assertTrue(replacementBytes.contentEquals(after))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+
+    @Test fun encryptedYscResourceIsDetectedAndBlocksUnsafeRepack() {
+        val dir = createTempDir(prefix = "rpf-ysc-test-")
+        try {
+            val source = resourceFixture(dir, "script.ysc")
+            val archive = RpfArchive.open(source)
+            val script = archive.entries.single { it.isResource }
+            assertTrue(script.encrypted)
+            val editor = RpfEditSession(archive, File(dir, "work").apply { mkdirs() })
+            val output = File(dir, "unsafe.rpf")
+            assertTrue(runCatching { editor.saveAs(output) }.isFailure)
+            editor.remove(script.index)
+            editor.saveAs(output)
+            val reopened = RpfArchive.open(output)
+            assertTrue(reopened.entries.none { it.name.endsWith(".ysc", true) })
         } finally {
             dir.deleteRecursively()
         }
