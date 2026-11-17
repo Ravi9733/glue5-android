@@ -75,6 +75,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         }
     }
 
+    fun dispose() { workDir.deleteRecursively() }
     fun stagedCount(): Int = additions.size + replacements.size + removals.size
     fun isRemoved(entryIndex: Int): Boolean = entryIndex in removals
     fun isReplaced(entryIndex: Int): Boolean = entryIndex in replacements
