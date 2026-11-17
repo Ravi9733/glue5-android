@@ -91,6 +91,24 @@ pub fn etc2_bytes(cols: usize, rows: usize, layers: usize) -> Option<usize> {
     cols.checked_mul(rows)?.checked_mul(layers)?.checked_mul(ETC2_RGBA_BLOCK_BYTES as usize)
 }
 
+/// Conservative peak CPU bytes owned by one decode job.
+///
+/// Includes the copied compressed source, the BC-decoded intermediate, and
+/// (when requested) the ETC2 output allocated before the intermediate is
+/// dropped. This is the reservation unit for the Android streaming budget.
+pub fn decode_working_bytes(
+    bc: Bc,
+    cols: usize,
+    rows: usize,
+    layers: usize,
+    compressed_bytes: usize,
+    etc2: bool,
+) -> Option<usize> {
+    let decoded = decoded_bytes(bc, cols, rows, layers)?;
+    let output = if etc2 { etc2_bytes(cols, rows, layers)? } else { 0 };
+    compressed_bytes.checked_add(decoded)?.checked_add(output)
+}
+
 /// Bytes per ETC2 RGBA block (4x4 texels).
 pub const ETC2_RGBA_BLOCK_BYTES: u32 = 16;
 
