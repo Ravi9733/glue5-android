@@ -88,7 +88,8 @@ class MainActivity : Activity() {
                     val parsed = RpfArchive.open(temp, if (keyFile.exists()) keyFile.readBytes() else null)
                     runOnUiThread {
                         archive?.close()
-                        nestedStack.forEach { it.archive.close() }
+                        editor?.dispose()
+                        nestedStack.forEach { it.archive.close(); it.editor.dispose() }
                         nestedStack.clear()
                         archive = parsed; currentDir = 0
                         editor = RpfEditSession(parsed, File(cacheDir, "rpf-edit-${System.currentTimeMillis()}").apply { mkdirs() })
@@ -131,6 +132,7 @@ class MainActivity : Activity() {
                         try {
                             if (action == "add") editor!!.add(currentDir, target)
                             else editor!!.replace(pendingEditEntry!!.index, target)
+                            target.delete()
                             status.text = "Edits staged: ${editor!!.stagedCount()} • Original archive unchanged"
                             render()
                         } catch (e: Exception) { Toast.makeText(this, e.message ?: "Edit failed", Toast.LENGTH_LONG).show() }
@@ -143,6 +145,7 @@ class MainActivity : Activity() {
                 try {
                     editor!!.saveAs(destination)
                     contentResolver.openOutputStream(uri)?.use { output -> destination.inputStream().use { it.copyTo(output, 1024 * 1024) } } ?: error("Cannot create output document")
+                    destination.delete()
                     runOnUiThread { status.text = "Saved new RPF • source archive untouched"; Toast.makeText(this, "New RPF saved successfully", Toast.LENGTH_LONG).show() }
                 } catch (e: Exception) { runOnUiThread { status.text = "Save blocked: ${e.message}"; Toast.makeText(this, e.message ?: "Save failed", Toast.LENGTH_LONG).show() } }
             }
@@ -284,8 +287,10 @@ class MainActivity : Activity() {
             try {
                 editor!!.saveAs(nestedOutput)
                 frame.editor.replace(frame.parentEntryIndex, nestedOutput)
+                nestedOutput.delete()
                 runOnUiThread {
                     archive?.close()
+                    editor?.dispose()
                     nestedStack.removeAt(nestedStack.lastIndex)
                     archive = frame.archive; editor = frame.editor; currentDir = frame.directory
                     status.text = "Nested archive changes staged in parent • original files untouched"
@@ -299,7 +304,11 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         try { archive?.close() } catch (_: Exception) {}
-        nestedStack.forEach { try { it.archive.close() } catch (_: Exception) {} }
+        try { editor?.dispose() } catch (_: Exception) {}
+        nestedStack.forEach {
+            try { it.archive.close() } catch (_: Exception) {}
+            try { it.editor.dispose() } catch (_: Exception) {}
+        }
         super.onDestroy()
     }
 
@@ -309,6 +318,7 @@ class MainActivity : Activity() {
             .setMessage("Discard staged changes in this nested archive and return to the parent?")
             .setPositiveButton("Discard") { _, _ ->
                 archive?.close()
+                editor?.dispose()
                 val frame = nestedStack.removeAt(nestedStack.lastIndex)
                 archive = frame.archive; editor = frame.editor; currentDir = frame.directory
                 status.text = "Returned to parent archive • nested edits discarded"
