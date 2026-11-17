@@ -78,10 +78,9 @@ pub struct Settings {
     /// macOS and iOS 26): twice the frames shown, half a frame more of
     /// latency.
     pub frame_generation: bool,
-    /// The performance overlay over the game, and how the application's
-    /// own shows.
     /// Opt-in measurement-driven Smart Performance recommendations (no automatic quality reduction).
     pub smart_performance: bool,
+    /// The performance overlay over the game, and how the application's own shows.
     pub overlay: PerfOverlay,
     pub overlay_detail: OverlayDetail,
     pub overlay_corner: Corner,
