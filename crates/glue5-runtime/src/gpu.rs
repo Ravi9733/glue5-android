@@ -350,8 +350,8 @@ mod reader_tests {
 
     #[test]
     fn repeated_peek_returns_same_command() {
-        let mut bytes = [0u8; 128];
-        let mem = Mem::over(&mut bytes);
+        let mut bytes = Aligned([0u8; 128]);
+        let mem = Mem::over(&mut bytes.0);
         let ring = GpuRing::new(mem, 0, 128);
         mem.set_u32(0, RING_DATA + 12);
         mem.set_u32(RING_DATA as u64, op::NOP);
