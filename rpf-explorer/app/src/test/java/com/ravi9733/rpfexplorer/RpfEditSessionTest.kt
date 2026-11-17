@@ -217,6 +217,38 @@ class RpfEditSessionTest {
         }
     }
 
+    @Test fun nestedDirectoryRangesRemainValidAfterBreadthFirstRebuild() {
+        val dir = createTempDir(prefix = "rpf-nested-dir-test-")
+        try {
+            val f = File(dir, "nested-dir.rpf")
+            val names = "root\\u0000sub\\u0000top.txt\\u0000inside.txt\\u0000".toByteArray(Charsets.UTF_8)
+            RandomAccessFile(f, "rw").use { r ->
+                r.setLength(0)
+                u32(r, 0x52504637L); u32(r, 4); u32(r, names.size.toLong()); u32(r, 0)
+                u32(r, 0); u32(r, 0x7FFFFF00L); u32(r, 1); u32(r, 2)
+                u32(r, 5); u32(r, 0x7FFFFF00L); u32(r, 3); u32(r, 1)
+                r.write(9); r.write(0); r.write(0); r.write(0); r.write(0)
+                r.write(1); r.write(0); r.write(0); u32(r, 3); u32(r, 0)
+                r.write(17); r.write(0); r.write(0); r.write(0); r.write(0)
+                r.write(2); r.write(0); r.write(0); u32(r, 5); u32(r, 0)
+                r.write(names)
+                r.seek(512); r.write("top".toByteArray())
+                r.seek(1024); r.write("inner".toByteArray())
+            }
+            val archive = RpfArchive.open(f)
+            val output = File(dir, "nested-rebuilt.rpf")
+            RpfEditSession(archive, File(dir, "work").apply { mkdirs() }).saveAs(output)
+            val reopened = RpfArchive.open(output)
+            val rootChildren = reopened.children(0).map { it.name }.toSet()
+            assertTrue(rootChildren.contains("sub"))
+            assertTrue(rootChildren.contains("top.txt"))
+            val sub = reopened.entries.single { it.name == "sub" }
+            assertEquals(listOf("inside.txt"), reopened.children(sub.index).map { it.name })
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
     @Test fun removeEntryIsReflectedInSavedArchive() {
         val dir = createTempDir(prefix = "rpf-remove-test-")
         try {
