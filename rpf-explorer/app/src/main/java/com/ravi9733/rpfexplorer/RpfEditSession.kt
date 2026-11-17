@@ -75,6 +75,11 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
     fun isRemoved(entryIndex: Int): Boolean = entryIndex in removals
     fun isReplaced(entryIndex: Int): Boolean = entryIndex in replacements
     fun addedNames(parentDirectory: Int): List<String> = additions.filter { it.parent == parentDirectory }.map { it.name }
+    fun removeAdded(parentDirectory: Int, name: String) {
+        val item = additions.firstOrNull { it.parent == parentDirectory && it.name == name } ?: return
+        item.file.delete()
+        additions.remove(item)
+    }
 
     fun saveAs(destination: File) {
         require(archive.encryptionLabel == "OPEN" || archive.encryptionLabel == "NONE") {
