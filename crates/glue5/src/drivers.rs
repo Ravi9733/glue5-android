@@ -140,7 +140,18 @@ fn id(name: &str) -> String {
 /// setting goes back to the phone's driver, with a word for the user, when
 /// it is gone, does not open or kept the last launch from showing a frame.
 #[cfg(target_os = "android")]
-pub fn instance(user_dir: &Path, chosen: &mut Option<String>) -> (wgpu::Instance, Option<String>) {
+pub fn instance(
+    user_dir: &Path,
+    chosen: &mut Option<String>,
+    vulkan_driver: VulkanDriver,
+) -> (wgpu::Instance, Option<String>) {
+    // The Android ZIP importer installs the selected Turnip ICD in
+    // getFilesDir()/turnip and records its library in driver_name. Use that
+    // exact directory: it is deliberately separate from the legacy
+    // user_dir/drivers/<id> package manager below.
+    if vulkan_driver == VulkanDriver::Turnip {
+        return turnip_instance();
+    }
     let Some(id) = chosen.clone() else { return (glue5_gpu::instance(), None) };
     let mark = dir(user_dir).join(TRYING);
     let package = list(user_dir).into_iter().find(|p| p.id == id);
@@ -167,6 +178,86 @@ pub fn instance(user_dir: &Path, chosen: &mut Option<String>) -> (wgpu::Instance
     (glue5_gpu::instance(), why)
 }
 
+
+/// The imported Android Turnip package, installed by Glue5Activity.
+#[cfg(target_os = "android")]
+fn turnip_instance() -> (wgpu::Instance, Option<String>) {
+    let Some(app_files) = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from) else {
+        let why = "Android app-private storage path is unavailable; using the system Vulkan driver.".to_owned();
+        log::warn!("gpu: {why}");
+        return (glue5_gpu::instance(), Some(why));
+    };
+    let dir = app_files.join("turnip");
+    let status = app_files.join("turnip-status.txt");
+    let mark = dir.join(TRYING);
+    let report = |message: &str| {
+        let _ = std::fs::write(&status, message);
+    };
+    let library = match std::fs::read_to_string(dir.join("driver_name")) {
+        Ok(name) => name.trim().to_owned(),
+        Err(e) => {
+            let why = format!("Turnip is selected but no imported driver_name is available ({e}); using system Vulkan.");
+            report(&why);
+            log::warn!("gpu: {why}");
+            return (glue5_gpu::instance(), Some(why));
+        }
+    };
+    if library.is_empty() || Path::new(&library).file_name().and_then(|n| n.to_str()) != Some(library.as_str())
+        || !library.ends_with(".so") || !dir.join(&library).is_file()
+    {
+        let why = format!("Turnip package is incomplete: invalid or missing driver library '{library}'; using system Vulkan.");
+        report(&why);
+        log::warn!("gpu: {why}");
+        return (glue5_gpu::instance(), Some(why));
+    }
+    if mark.exists() {
+        let why = "Turnip did not reach its first presented frame on the previous launch; using system Vulkan for recovery.".to_owned();
+        let _ = std::fs::remove_file(&mark);
+        report(&why);
+        log::warn!("gpu: {why}");
+        return (glue5_gpu::instance(), Some(why));
+    }
+    if let Err(e) = std::fs::write(&mark, b"turnip") {
+        let why = format!("Cannot create Turnip crash-recovery marker ({e}); using system Vulkan.");
+        report(&why);
+        log::warn!("gpu: {why}");
+        return (glue5_gpu::instance(), Some(why));
+    }
+    match glue5_gpu::instance_with_driver(&dir, &library) {
+        Ok(instance) => {
+            let message = format!("Turnip Vulkan driver loaded: {library}. Waiting for the first presented frame.");
+            report(&message);
+            log::info!("gpu: {message}");
+            (instance, None)
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&mark);
+            let why = format!("Turnip failed to load ({e:#}); using system Vulkan.");
+            report(&why);
+            log::warn!("gpu: {why}");
+            (glue5_gpu::instance(), Some(why))
+        }
+    }
+}
+
+/// The imported Turnip driver opened, but wgpu could not create its surface/device.
+#[cfg(target_os = "android")]
+pub fn turnip_device_failed(user_dir: &Path, e: &anyhow::Error) -> String {
+    let app_files = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from);
+    if let Some(dir) = app_files {
+        let turnip = dir.join("turnip");
+        let _ = std::fs::remove_file(turnip.join(TRYING));
+        let why = format!("Turnip loaded but could not open the GPU/surface ({e:#}); using system Vulkan.");
+        let _ = std::fs::write(dir.join("turnip-status.txt"), &why);
+        log::warn!("gpu: {why}");
+        return why;
+    }
+    let why = format!("Turnip could not open the GPU/surface ({e:#}); using system Vulkan.");
+    log::warn!("gpu: {why}");
+    let _ = user_dir;
+    why
+}
+
 /// The driver `chosen` names opened, but not its GPU (`e`): the setting goes
 /// back to the phone's driver, for this launch too; the word for the user.
 #[cfg(target_os = "android")]
@@ -182,6 +273,18 @@ pub fn device_failed(user_dir: &Path, chosen: &mut Option<String>, e: &anyhow::E
 /// A frame was shown: the driver in use got the app going.
 pub fn shown(user_dir: &Path) {
     let _ = std::fs::remove_file(dir(user_dir).join(TRYING));
+    #[cfg(target_os = "android")]
+    if let Some(app_files) = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from) {
+        let mark = app_files.join("turnip").join(TRYING);
+        if mark.exists() {
+            let _ = std::fs::remove_file(&mark);
+            let _ = std::fs::write(
+                app_files.join("turnip-status.txt"),
+                "Turnip active: first frame successfully presented.",
+            );
+            log::info!("gpu: Turnip reached its first presented frame");
+        }
+    }
 }
 
 #[cfg(test)]
