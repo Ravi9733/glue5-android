@@ -39,3 +39,26 @@ jobs:
         run: cargo test -p glue5-runtime
       - name: Test GPU decode budget and streaming
         run: cargo test -p glue5-gpu
+
+  android-adreno-compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;29.0.14206865'
+      - uses: Swatinem/rust-cache@v2
+      - name: Configure Android NDK compiler
+        shell: bash
+        run: |
+          NDK="$ANDROID_SDK_ROOT/ndk/29.0.14206865"
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android35-clang" >> "$GITHUB_ENV"
+          echo "CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android35-clang" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar" >> "$GITHUB_ENV"
+      - name: Type-check GPU renderer for Android Adreno
+        run: cargo check -p glue5-gpu --target aarch64-linux-android
