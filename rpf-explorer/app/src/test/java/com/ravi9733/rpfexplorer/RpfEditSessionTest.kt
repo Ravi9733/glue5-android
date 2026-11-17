@@ -171,6 +171,8 @@ class RpfEditSessionTest {
         val material = GtaNgMaterial(keys, tables, lut)
         val encrypted = ByteArray(40_019) { (it * 29 + 7).toByte() }
         val expected = material.decrypt(encrypted, "update.rpf", 123_456L)
+        val expectedHash = MessageDigest.getInstance("SHA-256").digest(expected).joinToString("") { "%02x".format(it) }
+        assertEquals("50a455e2735986c62e90eacbf88638435b10f7048817f7c63c1d5f18c5a8b761", expectedHash)
         val streamed = ByteArrayOutputStream()
         material.decrypt(ByteArrayInputStream(encrypted), encrypted.size.toLong(), streamed, "update.rpf", 123_456L)
         assertTrue(expected.contentEquals(streamed.toByteArray()))
