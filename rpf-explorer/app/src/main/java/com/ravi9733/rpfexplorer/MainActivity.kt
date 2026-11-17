@@ -193,7 +193,7 @@ class MainActivity : Activity() {
         val query = search.text.toString().trim().lowercase()
         a.children(currentDir).filter { editor?.isRemoved(it.index) != true }.filter { query.isEmpty() || it.name.lowercase().contains(query) }.forEach { entry ->
             val row = TextView(this).apply {
-                text = (if (entry.isDirectory) "📁  " else if (entry.isResource) "◈  " else "📄  ") + entry.name + (if (!entry.isDirectory) "   (${entry.uncompressedSize} B)" else "") + (if (editor?.isReplaced(entry.index) == true) "  • REPLACED" else "")
+                text = (if (entry.isDirectory) "📁  " else if (entry.isResource) "◈  " else "📄  ") + entry.name + (if (!entry.isDirectory) "   (${if (entry.isResource) entry.storedSize else entry.uncompressedSize} B)" else "") + (if (editor?.isReplaced(entry.index) == true) "  • REPLACED" else "")
                 textSize = 15f; setTextColor(0xFFE5EAF1.toInt()); setPadding(12,16,8,16)
                 setBackgroundColor(0xFF1A2029.toInt())
                 setOnClickListener {
