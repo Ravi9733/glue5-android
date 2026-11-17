@@ -41,7 +41,20 @@ class MainActivity : Activity() {
         status = TextView(this).apply { text = "Open a GTA V PC .rpf archive"; textSize = 13f; setTextColor(0xFFB8C3D1.toInt()); setPadding(0,0,0,12) }
         openButton = Button(this).apply { text = "OPEN RPF FILE"; setOnClickListener { openArchive() } }
         addButton = Button(this).apply { text = "ADD FILE TO THIS FOLDER"; isEnabled = false; setOnClickListener { chooseEditSource("add", null) } }
-        keyButton = Button(this).apply { text = if (File(filesDir, "gtav-aes-key.bin").exists()) "GTA V AES KEY READY" else "IMPORT GTA5.EXE (AES KEY)"; setOnClickListener { importGtaExecutable() } }
+        keyButton = Button(this).apply {
+            text = if (File(filesDir, "gtav-aes-key.bin").exists()) "GTA V AES KEY READY" else "IMPORT GTA5.EXE (AES KEY)"
+            setOnClickListener { importGtaExecutable() }
+            setOnLongClickListener {
+                android.app.AlertDialog.Builder(this@MainActivity)
+                    .setMessage("Delete the locally stored GTA V AES key from this app?")
+                    .setPositiveButton("Delete key") { _, _ ->
+                        File(filesDir, "gtav-aes-key.bin").delete()
+                        text = "IMPORT GTA5.EXE (AES KEY)"
+                        Toast.makeText(this@MainActivity, "Local AES key deleted", Toast.LENGTH_SHORT).show()
+                    }.setNegativeButton("Cancel", null).show()
+                true
+            }
+        }
         saveButton = Button(this).apply { text = "SAVE AS NEW RPF"; isEnabled = false; setOnClickListener { saveEditedArchive() } }
         search = EditText(this).apply { hint = "Search current folder"; setSingleLine(true); setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFF8B96A5.toInt()); visibility = android.view.View.GONE }
         backButton = Button(this).apply { text = "↑  PARENT FOLDER"; setOnClickListener {
