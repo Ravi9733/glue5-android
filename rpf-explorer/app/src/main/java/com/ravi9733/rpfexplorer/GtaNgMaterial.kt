@@ -106,17 +106,18 @@ internal class GtaNgMaterial internal constructor(
         return result
     }
 
+    private val roundBMap = arrayOf(
+        intArrayOf(0, 7, 10, 13), intArrayOf(1, 4, 11, 14),
+        intArrayOf(2, 5, 8, 15), intArrayOf(3, 6, 9, 12)
+    )
+
     private fun roundB(data: ByteArray, words: IntArray, round: Int): ByteArray {
         val keyOffset = round * 4
         val result = ByteArray(16)
-        val map = arrayOf(
-            intArrayOf(0, 7, 10, 13), intArrayOf(1, 4, 11, 14),
-            intArrayOf(2, 5, 8, 15), intArrayOf(3, 6, 9, 12)
-        )
         for (group in 0..3) {
             var value = words[keyOffset + group]
             for (j in 0..3) {
-                val index = map[group][j]
+                val index = roundBMap[group][j]
                 value = value xor tables[round][index][data[index].toInt() and 255]
             }
             putLe32(result, group * 4, value)
