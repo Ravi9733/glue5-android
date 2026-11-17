@@ -19,7 +19,10 @@ use wgpu::{BufferUsages, Extent3d, TextureDimension, TextureFormat, TextureUsage
 use crate::submit::Grave;
 
 /// Kept at most, in bytes.
-const MAX_BYTES: u64 = 32 << 20;
+// Android world streaming repeatedly destroys and recreates same-sized
+// GPU resources. Keep a modestly larger reuse pool to avoid driver allocation
+// spikes, while bounding the additional resident GPU memory to 64 MiB.
+const MAX_BYTES: u64 = if cfg!(target_os = "android") { 64 << 20 } else { 32 << 20 };
 /// Kept at most for this many batches (a few seconds).
 const MAX_AGE: u64 = 1000;
 

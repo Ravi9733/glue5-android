@@ -288,10 +288,32 @@ impl Gpu {
         if self.decodes.len() < MAX_PENDING_DECODES {
             return;
         }
+        // Prefer a completed decode from another texture over blocking on
+        // the oldest job. Preserve per-texture region order: a later region
+        // must not be uploaded before an earlier region of the same texture.
+        let count = self.decodes.len();
+        for i in 0..count {
+            if self.decodes[..i].iter().any(|older| older.texture == self.decodes[i].texture) {
+                continue;
+            }
+            let d = self.decodes.remove(i);
+            match d.data.try_recv() {
+                Ok(texels) => {
+                    self.upload_decoded(d, &texels);
+                    return;
+                }
+                Err(TryRecvError::Empty) => self.decodes.insert(i, d),
+                Err(TryRecvError::Disconnected) => return,
+            }
+        }
+
+        // No independent decode is ready. Wait for the oldest region so the
+        // command ring remains bounded without dropping texture data.
         let d = self.decodes.remove(0);
         if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
             return;
         }
+        let queued_age = d.queued_at.elapsed();
         let waiting = Instant::now();
         let Ok(texels) = d.data.recv() else {
             return;
@@ -299,9 +321,19 @@ impl Gpu {
         let waited = waiting.elapsed();
         if waited >= Duration::from_millis(8) {
             log::warn!(
-                "texture streaming: decode backlog reached its limit; waited {:.1} ms for oldest upload",
+                "texture streaming: decode backlog reached its limit; texture {} waited {:.1} ms (queued {:.1} ms) for oldest upload",
+                d.id,
                 waited.as_secs_f64() * 1000.0,
+                queued_age.as_secs_f64() * 1000.0,
             );
+        }
+        self.upload_decoded(d, &texels);
+    }
+
+    /// Uploads a completed BC decode if its texture still exists.
+    fn upload_decoded(&mut self, d: Decode, texels: &[u8]) {
+        if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
+            return;
         }
         let target = wgpu::TexelCopyTextureInfo {
             texture: &d.texture,
@@ -309,7 +341,7 @@ impl Gpu {
             origin: d.origin,
             aspect: wgpu::TextureAspect::All,
         };
-        self.uploads.texture(target, &texels, d.bpr, d.src_rows, d.rows, d.extent, d.row_bytes);
+        self.uploads.texture(target, texels, d.bpr, d.src_rows, d.rows, d.extent, d.row_bytes);
         if let Some(t) = self.objs.tex(d.id) {
             t.uploaded.set(self.epoch);
         }
@@ -956,13 +988,33 @@ impl Gpu {
             self.make_decode_room();
             self.decoder.get_or_insert_with(|| Pool::new("gpu decode", 2))
                 .urgent_bounded(move || {
+                    let started = Instant::now();
                     let texels =
                         crate::bc::decode(bc, &src, bpr, src_rows, cols as usize, block_rows as usize, d as usize);
-                    let _ = tx.send(if etc2 {
+                    let output = if etc2 {
                         crate::bc::etc2_rgba(texels, cols * 4, block_rows * 4 * d)
                     } else {
                         texels
-                    });
+                    };
+                    let elapsed = started.elapsed();
+                    // A decode/re-encode longer than one 60 Hz frame can
+                    // contribute directly to visible texture pop-in.
+                    // Keep this diagnostic quiet for normal-sized uploads.
+                    if elapsed >= Duration::from_millis(17) {
+                        log::warn!(
+                            "texture streaming: BC decode/upload preparation took {:.1} ms (texture {}, {:?}, {}x{}x{}, ETC2 {}, input {} KiB, output {} KiB)",
+                            elapsed.as_secs_f64() * 1000.0,
+                            id,
+                            bc,
+                            cols * 4,
+                            block_rows * 4,
+                            d,
+                            etc2,
+                            src.len() / 1024,
+                            output.len() / 1024,
+                        );
+                    }
+                    let _ = tx.send(output);
                 }, 16);
             self.decodes.push(Decode {
                 data: rx,
@@ -1071,7 +1123,7 @@ impl Gpu {
         // on CPU BCn decode, or a large decode backlog, is a likely source of
         // visible texture pop-in and frame pacing spikes on mobile Vulkan.
         if waited >= Duration::from_millis(8)
-            || pending >= 64
+            || pending >= 12
             || oldest_pending >= Duration::from_millis(50)
             || oldest_ready >= Duration::from_millis(50)
         {

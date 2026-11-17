@@ -130,11 +130,12 @@ unsafe fn init_tls(env: *mut Env) -> Result<(), Trap> {
 /// `__pthread_create_js`: returns 0 or an errno.
 pub(crate) unsafe fn create(env: *mut Env, pthread: u64, start: u64, arg: u64) -> u32 {
     rt().threads.reap(env);
-    let name = engine_name(rt().memory.mem(), arg);
+    let name = engine_name(rt().memory.mem(), arg).unwrap_or_else(|| format!("pthread {pthread:#x}"));
+    let thread_name = name.clone();
     let spawned = thread::Builder::new()
-        .name(name.unwrap_or_else(|| format!("pthread {pthread:#x}")))
+        .name(name)
         .stack_size(PTHREAD_STACK)
-        .spawn(move || run_pthread(pthread, start, arg));
+        .spawn(move || run_pthread(pthread, start, arg, &thread_name));
     match spawned {
         Ok(_) => 0,
         Err(e) => {
@@ -162,11 +163,25 @@ fn engine_name(mem: crate::memory::Mem, arg: u64) -> Option<String> {
     (name.len() >= 3 && name.len() < 48).then(|| String::from_utf8_lossy(&name).into_owned())
 }
 
-fn run_pthread(pthread: u64, start: u64, arg: u64) {
-    // Loading waits on the engine's workers and streaming threads: the render
-    // thread and the mixer above them (interactive) made a black screen after
-    // a cutscene take 6-10 s instead of 1-2 on an iPhone 13 Pro.
-    crate::qos::set(crate::qos::Qos::Initiated);
+/// Audio mixing is on the frame's critical path. Give named audio/mixer
+/// threads the same Android performance hint as the engine and GPU threads;
+/// keep general workers at the lower initiated priority to avoid oversubscribing
+/// the big cores during world streaming.
+fn is_audio_critical_thread(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    ["audio", "mixer", "sound"].iter().any(|part| name.contains(part))
+}
+
+fn run_pthread(pthread: u64, start: u64, arg: u64, thread_name: &str) {
+    // General engine workers stay below the frame-critical threads. The audio
+    // mixer must not be starved by world streaming or texture decode work.
+    let audio_critical = is_audio_critical_thread(thread_name);
+    crate::qos::set(if audio_critical {
+        log::info!("engine thread: {thread_name} joined interactive performance session");
+        crate::qos::Qos::Interactive
+    } else {
+        crate::qos::Qos::Initiated
+    });
     let env = new_env();
     let mem = rt().memory.mem();
     let result = (|| -> Result<(), Trap> {
