@@ -167,6 +167,13 @@ class MainActivity : Activity() {
             }
             val lp = LinearLayout.LayoutParams(-1,-2); lp.bottomMargin = 3; list.addView(row,lp)
         }
+        editor?.addedNames(currentDir)?.forEach { addedName ->
+            list.addView(TextView(this).apply {
+                text = "＋  $addedName  • NEW"
+                textSize = 15f; setTextColor(0xFF8FE3B0.toInt()); setPadding(12,16,8,16)
+                setBackgroundColor(0xFF1A2029.toInt())
+            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 3 })
+        }
         if (list.childCount == 0) list.addView(TextView(this).apply { text="No matching entries"; setTextColor(0xFFB8C3D1.toInt()); setPadding(12,24,12,24) })
     }
 }
