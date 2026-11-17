@@ -181,8 +181,11 @@ impl Reader {
         head == self.tail
     }
 
-    /// The next command before `head`, if any (wraps are followed).
-    pub fn next(&mut self, head: u32) -> Option<Command<'static>> {
+    /// Inspects the next command before `head` without consuming its payload.
+    /// Wrap markers are followed, but the command remains available to
+    /// `next`. This lets backends apply backpressure before taking ownership
+    /// of a large upload command.
+    pub fn peek(&mut self, head: u32) -> Option<Command<'static>> {
         loop {
             if self.tail == head {
                 return None;
@@ -194,10 +197,16 @@ impl Reader {
                 continue;
             }
             let payload = unsafe { std::slice::from_raw_parts(self.ring.mem.ptr(base + 8) as *const u32, n as usize) };
-            self.tail += n * 4 + 8;
-            self.executed += 1;
             return Some(Command { op, payload });
         }
+    }
+
+    /// Consumes the next command before `head`, if any (wraps are followed).
+    pub fn next(&mut self, head: u32) -> Option<Command<'static>> {
+        let command = self.peek(head)?;
+        self.tail += command.payload.len() as u32 * 4 + 8;
+        self.executed += 1;
+        Some(command)
     }
 
     /// Lets the engine reuse the space of the commands consumed so far. Data
