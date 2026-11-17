@@ -70,7 +70,7 @@ class RpfEditSessionTest {
  
     private fun resourceFixture(dir: File): File {
         val f = File(dir, "resource.rpf")
-        val names = "root\\u0000sample.ytd\\u0000".toByteArray(Charsets.UTF_8)
+        val names = "root\u0000sample.ytd\u0000".toByteArray(Charsets.UTF_8)
         RandomAccessFile(f, "rw").use { r ->
             r.setLength(0)
             u32(r, 0x52504637L); u32(r, 2); u32(r, names.size.toLong()); u32(r, 0x4E45504FL)
