@@ -107,3 +107,9 @@ constraint, not a claim that the streaming hitch is fixed.
 - Reconfirmed the remaining render-thread hitch: `make_decode_room()` still calls blocking `recv()` when all 16 decode slots are occupied. The later `finish_decodes()` path is nonblocking, but that does not remove this admission-time wait.
 - Next implementation must replace the blocking slot reclamation with deferred, byte-budgeted admission. It must retain compressed input ownership, preserve per-texture region order, and release reservations on every completion/drop path. Do not remove the cap or silently discard uploads.
 - Test status: the new regression test is committed but has not been executed; no Android APK or device validation has been performed.
+
+## Follow-up test coverage — BC allocation sizes
+
+- Added a multi-layer allocation test that invokes the real BC decoder for BC1, BC4, BC5, BC6H and BC7, then compares `Vec::len()` against `decoded_bytes`. This checks the helper against the decoder's actual allocation expression, not only a duplicated expected formula.
+- The ETC2 stacked-layer test and this BC test are committed, but neither has been run in CI or on-device yet.
+- Implementation gate before changing the streaming scheduler: deferred jobs must be bounded by both count and bytes; reservations must include compressed source plus worst-case decoded intermediate and final ETC2 output; per-texture FIFO must survive deferred admission; destroyed textures and disconnected workers must release all accounting. If the incoming upload cannot be admitted within the budget, backpressure must happen at a safe command-ring boundary rather than allocating an unbounded deferred list or dropping the upload.
