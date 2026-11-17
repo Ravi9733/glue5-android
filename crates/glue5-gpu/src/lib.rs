@@ -479,6 +479,8 @@ fn init(ring: GpuRing, settings: Settings, screen: Option<Screen>) -> Result<exe
         recycler,
         decoder: None,
         decodes: Vec::new(),
+        decode_budget: crate::decode_budget::DecodeBudget::new(256 * 1024 * 1024),
+        pending_decode_reservation: None,
         occlusion: Default::default(),
         counter_src: None,
         counter_slot: 0,
