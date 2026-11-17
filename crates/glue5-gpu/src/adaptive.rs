@@ -26,13 +26,14 @@ pub enum Decision {
 pub struct Controller {
     samples: VecDeque<FrameMetrics>,
     current_cap: u32,
+    preferred_cap: u32,
     overload_windows: u32,
     stable_windows: u32,
 }
 
 impl Controller {
     pub fn new(initial_cap: u32) -> Self {
-        Self { samples: VecDeque::with_capacity(60), current_cap: normalize_cap(initial_cap), overload_windows: 0, stable_windows: 0 }
+        Self { samples: VecDeque::with_capacity(60), current_cap: normalize_cap(initial_cap), preferred_cap: normalize_cap(initial_cap), overload_windows: 0, stable_windows: 0 }
     }
 
     pub fn fps_cap(&self) -> u32 { self.current_cap }
@@ -51,7 +52,7 @@ impl Controller {
                 || m.render_ms.is_some_and(|v| v.is_finite() && v > budget_ms * 0.90)
                 || m.gpu_ms.is_some_and(|v| v.is_finite() && v > budget_ms * 0.95)
         }).count();
-        if overloaded >= 45 {
+        self.samples.clear(); // Evaluate non-overlapping 60-frame windows.\n        if overloaded >= 45 {
             self.overload_windows = self.overload_windows.saturating_add(1);
             self.stable_windows = 0;
         } else if overloaded <= 6 {
