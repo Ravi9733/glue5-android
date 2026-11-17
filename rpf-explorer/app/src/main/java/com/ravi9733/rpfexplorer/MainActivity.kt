@@ -316,10 +316,11 @@ internal data class RpfEntry(
     val encrypted: Boolean = false, val childrenStart: Int = 0, val childrenCount: Int = 0, val systemFlags: Long = 0, val graphicsFlags: Long = 0
 )
 
-internal class RpfArchive private constructor(private val file: RandomAccessFile, val entries: List<RpfEntry>, val encryptionLabel: String) {
+internal class RpfArchive private constructor(private val file: RandomAccessFile, val entries: List<RpfEntry>, val encryptionLabel: String, private val aesKey: ByteArray?) {
     fun children(parent: Int) = entries.filter { it.parent == parent && it.index != parent }
     fun parentOf(index: Int) = entries.firstOrNull { it.index == index }?.parent ?: 0
     fun close() = file.close()
+    fun aesKeyCopy(): ByteArray? = aesKey?.clone()
 
     fun copyRaw(e: RpfEntry, output: OutputStream) {
         require(!e.isDirectory) { "Cannot copy a directory payload" }
@@ -339,24 +340,34 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
 
     fun extract(e: RpfEntry, output: OutputStream) {
         require(!e.isDirectory && !e.isResource) { "Resource extraction requires RSC7 decoding" }
-        require(!e.encrypted) { "Encrypted file needs GTA V keys" }
+        if (e.encrypted) require(encryptionLabel == "AES" && aesKey != null) { "Encrypted binary payload needs a compatible GTA V AES key" }
         val size = if (e.storedSize == 0L) e.uncompressedSize else e.storedSize
         require(size in 0..Int.MAX_VALUE.toLong()) { "Entry is too large for this extractor" }
         synchronized(file) {
             file.seek(e.offset)
-            val bytes = ByteArray(64 * 1024)
-            var remaining = size
-            if (e.storedSize == 0L || e.storedSize == e.uncompressedSize) {
-                while (remaining > 0) { val n = file.read(bytes,0,minOf(bytes.size.toLong(),remaining).toInt()); if(n<0) error("Unexpected end of archive"); output.write(bytes,0,n); remaining-=n }
+            if (e.storedSize == 0L && !e.encrypted) {
+                val bytes = ByteArray(64 * 1024)
+                var remaining = size
+                while (remaining > 0) {
+                    val n = file.read(bytes, 0, minOf(bytes.size.toLong(), remaining).toInt())
+                    if (n < 0) error("Unexpected end of archive")
+                    output.write(bytes, 0, n); remaining -= n
+                }
             } else {
-                val compressed = ByteArray(size.toInt()); file.readFully(compressed)
-                InflaterInputStream(ByteArrayInputStream(compressed), Inflater(true)).use { it.copyTo(output) }
+                val stored = ByteArray(size.toInt())
+                file.readFully(stored)
+                val decoded = if (e.encrypted) RpfCrypto.decryptAes(stored, aesKey!!) else stored
+                if (e.storedSize > 0L) {
+                    InflaterInputStream(ByteArrayInputStream(decoded), Inflater(true)).use { it.copyTo(output) }
+                } else {
+                    output.write(decoded)
+                }
             }
         }
     }
 
     companion object {
-        fun open(f: File): RpfArchive {
+        fun open(f: File, aesKey: ByteArray? = null): RpfArchive {
             val raf = RandomAccessFile(f,"r")
             try {
                 require(raf.length() >= 16) { "File is too small to be an RPF archive" }
@@ -370,10 +381,18 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                 val tocBytes = count.toLong()*16L
                 val namesStart = 16L+tocBytes
                 require(namesStart+namesLen <= raf.length()) { "Archive table is truncated" }
-                require(enc == 0L || enc == 0x4E45504FL) { "Encrypted RPF table (AES/NG) is not supported yet; only OPEN/NONE archives can be browsed" }
+                val isAes = enc == 0x0FFFFFF9L
+                require(enc == 0L || enc == 0x4E45504FL || isAes) { "NG-encrypted RPF tables are not supported yet" }
+                if (isAes) require(aesKey?.size == 32) { "AES-encrypted RPF detected. Import a compatible GTA5.exe first to extract its AES key." }
                 val names = ByteArray(namesLen); raf.seek(namesStart); raf.readFully(names)
+                if (isAes) {
+                    val decodedNames = RpfCrypto.decryptAes(names, aesKey!!)
+                    System.arraycopy(decodedNames, 0, names, 0, names.size)
+                }
+                val toc = ByteArray(tocBytes.toInt()); raf.seek(16L); raf.readFully(toc)
+                val decodedToc = if (isAes) RpfCrypto.decryptAes(toc, aesKey!!) else toc
                 val raw = ArrayList<ByteArray>(count)
-                for (i in 0 until count) { val b=ByteArray(16); raf.seek(16L+i*16L); raf.readFully(b); raw.add(b) }
+                for (i in 0 until count) raw.add(decodedToc.copyOfRange(i * 16, i * 16 + 16))
                 fun u16(b:ByteArray,o:Int)= (b[o].toInt() and 255) or ((b[o+1].toInt() and 255) shl 8)
                 fun u24(b:ByteArray,o:Int)= (b[o].toLong() and 255) or ((b[o+1].toLong() and 255) shl 8) or ((b[o+2].toLong() and 255) shl 16)
                 fun u32(b:ByteArray,o:Int)= (b[o].toLong() and 255) or ((b[o+1].toLong() and 255) shl 8) or ((b[o+2].toLong() and 255) shl 16) or ((b[o+3].toLong() and 255) shl 24)
@@ -424,7 +443,7 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                     val payloadSize = if (it.isResource) it.storedSize else if (it.storedSize == 0L) it.uncompressedSize else it.storedSize
                     require(it.offset >= 0 && it.offset + payloadSize <= raf.length()) { "Entry points outside archive" }
                 }
-                return RpfArchive(raf,result,if(enc==0L) "NONE" else "OPEN")
+                return RpfArchive(raf,result,when(enc) { 0L -> "NONE"; 0x4E45504FL -> "OPEN"; else -> "AES" }, aesKey?.clone())
             } catch(e:Exception) { raf.close(); throw e }
         }
         private fun readU32(r:RandomAccessFile,pos:Long):Long { r.seek(pos); return (r.readUnsignedByte().toLong()) or (r.readUnsignedByte().toLong() shl 8) or (r.readUnsignedByte().toLong() shl 16) or (r.readUnsignedByte().toLong() shl 24) }
