@@ -20,13 +20,14 @@ pub struct Pool {
 
 impl Pool {
     pub fn new(name: &str, threads: usize) -> Pool {
+        let thread_qos = if name == "gpu decode" { glue5_runtime::qos::Qos::Utility } else { glue5_runtime::qos::Qos::Initiated };
         let queues: Arc<(Mutex<Queues>, Condvar)> = Arc::default();
         for i in 0..threads {
             let q = queues.clone();
             std::thread::Builder::new()
                 .name(format!("{name} {i}"))
                 .spawn(move || {
-                    glue5_runtime::qos::set(glue5_runtime::qos::Qos::Initiated);
+                    glue5_runtime::qos::set(thread_qos);
                     loop {
                         let job = {
                             let (lock, cv) = &*q;
