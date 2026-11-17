@@ -93,11 +93,14 @@ impl PackageDownload {
         if actual != self.expected_sha256 {
             return Err("package SHA-256 mismatch; download rejected".into());
         }
-        // hard_link is atomic and fails if the destination already exists.
-        fs::hard_link(&self.staging, &self.final_path)
-            .map_err(|e| format!("cannot commit package without overwriting: {e}"))?;
+        // Re-check immediately before same-directory atomic rename. This works
+        // on Android's emulated Documents storage where hard links may be denied.
+        if self.final_path.exists() {
+            return Err("vehicle package appeared during download; refusing to overwrite it".into());
+        }
+        fs::rename(&self.staging, &self.final_path)
+            .map_err(|e| format!("cannot atomically commit vehicle package: {e}"))?;
         self.committed = true;
-        fs::remove_file(&self.staging).map_err(|e| format!("package committed but staging cleanup failed: {e}"))?;
         if let Ok(dir) = File::open(&self.root) { let _ = dir.sync_all(); }
         Ok(self.final_path.clone())
     }
