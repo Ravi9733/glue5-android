@@ -79,6 +79,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
     fun stagedCount(): Int = additions.size + replacements.size + removals.size
     fun isRemoved(entryIndex: Int): Boolean = entryIndex in removals
     fun isReplaced(entryIndex: Int): Boolean = entryIndex in replacements
+    fun replacementFile(entryIndex: Int): File? = replacements[entryIndex]
     fun addedNames(parentDirectory: Int): List<String> = additions.filter { it.parent == parentDirectory }.map { it.name }
     fun removeAdded(parentDirectory: Int, name: String) {
         val item = additions.firstOrNull { it.parent == parentDirectory && it.name == name } ?: return
