@@ -988,13 +988,33 @@ impl Gpu {
             self.make_decode_room();
             self.decoder.get_or_insert_with(|| Pool::new("gpu decode", 2))
                 .urgent_bounded(move || {
+                    let started = Instant::now();
                     let texels =
                         crate::bc::decode(bc, &src, bpr, src_rows, cols as usize, block_rows as usize, d as usize);
-                    let _ = tx.send(if etc2 {
+                    let output = if etc2 {
                         crate::bc::etc2_rgba(texels, cols * 4, block_rows * 4 * d)
                     } else {
                         texels
-                    });
+                    };
+                    let elapsed = started.elapsed();
+                    // A decode/re-encode longer than one 60 Hz frame can
+                    // contribute directly to visible texture pop-in.
+                    // Keep this diagnostic quiet for normal-sized uploads.
+                    if elapsed >= Duration::from_millis(17) {
+                        log::warn!(
+                            "texture streaming: BC decode/upload preparation took {:.1} ms (texture {}, {:?}, {}x{}x{}, ETC2 {}, input {} KiB, output {} KiB)",
+                            elapsed.as_secs_f64() * 1000.0,
+                            id,
+                            bc,
+                            cols * 4,
+                            block_rows * 4,
+                            d,
+                            etc2,
+                            src.len() / 1024,
+                            output.len() / 1024,
+                        );
+                    }
+                    let _ = tx.send(output);
                 }, 16);
             self.decodes.push(Decode {
                 data: rx,
