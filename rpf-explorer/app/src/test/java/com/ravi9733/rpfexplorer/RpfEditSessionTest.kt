@@ -154,15 +154,31 @@ class RpfEditSessionTest {
             val source = resourceFixture(dir)
             val archive = RpfArchive.open(source)
             val resource = archive.entries.single { it.isResource }
+            val replacement = File(dir, "replacement.ytd")
+            val replacementBytes = byteArrayOf(
+                0x52,0x53,0x43,0x37, 1,0,0,0,
+                0x11,0x11,0x11,0x11, 0x22,0x22,0x22,0x22
+            )
+            replacement.writeBytes(replacementBytes)
+            val addition = File(dir, "addition.ytd")
+            addition.writeBytes(byteArrayOf(
+                0x52,0x53,0x43,0x37, 1,0,0,0,
+                0x33,0x33,0x33,0x33, 0x44,0x44,0x44,0x44
+            ))
+            val editor = RpfEditSession(archive, File(dir, "work").apply { mkdirs() })
+            editor.replace(resource.index, replacement)
+            editor.add(0, addition, "added.ytd")
             val output = File(dir, "resource-copy.rpf")
-            RpfEditSession(archive, File(dir, "work").apply { mkdirs() }).saveAs(output)
+            editor.saveAs(output)
             val reopened = RpfArchive.open(output)
-            val copied = reopened.entries.single { it.isResource }
-            assertEquals(resource.systemFlags, copied.systemFlags)
-            assertEquals(resource.graphicsFlags, copied.graphicsFlags)
-            val before = ByteArrayOutputStream().also { archive.copyRaw(resource, it) }.toByteArray()
+            val copied = reopened.entries.single { it.name == "sample.ytd" }
+            val added = reopened.entries.single { it.name == "added.ytd" }
+            assertEquals(0x11111111L, copied.systemFlags)
+            assertEquals(0x22222222L, copied.graphicsFlags)
+            assertEquals(0x33333333L, added.systemFlags)
+            assertEquals(0x44444444L, added.graphicsFlags)
             val after = ByteArrayOutputStream().also { reopened.copyRaw(copied, it) }.toByteArray()
-            assertTrue(before.contentEquals(after))
+            assertTrue(replacementBytes.contentEquals(after))
         } finally {
             dir.deleteRecursively()
         }
