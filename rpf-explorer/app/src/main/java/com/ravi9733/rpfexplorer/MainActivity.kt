@@ -375,9 +375,9 @@ class MainActivity : Activity() {
 
     private fun openNested(entry: RpfEntry) {
         status.text = "Opening nested archive: ${entry.name}…"
+        val nestedFile = File(cacheDir, "nested-${System.currentTimeMillis()}.rpf")
         thread {
             try {
-                val nestedFile = File(cacheDir, "nested-${System.currentTimeMillis()}.rpf")
                 val stagedNested = editor?.replacementFile(entry.index)
                 if (stagedNested != null) stagedNested.copyTo(nestedFile, overwrite = true)
                 else FileOutputStream(nestedFile).use { output -> archive!!.extract(entry, output) }
