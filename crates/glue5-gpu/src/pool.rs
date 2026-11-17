@@ -103,11 +103,17 @@ mod tests {
     use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
     #[test]
-    fn try_urgent_bounded_returns_job_when_full() {
+    fn try_urgent_bounded_returns_ownership_when_full() {
         let pool = Pool::new("test", 0);
         pool.urgent(|| {});
-        let returned = pool.try_urgent_bounded(|| {}, 1);
+        let ran = Arc::new(AtomicBool::new(false));
+        let marker = ran.clone();
+        let returned = pool.try_urgent_bounded(move || marker.store(true, Ordering::Relaxed), 1);
         assert!(returned.is_err());
+        returned.unwrap_err()();
+        assert!(ran.load(Ordering::Relaxed));
+        let (lock, _) = &*pool.queues;
+        assert_eq!(lock.lock().unwrap().urgent.len(), 1);
     }
 
     #[test]
