@@ -160,6 +160,14 @@ jobs:
           unzip -l Glue5-android-turnip-test.apk | grep -F 'lib/arm64-v8a/libglue5.so'
           cp ~/.android/debug.keystore Glue5-android.keystore
 
+      - name: Upload verified game function inventory for native-loader research
+        uses: actions/upload-artifact@v4
+        with:
+          name: glue5-game-function-inventory
+          path: target/glue5-tools/gen/*/game-functions.tsv
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Package the JSON Placement Test Mod
         run: |
           mkdir -p /tmp/json-placement-test/road-construction
