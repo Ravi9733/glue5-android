@@ -443,6 +443,10 @@ impl App {
                     .and_then(|value| value.trim().parse::<u8>().ok())
                     .filter(|value| *value <= 6);
                 glue5_gpu::perf::set_thermal_status(status);
+                let (process_rss, available_ram) = glue5_runtime::memory::footprint();
+                let low_ram = available_ram.is_some_and(|bytes| bytes < (768 << 20))
+                    || process_rss.is_some_and(|bytes| bytes > (5 << 30));
+                glue5_gpu::perf::set_memory_pressure(low_ram);
             }
             if let Some(exit) = glue5_runtime::exit::requested() {
                 self.save();
