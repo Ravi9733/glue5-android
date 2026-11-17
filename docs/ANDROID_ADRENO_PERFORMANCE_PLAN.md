@@ -133,3 +133,9 @@ constraint, not a claim that the streaming hitch is fixed.
 - Added `Reader::peek(head)` in `glue5-runtime`: it exposes the next command without advancing the ring tail or counting it as executed. Wrap markers are followed safely, while the command payload remains unconsumed for the subsequent `next()` call.
 - This is the prerequisite for GPU-side backpressure: the renderer can inspect a texture upload and decide whether decode memory is available before consuming/releasing the ring slot. If admission is blocked, it can leave the upload command in the ring instead of copying its source into an unbounded deferred queue.
 - `exec.rs` still uses the old blocking decode-room path; the peek API is groundwork only. Next integration must preflight BC upload size, reserve bytes, stop at the unconsumed command on saturation, poll completions, and only then consume it.
+
+## GPU ring peek regression coverage
+
+- Added runtime unit tests that construct an in-memory GPU command ring and verify `Reader::peek` returns the pending upload command without advancing the published tail or incrementing the executed-command count.
+- Repeated peeks return the same pending command; `next` then consumes it exactly once and `release` publishes the new tail.
+- These tests have been committed but not run in this environment. The renderer still needs the actual preflight/backpressure integration before the blocking decode wait can be removed.
