@@ -22,6 +22,7 @@ class MainActivity : Activity() {
     private val PICK_RPF = 10
     private val SAVE_FILE = 11
     private var pendingExtract: RpfEntry? = null
+    private var pendingYscDecrypt = false
     private var editor: RpfEditSession? = null
     private var ngMaterial: GtaNgMaterial? = null
     private var pendingEditEntry: RpfEntry? = null
@@ -183,15 +184,18 @@ class MainActivity : Activity() {
             }
         } else if (requestCode == SAVE_FILE) {
             val entry = pendingExtract ?: return
+            val decryptYsc = pendingYscDecrypt
+            pendingYscDecrypt = false
             thread {
                 try {
                     contentResolver.openOutputStream(uri)?.use { output ->
                         val staged = editor?.replacementFile(entry.index)
-                        if (staged != null) staged.inputStream().use { it.copyTo(output) }
+                        if (decryptYsc) archive!!.extractEncryptedYsc(entry, output)
+                        else if (staged != null) staged.inputStream().use { it.copyTo(output) }
                         else if (entry.isResource) archive!!.copyRaw(entry, output)
                         else archive!!.extract(entry, output)
                     } ?: error("Cannot open destination")
-                    runOnUiThread { Toast.makeText(this, "Extracted ${entry.name}", Toast.LENGTH_LONG).show() }
+                    runOnUiThread { Toast.makeText(this, if (decryptYsc) "Decrypted YSC exported" else "Extracted ${entry.name}", Toast.LENGTH_LONG).show() }
                 } catch (e: Exception) { runOnUiThread { Toast.makeText(this, "Extract failed: ${e.message}", Toast.LENGTH_LONG).show() } }
             }
         }
@@ -281,7 +285,7 @@ class MainActivity : Activity() {
                 appendLine()
                 appendLine()
                 if (entry.encrypted) {
-                    appendLine("WARNING: YSC script payload is NG-encrypted. Raw export remains encrypted and this editor blocks repacking it.")
+                    appendLine("WARNING: YSC script payload is encrypted. Export decrypted YSC decrypts and decompresses the script for inspection; encrypted YSC repacking remains blocked.")
                 }
                 append("This is a raw RSC7 header inspector. It does not decode texture/model data or generate a visual preview.")
             }
@@ -290,10 +294,21 @@ class MainActivity : Activity() {
                 .setMessage(info)
                 .setPositiveButton("Export raw RSC7") { _, _ ->
                     pendingExtract = entry
+                    pendingYscDecrypt = false
                     val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
                         type = "application/octet-stream"
                         putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/'))
+                    }
+                    startActivityForResult(intent, SAVE_FILE)
+                }
+                .setNeutralButton(if (entry.encrypted && archive!!.canDecryptYsc(entry)) "Export decrypted YSC" else null) { _, _ ->
+                    pendingExtract = entry
+                    pendingYscDecrypt = true
+                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "application/octet-stream"
+                        putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/') + ".decrypted")
                     }
                     startActivityForResult(intent, SAVE_FILE)
                 }
@@ -316,7 +331,6 @@ class MainActivity : Activity() {
                 setOnClickListener {
                     if (entry.isDirectory) { currentDir = entry.index; render() }
                     else if (entry.name.endsWith(".rpf", ignoreCase = true) && !entry.isResource) openNested(entry)
-                    else if (entry.isResource && archive?.encryptionLabel == "AES") Toast.makeText(this@MainActivity, "AES-encrypted RSC7 inspection/export is not enabled yet.", Toast.LENGTH_LONG).show()
                     else if (entry.isResource) showResourceInspector(entry)
                     else if (entry.encrypted) Toast.makeText(this@MainActivity, "This file is encrypted. GTA V keys are required.", Toast.LENGTH_LONG).show()
                     else { pendingExtract = entry; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
