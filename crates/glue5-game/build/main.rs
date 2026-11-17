@@ -109,6 +109,16 @@ fn run() -> Result<()> {
 
     // 3. Hooks and glue.
     let module = module::parse(&wasm)?;
+    // Keep a searchable inventory of the exact supported game's named
+    // functions and signatures. This is used to identify real file/packfile
+    // and streaming hooks; never guess a symbol or ABI from another build.
+    let mut function_inventory: Vec<String> = module.functions.iter().map(|(name, sig)| {
+        let params = sig.params.iter().map(|ty| type_name(*ty)).collect::<Vec<_>>().join(",");
+        let result = sig.result.map_or("void", type_name);
+        format!("{name}\\t({params}) -> {result}\\n")
+    }).collect();
+    function_inventory.sort_unstable();
+    fs::write(gen_dir.join("game-functions.tsv"), function_inventory.concat())?;
     let hooks = codegen::resolve_hooks(&module, &HOOKS.concat())?;
     let mut sources: Vec<PathBuf> = (0..OUTPUTS).map(|i| gen_dir.join(format!("game_{i}.c"))).collect();
     let mut texts: Vec<Option<String>> = vec![None; sources.len()];
@@ -292,6 +302,17 @@ fn write_if_changed(path: &Path, text: &str) -> Result<()> {
         fs::write(path, text)?;
     }
     Ok(())
+}
+
+
+fn type_name(ty: module::Ty) -> &'static str {
+    match ty {
+        module::Ty::I32 => "i32",
+        module::Ty::I64 => "i64",
+        module::Ty::F32 => "f32",
+        module::Ty::F64 => "f64",
+        module::Ty::V128 => "v128",
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
