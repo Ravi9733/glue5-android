@@ -28,6 +28,9 @@ class MainActivity : Activity() {
     private val SAVE_RPF = 13
     private lateinit var addButton: Button
     private lateinit var saveButton: Button
+    private lateinit var backButton: Button
+    private data class NestedFrame(val archive: RpfArchive, val editor: RpfEditSession, val directory: Int, val parentEntryIndex: Int)
+    private val nestedStack = mutableListOf<NestedFrame>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,10 +41,13 @@ class MainActivity : Activity() {
         addButton = Button(this).apply { text = "ADD FILE TO THIS FOLDER"; isEnabled = false; setOnClickListener { chooseEditSource("add", null) } }
         saveButton = Button(this).apply { text = "SAVE AS NEW RPF"; isEnabled = false; setOnClickListener { saveEditedArchive() } }
         search = EditText(this).apply { hint = "Search current folder"; setSingleLine(true); setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFF8B96A5.toInt()); visibility = android.view.View.GONE }
-        val back = Button(this).apply { text = "↑  PARENT FOLDER"; setOnClickListener { if (currentDir != 0) { currentDir = archive?.parentOf(currentDir) ?: 0; render() } } }
+        backButton = Button(this).apply { text = "↑  PARENT FOLDER"; setOnClickListener {
+            if (currentDir != 0) { currentDir = archive?.parentOf(currentDir) ?: 0; render() }
+            else if (nestedStack.isNotEmpty()) finishNested(false)
+        } }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(this).apply { addView(list) }
-        root.addView(title); root.addView(status); root.addView(openButton); root.addView(addButton); root.addView(saveButton); root.addView(back); root.addView(search); root.addView(scroll, LinearLayout.LayoutParams(-1,0,1f))
+        root.addView(title); root.addView(status); root.addView(openButton); root.addView(addButton); root.addView(saveButton); root.addView(backButton); root.addView(search); root.addView(scroll, LinearLayout.LayoutParams(-1,0,1f))
         setContentView(root)
         search.addTextChangedListener(SimpleWatcher { render() })
     }
@@ -64,8 +70,10 @@ class MainActivity : Activity() {
                     contentResolver.openInputStream(uri).use { input -> FileOutputStream(temp).use { out -> input!!.copyTo(out, 1024 * 1024) } }
                     val parsed = RpfArchive.open(temp)
                     runOnUiThread {
+                        nestedStack.clear()
                         archive = parsed; currentDir = 0
-                        editor = RpfEditSession(parsed, File(cacheDir, "rpf-edit").apply { mkdirs() })
+                        editor = RpfEditSession(parsed, File(cacheDir, "rpf-edit-${System.currentTimeMillis()}").apply { mkdirs() })
+                        updateNavigationButtons()
                         addButton.isEnabled = true; saveButton.isEnabled = true
                         status.text = "${parsed.entries.size} entries • ${parsed.encryptionLabel} • ${temp.length()/1024/1024} MiB"
                         search.visibility = android.view.View.VISIBLE
@@ -120,6 +128,10 @@ class MainActivity : Activity() {
     }
 
     private fun saveEditedArchive() {
+        if (nestedStack.isNotEmpty()) {
+            applyNestedToParent()
+            return
+        }
         val i = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"
             putExtra(Intent.EXTRA_TITLE, "edited-gta-v.rpf")
@@ -138,6 +150,7 @@ class MainActivity : Activity() {
                 setBackgroundColor(0xFF1A2029.toInt())
                 setOnClickListener {
                     if (entry.isDirectory) { currentDir = entry.index; render() }
+                    else if (entry.name.endsWith(".rpf", ignoreCase = true) && !entry.isResource && !entry.encrypted) openNested(entry)
                     else if (entry.isResource) Toast.makeText(this@MainActivity, "RSC7 resource listed; resource extraction/preview is not enabled in this first build.", Toast.LENGTH_LONG).show()
                     else if (entry.encrypted) Toast.makeText(this@MainActivity, "This file is encrypted. GTA V keys are required.", Toast.LENGTH_LONG).show()
                     else { pendingExtract = entry; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
@@ -175,6 +188,65 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 3 })
         }
         if (list.childCount == 0) list.addView(TextView(this).apply { text="No matching entries"; setTextColor(0xFFB8C3D1.toInt()); setPadding(12,24,12,24) })
+        updateNavigationButtons()
+    }
+
+    private fun updateNavigationButtons() {
+        if (!::backButton.isInitialized || !::saveButton.isInitialized) return
+        backButton.text = if (currentDir != 0) "↑  PARENT FOLDER" else if (nestedStack.isNotEmpty()) "←  EXIT NESTED RPF" else "↑  PARENT FOLDER"
+        saveButton.text = if (nestedStack.isNotEmpty()) "APPLY NESTED CHANGES TO PARENT" else "SAVE AS NEW RPF"
+    }
+
+    private fun openNested(entry: RpfEntry) {
+        status.text = "Opening nested archive: ${entry.name}…"
+        thread {
+            try {
+                val nestedFile = File(cacheDir, "nested-${System.currentTimeMillis()}.rpf")
+                FileOutputStream(nestedFile).use { output -> archive!!.extract(entry, output) }
+                val nestedArchive = RpfArchive.open(nestedFile)
+                runOnUiThread {
+                    nestedStack += NestedFrame(archive!!, editor!!, currentDir, entry.index)
+                    archive = nestedArchive
+                    currentDir = 0
+                    editor = RpfEditSession(nestedArchive, File(cacheDir, "nested-edit-${System.currentTimeMillis()}").apply { mkdirs() })
+                    status.text = "Nested RPF • ${nestedArchive.entries.size} entries • ${nestedArchive.encryptionLabel}"
+                    render()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { status.text = "Nested RPF open failed: ${e.message}"; Toast.makeText(this, e.message ?: "Nested archive error", Toast.LENGTH_LONG).show() }
+            }
+        }
+    }
+
+    private fun applyNestedToParent() {
+        val frame = nestedStack.lastOrNull() ?: return
+        val nestedOutput = File(cacheDir, "nested-edited-${System.currentTimeMillis()}.rpf")
+        thread {
+            try {
+                editor!!.saveAs(nestedOutput)
+                frame.editor.replace(frame.parentEntryIndex, nestedOutput)
+                runOnUiThread {
+                    nestedStack.removeAt(nestedStack.lastIndex)
+                    archive = frame.archive; editor = frame.editor; currentDir = frame.directory
+                    status.text = "Nested archive changes staged in parent • original files untouched"
+                    render()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { status.text = "Nested save blocked: ${e.message}"; Toast.makeText(this, e.message ?: "Nested save failed", Toast.LENGTH_LONG).show() }
+            }
+        }
+    }
+
+    private fun finishNested(save: Boolean) {
+        if (save) { applyNestedToParent(); return }
+        android.app.AlertDialog.Builder(this)
+            .setMessage("Discard staged changes in this nested archive and return to the parent?")
+            .setPositiveButton("Discard") { _, _ ->
+                val frame = nestedStack.removeAt(nestedStack.lastIndex)
+                archive = frame.archive; editor = frame.editor; currentDir = frame.directory
+                status.text = "Returned to parent archive • nested edits discarded"
+                render()
+            }.setNegativeButton("Cancel", null).show()
     }
 }
 
