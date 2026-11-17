@@ -1385,6 +1385,9 @@ impl Gpu {
         }
         let (used, available) = glue5_runtime::memory::footprint();
         if let Some(used) = used {
+            #[cfg(target_os = "android")]
+            let more = available.map_or(String::new(), |a| format!(", {} MiB system RAM available", a >> 20));
+            #[cfg(not(target_os = "android"))]
             let more = available.map_or(String::new(), |a| format!(", {} MiB more allowed", a >> 20));
             log::info!("memory: process footprint {} MiB{more}{}", used >> 20, self.gpu_memory());
         }
