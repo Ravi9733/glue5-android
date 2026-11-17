@@ -12,7 +12,7 @@ A standalone Android project in this repository for browsing user-supplied GTA V
 - Save As New RPF rebuilds the directory TOC, name table, offsets, and 512-byte alignment without modifying the source.
 - OPEN/NONE and AES archives are supported. For AES archives, import the user's own `GTA5.exe`; the app scans its AES-key fingerprint locally, decrypts TOCs and encrypted binary payloads, and writes the edited result as an unencrypted NONE archive. The key itself is not bundled.
 - RSC7 resource entries are retained byte-for-byte; replacement/addition requires a valid RSC7 file smaller than 16 MiB so its page flags can be read unambiguously. Existing large resources can still be preserved.
-- JUnit regression tests cover binary add/replace/remove, AES TOC/data decryption, round-trip reopening, source-hash preservation, and RSC7 payload/page-flag preservation (tests are authored but not yet executed).
+- JUnit regression tests are authored for binary add/replace/remove, AES TOC/data decryption, raw-DEFLATE conversion, nested-directory TOC rebuilding, source-hash preservation, and RSC7 payload/page-flag preservation. CI execution is in progress; do not treat the tests as passed until the test-only workflow reports success.
 
 ## Build
 Open this folder as an Android Gradle project in Android Studio, or run Gradle 8.9 with JDK 17:
@@ -20,7 +20,7 @@ Open this folder as an Android Gradle project in Android Studio, or run Gradle 8
 
 APK output: `app/build/outputs/apk/debug/app-debug.apk`.
 
-A GitHub Actions workflow builds the debug APK on pushes to the development branch and on manual dispatch. Download it from the workflow run's Artifacts section.
+The APK workflow is manual-dispatch only. A separate test-only workflow runs unit tests on development-branch pushes and does not create an APK.
 
 ## Editor implementation roadmap
 
