@@ -121,11 +121,18 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
 
         val nameBytes = java.io.ByteArrayOutputStream()
         val nameOffsets = IntArray(nodes.size)
+        val sharedNameOffsets = linkedMapOf<String, Int>()
         nodes.forEachIndexed { i, n ->
-            nameOffsets[i] = nameBytes.size()
-            val bytes = n.name.toByteArray(StandardCharsets.UTF_8)
-            require(bytes.isNotEmpty() && bytes.none { it == 0.toByte() }) { "Invalid RPF entry name" }
-            nameBytes.write(bytes); nameBytes.write(0)
+            val existing = sharedNameOffsets[n.name]
+            if (existing != null) {
+                nameOffsets[i] = existing
+            } else {
+                val bytes = n.name.toByteArray(StandardCharsets.UTF_8)
+                require(bytes.isNotEmpty() && bytes.none { it == 0.toByte() }) { "Invalid RPF entry name" }
+                nameOffsets[i] = nameBytes.size()
+                sharedNameOffsets[n.name] = nameOffsets[i]
+                nameBytes.write(bytes); nameBytes.write(0)
+            }
         }
         val names = nameBytes.toByteArray()
         require(names.size < 0x10000000) { "RPF name table is too large" }
