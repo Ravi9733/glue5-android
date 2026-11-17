@@ -18,29 +18,64 @@ internal class GtaNgMaterial private constructor(
     private val hashLut: ByteArray
 ) {
     fun decrypt(data: ByteArray, name: String, length: Long): ByteArray {
+        val words = deriveWords(name, length)
+        val out = ByteArray(data.size)
+        var offset = 0
+        while (offset + 16 <= data.size) {
+            val block = decryptBlock(data.copyOfRange(offset, offset + 16), words)
+            System.arraycopy(block, 0, out, offset, 16)
+            offset += 16
+        }
+        if (offset < data.size) System.arraycopy(data, offset, out, offset, data.size - offset)
+        return out
+    }
+
+    fun decrypt(input: java.io.InputStream, size: Long, output: java.io.OutputStream, name: String, length: Long) {
+        require(size >= 0L)
+        val words = deriveWords(name, length)
+        val block = ByteArray(16)
+        var remaining = size
+        while (remaining >= 16L) {
+            var filled = 0
+            while (filled < 16) {
+                val n = input.read(block, filled, 16 - filled)
+                if (n < 0) error("Unexpected end of NG-encrypted payload")
+                if (n > 0) filled += n
+            }
+            output.write(decryptBlock(block, words))
+            remaining -= 16L
+        }
+        if (remaining > 0L) {
+            var filled = 0
+            val tail = remaining.toInt()
+            while (filled < tail) {
+                val n = input.read(block, filled, tail - filled)
+                if (n < 0) error("Unexpected end of NG-encrypted payload")
+                if (n > 0) filled += n
+            }
+            output.write(block, 0, tail) // final partial block is not encrypted
+        }
+    }
+
+    private fun deriveWords(name: String, length: Long): IntArray {
         require(length in 0..0xFFFFFFFFL) { "NG archive/file length is outside the supported range" }
         val keyIndex = ((calculateHash(name).toLong() and 0xFFFFFFFFL) + length + 61L) % 101L
         val key = keys[keyIndex.toInt()]
-        val words = IntArray(68) { i ->
+        return IntArray(68) { i ->
             val o = i * 4
             (key[o].toInt() and 255) or
                 ((key[o + 1].toInt() and 255) shl 8) or
                 ((key[o + 2].toInt() and 255) shl 16) or
                 ((key[o + 3].toInt() and 255) shl 24)
         }
-        val out = ByteArray(data.size)
-        var offset = 0
-        while (offset + 16 <= data.size) {
-            var block = data.copyOfRange(offset, offset + 16)
-            block = roundA(block, words, 0, 0)
-            block = roundA(block, words, 1, 4)
-            for (round in 2..15) block = roundB(block, words, round)
-            block = roundA(block, words, 16, 64)
-            System.arraycopy(block, 0, out, offset, 16)
-            offset += 16
-        }
-        if (offset < data.size) System.arraycopy(data, offset, out, offset, data.size - offset)
-        return out
+    }
+
+    private fun decryptBlock(data: ByteArray, words: IntArray): ByteArray {
+        var block = data
+        block = roundA(block, words, 0, 0)
+        block = roundA(block, words, 1, 4)
+        for (round in 2..15) block = roundB(block, words, round)
+        return roundA(block, words, 16, 64)
     }
 
     private fun calculateHash(text: String): Int {
