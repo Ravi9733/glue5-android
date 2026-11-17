@@ -171,7 +171,6 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
                 } else {
                     require(nameOffset <= 0xFFFF) { "RPF binary filename table offset exceeds 65535 bytes" }
                     require(offsets[i] / 512L <= 0x7FFFFFL) { "Archive payload offset exceeds RPF7 limit" }
-                    require(payloadSizes[i] <= 0xFFFFFFL) { "File exceeds the RPF7 24-bit size limit" }
                     out.writeU16(nameOffset)
                     out.writeU24(0) // FileSize=0: stored uncompressed
                     out.writeU24((offsets[i] / 512L).toInt())
