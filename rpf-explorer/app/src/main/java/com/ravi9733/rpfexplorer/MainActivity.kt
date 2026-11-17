@@ -153,7 +153,12 @@ class MainActivity : Activity() {
             val entry = pendingExtract ?: return
             thread {
                 try {
-                    contentResolver.openOutputStream(uri)?.use { if (entry.isResource) archive!!.copyRaw(entry, it) else archive!!.extract(entry, it) } ?: error("Cannot open destination")
+                    contentResolver.openOutputStream(uri)?.use { output ->
+                        val staged = editor?.replacementFile(entry.index)
+                        if (staged != null) staged.inputStream().use { it.copyTo(output) }
+                        else if (entry.isResource) archive!!.copyRaw(entry, output)
+                        else archive!!.extract(entry, output)
+                    } ?: error("Cannot open destination")
                     runOnUiThread { Toast.makeText(this, "Extracted ${entry.name}", Toast.LENGTH_LONG).show() }
                 } catch (e: Exception) { runOnUiThread { Toast.makeText(this, "Extract failed: ${e.message}", Toast.LENGTH_LONG).show() } }
             }
@@ -264,7 +269,9 @@ class MainActivity : Activity() {
         thread {
             try {
                 val nestedFile = File(cacheDir, "nested-${System.currentTimeMillis()}.rpf")
-                FileOutputStream(nestedFile).use { output -> archive!!.extract(entry, output) }
+                val stagedNested = editor?.replacementFile(entry.index)
+                if (stagedNested != null) stagedNested.copyTo(nestedFile, overwrite = true)
+                else FileOutputStream(nestedFile).use { output -> archive!!.extract(entry, output) }
                 val nestedArchive = RpfArchive.open(nestedFile, archive?.aesKeyCopy())
                 runOnUiThread {
                     nestedStack += NestedFrame(archive!!, editor!!, currentDir, entry.index)
