@@ -12,6 +12,7 @@ glue5-pc-mod-runtime = { path = "../glue5-pc-mod-runtime" }
 glue5-runtime.workspace = true
 log.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 roxmltree = "0.20"
 mlua = { version = "0.12", features = ["luau"] }
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
