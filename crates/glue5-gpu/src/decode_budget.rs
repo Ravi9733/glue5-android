@@ -20,7 +20,10 @@ impl DecodeBudget {
     /// the configured budget or arithmetic capacity.
     pub(crate) fn try_reserve(&mut self, bytes: usize) -> Option<()> {
         let next = self.reserved.checked_add(bytes)?;
-        if next > self.limit { return None; }
+        // A single upload larger than the nominal budget may still proceed
+        // when the budget is otherwise empty; otherwise the command ring
+        // could remain permanently blocked on an unadmittable texture.
+        if next > self.limit && self.reserved != 0 { return None; }
         self.reserved = next;
         Some(())
     }
@@ -33,7 +36,7 @@ impl DecodeBudget {
     }
 
     pub(crate) fn reserved(&self) -> usize { self.reserved }
-    pub(crate) fn available(&self) -> usize { self.limit - self.reserved }
+    pub(crate) fn available(&self) -> usize { self.limit.saturating_sub(self.reserved) }
 }
 
 #[cfg(test)]
@@ -51,6 +54,17 @@ mod tests {
         assert!(budget.release(60));
         assert_eq!(budget.try_reserve(100), Some(()));
         assert_eq!(budget.available(), 0);
+    }
+
+    #[test]
+    fn oversized_job_is_admitted_only_when_budget_is_empty() {
+        let mut budget = DecodeBudget::new(100);
+        assert_eq!(budget.try_reserve(120), Some(()));
+        assert_eq!(budget.available(), 0);
+        assert_eq!(budget.try_reserve(1), None);
+        assert!(budget.release(120));
+        assert_eq!(budget.try_reserve(80), Some(()));
+        assert_eq!(budget.try_reserve(120), None);
     }
 
     #[test]
