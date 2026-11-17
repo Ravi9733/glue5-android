@@ -4,6 +4,7 @@
 //! does not mount RPF/DLC archives or register vehicles with the game engine.
 
 use crate::{
+    vehicle_dlc::{inspect_dlc_metadata, DlcMetadataReport},
     vehicle_hub::{PackageFormat, VehiclePackage},
     vehicle_extract::{extract_vehicle_zip, ExtractedPackage},
     vehicle_inspect::{inspect_vehicle_package, VehiclePackageReport},
@@ -18,6 +19,7 @@ pub struct VehicleInstallResult {
     pub extracted_files: usize,
     pub extracted_bytes: u64,
     pub report: VehiclePackageReport,
+    pub dlc_metadata: DlcMetadataReport,
     /// Always false until native mounting and in-game spawning are implemented.
     pub spawn_supported: bool,
 }
@@ -54,6 +56,14 @@ pub fn install_verified_package(
         }
     };
 
+    let dlc_metadata = match inspect_dlc_metadata(&extracted.directory) {
+        Ok(report) => report,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&extracted.directory);
+            return Err(format!("DLC metadata validation failed; staged install rolled back: {error}"));
+        }
+    };
+
     match package.format {
         PackageFormat::RpfDlc if report.rpf_archives == 0 => {
             let _ = std::fs::remove_dir_all(&extracted.directory);
@@ -72,6 +82,7 @@ pub fn install_verified_package(
         extracted_files: extracted.files,
         extracted_bytes: extracted.bytes,
         report,
+        dlc_metadata,
         spawn_supported: false,
     })
 }
