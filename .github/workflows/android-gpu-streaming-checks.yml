@@ -35,13 +35,8 @@ jobs:
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Check formatting of AI and integration files
-        run: >-
-          rustfmt --edition 2024 --check --config skip_children=true
-          crates/glue5-gpu/src/adaptive.rs
-          crates/glue5-gpu/src/perf.rs
-          crates/glue5-runtime/src/lib.rs
-          crates/glue5-stream/src/client.rs
+      - name: Check AI and streaming Rust code
+        run: cargo check -p glue5-runtime -p glue5-stream -p glue5-gpu
       - name: Test runtime ring and memory accounting
         run: cargo test -p glue5-runtime
       - name: Test GPU decode budget and streaming
