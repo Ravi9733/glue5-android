@@ -28,11 +28,12 @@ struct SmartState {
     target_fps: u32,
     controller: Option<crate::adaptive::Controller>,
     recommendation: Option<u32>,
+    bottleneck: Option<&'static str>,
 }
 
 impl SmartState {
     const fn new() -> Self {
-        Self { enabled: false, auto_apply: false, target_fps: 60, controller: None, recommendation: None }
+        Self { enabled: false, auto_apply: false, target_fps: 60, controller: None, recommendation: None, bottleneck: None }
     }
 }
 
@@ -46,11 +47,13 @@ pub fn set_smart_performance(enabled: bool, target_fps: u32, auto_apply: bool) {
         smart.auto_apply = false;
         smart.controller = None;
         smart.recommendation = None;
+        smart.bottleneck = None;
         return;
     }
     if !smart.enabled || smart.target_fps != target {
         smart.controller = Some(crate::adaptive::Controller::new(target));
         smart.recommendation = None;
+        smart.bottleneck = None;
     }
     smart.enabled = true;
     smart.auto_apply = auto_apply;
@@ -85,6 +88,8 @@ pub struct Snapshot {
     pub smart_enabled: bool,
     /// Suggested cap, when sustained measurements justify a change.
     pub smart_recommended_cap: Option<u32>,
+    /// Conservative diagnosis from measured renderer/GPU time; advisory only.
+    pub smart_bottleneck: Option<&'static str>,
 }
 
 struct Live {
@@ -143,6 +148,7 @@ pub fn snapshot() -> Snapshot {
         gpu_bytes: live.gpu_bytes,
         smart_enabled: smart.enabled,
         smart_recommended_cap: smart.recommendation,
+        smart_bottleneck: smart.bottleneck,
     }
 }
 
@@ -171,9 +177,20 @@ impl Mark {
             let mut smart = SMART.lock().unwrap();
             if smart.enabled {
                 let budget_ms = 1000.0 / smart.target_fps as f32;
+                let render_ms = live.render_ms.back().copied();
+                let gpu_ms = live.gpu_ms.back().copied();
+                smart.bottleneck = match (render_ms, gpu_ms) {
+                    (Some(render), Some(gpu)) if gpu >= budget_ms * 0.80 && gpu >= render => Some("GPU-bound"),
+                    (Some(render), Some(gpu)) if render >= budget_ms * 0.80 => Some("renderer-bound"),
+                    (Some(render), None) if render >= budget_ms * 0.80 => Some("renderer-bound"),
+                    (Some(_), Some(_)) if ms > budget_ms * 1.12 => Some("frame-pacing"),
+                    (Some(_), None) if ms > budget_ms * 1.12 => Some("frame-pacing"),
+                    (Some(_), Some(_)) => Some("headroom"),
+                    _ => None,
+                };
                 if let Some(controller) = smart.controller.as_mut() {
                     if let crate::adaptive::Decision::RecommendCap { fps_cap } =
-                        controller.observe(crate::adaptive::FrameMetrics { frame_ms: ms, render_ms: live.render_ms.back().copied(), gpu_ms: live.gpu_ms.back().copied() }, budget_ms)
+                        controller.observe(crate::adaptive::FrameMetrics { frame_ms: ms, render_ms, gpu_ms }, budget_ms)
                     {
                         smart.recommendation = Some(fps_cap);
                     }
