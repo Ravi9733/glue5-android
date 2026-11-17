@@ -25,6 +25,7 @@ mod metalfx;
 mod objects;
 mod ops;
 mod overlay;
+pub mod adaptive;
 pub mod perf;
 mod pipeline;
 mod pool;
