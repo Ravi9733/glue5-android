@@ -207,6 +207,31 @@ mod tests {
     }
 
     #[test]
+    fn decode_working_set_includes_source_intermediate_and_final_output() {
+        use crate::format::Bc;
+        let source = 4096usize;
+        let decoded = super::decoded_bytes(Bc::Bc1, 4, 2, 2).unwrap();
+        let etc2 = super::etc2_bytes(4, 2, 2).unwrap();
+        assert_eq!(
+            super::decode_working_bytes(Bc::Bc1, 4, 2, 2, source, true),
+            Some(source + decoded + etc2),
+        );
+        assert_eq!(
+            super::decode_working_bytes(Bc::Bc1, 4, 2, 2, source, false),
+            Some(source + decoded),
+        );
+    }
+
+    #[test]
+    fn decode_working_set_rejects_overflow() {
+        use crate::format::Bc;
+        assert_eq!(
+            super::decode_working_bytes(Bc::Bc7, 1, 1, 1, usize::MAX, true),
+            None,
+        );
+    }
+
+    #[test]
     fn byte_estimates_reject_overflow() {
         use crate::format::Bc;
         assert_eq!(super::decoded_bytes(Bc::Bc7, usize::MAX, 2, 1), None);
