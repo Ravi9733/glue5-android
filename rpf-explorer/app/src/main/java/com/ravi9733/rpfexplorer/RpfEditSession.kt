@@ -28,7 +28,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         require(parentDirectory in archive.entries.indices && archive.entries[parentDirectory].isDirectory && parentDirectory !in removals) {
             "Choose a valid destination folder"
         }
-        require(name.isNotBlank() && name.none { it == '/' || it == '\\' || it == '\u0000' }) { "Invalid file name" }
+        require(name.isNotBlank() && name != "." && name != ".." && name.none { it == '/' || it == '\\' || it == '\u0000' }) { "Invalid file name" }
         require(source.isFile) { "Selected source is not a file" }
         val siblings = archive.children(parentDirectory).filter { it.index !in removals }.map { it.name.lowercase() }.toMutableSet()
         additions.filter { it.parent == parentDirectory }.forEach { siblings.add(it.name.lowercase()) }
