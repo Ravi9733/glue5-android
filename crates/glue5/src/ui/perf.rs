@@ -64,6 +64,7 @@ struct Figures {
     passes: u32,
     submits: u32,
     gpu_bytes: u64,
+    stream: Option<glue5_stream::StreamTelemetry>,
 }
 
 #[derive(Default)]
@@ -175,7 +176,8 @@ impl PerfHud {
         let costs: Vec<_> = costs.into_iter().filter_map(|(l, ms, c)| ms.map(|ms| (l, ms, c))).collect();
         let bound = costs.iter().map(|c| c.1).fold(0.0, f32::max);
         let threads = if full { self.threads.busiest.len() } else { 0 };
-        let mut height = PAD * 2.0 + 18.0 + GRAPH + 6.0 + ROW * (1 + costs.len() + snapshot.smart_enabled as usize) as f32;
+        let mut height = PAD * 2.0 + 18.0 + GRAPH + 6.0
+            + ROW * (1 + costs.len() + snapshot.smart_enabled as usize + f.stream.is_some() as usize) as f32;
         let (w, h) = status.window;
         let scaled = status.back_buffer.filter(|&b| b != (w, h));
         if full {
@@ -218,6 +220,11 @@ impl PerfHud {
         if snapshot.smart_enabled {
             let value = snapshot.smart_recommended_cap.map_or("Monitoring".to_owned(), |cap| format!("Recommend {cap} FPS"));
             row(y, "AI Assist", value, snapshot.smart_recommended_cap.map_or(GOOD, |_| SLOW));
+            y += ROW;
+        }
+        if let Some(stream) = f.stream {
+            let value = format!("{} wait · {} req · {} miss", stream.waiting_reads, stream.inflight_requests, stream.cache_misses);
+            row(y, "stream", value, if stream.waiting_reads > 0 { SLOW } else { GOOD });
             y += ROW;
         }
         if !full {
@@ -277,6 +284,7 @@ fn figures(s: &Snapshot) -> Figures {
         passes: s.passes,
         submits: s.submits,
         gpu_bytes: s.gpu_bytes,
+        stream: glue5_runtime::stream_telemetry(),
     }
 }
 
