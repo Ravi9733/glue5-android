@@ -105,6 +105,51 @@ class RpfEditSessionTest {
         return f
     }
 
+    private fun encryptedAesYscFixture(dir: File, key: ByteArray, script: ByteArray): File {
+        val compressedBuffer = ByteArrayOutputStream()
+        DeflaterOutputStream(compressedBuffer, Deflater(Deflater.DEFAULT_COMPRESSION, true)).use { it.write(script) }
+        val encryptedPayload = encryptAes(compressedBuffer.toByteArray(), key)
+        val resourceSize = 16 + encryptedPayload.size
+        require(resourceSize < 0xFFFFFF)
+        val f = File(dir, "encrypted-script.rpf")
+        val names = "root\\u0000main.ysc\\u0000".toByteArray(Charsets.UTF_8)
+        val toc = File(dir, "ysc-toc.bin")
+        RandomAccessFile(toc, "rw").use { out ->
+            out.setLength(0)
+            u32(out, 0); u32(out, 0x7FFFFF00L); u32(out, 1); u32(out, 1)
+            out.write(5); out.write(0)
+            out.write(resourceSize and 255); out.write((resourceSize ushr 8) and 255); out.write((resourceSize ushr 16) and 255)
+            out.write(1); out.write(0); out.write(0x80)
+            u32(out, 0x12345678L); u32(out, 0x23456789L)
+        }
+        RandomAccessFile(f, "rw").use { out ->
+            out.setLength(0)
+            u32(out, 0x52504637L); u32(out, 2); u32(out, names.size.toLong()); u32(out, 0x0FFFFFF9L)
+            out.write(encryptAes(toc.readBytes(), key))
+            out.write(encryptAes(names, key))
+            out.seek(512)
+            out.write(byteArrayOf(0x52,0x53,0x43,0x37, 1,0,0,0, 0x78,0x56,0x34,0x12, 0x89.toByte(),0x67,0x45,0x23))
+            out.write(encryptedPayload)
+        }
+        return f
+    }
+
+    @Test fun encryptedAesYscCanBeExportedAsDecryptedStandaloneScript() {
+        val dir = createTempDir(prefix = "rpf-ysc-export-test-")
+        try {
+            val key = ByteArray(32) { (it * 17 + 3).toByte() }
+            val expected = ByteArray(8193) { (it * 31).toByte() }
+            val source = encryptedAesYscFixture(dir, key, expected)
+            val archive = RpfArchive.open(source, key)
+            val entry = archive.entries.single { it.name == "main.ysc" }
+            assertTrue(archive.canDecryptYsc(entry))
+            val actual = ByteArrayOutputStream().also { archive.extractEncryptedYsc(entry, it) }.toByteArray()
+            assertTrue(expected.contentEquals(actual))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
     private fun encryptAes(bytes: ByteArray, key: ByteArray): ByteArray {
         val full = bytes.size - bytes.size % 16
         val result = bytes.clone()
