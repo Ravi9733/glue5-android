@@ -50,7 +50,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         require(entryIndex in archive.entries.indices && !hasRemovedAncestor(entryIndex)) { "Invalid entry or its parent folder has been removed" }
         val entry = archive.entries[entryIndex]
         require(!entry.isDirectory) { "Directories cannot be replaced" }
-        require(!entry.encrypted || archive.encryptionLabel == "AES") { "NG-encrypted files cannot be replaced without NG key support" }
+        require(!entry.encrypted || archive.encryptionLabel == "AES" || archive.encryptionLabel == "NG") { "Encrypted files cannot be replaced in this archive mode" }
         require(source.isFile) { "Selected source is not a file" }
         val meta = readResourceMeta(source)
         require(!entry.isResource || archive.encryptionLabel != "AES") {
@@ -109,13 +109,13 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
     }
 
     fun saveAs(destination: File) {
-        require(archive.encryptionLabel == "OPEN" || archive.encryptionLabel == "NONE" || archive.encryptionLabel == "AES") {
+        require(archive.encryptionLabel == "OPEN" || archive.encryptionLabel == "NONE" || archive.encryptionLabel == "AES" || archive.encryptionLabel == "NG") {
             "This archive encryption mode cannot be repacked"
         }
         require(archive.encryptionLabel != "AES" || archive.entries.none { it.isResource && it.index !in removals }) {
             "AES-encrypted RSC7 resource repacking is not enabled; remove those resources or use an OPEN/NONE archive."
         }
-        require(archive.encryptionLabel == "AES" || archive.entries.none { it.encrypted && it.index !in removals }) {
+        require(archive.encryptionLabel == "AES" || archive.encryptionLabel == "NG" || archive.entries.none { it.encrypted && it.index !in removals }) {
             "Encrypted payloads need compatible keys before repacking."
         }
 
