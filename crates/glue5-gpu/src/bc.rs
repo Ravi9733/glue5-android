@@ -79,6 +79,18 @@ pub fn decode(bc: Bc, src: &[u8], src_bpr: usize, src_rows: usize, cols: usize, 
     out
 }
 
+/// Exact allocation size of the tightly packed BC decode output.
+/// Returns None if dimensions overflow usize; callers should reject/defer
+/// such work rather than under-account memory in the streaming budget.
+pub fn decoded_bytes(bc: Bc, cols: usize, rows: usize, layers: usize) -> Option<usize> {
+    cols.checked_mul(rows)?.checked_mul(layers)?.checked_mul(16)?.checked_mul(bc.texel_bytes())
+}
+
+/// Exact allocation size of ETC2 RGBA output for a block grid.
+pub fn etc2_bytes(cols: usize, rows: usize, layers: usize) -> Option<usize> {
+    cols.checked_mul(rows)?.checked_mul(layers)?.checked_mul(ETC2_RGBA_BLOCK_BYTES as usize)
+}
+
 /// Bytes per ETC2 RGBA block (4x4 texels).
 pub const ETC2_RGBA_BLOCK_BYTES: u32 = 16;
 
@@ -141,6 +153,26 @@ fn decode_block(bc: Bc, block: &[u8], dst: &mut [u8], pitch: usize) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn decoded_byte_estimates_match_decoder_allocations() {
+        use crate::format::Bc;
+        assert_eq!(super::decoded_bytes(Bc::Bc1, 4, 2, 3), Some(4 * 2 * 3 * 16 * 4));
+        assert_eq!(super::decoded_bytes(Bc::Bc4, 4, 2, 3), Some(4 * 2 * 3 * 16));
+        assert_eq!(super::decoded_bytes(Bc::Bc6h, 4, 2, 3), Some(4 * 2 * 3 * 16 * 8));
+    }
+
+    #[test]
+    fn etc2_byte_estimate_matches_block_output() {
+        assert_eq!(super::etc2_bytes(4, 2, 3), Some(4 * 2 * 3 * 16));
+    }
+
+    #[test]
+    fn byte_estimates_reject_overflow() {
+        use crate::format::Bc;
+        assert_eq!(super::decoded_bytes(Bc::Bc7, usize::MAX, 2, 1), None);
+        assert_eq!(super::etc2_bytes(usize::MAX, 2, 1), None);
+    }
+
     #[test]
     fn etc2_rgba_keeps_colours_and_alpha() {
         // 8x8: four flat 4x4 blocks (opaque red, green, blue; half-transparent white).
