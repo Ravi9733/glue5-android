@@ -10,7 +10,7 @@
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::done::{Staging, StagingPool, Work};
@@ -19,6 +19,8 @@ use crate::done::{Staging, StagingPool, Work};
 pub const FRAMES: usize = 120;
 
 static ON: AtomicBool = AtomicBool::new(false);
+/// Android PowerManager thermal status (0..6); 255 means unavailable.
+static THERMAL_STATUS: AtomicU8 = AtomicU8::new(255);
 static LIVE: Mutex<Live> = Mutex::new(Live::new());
 static SMART: Mutex<SmartState> = Mutex::new(SmartState::new());
 
@@ -65,8 +67,19 @@ pub fn set_smart_performance(enabled: bool, target_fps: u32, auto_apply: bool) {
 /// back into the user's preferred max_fps setting.
 pub fn effective_fps_cap() -> Option<u32> {
     let smart = SMART.lock().unwrap();
-    (smart.enabled && smart.auto_apply)
-        .then(|| smart.recommendation.unwrap_or(smart.target_fps))
+    if !smart.enabled || !smart.auto_apply { return None; }
+    let mut cap = smart.recommendation.unwrap_or(smart.target_fps);
+    match THERMAL_STATUS.load(Ordering::Relaxed) {
+        4..=6 => cap = cap.min(30), // critical / emergency / shutdown warning
+        3 => cap = cap.min(45),     // severe
+        _ => {}
+    }
+    Some(cap)
+}
+
+/// Receives Android PowerManager thermal status. 255 clears unavailable data.
+pub fn set_thermal_status(status: Option<u8>) {
+    THERMAL_STATUS.store(status.unwrap_or(255).min(6), Ordering::Relaxed);
 }
 
 /// The overlay's figures and optional Smart Performance recommendation.
