@@ -7,9 +7,12 @@ A standalone Android project in this repository for browsing user-supplied GTA V
 - RPF7 header and TOC validation.
 - Browse directory entries in **OPEN** and **NONE** RPF7 archives.
 - Extract unencrypted binary entries; raw-DEFLATE compressed entries are decompressed.
-- Resource entries are identified and listed, but not yet decoded or exported.
-- AES/NG encrypted TOCs and encrypted file payloads are reported as unsupported until GTA V key handling is implemented.
-- Original archives are never modified.
+- Resource entries are identified, listed, and their raw RSC7 payload/page flags are preserved when repacking; resource preview/extraction is not implemented.
+- Long-press entries to replace or remove; add files into the currently open folder.
+- Save As New RPF rebuilds the directory TOC, name table, offsets, and 512-byte alignment without modifying the source.
+- The writer supports OPEN/NONE archives only. AES/NG encrypted TOCs and encrypted binary payloads remain unsupported until user-supplied GTA V key handling is implemented.
+- RSC7 resource entries are retained byte-for-byte; replacement/addition requires a valid RSC7 file. The RSC7 page flags are read from its header.
+- JUnit regression tests cover binary add/replace/remove, round-trip reopening, source-hash preservation, and RSC7 payload/page-flag preservation.
 
 ## Build
 Open this folder as an Android Gradle project in Android Studio, or run Gradle 8.9 with JDK 17:
@@ -21,9 +24,9 @@ A GitHub Actions workflow builds the debug APK on pushes to the development bran
 
 ## Editor implementation roadmap
 
-The next development stage is an in-app archive editor. It will provide **Add file**, **Replace file**, and **Save as new RPF** operations. Edits must be staged in a working copy and the source archive must remain unchanged. The writer will rebuild the TOC, name table, alignment and file offsets rather than patching bytes in place. The first safe writer target is OPEN/NONE RPF7; AES/NG read support and resource-aware replacement are separate compatibility milestones and must be validated before claiming support.
+The in-app editor now stages **Add file**, **Replace file**, and **Remove** operations, then writes **Save as New RPF**. The source archive remains read-only. The writer rebuilds the TOC, name table, alignment and file offsets. Binary files are written uncompressed; unchanged compressed binaries are decompressed before writing. RSC7 resources are copied raw and retain their system/graphics page flags. The supported writer target is OPEN/NONE RPF7; AES/NG support remains a separate compatibility milestone.
 
 Planned validation includes round-trip open/save/reopen tests, duplicate-name and nested-folder cases, compressed binary files, large-file streaming, and checks that the original archive hash is unchanged.
 
 ## Important limitations
-This is an initial functional parser, not a full OpenIV replacement. YTD/YDR/YDD preview, resource extraction, nested archive traversal, AES/NG key support, archive editing/repacking, and exhaustive compatibility testing are not implemented yet. Test with a copy of an OPEN/NONE RPF7 mod archive first. Do not overwrite original game archives.
+This is an initial functional parser, not a full OpenIV replacement. YTD/YDR/YDD preview and resource extraction, nested archive traversal, AES/NG key support, and exhaustive compatibility testing are not implemented yet. The editor deliberately blocks repacking encrypted archives and refuses malformed resource replacements. Test with a copy of an OPEN/NONE RPF7 archive first. Do not overwrite original game archives.
