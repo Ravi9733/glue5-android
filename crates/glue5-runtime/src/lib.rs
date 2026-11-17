@@ -253,6 +253,11 @@ impl Game {
     }
 }
 
+/// A cheap snapshot of the active game's network-stream cache, if streaming.
+pub fn stream_telemetry() -> Option<glue5_stream::StreamTelemetry> {
+    rt().config.stream.as_ref().map(|client| client.telemetry())
+}
+
 fn nonzero(v: u64) -> Option<u64> {
     (v != 0).then_some(v)
 }
