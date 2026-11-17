@@ -67,6 +67,18 @@ const MAX_RUN: u64 = CHUNK as u64 / BLOCK;
 const AHEAD_FIRST: u64 = 64 << 10;
 const AHEAD_MAX: u64 = 1 << 20;
 const PIECES_MAX: u64 = 512 << 10;
+/// Maximum speculative AHEAD window under current demand pressure.
+/// Demand reads and engine hints retain their existing priorities.
+fn ahead_budget(waiting_reads: u32, inflight_requests: usize) -> u64 {
+    if waiting_reads > 0 {
+        64 << 10
+    } else if inflight_requests >= 256 {
+        128 << 10
+    } else {
+        AHEAD_MAX
+    }
+}
+
 /// A file read again this long at least after the engine had its previous
 /// read is being played over time, not read in pieces.
 const STREAM_GAP: Duration = Duration::from_millis(20);
@@ -617,6 +629,13 @@ impl Client {
         } else {
             return;
         };
+        // Adapt speculative read-ahead to current demand pressure. Never
+        // throttle DEMAND/HINT/BOOT: only the optional AHEAD window is capped.
+        let waiting = self.stats.waiting.load(Ordering::Relaxed);
+        let inflight = self.inflight.lock().unwrap().reqs.len();
+        let budget = ahead_budget(waiting, inflight);
+        let max = max.min(budget);
+        let first = first.min(max);
         let ahead = match r.ahead[i].load(Ordering::Relaxed) {
             0 => first,
             a => 2 * a,
@@ -1568,4 +1587,26 @@ fn connects_to_the_address_that_answers() {
     let port = listener.local_addr().unwrap().port();
     let (_, addr) = connect(&format!("localhost:{port}")).unwrap();
     assert_eq!(addr, listener.local_addr().unwrap());
+}
+
+
+#[cfg(test)]
+mod smart_streaming_tests {
+    use super::*;
+
+    #[test]
+    fn speculative_ahead_shrinks_when_game_reads_are_waiting() {
+        assert_eq!(ahead_budget(1, 0), 64 << 10);
+    }
+
+    #[test]
+    fn speculative_ahead_shrinks_when_request_queue_is_large() {
+        assert_eq!(ahead_budget(0, 256), 128 << 10);
+        assert_eq!(ahead_budget(0, 255), AHEAD_MAX);
+    }
+
+    #[test]
+    fn speculative_ahead_recovers_when_pressure_clears() {
+        assert_eq!(ahead_budget(0, 0), AHEAD_MAX);
+    }
 }
