@@ -39,10 +39,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         val copy = File(workDir, "add-${System.nanoTime()}").also { source.copyTo(it, overwrite = true) }
         try {
             val meta = readResourceMeta(copy)
-            require(meta == null || archive.encryptionLabel != "AES") {
-                "Adding RSC7 resources to AES-encrypted archives is not enabled yet."
-            }
-            additions += Added(parentDirectory, name, copy, meta != null, meta?.first ?: 0L, meta?.second ?: 0L)
+                        additions += Added(parentDirectory, name, copy, meta != null, meta?.first ?: 0L, meta?.second ?: 0L)
         } catch (e: Exception) {
             copy.delete()
             throw e
@@ -59,9 +56,6 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         require(!entry.encrypted || archive.encryptionLabel == "AES" || archive.encryptionLabel == "NG") { "Encrypted files cannot be replaced in this archive mode" }
         require(source.isFile) { "Selected source is not a file" }
         val meta = readResourceMeta(source)
-        require(!entry.isResource || archive.encryptionLabel != "AES") {
-            "Replacing RSC7 resources in AES-encrypted archives is not enabled yet."
-        }
         require(entry.isResource == (meta != null)) {
             if (entry.isResource) "Replace this RSC7 resource with another RSC7 file" else "A binary entry cannot be replaced by an RSC7 resource"
         }
@@ -117,9 +111,6 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
     fun saveAs(destination: File) {
         require(archive.encryptionLabel == "OPEN" || archive.encryptionLabel == "NONE" || archive.encryptionLabel == "AES" || archive.encryptionLabel == "NG") {
             "This archive encryption mode cannot be repacked"
-        }
-        require(archive.encryptionLabel != "AES" || archive.entries.none { it.isResource && it.index !in removals }) {
-            "AES-encrypted RSC7 resource repacking is not enabled; remove those resources or use an OPEN/NONE archive."
         }
         require(archive.entries.none { it.isResource && it.encrypted && it.index !in removals }) {
             "This archive contains NG-encrypted YSC resources. Remove those entries before saving; script resource decrypt/repack is not enabled."
