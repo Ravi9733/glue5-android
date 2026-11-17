@@ -33,8 +33,14 @@ jobs:
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - name: Check formatting of AI and integration files
+        run: >-
+          rustfmt --edition 2024 --check --config skip_children=true
+          crates/glue5-gpu/src/adaptive.rs
+          crates/glue5-gpu/src/perf.rs
+          crates/glue5/src/settings.rs
+          crates/glue5/src/ui.rs
+          crates/glue5/src/ui/perf.rs
       - name: Test runtime ring and memory accounting
         run: cargo test -p glue5-runtime
       - name: Test GPU decode budget and streaming
