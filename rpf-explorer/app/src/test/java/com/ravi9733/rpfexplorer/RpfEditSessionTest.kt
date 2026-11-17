@@ -73,17 +73,33 @@ class RpfEditSessionTest {
         }
     }
  
-    private fun resourceFixture(dir: File, resourceName: String = "sample.ytd"): File {
+    private fun resourceFixture(
+        dir: File,
+        resourceName: String = "sample.ytd",
+        encryption: Long = 0x4E45504FL,
+        aesKey: ByteArray? = null
+    ): File {
         val f = File(dir, "resource.rpf")
-        val names = "root\u0000${resourceName}\u0000".toByteArray(Charsets.UTF_8)
-        RandomAccessFile(f, "rw").use { r ->
+        val names = "root\\u0000${resourceName}\\u0000".toByteArray(Charsets.UTF_8)
+        val toc = ByteArrayOutputStream()
+        RandomAccessFile(File(dir, "resource-toc.bin"), "rw").use { r ->
             r.setLength(0)
-            u32(r, 0x52504637L); u32(r, 2); u32(r, names.size.toLong()); u32(r, 0x4E45504FL)
             u32(r, 0); u32(r, 0x7FFFFF00L); u32(r, 1); u32(r, 1)
             r.write(5); r.write(0); r.write(16); r.write(0); r.write(0)
             r.write(1); r.write(0); r.write(0x80)
             u32(r, 0x12345678L); u32(r, 0x23456789L)
-            r.write(names)
+        }
+        val tocBytes = File(dir, "resource-toc.bin").readBytes()
+        val namesBytes = if (encryption == 0x0FFFFFF9L) {
+            encryptAes(names, aesKey ?: error("AES key required"))
+        } else names
+        val entryBytes = if (encryption == 0x0FFFFFF9L) {
+            encryptAes(tocBytes, aesKey ?: error("AES key required"))
+        } else tocBytes
+        RandomAccessFile(f, "rw").use { r ->
+            r.setLength(0)
+            u32(r, 0x52504637L); u32(r, 2); u32(r, names.size.toLong()); u32(r, encryption)
+            r.write(entryBytes); r.write(namesBytes)
             r.seek(512)
             r.write(byteArrayOf(0x52,0x53,0x43,0x37, 1,0,0,0, 0x78,0x56,0x34,0x12, 0x89.toByte(),0x67,0x45,0x23))
         }
@@ -315,6 +331,33 @@ class RpfEditSessionTest {
         }
     }
 
+
+
+    @Test fun unencryptedRsc7ResourceCanBeEditedInsideAesArchive() {
+        val dir = createTempDir(prefix = "rpf-aes-resource-test-")
+        try {
+            val key = ByteArray(32) { (it * 7 + 9).toByte() }
+            val source = resourceFixture(dir, "sample.ytd", 0x0FFFFFF9L, key)
+            val archive = RpfArchive.open(source, key)
+            assertEquals("AES", archive.encryptionLabel)
+            val resource = archive.entries.single { it.isResource }
+            val replacement = File(dir, "replacement.ytd")
+            val bytes = byteArrayOf(0x52,0x53,0x43,0x37, 2,0,0,0, 0x55,0x55,0x55,0x55, 0x66,0x66,0x66,0x66)
+            replacement.writeBytes(bytes)
+            val editor = RpfEditSession(archive, File(dir, "work").apply { mkdirs() })
+            editor.replace(resource.index, replacement)
+            val output = File(dir, "aes-resource-open.rpf")
+            editor.saveAs(output)
+            val reopened = RpfArchive.open(output)
+            assertEquals("NONE", reopened.encryptionLabel)
+            val result = reopened.entries.single { it.name == "sample.ytd" }
+            assertEquals(0x12345678L, result.systemFlags)
+            assertEquals(0x23456789L, result.graphicsFlags)
+            assertTrue(bytes.contentEquals(ByteArrayOutputStream().also { reopened.copyRaw(result, it) }.toByteArray()))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 
     @Test fun encryptedYscResourceIsDetectedAndBlocksUnsafeRepack() {
         val dir = createTempDir(prefix = "rpf-ysc-test-")
