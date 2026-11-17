@@ -13,7 +13,8 @@ This branch is for the standalone Android RPF Explorer only. Do not change the G
 
 ## Format and compatibility
 - [x] Parse RPF7 directory, binary and resource entries, including RSC7 size sentinel and 23-bit offsets.
-- [x] Detect NG-encrypted `.ysc` resource entries and block unsafe raw repacking unless removed.
+- [x] Detect encrypted `.ysc` resource entries; export decrypted/decompressed standalone script bytecode when compatible local AES/NG material is available.
+- [x] Keep encrypted YSC repacking blocked until a format-correct resource re-encryption writer is available.
 - [x] Handle NONE and OPEN TOCs.
 - [x] Add AES TOC/data decryption using the AES key extracted locally from the user's own compatible PC GTA5.exe.
 - [x] Add streaming AES and NG block-decryption regression tests and app-private persistence for locally extracted NG tables.
@@ -21,7 +22,9 @@ This branch is for the standalone Android RPF Explorer only. Do not change the G
 - [x] Preserve untouched resource entries byte-for-byte and retain page flags when rebuilding.
 - [x] Add/replace resource assets only after validating RSC7 header and reading resource page flags (large new RSC7 assets are blocked safely).
 - [x] Handle nested RPFs as separately editable archives and stage the edited nested archive back into its parent.
-- [x] Clearly identify unknown encryption markers and AES resource repacking as unsupported instead of silently corrupting them.
+- [x] Clearly identify unknown encryption markers and encrypted YSC repacking as unsupported instead of silently corrupting them.
+- [x] Add AES YSC decrypt/decompress export regression coverage.
+- [ ] Decode and visually preview YTD textures and YDR/YDD models (requires a full RSC7 page/resource decoder; header inspection is not a preview).
 
 ## UI and safety
 - [x] Add actions for Add file, long-press Replace/Remove, and Save as new RPF.
