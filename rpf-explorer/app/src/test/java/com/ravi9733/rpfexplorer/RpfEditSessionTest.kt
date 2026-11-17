@@ -80,7 +80,7 @@ class RpfEditSessionTest {
         aesKey: ByteArray? = null
     ): File {
         val f = File(dir, "resource.rpf")
-        val names = "root\\u0000${resourceName}\\u0000".toByteArray(Charsets.UTF_8)
+        val names = "root\u0000${resourceName}\u0000".toByteArray(Charsets.UTF_8)
         RandomAccessFile(File(dir, "resource-toc.bin"), "rw").use { r ->
             r.setLength(0)
             u32(r, 0); u32(r, 0x7FFFFF00L); u32(r, 1); u32(r, 1)
