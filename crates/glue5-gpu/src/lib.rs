@@ -16,6 +16,7 @@ mod adreno;
 mod bc;
 mod done;
 mod draw;
+mod decode_budget;
 mod exec;
 mod format;
 mod fsr;
