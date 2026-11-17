@@ -21,6 +21,13 @@ class MainActivity : Activity() {
     private val PICK_RPF = 10
     private val SAVE_FILE = 11
     private var pendingExtract: RpfEntry? = null
+    private var editor: RpfEditSession? = null
+    private var pendingEditEntry: RpfEntry? = null
+    private var editAction: String? = null
+    private val PICK_EDIT_SOURCE = 12
+    private val SAVE_RPF = 13
+    private lateinit var addButton: Button
+    private lateinit var saveButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,11 +35,13 @@ class MainActivity : Activity() {
         val title = TextView(this).apply { text = "GTA V  •  RPF EXPLORER"; textSize = 22f; setTextColor(0xFFFFFFFF.toInt()); gravity = Gravity.CENTER_VERTICAL; setPadding(0,8,0,14) }
         status = TextView(this).apply { text = "Open a GTA V PC .rpf archive"; textSize = 13f; setTextColor(0xFFB8C3D1.toInt()); setPadding(0,0,0,12) }
         openButton = Button(this).apply { text = "OPEN RPF FILE"; setOnClickListener { openArchive() } }
+        addButton = Button(this).apply { text = "ADD FILE TO THIS FOLDER"; isEnabled = false; setOnClickListener { chooseEditSource("add", null) } }
+        saveButton = Button(this).apply { text = "SAVE AS NEW RPF"; isEnabled = false; setOnClickListener { saveEditedArchive() } }
         search = EditText(this).apply { hint = "Search current folder"; setSingleLine(true); setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFF8B96A5.toInt()); visibility = android.view.View.GONE }
         val back = Button(this).apply { text = "↑  PARENT FOLDER"; setOnClickListener { if (currentDir != 0) { currentDir = archive?.parentOf(currentDir) ?: 0; render() } } }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(this).apply { addView(list) }
-        root.addView(title); root.addView(status); root.addView(openButton); root.addView(back); root.addView(search); root.addView(scroll, LinearLayout.LayoutParams(-1,0,1f))
+        root.addView(title); root.addView(status); root.addView(openButton); root.addView(addButton); root.addView(saveButton); root.addView(back); root.addView(search); root.addView(scroll, LinearLayout.LayoutParams(-1,0,1f))
         setContentView(root)
         search.addTextChangedListener(SimpleWatcher { render() })
     }
@@ -56,11 +65,38 @@ class MainActivity : Activity() {
                     val parsed = RpfArchive.open(temp)
                     runOnUiThread {
                         archive = parsed; currentDir = 0
+                        editor = RpfEditSession(parsed, File(cacheDir, "rpf-edit").apply { mkdirs() })
+                        addButton.isEnabled = true; saveButton.isEnabled = true
                         status.text = "${parsed.entries.size} entries • ${parsed.encryptionLabel} • ${temp.length()/1024/1024} MiB"
                         search.visibility = android.view.View.VISIBLE
                         render()
                     }
                 } catch (e: Exception) { runOnUiThread { status.text = "Could not open: ${e.message}"; Toast.makeText(this, e.message ?: "Invalid archive", Toast.LENGTH_LONG).show() } }
+            }
+        } else if (requestCode == PICK_EDIT_SOURCE) {
+            val action = editAction ?: return
+            val target = File(cacheDir, "edit-source-${System.currentTimeMillis()}")
+            thread {
+                try {
+                    contentResolver.openInputStream(uri).use { input -> FileOutputStream(target).use { output -> input!!.copyTo(output, 1024 * 1024) } }
+                    runOnUiThread {
+                        try {
+                            if (action == "add") editor!!.add(currentDir, target)
+                            else editor!!.replace(pendingEditEntry!!.index, target)
+                            status.text = "Edits staged: ${editor!!.stagedCount()} • Original archive unchanged"
+                            render()
+                        } catch (e: Exception) { Toast.makeText(this, e.message ?: "Edit failed", Toast.LENGTH_LONG).show() }
+                    }
+                } catch (e: Exception) { runOnUiThread { Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show() } }
+            }
+        } else if (requestCode == SAVE_RPF) {
+            val destination = File(cacheDir, "edited-${System.currentTimeMillis()}.rpf")
+            thread {
+                try {
+                    editor!!.saveAs(destination)
+                    contentResolver.openOutputStream(uri)?.use { output -> destination.inputStream().use { it.copyTo(output, 1024 * 1024) } } ?: error("Cannot create output document")
+                    runOnUiThread { status.text = "Saved new RPF • source archive untouched"; Toast.makeText(this, "New RPF saved successfully", Toast.LENGTH_LONG).show() }
+                } catch (e: Exception) { runOnUiThread { status.text = "Save blocked: ${e.message}"; Toast.makeText(this, e.message ?: "Save failed", Toast.LENGTH_LONG).show() } }
             }
         } else if (requestCode == SAVE_FILE) {
             val entry = pendingExtract ?: return
@@ -71,6 +107,24 @@ class MainActivity : Activity() {
                 } catch (e: Exception) { runOnUiThread { Toast.makeText(this, "Extract failed: ${e.message}", Toast.LENGTH_LONG).show() } }
             }
         }
+    }
+
+    private fun chooseEditSource(action: String, entry: RpfEntry?) {
+        editAction = action
+        pendingEditEntry = entry
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivityForResult(i, PICK_EDIT_SOURCE)
+    }
+
+    private fun saveEditedArchive() {
+        val i = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"
+            putExtra(Intent.EXTRA_TITLE, "edited-gta-v.rpf")
+        }
+        startActivityForResult(i, SAVE_RPF)
     }
 
     private fun render() {
