@@ -230,6 +230,10 @@ pub struct Gpu {
     /// the first one comes): copied in at a flush once decoded.
     pub decoder: Option<Pool>,
     pub decodes: Vec<Decode>,
+    /// Peak CPU memory reserved by queued, running, and completed decodes.
+    pub decode_budget: crate::decode_budget::DecodeBudget,
+    /// Reservation made while preflighting the next ring command.
+    pending_decode_reservation: Option<(u32, usize)>,
 
     // queries
     pub occlusion: crate::ops::Occlusion,
@@ -272,62 +276,35 @@ pub struct Decode {
     rows: u32,
     extent: wgpu::Extent3d,
     row_bytes: u32,
+    /// CPU working-set bytes reserved until the decoded upload is consumed.
+    reserved_bytes: usize,
 }
 
 /// Recorded work waits this long for more before an idle ring submits it.
 const IDLE_BATCH: Duration = Duration::from_millis(4);
 
 impl Gpu {
-    /// Bound the number of decoded texture uploads that can be in flight.
-    /// Each entry owns a receiver for a decoded image, so limiting this list
-    /// also limits queued, running, and completed-but-not-uploaded decode jobs.
-    fn make_decode_room(&mut self) {
-        // Keep the in-flight set bounded, including decoded images awaiting
-        // upload; otherwise world streaming can retain hundreds of MiB.
+    /// Reserve CPU working-set bytes before consuming a BC texture upload
+    /// from the command ring. Returning false leaves that command unconsumed.
+    fn reserve_decode_for_command(&mut self, c: &Command) -> bool {
+        if c.op != op::UPLOAD_TEXTURE { return true; }
+        let (id, mip, w, h, d, size) = (c.w(0), c.w(1), c.w(6), c.w(7), c.w(8).max(1), c.w(11));
+        let Some(t) = self.objs.tex(id) else { return true; };
+        let crate::format::Upload::Bc(bc) = t.upload else { return true; };
+        if t.level(mip).is_none() { return true; }
         const MAX_PENDING_DECODES: usize = 16;
-        if self.decodes.len() < MAX_PENDING_DECODES {
-            return;
-        }
-        // Prefer a completed decode from another texture over blocking on
-        // the oldest job. Preserve per-texture region order: a later region
-        // must not be uploaded before an earlier region of the same texture.
-        let count = self.decodes.len();
-        for i in 0..count {
-            if self.decodes[..i].iter().any(|older| older.texture == self.decodes[i].texture) {
-                continue;
-            }
-            let d = self.decodes.remove(i);
-            match d.data.try_recv() {
-                Ok(texels) => {
-                    self.upload_decoded(d, &texels);
-                    return;
-                }
-                Err(TryRecvError::Empty) => self.decodes.insert(i, d),
-                Err(TryRecvError::Disconnected) => return,
-            }
-        }
-
-        // No independent decode is ready. Wait for the oldest region so the
-        // command ring remains bounded without dropping texture data.
-        let d = self.decodes.remove(0);
-        if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
-            return;
-        }
-        let queued_age = d.queued_at.elapsed();
-        let waiting = Instant::now();
-        let Ok(texels) = d.data.recv() else {
-            return;
+        if self.decodes.len() >= MAX_PENDING_DECODES { return false; }
+        let cols = w.div_ceil(4) as usize;
+        let rows = h.div_ceil(4) as usize;
+        let Some(bytes) = crate::bc::decode_working_bytes(
+            bc, cols, rows, d as usize, size as usize, t.format.is_compressed(),
+        ) else {
+            log::error!("texture streaming: decode reservation overflow for texture {id}");
+            return false;
         };
-        let waited = waiting.elapsed();
-        if waited >= Duration::from_millis(8) {
-            log::warn!(
-                "texture streaming: decode backlog reached its limit; texture {} waited {:.1} ms (queued {:.1} ms) for oldest upload",
-                d.id,
-                waited.as_secs_f64() * 1000.0,
-                queued_age.as_secs_f64() * 1000.0,
-            );
-        }
-        self.upload_decoded(d, &texels);
+        if self.decode_budget.try_reserve(bytes).is_none() { return false; }
+        self.pending_decode_reservation = Some((id, bytes));
+        true
     }
 
     /// Uploads a completed BC decode if its texture still exists.
@@ -375,11 +352,28 @@ impl Gpu {
 
     fn execute_until(&mut self, reader: &mut Reader, head: u32) {
         let mut n = 0u32;
-        while let Some(c) = reader.next(head) {
+        loop {
+            let Some(next) = reader.peek(head) else { break };
+            if !self.reserve_decode_for_command(&next) {
+                // Upload completed work and free its reservations. If capacity
+                // is still unavailable, leave this upload in the ring: its
+                // source payload remains owned by the producer/ring.
+                self.finish_decodes();
+                if !self.reserve_decode_for_command(&next) {
+                    reader.release();
+                    std::thread::sleep(Duration::from_millis(1));
+                    return;
+                }
+            }
+            let Some(c) = reader.next(head) else {
+                if let Some((_, bytes)) = self.pending_decode_reservation.take() {
+                    let _ = self.decode_budget.release(bytes);
+                }
+                break;
+            };
             self.execute(c);
             n += 1;
             if n.is_multiple_of(512) {
-                // Every command copies what it needs: the space can be reused.
                 reader.release();
             }
         }
@@ -977,15 +971,23 @@ impl Gpu {
                 (cols * 4 * texel, block_rows * 4, ch, (cw, ch), cw * texel)
             };
             let (texture, src) = (t.tex.clone(), data.to_vec());
+            let Some((reserved_id, reserved_bytes)) = self.pending_decode_reservation.take() else {
+                log::error!("texture streaming: missing preflight reservation for texture {id}");
+                return;
+            };
+            if reserved_id != id {
+                let _ = self.decode_budget.release(reserved_bytes);
+                log::error!("texture streaming: mismatched preflight reservation ({reserved_id} != {id})");
+                return;
+            }
             t.uploaded.set(self.epoch);
             let (tx, rx) = std::sync::mpsc::channel();
             let bpr = bpr as usize;
             // BC decode also parallelizes large textures internally. Keep
             // this outer queue bounded so nested workers cannot starve the
             // game and renderer threads on Android.
-            // Bound queued, running, and completed-but-not-uploaded work.
-            // Each job owns compressed source and decoded output bytes.
-            self.make_decode_room();
+            // The command-ring preflight bounds queued, running, and completed
+            // work by both count and peak CPU working-set bytes.
             self.decoder.get_or_insert_with(|| Pool::new("gpu decode", 2))
                 .urgent_bounded(move || {
                     let started = Instant::now();
@@ -1028,6 +1030,7 @@ impl Gpu {
                 rows: copy_rows,
                 extent: wgpu::Extent3d { width: cw, height: ch, depth_or_array_layers: d },
                 row_bytes,
+                reserved_bytes,
             });
             return;
         }
@@ -1082,6 +1085,7 @@ impl Gpu {
         for d in std::mem::take(&mut self.decodes) {
             let age = d.queued_at.elapsed();
             if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
+                let _ = self.decode_budget.release(d.reserved_bytes);
                 continue; // destroyed meanwhile
             }
             // Never stall the command/render thread waiting for CPU BCn decode
@@ -1094,7 +1098,10 @@ impl Gpu {
                 match d.data.try_recv() {
                     Ok(texels) => Some(texels),
                     Err(TryRecvError::Empty) => None,
-                    Err(TryRecvError::Disconnected) => continue,
+                    Err(TryRecvError::Disconnected) => {
+                        let _ = self.decode_budget.release(d.reserved_bytes);
+                        continue;
+                    },
                 }
             };
             let Some(texels) = texels else {
@@ -1110,6 +1117,7 @@ impl Gpu {
                 aspect: wgpu::TextureAspect::All,
             };
             self.uploads.texture(target, &texels, d.bpr, d.src_rows, d.rows, d.extent, d.row_bytes);
+            let _ = self.decode_budget.release(d.reserved_bytes);
         }
         let pending = later.len();
         self.decodes = later;
