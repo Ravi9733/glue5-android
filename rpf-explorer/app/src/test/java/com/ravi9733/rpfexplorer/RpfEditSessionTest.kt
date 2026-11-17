@@ -422,6 +422,27 @@ class RpfEditSessionTest {
         }
     }
 
+    @Test fun ngStyleYscResourceIsPreservedByteForByteInOpenArchiveRepack() {
+        val dir = createTempDir(prefix = "rpf-ysc-preserve-test-")
+        try {
+            val source = resourceFixture(dir, "main.ysc")
+            val archive = RpfArchive.open(source)
+            val script = archive.entries.single { it.isResource }
+            assertTrue(script.encrypted)
+            val before = ByteArrayOutputStream().also { archive.copyRaw(script, it) }.toByteArray()
+            val output = File(dir, "preserved-script.rpf")
+            RpfEditSession(archive, File(dir, "work").apply { mkdirs() }).saveAs(output)
+            val reopened = RpfArchive.open(output)
+            assertEquals("OPEN", reopened.encryptionLabel)
+            val copied = reopened.entries.single { it.name == "main.ysc" }
+            assertTrue(copied.encrypted)
+            val after = ByteArrayOutputStream().also { reopened.copyRaw(copied, it) }.toByteArray()
+            assertTrue(before.contentEquals(after))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
     @Test fun compressedBinaryIsInflatedAndRepackedUncompressed() {
         val dir = createTempDir(prefix = "rpf-deflate-test-")
         try {
