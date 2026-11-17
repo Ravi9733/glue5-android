@@ -112,10 +112,8 @@ class MainActivity : Activity() {
                         render()
                     }
                 } catch (e: Exception) {
+                    temp.delete()
                     runOnUiThread { status.text = "Could not open: ${e.message}"; Toast.makeText(this, e.message ?: "Invalid archive", Toast.LENGTH_LONG).show() }
-                } finally {
-                    // The opened RpfArchive owns the temporary file after a successful parse.
-                    if (archive?.archiveName != archiveDisplayName) temp.delete()
                 }
             }
         } else if (requestCode == IMPORT_GTA5_EXE) {
