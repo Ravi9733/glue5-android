@@ -180,15 +180,31 @@ private class SimpleWatcher(val changed: () -> Unit) : android.text.TextWatcher 
 internal data class RpfEntry(
     val index: Int, val name: String, val parent: Int, val isDirectory: Boolean, val isResource: Boolean,
     val offset: Long = 0, val storedSize: Long = 0, val uncompressedSize: Long = 0,
-    val encrypted: Boolean = false, val childrenStart: Int = 0, val childrenCount: Int = 0
+    val encrypted: Boolean = false, val childrenStart: Int = 0, val childrenCount: Int = 0, val systemFlags: Long = 0, val graphicsFlags: Long = 0
 )
 
 internal class RpfArchive private constructor(private val file: RandomAccessFile, val entries: List<RpfEntry>, val encryptionLabel: String) {
     fun children(parent: Int) = entries.filter { it.parent == parent && it.index != parent }
     fun parentOf(index: Int) = entries.firstOrNull { it.index == index }?.parent ?: 0
 
+    fun copyRaw(e: RpfEntry, output: OutputStream) {
+        require(!e.isDirectory) { "Cannot copy a directory payload" }
+        val size = e.storedSize
+        require(size >= 0 && e.offset >= 0 && e.offset + size <= file.length()) { "Invalid entry data range" }
+        synchronized(file) {
+            file.seek(e.offset)
+            val buffer = ByteArray(64 * 1024)
+            var remaining = size
+            while (remaining > 0) {
+                val n = file.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                if (n < 0) error("Unexpected end of archive")
+                output.write(buffer, 0, n); remaining -= n
+            }
+        }
+    }
+
     fun extract(e: RpfEntry, output: OutputStream) {
-        require(!e.isDirectory && !e.isResource) { "Unsupported entry type" }
+        require(!e.isDirectory && !e.isResource) { "Resource extraction requires RSC7 decoding" }
         require(!e.encrypted) { "Encrypted file needs GTA V keys" }
         val size = if (e.storedSize == 0L) e.uncompressedSize else e.storedSize
         require(size in 0..Int.MAX_VALUE.toLong()) { "Entry is too large for this extractor" }
@@ -237,7 +253,17 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                         val off=u24(b,5)*512L; val sz=u24(b,2); val usz=u32(b,8); val crypt=u32(b,12)!=0L
                         temps.add(Temp(i,name(u16(b,0)),false,false,off,sz,usz,crypt,0,0))
                     } else {
-                        temps.add(Temp(i,name(u16(b,0)),false,true,u24(b,5)*512L,u24(b,2),0,false,0,0))
+                        val resourceOffset = u24(b,5) and 0x7FFFFF
+                        val encodedSize = u24(b,2)
+                        val absolute = resourceOffset * 512L
+                        val resourceSize = if (encodedSize == 0xFFFFFFL) {
+                            require(absolute + 16L <= raf.length()) { "RSC7 resource header is truncated" }
+                            val h = ByteArray(16); raf.seek(absolute); raf.readFully(h)
+                            (h[7].toLong() and 255L) or ((h[14].toLong() and 255L) shl 8) or
+                                ((h[5].toLong() and 255L) shl 16) or ((h[2].toLong() and 255L) shl 24)
+                        } else encodedSize
+                        require(resourceSize >= 16L && absolute + resourceSize <= raf.length()) { "RSC7 resource data range is invalid" }
+                        temps.add(Temp(i,name(u16(b,0)),false,true,absolute,resourceSize,0,false,0,0))
                     }
                 }
                 val parents=IntArray(count){0}
@@ -247,7 +273,12 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                     for (child in from until to) { if(child==dir) continue; parents[child]=dir; if(temps[child].dir) assign(child,depth+1) }
                 }
                 if(temps[0].dir) assign(0,0)
-                val result=temps.map { t -> RpfEntry(t.idx,t.nm,parents[t.idx],t.dir,t.res,t.off,t.sz,t.usz,t.crypt,t.start,t.cnt) }
+                val result=temps.map { t ->
+                    val rawEntry = raw[t.idx]
+                    val sys = if (t.res) u32(rawEntry, 8) else 0L
+                    val gfx = if (t.res) u32(rawEntry, 12) else 0L
+                    RpfEntry(t.idx,t.nm,parents[t.idx],t.dir,t.res,t.off,t.sz,t.usz,t.crypt,t.start,t.cnt,sys,gfx)
+                }
                 val dataStart=((namesStart+namesLen+511L)/512L)*512L
                 result.filter { !it.isDirectory && it.offset>0 }.forEach { require(it.offset < raf.length()) { "Entry points outside archive" } }
                 return RpfArchive(raf,result,if(enc==0L) "NONE" else "OPEN")
