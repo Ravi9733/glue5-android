@@ -608,6 +608,76 @@ int main() {
             "unsupported Enhanced-only YPT behaviour must fail closed without a final RPF");
     fs::remove(invalid_ypt_source, ignored);
 
-    std::cout << "Gen9 conversion, keyed extraction and large nested RPF7 tests passed\n";
+
+    // Read-only DLC metadata validation: setup2.xml chooses the data XML, and
+    // content.xml references must resolve inside the selected dlc.rpf.
+    const fs::path dlc_test_root = fs::temp_directory_path() / "gta-rpf-dlc-metadata-tests";
+    fs::remove_all(dlc_test_root, ignored);
+    fs::create_directories(dlc_test_root);
+    const fs::path valid_dlc_path = dlc_test_root / "dlc.rpf";
+    const std::string setup_xml =
+        "<SSetupData><deviceName>dlc_test</deviceName><datFile>content.xml</datFile>"
+        "<nameHash>test</nameHash><contentChangeSetGroups><Item><NameHash>GROUP_STARTUP</NameHash>"
+        "<ContentChangeSets><Item>test_AUTOGEN</Item></ContentChangeSets></Item></contentChangeSetGroups>"
+        "<type>EXTRACONTENT_COMPAT_PACK</type><order value=\"9\" /></SSetupData>";
+    const std::string content_xml =
+        "<CDataFileMgr__ContentsOfDataFileXml><disabledFiles/><includedXmlFiles/><includedDataFiles/>"
+        "<dataFiles><Item><filename>dlc_test:/vehicles.rpf</filename><fileType>RPF_FILE</fileType></Item>"
+        "<Item><filename>dlc_test:/vehicle.meta</filename><fileType>VEHICLE_METADATA_FILE</fileType></Item>"
+        "</dataFiles><contentChangeSets/></CDataFileMgr__ContentsOfDataFileXml>";
+    rk::RpfBuilder vehicle_archive;
+    vehicle_archive.add_file("stream/test.yft", gen9_yft);
+    rk::RpfBuilder valid_dlc;
+    valid_dlc.add_binary("setup2.xml", bytes_of(setup_xml));
+    valid_dlc.add_binary("content.xml", bytes_of(content_xml));
+    valid_dlc.add_archive("vehicles.rpf", std::move(vehicle_archive));
+    valid_dlc.add_binary("vehicle.meta", bytes_of("<CVehicleModelInfo__InitDataList/>"));
+    rk::RpfWriteOptions dlc_options;
+    dlc_options.encryption = rk::RpfEncryption::Open;
+    dlc_options.name = "dlc.rpf";
+    valid_dlc.save(valid_dlc_path.string(), dlc_options);
+    const fs::path dlc_empty_keys = dlc_test_root / "keys";
+    fs::create_directories(dlc_empty_keys);
+    const std::string valid_dlc_report =
+        gta_asset_converter::inspect_dlc_pack_metadata(valid_dlc_path, dlc_empty_keys);
+    require(valid_dlc_report.find("Device name: dlc_test") != std::string::npos,
+            "DLC validator must read the setup2 deviceName");
+    require(valid_dlc_report.find("Data files declared: 2") != std::string::npos,
+            "DLC validator must count content dataFiles");
+    require(valid_dlc_report.find("Data files resolved: 2") != std::string::npos,
+            "DLC validator must resolve both a nested RPF and a loose metadata file");
+    require(valid_dlc_report.find("Missing references: 0") != std::string::npos,
+            "valid DLC content references must not be reported missing");
+
+    const fs::path missing_dlc_path = dlc_test_root / "missing_reference.rpf";
+    const std::string missing_content_xml =
+        "<CDataFileMgr__ContentsOfDataFileXml><dataFiles>"
+        "<Item><filename>dlc_test:/missing.rpf</filename><fileType>RPF_FILE</fileType></Item>"
+        "</dataFiles><contentChangeSets/></CDataFileMgr__ContentsOfDataFileXml>";
+    rk::RpfBuilder missing_dlc;
+    missing_dlc.add_binary("setup2.xml", bytes_of(setup_xml));
+    missing_dlc.add_binary("content.xml", bytes_of(missing_content_xml));
+    missing_dlc.save(missing_dlc_path.string(), dlc_options);
+    const std::string missing_report =
+        gta_asset_converter::inspect_dlc_pack_metadata(missing_dlc_path, dlc_empty_keys);
+    require(missing_report.find("Missing references: 1") != std::string::npos,
+            "DLC validator must report missing RPF_FILE references");
+
+    const fs::path unsafe_dlc_path = dlc_test_root / "unsafe_reference.rpf";
+    const std::string unsafe_content_xml =
+        "<CDataFileMgr__ContentsOfDataFileXml><dataFiles>"
+        "<Item><filename>dlc_test:/../escape.rpf</filename><fileType>RPF_FILE</fileType></Item>"
+        "</dataFiles><contentChangeSets/></CDataFileMgr__ContentsOfDataFileXml>";
+    rk::RpfBuilder unsafe_dlc;
+    unsafe_dlc.add_binary("setup2.xml", bytes_of(setup_xml));
+    unsafe_dlc.add_binary("content.xml", bytes_of(unsafe_content_xml));
+    unsafe_dlc.save(unsafe_dlc_path.string(), dlc_options);
+    const std::string unsafe_report =
+        gta_asset_converter::inspect_dlc_pack_metadata(unsafe_dlc_path, dlc_empty_keys);
+    require(unsafe_report.find("Unsafe references: 1") != std::string::npos,
+            "DLC validator must reject traversal paths in content.xml");
+    fs::remove_all(dlc_test_root, ignored);
+
+    std::cout << "Gen9 conversion, keyed extraction, nested RPF7 and DLC metadata tests passed\n";
     return 0;
 }

@@ -118,6 +118,11 @@ class MainActivity : Activity() {
             setOnClickListener { extractSelectedArchive() }
         }
         root.addView(extract)
+        val validateDlc = Button(this).apply {
+            text = "VALIDATE SELECTED DLC.RPF METADATA"
+            setOnClickListener { inspectSelectedDlcPack() }
+        }
+        root.addView(validateDlc)
         val bulkExtract = Button(this).apply {
             text = "CONVERT ALL RPF FROM SELECTED GTA V FOLDER"
             setOnClickListener { convertAllOpenArchives() }
@@ -206,6 +211,38 @@ class MainActivity : Activity() {
         }
     }
 
+
+
+    private fun inspectSelectedDlcPack() {
+        val sourceUri = selectedArchiveUri
+        val selectedName = selectedArchiveName
+        if (sourceUri == null) {
+            output.text = "Select a DLC pack's dlc.rpf archive first."
+            return
+        }
+        if (!selectedName.equals("dlc.rpf", ignoreCase = true)) {
+            output.text = "Choose the dlc.rpf file inside the DLC pack folder, not update.rpf or another archive."
+            return
+        }
+
+        output.text = "Reading setup2.xml and its declared content metadata. The source DLC archive will not be changed."
+        worker.execute {
+            val report = try {
+                val work = java.io.File(cacheDir, "dlc-metadata-work")
+                work.deleteRecursively()
+                check(work.mkdirs()) { "Cannot create temporary DLC inspection folder" }
+                val source = java.io.File(work, "dlc.rpf")
+                copyUriToFile(sourceUri, source, MAX_ARCHIVE_BYTES)
+                NativeAssets.inspectDlcPackMetadata(source.absolutePath, rpfKeyDirectory.absolutePath)
+            } catch (e: Throwable) {
+                "DLC metadata validation failed: " + (e.message ?: e.javaClass.simpleName)
+            }
+            runOnUiThread {
+                latestReport = report
+                output.text = report
+            }
+        }
+    }
 
     private fun convertAllOpenArchives() {
         val sourceTree = selectedFolderUri

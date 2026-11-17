@@ -22,6 +22,13 @@ Android ARM64 conversion prototype for GTA V RPF7 archives. It reads a selected 
 - Bulk output mirrors the selected folder's relative paths. For example, dlcpacks/dyfurai/dlc.rpf is emitted as dlcpacks/dyfurai/dlc.rpf under the selected output folder. The converter does not rename dlc.rpf or other referenced archives. It does not install or mount the output in Glue5; copy the output tree over the same relative paths in the game root configured by your Glue5 build, keeping a backup.
 - dlclist.xml and setup2.xml are not edited. Preserving the existing path and filename avoids breaking references, but DLC registration, load order and runtime mounting still depend on the target Android port.
 
+
+## DLC pack metadata validation
+
+The Android app includes a read-only validator for one selected dlc.rpf. Choose the pack's actual dlc.rpf (not update.rpf) and tap **VALIDATE SELECTED DLC.RPF METADATA**. It opens the archive with the imported matching AES/NG keys when needed, parses its root setup2.xml, follows the declared datFile (normally content.xml), and validates the CDataFileMgr__ContentsOfDataFileXml data-file list. It checks the deviceName prefix, unsafe/traversal paths, missing references, and whether entries declared as RPF_FILE are nested RPF archives. Nested paths are resolved through the RPF tree. The validator never edits the source archive.
+
+This is pack-level validation only. It does not yet read dlclist.xml from update/update.rpf, compare the full game's DLC load order, resolve platform:/dlcPacks/ entries from base x64*.rpf archives, or rewrite setup2.xml/content.xml. Platform-dependent %PLATFORM% references are reported separately rather than guessed. A clean metadata report does not prove Glue5 mounts the pack.
+
 ## Key import
 
 The app can import recognized key files from a user-selected folder into app-private storage:

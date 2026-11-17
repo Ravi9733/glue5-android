@@ -693,4 +693,200 @@ std::string convert_rpf_archive_to_open_rpf7(const fs::path& source_path,
 }
 
 
+
+std::string inspect_dlc_pack_metadata(const fs::path& source_path,
+                                      const fs::path& key_directory) {
+    constexpr std::uint64_t max_archive_bytes = 0xFFFFFFFFull;
+    constexpr std::uint64_t max_xml_bytes = 8ull * 1024ull * 1024ull;
+    constexpr std::size_t max_data_files = 100'000;
+
+    const auto source_status = fs::symlink_status(source_path);
+    if (fs::is_symlink(source_status) || !fs::is_regular_file(source_status)) {
+        throw std::runtime_error("DLC source must be a regular, non-symlink RPF file");
+    }
+    const std::uint64_t archive_bytes = fs::file_size(source_path);
+    if (archive_bytes > max_archive_bytes) {
+        throw std::runtime_error("DLC RPF exceeds the 4 GiB RPF7 safety limit");
+    }
+
+    auto keys = std::make_shared<rk::RpfKeys>(rk::RpfKeys::load(key_directory.string()));
+    const rk::Rpf archive = rk::Rpf::open(source_path.string(), keys);
+
+    auto read_xml_entry = [&](const rk::Rpf::Location& location, const std::string& label) {
+        if (!location.archive || location.entry < 0) {
+            throw std::runtime_error("DLC archive is missing " + label);
+        }
+        const rk::RpfEntry& entry =
+            location.archive->entries().at(static_cast<std::size_t>(location.entry));
+        if (entry.is_directory()) {
+            throw std::runtime_error("DLC metadata path is a directory: " + label);
+        }
+        if (entry.size() > max_xml_bytes) {
+            throw std::runtime_error("DLC XML exceeds the 8 MiB safety limit: " + label);
+        }
+        const auto bytes = location.archive->extract(location.entry);
+        if (bytes.empty() || bytes.size() > max_xml_bytes) {
+            throw std::runtime_error("DLC XML is empty or oversized: " + label);
+        }
+        return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    };
+
+    const auto setup_location = archive.resolve("setup2.xml");
+    const std::string setup_text = read_xml_entry(setup_location, "setup2.xml");
+    const rk::XmlElement setup = rk::parse_xml(setup_text);
+    if (lower(setup.name) != "ssetupdata") {
+        throw std::runtime_error("setup2.xml root must be SSetupData");
+    }
+
+    const std::string device_name = setup.child_text("deviceName");
+    const std::string dat_file = setup.child_text("datFile");
+    const std::string pack_type = setup.child_text("type");
+    if (lower(device_name).rfind("dlc_", 0) != 0 ||
+        device_name.find_first_of("/:\\\\") != std::string::npos ||
+        device_name.find("..") != std::string::npos) {
+        throw std::runtime_error("setup2.xml has an invalid deviceName");
+    }
+    if (dat_file.empty()) {
+        throw std::runtime_error("setup2.xml does not declare datFile");
+    }
+    const std::string safe_dat_file = safe_archive_relative_path(dat_file).generic_string();
+    const auto content_location = archive.resolve(safe_dat_file);
+    const std::string content_text = read_xml_entry(content_location, dat_file);
+    const rk::XmlElement content = rk::parse_xml(content_text);
+    if (lower(content.name) != "cdatafilemgr__contentsofdatafilexml") {
+        throw std::runtime_error("DLC datFile root is not CDataFileMgr__ContentsOfDataFileXml");
+    }
+
+    const rk::XmlElement* data_files = content.child_ci("dataFiles");
+    if (data_files == nullptr) {
+        throw std::runtime_error("DLC content XML is missing dataFiles");
+    }
+
+    std::string order_value = "not specified";
+    if (const rk::XmlElement* order = setup.child_ci("order")) {
+        const std::string value = order->attribute("value");
+        if (!value.empty()) order_value = value;
+    }
+
+    std::size_t declared = 0;
+    std::size_t resolved = 0;
+    std::size_t missing = 0;
+    std::size_t unsafe = 0;
+    std::size_t prefix_mismatch = 0;
+    std::size_t platform_dependent = 0;
+    std::size_t wrong_rpf_kind = 0;
+    std::size_t rpf_files = 0;
+    std::size_t empty_entries = 0;
+    std::vector<std::string> warnings;
+    const std::string expected_prefix = device_name + ":/";
+    const std::string expected_prefix_lower = lower(expected_prefix);
+
+    for (const rk::XmlElement& item : data_files->children) {
+        if (lower(item.name) != "item") continue;
+        if (++declared > max_data_files) {
+            throw std::runtime_error("DLC content XML exceeds the 100,000 data-file safety limit");
+        }
+
+        const std::string filename = item.child_text("filename");
+        const std::string file_type = item.child_text("fileType");
+        if (filename.empty() || file_type.empty()) {
+            ++empty_entries;
+            if (warnings.size() < 20) warnings.push_back("dataFiles Item is missing filename or fileType");
+            continue;
+        }
+
+        const std::string filename_lower = lower(filename);
+        if (filename_lower.rfind(expected_prefix_lower, 0) != 0) {
+            ++prefix_mismatch;
+            if (warnings.size() < 20) {
+                warnings.push_back("device path does not match setup2.xml deviceName: " + filename);
+            }
+            continue;
+        }
+
+        const std::string relative_raw = filename.substr(expected_prefix.size());
+        if (lower(relative_raw).find("%platform%") != std::string::npos) {
+            ++platform_dependent;
+            continue;
+        }
+
+        fs::path relative;
+        try {
+            relative = safe_archive_relative_path(relative_raw);
+        } catch (const std::exception&) {
+            ++unsafe;
+            if (warnings.size() < 20) warnings.push_back("unsafe content path rejected: " + filename);
+            continue;
+        }
+
+        const auto location = archive.resolve(relative.generic_string());
+        if (!location.archive || location.entry < 0) {
+            ++missing;
+            if (warnings.size() < 20) warnings.push_back("referenced file is absent from this DLC RPF: " + filename);
+            continue;
+        }
+
+        const rk::RpfEntry& target =
+            location.archive->entries().at(static_cast<std::size_t>(location.entry));
+        if (target.is_directory()) {
+            ++missing;
+            if (warnings.size() < 20) warnings.push_back("content path resolves to a directory: " + filename);
+            continue;
+        }
+
+        if (lower(file_type) == "rpf_file") {
+            ++rpf_files;
+            if (!target.is_archive()) {
+                ++wrong_rpf_kind;
+                if (warnings.size() < 20) warnings.push_back("RPF_FILE does not resolve to a nested RPF archive: " + filename);
+                continue;
+            }
+        }
+        ++resolved;
+    }
+
+    std::size_t change_sets = 0;
+    if (const rk::XmlElement* sets = content.child_ci("contentChangeSets")) {
+        for (const auto& child : sets->children) {
+            if (lower(child.name) == "item") ++change_sets;
+        }
+    }
+    std::size_t change_set_groups = 0;
+    if (const rk::XmlElement* groups = setup.child_ci("contentChangeSetGroups")) {
+        for (const auto& child : groups->children) {
+            if (lower(child.name) == "item") ++change_set_groups;
+        }
+    }
+
+    std::ostringstream report;
+    report << "DLC metadata validation complete\n"
+           << "Archive: " << source_path.filename().string() << "\n"
+           << "Input encryption: " << rpf_encryption_name(archive.encryption()) << "\n"
+           << "Device name: " << device_name << "\n"
+           << "Pack type: " << (pack_type.empty() ? "not specified" : pack_type) << "\n"
+           << "Load order: " << order_value << "\n"
+           << "Metadata file: " << safe_dat_file << "\n"
+           << "Data files declared: " << declared << "\n"
+           << "Data files resolved: " << resolved << "\n"
+           << "RPF_FILE entries: " << rpf_files << "\n"
+           << "Missing references: " << missing << "\n"
+           << "Unsafe references: " << unsafe << "\n"
+           << "Device-name mismatches: " << prefix_mismatch << "\n"
+           << "RPF_FILE type mismatches: " << wrong_rpf_kind << "\n"
+           << "Platform-dependent paths not resolved: " << platform_dependent << "\n"
+           << "Incomplete data-file entries: " << empty_entries << "\n"
+           << "Content change sets: " << change_sets << "\n"
+           << "Setup change-set groups: " << change_set_groups << "\n"
+           << "Source DLC archive was not modified.\n";
+    if (!warnings.empty()) {
+        report << "Warnings:\n";
+        for (const auto& warning : warnings) report << "- " << warning << "\n";
+        if (missing + unsafe + prefix_mismatch + wrong_rpf_kind + empty_entries > warnings.size()) {
+            report << "- Additional warnings omitted.\n";
+        }
+    }
+    return report.str();
+}
+
+
 } // namespace gta_asset_converter

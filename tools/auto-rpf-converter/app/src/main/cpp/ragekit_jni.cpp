@@ -120,3 +120,28 @@ Java_com_ravi9733_autorpconverter_NativeAssets_convertArchiveToOpenRpf7(
     env->ReleaseStringUTFChars(key_directory, key_chars);
     return env->NewStringUTF(report.c_str());
 }
+
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ravi9733_autorpconverter_NativeAssets_inspectDlcPackMetadata(
+    JNIEnv* env, jclass, jstring source_path, jstring key_directory) {
+    const char* source_chars = env->GetStringUTFChars(source_path, nullptr);
+    if (source_chars == nullptr) return nullptr;
+    const char* key_chars = env->GetStringUTFChars(key_directory, nullptr);
+    if (key_chars == nullptr) {
+        env->ReleaseStringUTFChars(source_path, source_chars);
+        return nullptr;
+    }
+
+    std::string report;
+    try {
+        report = gta_asset_converter::inspect_dlc_pack_metadata(source_chars, key_chars);
+    } catch (const std::exception& error) {
+        report = std::string("DLC metadata validation failed: ") + error.what();
+    } catch (...) {
+        report = "DLC metadata validation failed: unknown native error";
+    }
+    env->ReleaseStringUTFChars(source_path, source_chars);
+    env->ReleaseStringUTFChars(key_directory, key_chars);
+    return env->NewStringUTF(report.c_str());
+}
