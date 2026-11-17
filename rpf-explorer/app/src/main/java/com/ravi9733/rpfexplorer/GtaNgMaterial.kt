@@ -32,10 +32,10 @@ internal class GtaNgMaterial private constructor(
         var offset = 0
         while (offset + 16 <= data.size) {
             var block = data.copyOfRange(offset, offset + 16)
-            block = roundA(block, words, 0)
-            block = roundA(block, words, 4)
-            for (round in 2..15) block = roundB(block, words, round * 4)
-            block = roundA(block, words, 64)
+            block = roundA(block, words, 0, 0)
+            block = roundA(block, words, 1, 4)
+            for (round in 2..15) block = roundB(block, words, round)
+            block = roundA(block, words, 16, 64)
             System.arraycopy(block, 0, out, offset, 16)
             offset += 16
         }
@@ -55,25 +55,23 @@ internal class GtaNgMaterial private constructor(
         return 32769 * ((nine ushr 11) xor nine)
     }
 
-    private fun roundA(data: ByteArray, words: IntArray, keyOffset: Int): ByteArray {
+    private fun roundA(data: ByteArray, words: IntArray, round: Int, keyOffset: Int): ByteArray {
         val result = ByteArray(16)
+        val roundTables = tables[round]
         for (group in 0..3) {
-            var value = words[keyOffset + group]
-            val tableBase = group * 4
-            for (j in 0..3) value = value xor tablesForRound(data, group, j, tableBase)
+            val base = group * 4
+            val value = roundTables[base][data[base].toInt() and 255] xor
+                roundTables[base + 1][data[base + 1].toInt() and 255] xor
+                roundTables[base + 2][data[base + 2].toInt() and 255] xor
+                roundTables[base + 3][data[base + 3].toInt() and 255] xor
+                words[keyOffset + group]
             putLe32(result, group * 4, value)
         }
         return result
     }
 
-    private fun tablesForRound(data: ByteArray, group: Int, byteIndex: Int, tableBase: Int): Int {
-        return tables[0][0][0] xor tableBase.let {
-            // Round-specific lookup is supplied by the active round via thread-local-free helper below.
-            0
-        }
-    }
-
-    private fun roundB(data: ByteArray, words: IntArray, keyOffset: Int): ByteArray {
+    private fun roundB(data: ByteArray, words: IntArray, round: Int): ByteArray {
+        val keyOffset = round * 4
         val result = ByteArray(16)
         val map = arrayOf(
             intArrayOf(0, 7, 10, 13), intArrayOf(1, 4, 11, 14),
@@ -83,7 +81,7 @@ internal class GtaNgMaterial private constructor(
             var value = words[keyOffset + group]
             for (j in 0..3) {
                 val index = map[group][j]
-                value = value xor tables[keyOffset / 4][index][data[index].toInt() and 255]
+                value = value xor tables[round][index][data[index].toInt() and 255]
             }
             putLe32(result, group * 4, value)
         }
