@@ -387,7 +387,8 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
         require(!e.isDirectory && !e.isResource) { "Resource extraction requires RSC7 decoding" }
         if (e.encrypted) require(encryptionLabel == "AES" && aesKey != null) { "Encrypted binary payload needs a compatible GTA V AES key" }
         val size = if (e.storedSize == 0L) e.uncompressedSize else e.storedSize
-        require(size in 0..Int.MAX_VALUE.toLong()) { "Entry is too large for this extractor" }
+        require(size >= 0L) { "Invalid entry size" }
+        if (e.storedSize > 0L) require(size <= Int.MAX_VALUE.toLong()) { "Compressed entry is too large for this extractor" }
         synchronized(file) {
             file.seek(e.offset)
             if (e.storedSize == 0L && !e.encrypted) {
