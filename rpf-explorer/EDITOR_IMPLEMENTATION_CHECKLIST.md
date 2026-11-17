@@ -9,7 +9,7 @@ This branch is for the standalone Android RPF Explorer only. Do not change the G
 - [x] Save as a **new** RPF file; never overwrite the selected source archive by default.
 - [x] Reopen the generated archive and validate its header, TOC, names, directory ranges, and extracted payload hashes.
 - [x] Stream archive payloads and output files; compressed binary entries are currently bounded by the RPF 24-bit stored-size field.
-- [ ] Keep a working-copy/undo boundary so canceling never changes the source.
+- [x] Stage edits in app-private working files; canceling/discarding never changes the source archive (per-operation undo is not yet available).
 
 ## Format and compatibility
 - [x] Parse RPF7 directory, binary and resource entries, including RSC7 size sentinel and 23-bit offsets.
@@ -19,12 +19,12 @@ This branch is for the standalone Android RPF Explorer only. Do not change the G
 - [x] Preserve untouched resource entries byte-for-byte and retain page flags when rebuilding.
 - [x] Add/replace resource assets only after validating RSC7 header and reading resource page flags (large new RSC7 assets are blocked safely).
 - [x] Handle nested RPFs as separately editable archives and stage the edited nested archive back into its parent.
-- [ ] Clearly identify unsupported archive variants instead of silently corrupting them.
+- [x] Clearly identify unsupported NG archives and AES resource repacking instead of silently corrupting them.
 
 ## UI and safety
 - [x] Add actions for Add file, long-press Replace/Remove, and Save as new RPF.
-- [ ] Show pending edits and target output path before saving.
-- [ ] Warn when archive type/entry type is unsupported.
+- [x] Show staged-change count and require confirmation before opening the Android output-document picker.
+- [x] Warn/block unsupported NG archives, AES RSC7 operations, oversized new RSC7 assets, and malformed entries.
 - [x] Keep source archive read-only and report save only after the writer's reopen/TOC/payload-hash validation.
 
 ## Release gate
