@@ -25,8 +25,8 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
     private data class Added(val parent: Int, val name: String, val file: File, val resource: Boolean, val systemFlags: Long, val graphicsFlags: Long)
 
     fun add(parentDirectory: Int, source: File, name: String = source.name) {
-        require(parentDirectory in archive.entries.indices && archive.entries[parentDirectory].isDirectory && parentDirectory !in removals) {
-            "Choose a valid destination folder"
+        require(parentDirectory in archive.entries.indices && archive.entries[parentDirectory].isDirectory && !hasRemovedAncestor(parentDirectory)) {
+            "Choose a valid destination folder that has not been removed"
         }
         require(name.isNotBlank() && name != "." && name != ".." && name.none { it == '/' || it == '\\' || it == '\u0000' }) { "Invalid file name" }
         require(source.isFile) { "Selected source is not a file" }
@@ -34,15 +34,20 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         additions.filter { it.parent == parentDirectory }.forEach { siblings.add(it.name.lowercase()) }
         require(name.lowercase() !in siblings) { "A file or folder with this name already exists" }
         val copy = File(workDir, "add-${System.nanoTime()}").also { source.copyTo(it, overwrite = true) }
-        val meta = readResourceMeta(copy)
-        require(meta == null || archive.encryptionLabel != "AES") {
-            "Adding RSC7 resources to AES-encrypted archives is not enabled yet."
+        try {
+            val meta = readResourceMeta(copy)
+            require(meta == null || archive.encryptionLabel != "AES") {
+                "Adding RSC7 resources to AES-encrypted archives is not enabled yet."
+            }
+            additions += Added(parentDirectory, name, copy, meta != null, meta?.first ?: 0L, meta?.second ?: 0L)
+        } catch (e: Exception) {
+            copy.delete()
+            throw e
         }
-        additions += Added(parentDirectory, name, copy, meta != null, meta?.first ?: 0L, meta?.second ?: 0L)
     }
 
     fun replace(entryIndex: Int, source: File) {
-        require(entryIndex in archive.entries.indices) { "Invalid entry" }
+        require(entryIndex in archive.entries.indices && !hasRemovedAncestor(entryIndex)) { "Invalid entry or its parent folder has been removed" }
         val entry = archive.entries[entryIndex]
         require(!entry.isDirectory) { "Directories cannot be replaced" }
         require(!entry.encrypted || archive.encryptionLabel == "AES") { "NG-encrypted files cannot be replaced without NG key support" }
@@ -54,10 +59,20 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         require(entry.isResource == (meta != null)) {
             if (entry.isResource) "Replace this RSC7 resource with another RSC7 file" else "A binary entry cannot be replaced by an RSC7 resource"
         }
-        replacements[entryIndex] = File(workDir, "replace-$entryIndex-${System.nanoTime()}").also {
+        val staged = File(workDir, "replace-$entryIndex-${System.nanoTime()}").also {
             source.copyTo(it, overwrite = true)
         }
+        replacements.put(entryIndex, staged)?.delete()
         removals.remove(entryIndex)
+    }
+
+    private fun hasRemovedAncestor(index: Int): Boolean {
+        var parent = if (index == 0) 0 else archive.entries[index].parent
+        while (parent != 0) {
+            if (parent in removals) return true
+            parent = archive.entries[parent].parent
+        }
+        return index in removals
     }
 
     fun remove(entryIndex: Int) {
@@ -104,6 +119,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
             "Encrypted payloads need compatible keys before repacking."
         }
 
+        directoryRanges.clear()
         data class Node(
             val old: RpfEntry?, val name: String, val parentOld: Int?,
             val file: File?, val directory: Boolean, val resource: Boolean,
