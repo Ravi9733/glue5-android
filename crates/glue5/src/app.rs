@@ -432,7 +432,18 @@ struct Running {
 
 impl App {
     fn run(mut self) -> Result<()> {
+        #[cfg(target_os = "android")]
+        let mut thermal_poll_at = Instant::now() - Duration::from_secs(2);
         loop {
+            #[cfg(target_os = "android")]
+            if thermal_poll_at.elapsed() >= Duration::from_secs(1) {
+                thermal_poll_at = Instant::now();
+                let status = std::env::var("GLUE5_APP_FILES_DIR").ok()
+                    .and_then(|dir| std::fs::read_to_string(Path::new(&dir).join("thermal-status")).ok())
+                    .and_then(|value| value.trim().parse::<u8>().ok())
+                    .filter(|value| *value <= 6);
+                glue5_gpu::perf::set_thermal_status(status);
+            }
             if let Some(exit) = glue5_runtime::exit::requested() {
                 self.save();
                 if exit == Exit::Restart {
