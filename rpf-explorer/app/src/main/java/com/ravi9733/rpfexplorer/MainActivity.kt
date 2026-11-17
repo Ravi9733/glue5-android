@@ -280,7 +280,10 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                     RpfEntry(t.idx,t.nm,parents[t.idx],t.dir,t.res,t.off,t.sz,t.usz,t.crypt,t.start,t.cnt,sys,gfx)
                 }
                 val dataStart=((namesStart+namesLen+511L)/512L)*512L
-                result.filter { !it.isDirectory && it.offset>0 }.forEach { require(it.offset < raf.length()) { "Entry points outside archive" } }
+                result.filter { !it.isDirectory }.forEach {
+                    val payloadSize = if (it.isResource) it.storedSize else if (it.storedSize == 0L) it.uncompressedSize else it.storedSize
+                    require(it.offset >= 0 && it.offset + payloadSize <= raf.length()) { "Entry points outside archive" }
+                }
                 return RpfArchive(raf,result,if(enc==0L) "NONE" else "OPEN")
             } catch(e:Exception) { raf.close(); throw e }
         }
