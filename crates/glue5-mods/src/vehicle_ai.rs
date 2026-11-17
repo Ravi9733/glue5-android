@@ -75,6 +75,20 @@ fn suggestion(vehicle: &VehiclePackage, words: &[&str], intent: SearchIntent) ->
         if haystack.split(|c: char| !c.is_ascii_alphanumeric()).any(|part| part == *word) {
             score = score.saturating_add(if vehicle.name.to_ascii_lowercase().contains(word) { 12 } else { 6 });
         }
+        if vehicle.tags.iter().any(|tag| tag == word) {
+            score = score.saturating_add(18);
+        }
+    }
+    let wanted_tag = match intent {
+        SearchIntent::Performance => Some(["supercar", "hypercar", "performance", "racing"].as_slice()),
+        SearchIntent::Drift => Some(["drift", "drifting"].as_slice()),
+        SearchIntent::OffRoad => Some(["offroad", "rally", "4x4"].as_slice()),
+        _ => None,
+    };
+    if let Some(tags) = wanted_tag {
+        if vehicle.tags.iter().any(|tag| tags.contains(&tag.as_str())) {
+            score = score.saturating_add(24);
+        }
     }
     // The initial catalog schema has no verified vehicle-class metadata.
     // Do not infer handling/performance from a name: explain this limitation.
@@ -101,12 +115,13 @@ mod tests {
 
     #[test]
     fn understands_brand_search_and_never_claims_rpf_ready() {
-        let json = br#"{"version":1,"vehicles":[{"id":"mazda-furai","name":"Mazda Furai","version":"1","author":"Community","download_url":"https://example.com/furai.zip","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size_bytes":100,"format":"rpf_dlc"}]}"#;
+        let json = br#"{"version":1,"vehicles":[{"id":"mazda-furai","name":"Mazda Furai","version":"1","author":"Community","download_url":"https://example.com/furai.zip","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size_bytes":100,"format":"rpf_dlc","tags":["supercar","drift"]}]}"#;
         let catalog = Catalog::parse(json).unwrap();
         let reply = recommend(&catalog, "Mazda Furai latest", 5);
         assert_eq!(reply.intent, SearchIntent::Brand);
         assert_eq!(reply.suggestions[0].id, "mazda-furai");
         assert!(reply.suggestions[0].install_note.contains("not enabled"));
+        assert!(reply.suggestions[0].score >= 18);
     }
 
     #[test]
