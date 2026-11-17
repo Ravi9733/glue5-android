@@ -112,7 +112,7 @@ class RpfEditSessionTest {
         val resourceSize = 16 + encryptedPayload.size
         require(resourceSize < 0xFFFFFF)
         val f = File(dir, "encrypted-script.rpf")
-        val names = "root\\u0000main.ysc\\u0000".toByteArray(Charsets.UTF_8)
+        val names = "root\u0000main.ysc\u0000".toByteArray(Charsets.UTF_8)
         val toc = File(dir, "ysc-toc.bin")
         RandomAccessFile(toc, "rw").use { out ->
             out.setLength(0)
