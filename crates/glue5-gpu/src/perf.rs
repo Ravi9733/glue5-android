@@ -79,7 +79,7 @@ pub fn effective_fps_cap() -> Option<u32> {
 
 /// Receives Android PowerManager thermal status. 255 clears unavailable data.
 pub fn set_thermal_status(status: Option<u8>) {
-    THERMAL_STATUS.store(status.unwrap_or(255).min(6), Ordering::Relaxed);
+    THERMAL_STATUS.store(status.map_or(255, |value| value.min(6)), Ordering::Relaxed);
 }
 
 /// The overlay's figures and optional Smart Performance recommendation.
