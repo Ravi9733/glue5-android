@@ -6,6 +6,7 @@ import java.io.OutputStream
 import java.io.FileOutputStream
 import java.io.FileInputStream
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.ArrayDeque
 
 /**
@@ -219,6 +220,48 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
             }
             out.fd.sync()
         }
+        try {
+            val verified = RpfArchive.open(destination)
+            try {
+                require(verified.entries.size == nodes.size) { "Saved RPF entry count validation failed" }
+                nodes.forEachIndexed { i, node ->
+                    val actual = verified.entries[i]
+                    require(actual.name == node.name && actual.isDirectory == node.directory && actual.isResource == node.resource) {
+                        "Saved RPF TOC validation failed at entry $i"
+                    }
+                    if (node.directory) {
+                        val expectedCount = directoryRanges[node.old?.index ?: -1]?.second ?: 0
+                        require(actual.childrenCount == expectedCount) { "Saved RPF directory range validation failed at entry $i" }
+                    } else {
+                        val expectedFile = payloadFiles[i] ?: error("Missing writer validation payload")
+                        val actualFile = File(workDir, "verify-$i-${System.nanoTime()}")
+                        FileOutputStream(actualFile).use { output ->
+                            if (node.resource) verified.copyRaw(actual, output) else verified.extract(actual, output)
+                        }
+                        require(sha256(expectedFile) == sha256(actualFile)) { "Saved RPF payload hash validation failed at entry $i" }
+                        actualFile.delete()
+                    }
+                }
+            } finally {
+                verified.close()
+            }
+        } catch (e: Exception) {
+            destination.delete()
+            throw IllegalStateException("Saved archive failed validation: ${e.message}", e)
+        }
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private val directoryRanges = mutableMapOf<Int, Pair<Int, Int>>()
