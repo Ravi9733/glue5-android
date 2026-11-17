@@ -92,9 +92,9 @@ class MainActivity : Activity() {
                 if (cursor.moveToFirst()) cursor.getString(0) else null
             } ?: "archive.rpf"
             status.text = "Reading archive…"
+            val temp = File(cacheDir, "selected-${System.currentTimeMillis()}.rpf")
             thread {
                 try {
-                    val temp = File(cacheDir, "selected-${System.currentTimeMillis()}.rpf")
                     contentResolver.openInputStream(uri).use { input -> FileOutputStream(temp).use { out -> input!!.copyTo(out, 1024 * 1024) } }
                     val keyFile = File(filesDir, "gtav-aes-key.bin")
                     val parsed = RpfArchive.open(temp, if (keyFile.exists()) keyFile.readBytes() else null, ngMaterial, archiveDisplayName, deleteBackingOnClose = true)
