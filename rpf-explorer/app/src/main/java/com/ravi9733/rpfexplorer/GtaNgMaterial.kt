@@ -134,7 +134,7 @@ internal class GtaNgMaterial internal constructor(
         DataOutputStream(file.outputStream().buffered()).use { out ->
             out.writeInt(0x4E474D31)
             out.writeInt(keys.size)
-            keys.forEach(out::write)
+            keys.forEach { out.write(it) }
             out.writeInt(tables.size)
             tables.forEach { round -> round.forEach { table -> table.forEach(out::writeInt) } }
             out.writeInt(hashLut.size)
@@ -148,7 +148,7 @@ internal class GtaNgMaterial internal constructor(
                 require(input.readInt() == 0x4E474D31) { "Invalid local NG key bundle" }
                 val keyCount = input.readInt()
                 require(keyCount == 101) { "Invalid NG key count" }
-                val keys = Array(keyCount) { ByteArray(272).also(input::readFully) }
+                val keys = Array(keyCount) { ByteArray(272).also { input.readFully(it) } }
                 val roundCount = input.readInt()
                 require(roundCount == 17) { "Invalid NG table round count" }
                 val tables = Array(roundCount) {
@@ -158,7 +158,7 @@ internal class GtaNgMaterial internal constructor(
                 }
                 val lutLength = input.readInt()
                 require(lutLength == 256) { "Invalid NG hash LUT size" }
-                val lut = ByteArray(lutLength).also(input::readFully)
+                val lut = ByteArray(lutLength).also { input.readFully(it) }
                 require(input.read() == -1) { "Unexpected data at end of NG key bundle" }
                 return GtaNgMaterial(keys, tables, lut)
             }
