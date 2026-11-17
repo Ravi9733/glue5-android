@@ -9,7 +9,8 @@
 //! (GPUs without timestamps leave it out).
 
 use std::collections::VecDeque;
-use std::sync::Mutex;\nuse std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::done::{Staging, StagingPool, Work};
@@ -19,8 +20,41 @@ pub const FRAMES: usize = 120;
 
 static ON: AtomicBool = AtomicBool::new(false);
 static LIVE: Mutex<Live> = Mutex::new(Live::new());
+static SMART: Mutex<SmartState> = Mutex::new(SmartState::new());
 
-/// The overlay's figures.
+struct SmartState {
+    enabled: bool,
+    target_fps: u32,
+    controller: Option<crate::adaptive::Controller>,
+    recommendation: Option<u32>,
+}
+
+impl SmartState {
+    const fn new() -> Self {
+        Self { enabled: false, target_fps: 60, controller: None, recommendation: None }
+    }
+}
+
+/// Enables the opt-in adaptive analyser and sets the player's current FPS target.
+/// A zero target means uncapped; the analyser conservatively uses 60 as its baseline.
+pub fn set_smart_performance(enabled: bool, target_fps: u32) {
+    let target = if target_fps == 0 { 60 } else { target_fps.clamp(30, 60) };
+    let mut smart = SMART.lock().unwrap();
+    if !enabled {
+        smart.enabled = false;
+        smart.controller = None;
+        smart.recommendation = None;
+        return;
+    }
+    if !smart.enabled || smart.target_fps != target {
+        smart.controller = Some(crate::adaptive::Controller::new(target));
+        smart.recommendation = None;
+    }
+    smart.enabled = true;
+    smart.target_fps = target;
+}
+
+/// The overlay's figures and optional Smart Performance recommendation.
 #[derive(Clone, Default)]
 pub struct Snapshot {
     /// Present-to-present intervals, in milliseconds, oldest first.
@@ -35,6 +69,10 @@ pub struct Snapshot {
     pub submits: u32,
     /// What the renderer holds in textures and buffers, in bytes.
     pub gpu_bytes: u64,
+    /// Whether the opt-in Smart Performance analyser is active.
+    pub smart_enabled: bool,
+    /// Suggested cap, when sustained measurements justify a change.
+    pub smart_recommended_cap: Option<u32>,
 }
 
 struct Live {
@@ -90,6 +128,8 @@ pub fn snapshot() -> Snapshot {
         passes: live.counts.1,
         submits: live.counts.2,
         gpu_bytes: live.gpu_bytes,
+        smart_enabled: SMART.lock().unwrap().enabled,
+        smart_recommended_cap: SMART.lock().unwrap().recommendation,
     }
 }
 
