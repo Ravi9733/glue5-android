@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.view.Gravity
 import android.widget.*
 import java.io.*
@@ -124,13 +125,16 @@ class MainActivity : Activity() {
             }
         } else if (requestCode == PICK_EDIT_SOURCE) {
             val action = editAction ?: return
+            val originalName = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            } ?: "imported-file.bin"
             val target = File(cacheDir, "edit-source-${System.currentTimeMillis()}")
             thread {
                 try {
                     contentResolver.openInputStream(uri).use { input -> FileOutputStream(target).use { output -> input!!.copyTo(output, 1024 * 1024) } }
                     runOnUiThread {
                         try {
-                            if (action == "add") editor!!.add(currentDir, target)
+                            if (action == "add") editor!!.add(currentDir, target, originalName)
                             else editor!!.replace(pendingEditEntry!!.index, target)
                             target.delete()
                             status.text = "Edits staged: ${editor!!.stagedCount()} • Original archive unchanged"
