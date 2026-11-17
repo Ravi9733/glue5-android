@@ -9,6 +9,7 @@
 
 pub mod pc_runtime;
 pub mod vehicle_hub;
+pub mod vehicle_ai;
 mod checker;
 mod bundled_trainer;
 mod engine;
