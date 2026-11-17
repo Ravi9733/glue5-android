@@ -142,6 +142,28 @@ class MainActivity : Activity() {
                     else if (entry.encrypted) Toast.makeText(this@MainActivity, "This file is encrypted. GTA V keys are required.", Toast.LENGTH_LONG).show()
                     else { pendingExtract = entry; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
                 }
+                setOnLongClickListener {
+                    if (entry.isDirectory) {
+                        android.app.AlertDialog.Builder(this@MainActivity)
+                            .setMessage("Remove this folder and all its contents from the new archive?")
+                            .setPositiveButton("Remove") { _, _ ->
+                                try { editor!!.remove(entry.index); status.text = "Edits staged: ${editor!!.stagedCount()} • Original unchanged"; render() }
+                                catch (e: Exception) { Toast.makeText(this@MainActivity, e.message ?: "Remove failed", Toast.LENGTH_LONG).show() }
+                            }.setNegativeButton("Cancel", null).show()
+                    } else {
+                        val options = arrayOf("Replace file", "Remove file")
+                        android.app.AlertDialog.Builder(this@MainActivity).setTitle(entry.name).setItems(options) { _, which ->
+                            if (which == 0) chooseEditSource("replace", entry)
+                            else android.app.AlertDialog.Builder(this@MainActivity)
+                                .setMessage("Remove this file from the new archive? The original remains unchanged.")
+                                .setPositiveButton("Remove") { _, _ ->
+                                    try { editor!!.remove(entry.index); status.text = "Edits staged: ${editor!!.stagedCount()} • Original unchanged"; render() }
+                                    catch (e: Exception) { Toast.makeText(this@MainActivity, e.message ?: "Remove failed", Toast.LENGTH_LONG).show() }
+                                }.setNegativeButton("Cancel", null).show()
+                        }.show()
+                    }
+                    true
+                }
             }
             val lp = LinearLayout.LayoutParams(-1,-2); lp.bottomMargin = 3; list.addView(row,lp)
         }
