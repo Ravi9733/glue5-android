@@ -1,0 +1,41 @@
+name: Android GPU streaming checks
+
+on:
+  push:
+    branches: [ai-performance-engine-foundation]
+    paths:
+      - "crates/glue5-gpu/**"
+      - "crates/glue5-runtime/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/android-gpu-streaming-checks.yml"
+  pull_request:
+    paths:
+      - "crates/glue5-gpu/**"
+      - "crates/glue5-runtime/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-gpu-streaming-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Test runtime ring and memory accounting
+        run: cargo test -p glue5-runtime
+      - name: Test GPU decode budget and streaming
+        run: cargo test -p glue5-gpu
