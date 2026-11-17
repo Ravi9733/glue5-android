@@ -333,7 +333,7 @@ class MainActivity : Activity() {
                     else if (entry.name.endsWith(".rpf", ignoreCase = true) && !entry.isResource) openNested(entry)
                     else if (entry.isResource) showResourceInspector(entry)
                     else if (entry.encrypted) Toast.makeText(this@MainActivity, "This file is encrypted. GTA V keys are required.", Toast.LENGTH_LONG).show()
-                    else { pendingExtract = entry; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
+                    else { pendingExtract = entry; pendingYscDecrypt = false; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
                 }
                 setOnLongClickListener {
                     if (entry.isDirectory) {
@@ -517,7 +517,7 @@ internal class RpfArchive private constructor(
 
     fun canDecryptYsc(e: RpfEntry): Boolean =
         e.isResource && e.encrypted && e.name.endsWith(".ysc", ignoreCase = true) &&
-            ((encryptionLabel == "AES" && aesKey != null) || (encryptionLabel == "NG" && ngMaterial != null))
+            if (encryptionLabel == "AES") aesKey != null else ngMaterial != null
 
     /**
      * CodeWalker-compatible YSC export: skip the 16-byte RSC7 resource header,
@@ -552,8 +552,7 @@ internal class RpfArchive private constructor(
                 FileOutputStream(temp).use { decoded ->
                     when (encryptionLabel) {
                         "AES" -> RpfCrypto.decryptAes(bounded, encryptedSize, decoded, aesKey!!)
-                        "NG" -> ngMaterial!!.decrypt(bounded, encryptedSize, decoded, e.name, e.storedSize)
-                        else -> error("YSC decryption is not available for this archive encryption mode")
+                        else -> ngMaterial!!.decrypt(bounded, encryptedSize, decoded, e.name, e.storedSize)
                     }
                 }
             }
