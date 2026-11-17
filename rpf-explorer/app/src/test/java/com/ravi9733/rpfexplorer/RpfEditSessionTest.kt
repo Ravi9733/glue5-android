@@ -213,7 +213,7 @@ class RpfEditSessionTest {
         val dir = createTempDir(prefix = "rpf-ng-archive-test-")
         try {
             val material = identityNgMaterial()
-            val names = "root\\u0000hello.txt\\u0000".toByteArray(Charsets.UTF_8)
+            val names = "root\u0000hello.txt\u0000".toByteArray(Charsets.UTF_8)
             val plainPayload = "0123456789ABCDEF".toByteArray(Charsets.UTF_8)
             val toc = ByteArrayOutputStream()
             val tocFile = File(dir, "toc.bin")
