@@ -14,6 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use crate::settings::VulkanDriver;
 
 /// What a package may hold (Qualcomm's builds come with their libraries).
 const MAX_FILES: usize = 64;
