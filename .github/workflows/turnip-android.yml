@@ -16,6 +16,7 @@ on:
       - low-memory-texture-streaming-fix
       - turnip-driver-port-foundation
       - android-frame-pacing-tune
+      - turnip-import-native-wiring
     paths-ignore:
       - .github/workflows/build.yml
 
