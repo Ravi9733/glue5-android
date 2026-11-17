@@ -30,7 +30,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         }
         require(name.isNotBlank() && name.none { it == '/' || it == '\\' || it == '\u0000' }) { "Invalid file name" }
         require(source.isFile) { "Selected source is not a file" }
-        val siblings = archive.children(parentDirectory).map { it.name.lowercase() }.toMutableSet()
+        val siblings = archive.children(parentDirectory).filter { it.index !in removals }.map { it.name.lowercase() }.toMutableSet()
         additions.filter { it.parent == parentDirectory }.forEach { siblings.add(it.name.lowercase()) }
         require(name.lowercase() !in siblings) { "A file or folder with this name already exists" }
         val copy = File(workDir, "add-${System.nanoTime()}").also { source.copyTo(it, overwrite = true) }
@@ -69,6 +69,10 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         }
         removals.addAll(removeSet)
         removeSet.forEach { replacements.remove(it) }
+        additions.filter { it.parent in removeSet }.toList().forEach {
+            it.file.delete()
+            additions.remove(it)
+        }
     }
 
     fun stagedCount(): Int = additions.size + replacements.size + removals.size
