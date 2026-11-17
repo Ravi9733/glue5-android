@@ -24,7 +24,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
     private data class Added(val parent: Int, val name: String, val file: File)
 
     fun add(parentDirectory: Int, source: File, name: String = source.name) {
-        require(parentDirectory in archive.entries.indices && archive.entries[parentDirectory].isDirectory) {
+        require(parentDirectory in archive.entries.indices && archive.entries[parentDirectory].isDirectory && parentDirectory !in removals) {
             "Choose a valid destination folder"
         }
         require(name.isNotBlank() && name.none { it == '/' || it == '\\' || it == '\u0000' }) { "Invalid file name" }
@@ -66,6 +66,8 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
     }
 
     fun stagedCount(): Int = additions.size + replacements.size + removals.size
+    fun isRemoved(entryIndex: Int): Boolean = entryIndex in removals
+    fun isReplaced(entryIndex: Int): Boolean = entryIndex in replacements
 
     fun saveAs(destination: File) {
         require(archive.encryptionLabel == "OPEN" || archive.encryptionLabel == "NONE") {
@@ -138,7 +140,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
             if (staged != null) staged.copyTo(tmp, overwrite = true)
             else {
                 val old = n.old ?: error("Missing staged file data")
-                archive.extract(old, FileOutputStream(tmp))
+                FileOutputStream(tmp).use { output -> archive.extract(old, output) }
             }
             payloadFiles[i] = tmp
             payloadSizes[i] = tmp.length()
