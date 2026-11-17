@@ -1,6 +1,7 @@
 package com.ravi9733.rpfexplorer
 
 import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
@@ -146,6 +147,16 @@ class RpfEditSessionTest {
         } finally {
             dir.deleteRecursively()
         }
+    }
+
+
+    @Test fun streamingAesDecryptMatchesBlockDecryptAcrossBufferBoundaries() {
+        val key = ByteArray(32) { (it * 11 + 5).toByte() }
+        val plain = ByteArray(150_013) { (it * 13).toByte() }
+        val encrypted = encryptAes(plain, key)
+        val streamed = ByteArrayOutputStream()
+        RpfCrypto.decryptAes(ByteArrayInputStream(encrypted), encrypted.size.toLong(), streamed, key)
+        assertTrue(plain.contentEquals(streamed.toByteArray()))
     }
 
     @Test fun resourcePayloadAndPageFlagsSurviveRepack() {
