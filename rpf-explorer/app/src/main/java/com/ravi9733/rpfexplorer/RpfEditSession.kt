@@ -29,6 +29,9 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
             "Choose a valid destination folder that has not been removed"
         }
         require(name.isNotBlank() && name != "." && name != ".." && name.none { it == '/' || it == '\\' || it == '\u0000' }) { "Invalid file name" }
+        require(!name.endsWith(".ysc", ignoreCase = true)) {
+            "YSC script resources require NG script encryption; adding them to an unencrypted output is not supported."
+        }
         require(source.isFile) { "Selected source is not a file" }
         val siblings = archive.children(parentDirectory).filter { it.index !in removals }.map { it.name.lowercase() }.toMutableSet()
         additions.filter { it.parent == parentDirectory }.forEach { siblings.add(it.name.lowercase()) }
@@ -50,6 +53,9 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         require(entryIndex in archive.entries.indices && !hasRemovedAncestor(entryIndex)) { "Invalid entry or its parent folder has been removed" }
         val entry = archive.entries[entryIndex]
         require(!entry.isDirectory) { "Directories cannot be replaced" }
+        require(!entry.encrypted || !entry.isResource) {
+            "Encrypted YSC resource replacement needs the script resource decrypt/repack path, which is not enabled."
+        }
         require(!entry.encrypted || archive.encryptionLabel == "AES" || archive.encryptionLabel == "NG") { "Encrypted files cannot be replaced in this archive mode" }
         require(source.isFile) { "Selected source is not a file" }
         val meta = readResourceMeta(source)
@@ -114,6 +120,9 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         }
         require(archive.encryptionLabel != "AES" || archive.entries.none { it.isResource && it.index !in removals }) {
             "AES-encrypted RSC7 resource repacking is not enabled; remove those resources or use an OPEN/NONE archive."
+        }
+        require(archive.entries.none { it.isResource && it.encrypted && it.index !in removals }) {
+            "This archive contains NG-encrypted YSC resources. Remove those entries before saving; script resource decrypt/repack is not enabled."
         }
         require(archive.encryptionLabel == "AES" || archive.encryptionLabel == "NG" || archive.entries.none { it.encrypted && it.index !in removals }) {
             "Encrypted payloads need compatible keys before repacking."
