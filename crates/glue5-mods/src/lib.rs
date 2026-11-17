@@ -13,6 +13,7 @@ pub mod vehicle_ai;
 pub mod vehicle_download;
 pub mod vehicle_extract;
 pub mod vehicle_inspect;
+pub mod vehicle_manager;
 mod checker;
 mod bundled_trainer;
 mod engine;
