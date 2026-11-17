@@ -35,7 +35,9 @@ impl DecodeBudget {
         true
     }
 
+    #[cfg(test)]
     pub(crate) fn reserved(&self) -> usize { self.reserved }
+    #[cfg(test)]
     pub(crate) fn available(&self) -> usize { self.limit.saturating_sub(self.reserved) }
 }
 
