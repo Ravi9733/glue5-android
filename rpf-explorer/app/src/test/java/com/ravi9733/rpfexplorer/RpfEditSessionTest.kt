@@ -4,6 +4,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
+import java.util.zip.Deflater
+import java.util.zip.DeflaterOutputStream
 import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
@@ -161,6 +163,39 @@ class RpfEditSessionTest {
             val before = ByteArrayOutputStream().also { archive.copyRaw(resource, it) }.toByteArray()
             val after = ByteArrayOutputStream().also { reopened.copyRaw(copied, it) }.toByteArray()
             assertTrue(before.contentEquals(after))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun compressedBinaryIsInflatedAndRepackedUncompressed() {
+        val dir = createTempDir(prefix = "rpf-deflate-test-")
+        try {
+            val plain = "compressed GTA V archive entry ".repeat(40).toByteArray()
+            val compressedOut = ByteArrayOutputStream()
+            DeflaterOutputStream(compressedOut, Deflater(Deflater.DEFAULT_COMPRESSION, true)).use { it.write(plain) }
+            val compressed = compressedOut.toByteArray()
+            val names = "root\\u0000stream.dat\\u0000".toByteArray(Charsets.UTF_8)
+            val source = File(dir, "compressed.rpf")
+            RandomAccessFile(source, "rw").use { r ->
+                r.setLength(0)
+                u32(r, 0x52504637L); u32(r, 2); u32(r, names.size.toLong()); u32(r, 0)
+                u32(r, 0); u32(r, 0x7FFFFF00L); u32(r, 1); u32(r, 1)
+                r.write(5); r.write(0)
+                r.write(compressed.size and 255); r.write((compressed.size ushr 8) and 255); r.write((compressed.size ushr 16) and 255)
+                r.write(1); r.write(0); r.write(0)
+                u32(r, plain.size.toLong()); u32(r, 0)
+                r.write(names); r.seek(512); r.write(compressed)
+            }
+            val archive = RpfArchive.open(source)
+            val entry = archive.entries.single { it.name == "stream.dat" }
+            assertTrue(plain.contentEquals(ByteArrayOutputStream().also { archive.extract(entry, it) }.toByteArray()))
+            val output = File(dir, "repacked.rpf")
+            RpfEditSession(archive, File(dir, "work").apply { mkdirs() }).saveAs(output)
+            val reopened = RpfArchive.open(output)
+            val newEntry = reopened.entries.single { it.name == "stream.dat" }
+            assertEquals(0L, newEntry.storedSize)
+            assertTrue(plain.contentEquals(ByteArrayOutputStream().also { reopened.extract(newEntry, it) }.toByteArray()))
         } finally {
             dir.deleteRecursively()
         }
