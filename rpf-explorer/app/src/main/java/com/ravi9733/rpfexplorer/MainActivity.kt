@@ -420,7 +420,14 @@ internal data class RpfEntry(
     val encrypted: Boolean = false, val childrenStart: Int = 0, val childrenCount: Int = 0, val systemFlags: Long = 0, val graphicsFlags: Long = 0
 )
 
-internal class RpfArchive private constructor(private val file: RandomAccessFile, val entries: List<RpfEntry>, val encryptionLabel: String, private val aesKey: ByteArray?) {
+internal class RpfArchive private constructor(
+    private val file: RandomAccessFile,
+    val entries: List<RpfEntry>,
+    val encryptionLabel: String,
+    private val aesKey: ByteArray?,
+    private val ngMaterial: GtaNgMaterial?,
+    val archiveName: String
+) {
     fun children(parent: Int) = entries.filter { it.parent == parent && it.index != parent }
     fun parentOf(index: Int) = entries.firstOrNull { it.index == index }?.parent ?: 0
     fun close() = file.close()
@@ -455,7 +462,9 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
 
     fun extract(e: RpfEntry, output: OutputStream) {
         require(!e.isDirectory && !e.isResource) { "Resource extraction requires RSC7 decoding" }
-        if (e.encrypted) require(encryptionLabel == "AES" && aesKey != null) { "Encrypted binary payload needs a compatible GTA V AES key" }
+        if (e.encrypted) require(
+            (encryptionLabel == "AES" && aesKey != null) || (encryptionLabel == "NG" && ngMaterial != null)
+        ) { "Encrypted binary payload needs compatible local GTA V AES/NG material" }
         val size = if (e.storedSize == 0L) e.uncompressedSize else e.storedSize
         require(size >= 0L) { "Invalid entry size" }
         if (e.storedSize > 0L) require(size <= Int.MAX_VALUE.toLong()) { "Compressed entry is too large for this extractor" }
@@ -485,18 +494,29 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                         return n
                     }
                 }
-                RpfCrypto.decryptAes(limited, size, output, aesKey!!)
+                if (encryptionLabel == "AES") RpfCrypto.decryptAes(limited, size, output, aesKey!!)
+                else ngMaterial!!.decrypt(limited, size, output, e.name, e.uncompressedSize)
             } else {
                 val stored = ByteArray(size.toInt())
                 file.readFully(stored)
-                val decoded = if (e.encrypted) RpfCrypto.decryptAes(stored, aesKey!!) else stored
+                val decoded = when {
+                    !e.encrypted -> stored
+                    encryptionLabel == "AES" -> RpfCrypto.decryptAes(stored, aesKey!!)
+                    encryptionLabel == "NG" -> ngMaterial!!.decrypt(stored, e.name, e.uncompressedSize)
+                    else -> error("Unsupported per-file encryption mode")
+                }
                 InflaterInputStream(ByteArrayInputStream(decoded), Inflater(true)).use { it.copyTo(output) }
             }
         }
     }
 
     companion object {
-        fun open(f: File, aesKey: ByteArray? = null): RpfArchive {
+        fun open(
+            f: File,
+            aesKey: ByteArray? = null,
+            ngMaterial: GtaNgMaterial? = null,
+            archiveName: String = f.name
+        ): RpfArchive {
             val raf = RandomAccessFile(f,"r")
             try {
                 require(raf.length() >= 16) { "File is too small to be an RPF archive" }
@@ -511,15 +531,22 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                 val namesStart = 16L+tocBytes
                 require(namesStart+namesLen <= raf.length()) { "Archive table is truncated" }
                 val isAes = enc == 0x0FFFFFF9L
-                require(enc == 0L || enc == 0x4E45504FL || isAes) { "NG-encrypted RPF tables are not supported yet" }
+                val isNg = enc == 0x0FEFFFFFL
+                require(enc == 0L || enc == 0x4E45504FL || isAes || isNg) { "Unknown RPF encryption marker: 0x${enc.toString(16)}" }
                 if (isAes) require(aesKey?.size == 32) { "AES-encrypted RPF detected. Import a compatible GTA5.exe first to extract its AES key." }
+                if (isNg) require(ngMaterial != null) { "NG-encrypted RPF detected. Import a compatible PC GTA5.exe to extract local NG key material." }
                 val names = ByteArray(namesLen); raf.seek(namesStart); raf.readFully(names)
-                if (isAes) {
-                    val decodedNames = RpfCrypto.decryptAes(names, aesKey!!)
+                if (isAes || isNg) {
+                    val decodedNames = if (isAes) RpfCrypto.decryptAes(names, aesKey!!)
+                        else ngMaterial!!.decrypt(names, archiveName, raf.length())
                     System.arraycopy(decodedNames, 0, names, 0, names.size)
                 }
                 val toc = ByteArray(tocBytes.toInt()); raf.seek(16L); raf.readFully(toc)
-                val decodedToc = if (isAes) RpfCrypto.decryptAes(toc, aesKey!!) else toc
+                val decodedToc = when {
+                    isAes -> RpfCrypto.decryptAes(toc, aesKey!!)
+                    isNg -> ngMaterial!!.decrypt(toc, archiveName, raf.length())
+                    else -> toc
+                }
                 val raw = ArrayList<ByteArray>(count)
                 for (i in 0 until count) raw.add(decodedToc.copyOfRange(i * 16, i * 16 + 16))
                 fun u16(b:ByteArray,o:Int)= (b[o].toInt() and 255) or ((b[o+1].toInt() and 255) shl 8)
@@ -590,7 +617,8 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                         "Entry points outside the archive payload region"
                     }
                 }
-                return RpfArchive(raf,result,when(enc) { 0L -> "NONE"; 0x4E45504FL -> "OPEN"; else -> "AES" }, aesKey?.clone())
+                val label = when (enc) { 0L -> "NONE"; 0x4E45504FL -> "OPEN"; 0x0FFFFFF9L -> "AES"; else -> "NG" }
+                return RpfArchive(raf, result, label, aesKey?.clone(), ngMaterial, archiveName)
             } catch(e:Exception) { raf.close(); throw e }
         }
         private fun readU32(r:RandomAccessFile,pos:Long):Long { r.seek(pos); return (r.readUnsignedByte().toLong()) or (r.readUnsignedByte().toLong() shl 8) or (r.readUnsignedByte().toLong() shl 16) or (r.readUnsignedByte().toLong() shl 24) }
