@@ -7,11 +7,11 @@ A standalone Android project in this repository for browsing user-supplied GTA V
 - RPF7 header and TOC validation.
 - Browse directory entries in **OPEN**, **NONE**, **AES**, and **NG** RPF7 archives. AES/NG keys are extracted locally from a user-selected PC `GTA5.exe`; no game keys are bundled.
 - Extract plain, AES-encrypted, and NG-encrypted binary entries when compatible local key material is available; raw-DEFLATE compressed entries are decompressed.
-- Resource entries are identified, listed, inspected with a bounded-memory RSC7 header/page-flag inspector, and exported as raw RSC7 files for OPEN/NONE/NG archives; raw payload/page flags are preserved when repacking. AES resource operations remain blocked; decoded texture/model preview is not implemented.
+- Resource entries are identified, listed, inspected with a bounded-memory RSC7 header/version/page-size inspector, and exported as raw RSC7 files for supported OPEN/NONE/NG entries; raw payload/page flags are preserved when repacking. AES resource operations and NG-encrypted `.ysc` script resource repacking remain blocked; decoded texture/model preview is not implemented.
 - Long-press entries to replace or remove; add files into the currently open folder.
 - Save As New RPF rebuilds the directory TOC, name table, offsets, and 512-byte alignment without modifying the source.
 - OPEN/NONE, AES, and NG archives are supported when the selected PC `GTA5.exe` build contains the expected fingerprints. AES/NG TOCs and encrypted binary payloads are decrypted locally; edited archives are written as unencrypted NONE archives. No keys or lookup tables are bundled.
-- RSC7 resource entries are retained byte-for-byte; replacement/addition requires a valid RSC7 file smaller than 16 MiB so its page flags can be read unambiguously. Existing large resources can still be preserved.
+- RSC7 resource entries are retained byte-for-byte; replacement/addition requires a valid RSC7 file smaller than 16 MiB so its page flags can be read unambiguously. Existing large resources can still be preserved. NG-encrypted `.ysc` resources are detected and block repacking unless removed.
 - JUnit regression tests cover binary add/replace/remove, AES TOC/data decryption, streaming AES, NG block/stream material handling, raw-DEFLATE conversion, nested-directory TOC rebuilding, source-hash preservation, and RSC7 payload/page-flag preservation. Check the test-only workflow for the latest commit before treating it as passed.
 
 ## Build
