@@ -192,3 +192,14 @@ The BC texture upload path now uses `Pool::try_urgent_bounded` instead of the bl
 - This is a lightweight adaptive controller, not a neural-network model. It is intended to reduce oscillation and expose measured recommendations without adding a large ML runtime to the render thread.
 - Current commits include `2c8ef8b` (windowing and recovery logic), `8f4a242` (telemetry integration), `3b23908` (persisted setting), `2f9dca7` (Video settings toggle), `369d76c` (runtime activation), `d10b6aa` (HUD status), and `b06b486` (consistent telemetry snapshot).
 - CI is running for Rust tests and Android Adreno type-check. The resulting APK and device behavior are not yet verified.
+
+
+### Opt-in automatic FPS pacing — implementation stage
+
+- Added persisted setting `smart_auto_fps`, OFF by default, separate from the analysis-only Smart Performance toggle.
+- Added a dedicated Video Settings control: **Automatic FPS pacing (AI)**. It is explicit opt-in.
+- When enabled during gameplay, the analyser's sustained recommendation is applied to the live presentation frame pacing target. The original `settings.max_fps` preference is not overwritten or saved back.
+- The adaptive cap is bounded to 30–60 FPS and never changes render scale, resolution, world/texture quality, upscaler, or game data. With automatic pacing OFF, the existing Android presentation cap path remains unchanged.
+- UI activates the analyser if either Smart Performance or Automatic FPS pacing is enabled, so the feature works without requiring the separate overlay toggle.
+- Commits: `98fd1a9` (setting), `1a07c4a` (Video UI control), `75f1493` (guarded effective-cap API), `4d277c3` (activation), `b660116` (live presentation pacing), `40c0a81` (CI formatting coverage).
+- Important scope: this currently changes the presentation pacing target; it does not rewrite the already-started runtime's original `Config.max_fps`. Confirm the renderer's pacing behavior on Android with real device telemetry before claiming in-game FPS gains. CI and APK validation are pending.
