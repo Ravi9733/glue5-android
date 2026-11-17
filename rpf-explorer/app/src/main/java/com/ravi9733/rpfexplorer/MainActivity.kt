@@ -26,7 +26,9 @@ class MainActivity : Activity() {
     private var editAction: String? = null
     private val PICK_EDIT_SOURCE = 12
     private val SAVE_RPF = 13
+    private val IMPORT_GTA5_EXE = 14
     private lateinit var addButton: Button
+    private lateinit var keyButton: Button
     private lateinit var saveButton: Button
     private lateinit var backButton: Button
     private data class NestedFrame(val archive: RpfArchive, val editor: RpfEditSession, val directory: Int, val parentEntryIndex: Int)
@@ -39,6 +41,7 @@ class MainActivity : Activity() {
         status = TextView(this).apply { text = "Open a GTA V PC .rpf archive"; textSize = 13f; setTextColor(0xFFB8C3D1.toInt()); setPadding(0,0,0,12) }
         openButton = Button(this).apply { text = "OPEN RPF FILE"; setOnClickListener { openArchive() } }
         addButton = Button(this).apply { text = "ADD FILE TO THIS FOLDER"; isEnabled = false; setOnClickListener { chooseEditSource("add", null) } }
+        keyButton = Button(this).apply { text = if (File(filesDir, "gtav-aes-key.bin").exists()) "GTA V AES KEY READY" else "IMPORT GTA5.EXE (AES KEY)"; setOnClickListener { importGtaExecutable() } }
         saveButton = Button(this).apply { text = "SAVE AS NEW RPF"; isEnabled = false; setOnClickListener { saveEditedArchive() } }
         search = EditText(this).apply { hint = "Search current folder"; setSingleLine(true); setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFF8B96A5.toInt()); visibility = android.view.View.GONE }
         backButton = Button(this).apply { text = "↑  PARENT FOLDER"; setOnClickListener {
@@ -47,7 +50,7 @@ class MainActivity : Activity() {
         } }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(this).apply { addView(list) }
-        root.addView(title); root.addView(status); root.addView(openButton); root.addView(addButton); root.addView(saveButton); root.addView(backButton); root.addView(search); root.addView(scroll, LinearLayout.LayoutParams(-1,0,1f))
+        root.addView(title); root.addView(status); root.addView(openButton); root.addView(keyButton); root.addView(addButton); root.addView(saveButton); root.addView(backButton); root.addView(search); root.addView(scroll, LinearLayout.LayoutParams(-1,0,1f))
         setContentView(root)
         search.addTextChangedListener(SimpleWatcher { render() })
     }
@@ -68,7 +71,8 @@ class MainActivity : Activity() {
                 try {
                     val temp = File(cacheDir, "selected-${System.currentTimeMillis()}.rpf")
                     contentResolver.openInputStream(uri).use { input -> FileOutputStream(temp).use { out -> input!!.copyTo(out, 1024 * 1024) } }
-                    val parsed = RpfArchive.open(temp)
+                    val keyFile = File(filesDir, "gtav-aes-key.bin")
+                    val parsed = RpfArchive.open(temp, if (keyFile.exists()) keyFile.readBytes() else null)
                     runOnUiThread {
                         archive?.close()
                         nestedStack.forEach { it.archive.close() }
@@ -82,6 +86,27 @@ class MainActivity : Activity() {
                         render()
                     }
                 } catch (e: Exception) { runOnUiThread { status.text = "Could not open: ${e.message}"; Toast.makeText(this, e.message ?: "Invalid archive", Toast.LENGTH_LONG).show() } }
+            }
+        } else if (requestCode == IMPORT_GTA5_EXE) {
+            status.text = "Scanning GTA5.exe for its AES key…"
+            val exe = File(cacheDir, "gta5-exe-${System.currentTimeMillis()}.bin")
+            thread {
+                try {
+                    contentResolver.openInputStream(uri).use { input -> FileOutputStream(exe).use { output -> input!!.copyTo(output, 1024 * 1024) } }
+                    val key = RpfCrypto.extractAesKey(exe) { done, total ->
+                        runOnUiThread { status.text = "Scanning GTA5.exe… ${(done * 100 / total).toInt()}%" }
+                    }
+                    File(filesDir, "gtav-aes-key.bin").writeBytes(key)
+                    exe.delete()
+                    runOnUiThread {
+                        keyButton.text = "GTA V AES KEY READY"
+                        status.text = "GTA V AES key extracted locally. Key stays in app-private storage."
+                        Toast.makeText(this, "AES key ready for AES-encrypted RPF archives", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    exe.delete()
+                    runOnUiThread { status.text = "AES key extraction failed: ${e.message}"; Toast.makeText(this, e.message ?: "Key scan failed", Toast.LENGTH_LONG).show() }
+                }
             }
         } else if (requestCode == PICK_EDIT_SOURCE) {
             val action = editAction ?: return
@@ -119,6 +144,14 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun importGtaExecutable() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivityForResult(i, IMPORT_GTA5_EXE)
+    }
+
     private fun chooseEditSource(action: String, entry: RpfEntry?) {
         editAction = action
         pendingEditEntry = entry
@@ -153,6 +186,7 @@ class MainActivity : Activity() {
                 setOnClickListener {
                     if (entry.isDirectory) { currentDir = entry.index; render() }
                     else if (entry.name.endsWith(".rpf", ignoreCase = true) && !entry.isResource && !entry.encrypted) openNested(entry)
+                    else if (entry.isResource && archive?.encryptionLabel == "AES") Toast.makeText(this@MainActivity, "AES-encrypted RSC7 export is not enabled yet.", Toast.LENGTH_LONG).show()
                     else if (entry.isResource) { pendingExtract = entry; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
                     else if (entry.encrypted) Toast.makeText(this@MainActivity, "This file is encrypted. GTA V keys are required.", Toast.LENGTH_LONG).show()
                     else { pendingExtract = entry; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
@@ -215,7 +249,7 @@ class MainActivity : Activity() {
             try {
                 val nestedFile = File(cacheDir, "nested-${System.currentTimeMillis()}.rpf")
                 FileOutputStream(nestedFile).use { output -> archive!!.extract(entry, output) }
-                val nestedArchive = RpfArchive.open(nestedFile)
+                val nestedArchive = RpfArchive.open(nestedFile, archive?.aesKeyCopy())
                 runOnUiThread {
                     nestedStack += NestedFrame(archive!!, editor!!, currentDir, entry.index)
                     archive = nestedArchive
