@@ -2,6 +2,7 @@ package com.ravi9733.rpfexplorer
 
 import java.io.ByteArrayOutputStream
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
@@ -157,6 +158,33 @@ class RpfEditSessionTest {
         val streamed = ByteArrayOutputStream()
         RpfCrypto.decryptAes(ByteArrayInputStream(encrypted), encrypted.size.toLong(), streamed, key)
         assertTrue(plain.contentEquals(streamed.toByteArray()))
+    }
+
+
+    @Test fun ngDecryptStreamingAndPersistedMaterialMatchArrayPath() {
+        val keys = Array(101) { key -> ByteArray(272) { i -> (key * 17 + i * 3).toByte() } }
+        val tables = Array(17) { round ->
+            Array(16) { table ->
+                IntArray(256) { value -> (round * 0x1020304) xor (table * 0x10001) xor (value * 0x01010101) }
+            }
+        }
+        val lut = ByteArray(256) { it.toByte() }
+        val material = GtaNgMaterial(keys, tables, lut)
+        val encrypted = ByteArray(40_019) { (it * 29 + 7).toByte() }
+        val expected = material.decrypt(encrypted, "update.rpf", 123_456L)
+        val streamed = ByteArrayOutputStream()
+        material.decrypt(ByteArrayInputStream(encrypted), encrypted.size.toLong(), streamed, "update.rpf", 123_456L)
+        assertTrue(expected.contentEquals(streamed.toByteArray()))
+
+        val dir = createTempDir(prefix = "rpf-ng-material-test-")
+        try {
+            val saved = File(dir, "ng-material.bin")
+            material.save(saved)
+            val loaded = GtaNgMaterial.load(saved)
+            assertTrue(expected.contentEquals(loaded.decrypt(encrypted, "update.rpf", 123_456L)))
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     @Test fun resourcePayloadAndPageFlagsSurviveRepack() {
