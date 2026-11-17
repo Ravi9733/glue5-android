@@ -515,6 +515,56 @@ internal class RpfArchive private constructor(
         }
     }
 
+    fun canDecryptYsc(e: RpfEntry): Boolean =
+        e.isResource && e.encrypted && e.name.endsWith(".ysc", ignoreCase = true) &&
+            ((encryptionLabel == "AES" && aesKey != null) || (encryptionLabel == "NG" && ngMaterial != null))
+
+    /**
+     * CodeWalker-compatible YSC export: skip the 16-byte RSC7 resource header,
+     * decrypt the encrypted compressed payload using the script name and full
+     * resource size for NG, then inflate raw DEFLATE into the standalone script.
+     * The archive itself is never modified and encrypted YSC repacking stays blocked.
+     */
+    fun extractEncryptedYsc(e: RpfEntry, output: OutputStream) {
+        require(canDecryptYsc(e)) { "A compatible local AES/NG key bundle is required to decrypt this YSC resource" }
+        require(e.storedSize > 16L) { "Encrypted YSC resource is truncated" }
+        val encryptedSize = e.storedSize - 16L
+        require(e.offset >= 0L && e.offset + e.storedSize <= file.length()) { "YSC resource data range is invalid" }
+        val temp = File.createTempFile("rpf-ysc-dec-", ".tmp", filePath.parentFile)
+        try {
+            synchronized(file) {
+                file.seek(e.offset + 16L)
+                val bounded = object : InputStream() {
+                    private var remaining = encryptedSize
+                    override fun read(): Int {
+                        if (remaining <= 0L) return -1
+                        val value = file.read()
+                        if (value >= 0) remaining--
+                        return value
+                    }
+                    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                        if (remaining <= 0L) return -1
+                        val n = file.read(buffer, offset, minOf(length.toLong(), remaining).toInt())
+                        if (n > 0) remaining -= n
+                        return n
+                    }
+                }
+                FileOutputStream(temp).use { decoded ->
+                    when (encryptionLabel) {
+                        "AES" -> RpfCrypto.decryptAes(bounded, encryptedSize, decoded, aesKey!!)
+                        "NG" -> ngMaterial!!.decrypt(bounded, encryptedSize, decoded, e.name, e.storedSize)
+                        else -> error("YSC decryption is not available for this archive encryption mode")
+                    }
+                }
+            }
+            temp.inputStream().buffered().use { compressed ->
+                InflaterInputStream(compressed, Inflater(true)).use { it.copyTo(output, 64 * 1024) }
+            }
+        } finally {
+            temp.delete()
+        }
+    }
+
     fun extract(e: RpfEntry, output: OutputStream) {
         require(!e.isDirectory && !e.isResource) { "Resource extraction requires RSC7 decoding" }
         if (e.encrypted) require(
