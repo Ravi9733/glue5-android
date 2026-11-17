@@ -87,3 +87,15 @@ lost texture regions.
 
 No renderer behavior was changed in this audit. This is an implementation
 constraint, not a claim that the streaming hitch is fixed.
+
+
+## Progress: checked decode-size primitives
+
+- Added `bc::decoded_bytes` and `bc::etc2_bytes` helpers. They use checked
+  arithmetic and match the allocation formulas used by the BC decode and
+  ETC2 encode paths, so a future streaming admission controller can reserve
+  bytes before scheduling work and reject overflow safely.
+- Added unit tests for BC1, BC4, BC6H, ETC2 sizing and arithmetic overflow.
+- Commit: `dc54102` (`perf(gpu): add checked texture decode memory estimates`).
+- These helpers and tests are committed but have not yet been run in CI or on
+  Android. The blocking admission path is still present; no APK was built.
