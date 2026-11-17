@@ -90,8 +90,7 @@ fn suggestion(vehicle: &VehiclePackage, words: &[&str], intent: SearchIntent) ->
             score = score.saturating_add(24);
         }
     }
-    // The initial catalog schema has no verified vehicle-class metadata.
-    // Do not infer handling/performance from a name: explain this limitation.
+    // Class recommendations rely only on curator-supplied catalog tags; never infer vehicle behavior from a model name.
     if intent == SearchIntent::Any && words.is_empty() {
         score = 1;
     }
@@ -122,6 +121,9 @@ mod tests {
         assert_eq!(reply.suggestions[0].id, "mazda-furai");
         assert!(reply.suggestions[0].install_note.contains("not enabled"));
         assert!(reply.suggestions[0].score >= 18);
+        let drift = recommend(&catalog, "show me a drift car", 5);
+        assert_eq!(drift.intent, SearchIntent::Drift);
+        assert_eq!(drift.suggestions[0].id, "mazda-furai");
     }
 
     #[test]
