@@ -162,6 +162,18 @@ mod tests {
     }
 
     #[test]
+    fn decoded_byte_estimate_matches_actual_multilayer_decode() {
+        use crate::format::Bc;
+        for bc in [Bc::Bc1, Bc::Bc4, Bc::Bc5, Bc::Bc6h, Bc::Bc7] {
+            let (cols, rows, layers) = (3usize, 2usize, 2usize);
+            let src_bpr = cols * bc.block_bytes();
+            let src = vec![0u8; src_bpr * rows * layers];
+            let decoded = super::decode(bc, &src, src_bpr, rows, cols, rows, layers);
+            assert_eq!(decoded.len(), super::decoded_bytes(bc, cols, rows, layers).unwrap());
+        }
+    }
+
+    #[test]
     fn etc2_byte_estimate_matches_block_output() {
         assert_eq!(super::etc2_bytes(4, 2, 3), Some(4 * 2 * 3 * 16));
     }
