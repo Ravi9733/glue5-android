@@ -212,13 +212,18 @@ class MainActivity : Activity() {
 
     private fun showResourceInspector(entry: RpfEntry) {
         try {
-            val bytes = archive!!.readRawPrefix(entry, 32)
+            val stagedResource = editor?.replacementFile(entry.index)
+            val bytes = if (stagedResource != null) stagedResource.inputStream().use { input ->
+                val buffer = ByteArray(32)
+                val count = input.read(buffer)
+                if (count < 0) ByteArray(0) else buffer.copyOf(count)
+            } else archive!!.readRawPrefix(entry, 32)
             val hex = bytes.joinToString(" ") { "%02X".format(it) }
             val magic = if (bytes.size >= 4) String(bytes.copyOfRange(0, 4), Charsets.US_ASCII) else "Unknown"
             val info = buildString {
                 appendLine("Name: ${entry.name}")
                 appendLine("RSC7 header: ${if (magic == "RSC7") "valid magic" else "unrecognized ($magic)"}")
-                appendLine("Stored payload: ${entry.storedSize} bytes")
+                appendLine("Payload: ${stagedResource?.length() ?: entry.storedSize} bytes${if (stagedResource != null) " (staged replacement)" else ""}")
                 appendLine("System page flags: 0x${entry.systemFlags.toString(16).uppercase()}")
                 appendLine("Graphics page flags: 0x${entry.graphicsFlags.toString(16).uppercase()}")
                 appendLine("First 32 bytes:")
