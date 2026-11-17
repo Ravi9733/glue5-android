@@ -231,9 +231,9 @@ pub struct Gpu {
     pub decoder: Option<Pool>,
     pub decodes: Vec<Decode>,
     /// Peak CPU memory reserved by queued, running, and completed decodes.
-    pub decode_budget: crate::decode_budget::DecodeBudget,
+    pub(crate) decode_budget: crate::decode_budget::DecodeBudget,
     /// Reservation made while preflighting the next ring command.
-    pending_decode_reservation: Option<(u32, usize)>,
+    pub(crate) pending_decode_reservation: Option<(u32, usize)>,
 
     // queries
     pub occlusion: crate::ops::Occlusion,
