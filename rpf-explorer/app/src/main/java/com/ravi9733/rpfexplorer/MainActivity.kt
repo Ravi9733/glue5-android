@@ -248,9 +248,14 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                 val temps=ArrayList<Temp>(count)
                 for(i in 0 until count) {
                     val b=raw[i]; val second=u32(b,4)
-                    if(second==0x7FFFFF00L) temps.add(Temp(i,name(u32(b,0).toInt()),true,false,0,0,0,false,u32(b,8).toInt(),u32(b,12).toInt()))
-                    else if((second and 0x80000000L)==0L) {
-                        val off=u24(b,5)*512L; val sz=u24(b,2); val usz=u32(b,8); val crypt=u32(b,12)!=0L
+                    if(second==0x7FFFFF00L) {
+                        val childStart = u32(b,8); val childCount = u32(b,12)
+                        require(childStart <= count.toLong() && childCount <= count.toLong() && childStart + childCount <= count.toLong()) { "Directory child range is invalid" }
+                        temps.add(Temp(i,name(u32(b,0).toInt()),true,false,0,0,0,false,childStart.toInt(),childCount.toInt()))
+                    } else if((second and 0x80000000L)==0L) {
+                        val off=u24(b,5)*512L; val sz=u24(b,2); val usz=u32(b,8); val cryptType=u32(b,12)
+                        require(cryptType == 0L || cryptType == 1L) { "Unknown binary encryption type" }
+                        val crypt=cryptType==1L
                         temps.add(Temp(i,name(u16(b,0)),false,false,off,sz,usz,crypt,0,0))
                     } else {
                         val resourceOffset = u24(b,5) and 0x7FFFFF
@@ -272,6 +277,7 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                     val t=temps[dir]; val from=t.start.coerceAtLeast(0); val to=(from+t.cnt).coerceAtMost(count)
                     for (child in from until to) { if(child==dir) continue; parents[child]=dir; if(temps[child].dir) assign(child,depth+1) }
                 }
+                require(temps[0].dir) { "RPF root entry must be a directory" }
                 if(temps[0].dir) assign(0,0)
                 val result=temps.map { t ->
                     val rawEntry = raw[t.idx]
