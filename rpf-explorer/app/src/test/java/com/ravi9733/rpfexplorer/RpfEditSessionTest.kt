@@ -160,6 +160,97 @@ class RpfEditSessionTest {
     }
 
 
+
+    private fun identityNgMaterial(): GtaNgMaterial {
+        val keys = Array(101) { ByteArray(272) }
+        val tables = Array(17) { Array(16) { IntArray(256) } }
+        for (round in listOf(0, 1, 16)) {
+            for (group in 0..3) {
+                for (slot in 0..3) {
+                    val tableIndex = group * 4 + slot
+                    for (value in 0..255) tables[round][tableIndex][value] = value shl (slot * 8)
+                }
+            }
+        }
+        val map = arrayOf(
+            intArrayOf(0, 7, 10, 13), intArrayOf(1, 4, 11, 14),
+            intArrayOf(2, 5, 8, 15), intArrayOf(3, 6, 9, 12)
+        )
+        for (round in 2..15) {
+            for (group in 0..3) {
+                for (slot in 0..3) {
+                    val tableIndex = map[group][slot]
+                    for (value in 0..255) tables[round][tableIndex][value] = value shl (slot * 8)
+                }
+            }
+        }
+        return GtaNgMaterial(keys, tables, ByteArray(256) { it.toByte() })
+    }
+
+    private fun encryptIdentityNg(plain: ByteArray): ByteArray {
+        val result = plain.clone()
+        val map = arrayOf(
+            intArrayOf(0, 7, 10, 13), intArrayOf(1, 4, 11, 14),
+            intArrayOf(2, 5, 8, 15), intArrayOf(3, 6, 9, 12)
+        )
+        var offset = 0
+        while (offset + 16 <= plain.size) {
+            var block = plain.copyOfRange(offset, offset + 16)
+            for (round in 15 downTo 2) {
+                val inverse = ByteArray(16)
+                for (group in 0..3) for (slot in 0..3) {
+                    inverse[map[group][slot]] = block[group * 4 + slot]
+                }
+                block = inverse
+            }
+            System.arraycopy(block, 0, result, offset, 16)
+            offset += 16
+        }
+        return result
+    }
+
+    @Test fun ngArchiveTocAndEncryptedBinaryRoundTripAsNone() {
+        val dir = createTempDir(prefix = "rpf-ng-archive-test-")
+        try {
+            val material = identityNgMaterial()
+            val names = "root\\u0000hello.txt\\u0000".toByteArray(Charsets.UTF_8)
+            val plainPayload = "0123456789ABCDEF".toByteArray(Charsets.UTF_8)
+            val toc = ByteArrayOutputStream()
+            val tocFile = File(dir, "toc.bin")
+            RandomAccessFile(tocFile, "rw").use { r ->
+                r.setLength(0)
+                u32(r, 0); u32(r, 0x7FFFFF00L); u32(r, 1); u32(r, 1)
+                r.write(5); r.write(0); r.write(0); r.write(0); r.write(0)
+                r.write(1); r.write(0); r.write(0)
+                u32(r, plainPayload.size.toLong()); u32(r, 1)
+            }
+            val encryptedToc = encryptIdentityNg(tocFile.readBytes())
+            val encryptedNames = encryptIdentityNg(names)
+            val encryptedPayload = encryptIdentityNg(plainPayload)
+            val source = File(dir, "ng.rpf")
+            RandomAccessFile(source, "rw").use { r ->
+                r.setLength(0)
+                u32(r, 0x52504637L); u32(r, 2); u32(r, names.size.toLong()); u32(r, 0x0FEFFFFFL)
+                r.write(encryptedToc); r.write(encryptedNames)
+                r.seek(512); r.write(encryptedPayload)
+            }
+            val archive = RpfArchive.open(source, ngMaterial = material, archiveName = "ng.rpf")
+            assertEquals("NG", archive.encryptionLabel)
+            val entry = archive.entries.single { it.name == "hello.txt" }
+            val extracted = ByteArrayOutputStream().also { archive.extract(entry, it) }.toByteArray()
+            assertTrue(plainPayload.contentEquals(extracted))
+
+            val output = File(dir, "ng-open.rpf")
+            RpfEditSession(archive, File(dir, "work").apply { mkdirs() }).saveAs(output)
+            val reopened = RpfArchive.open(output)
+            assertEquals("NONE", reopened.encryptionLabel)
+            val outputEntry = reopened.entries.single { it.name == "hello.txt" }
+            assertTrue(plainPayload.contentEquals(ByteArrayOutputStream().also { reopened.extract(outputEntry, it) }.toByteArray()))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
     @Test fun ngDecryptStreamingAndPersistedMaterialMatchArrayPath() {
         val keys = Array(101) { key -> ByteArray(272) { i -> (key * 17 + i * 3).toByte() } }
         val tables = Array(17) { round ->
