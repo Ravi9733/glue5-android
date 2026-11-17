@@ -9,7 +9,7 @@
 //! (GPUs without timestamps leave it out).
 
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::Mutex;\nuse std::sync::atomic::AtomicU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -115,6 +115,19 @@ impl Mark {
     pub(crate) fn frame(&mut self, ms: f32, draws: u64, passes: u64, busy: Duration, epoch: u64) -> bool {
         let mut live = LIVE.lock().unwrap();
         push(&mut live.frame_ms, ms);
+        {
+            let mut smart = SMART.lock().unwrap();
+            if smart.enabled {
+                let budget_ms = 1000.0 / smart.target_fps as f32;
+                if let Some(controller) = smart.controller.as_mut() {
+                    if let crate::adaptive::Decision::RecommendCap { fps_cap } =
+                        controller.observe(crate::adaptive::FrameMetrics { frame_ms: ms, render_ms: None, gpu_ms: None }, budget_ms)
+                    {
+                        smart.recommendation = Some(fps_cap);
+                    }
+                }
+            }
+        }
         // The statistics' counters restart at each log, and nothing was
         // taken while the overlay was off: what they hold then is not this
         // frame's, so it only becomes the base (the last figures stay).
