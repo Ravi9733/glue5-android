@@ -350,8 +350,8 @@ class RpfEditSessionTest {
             val reopened = RpfArchive.open(output)
             assertEquals("NONE", reopened.encryptionLabel)
             val result = reopened.entries.single { it.name == "sample.ytd" }
-            assertEquals(0x12345678L, result.systemFlags)
-            assertEquals(0x23456789L, result.graphicsFlags)
+            assertEquals(0x55555555L, result.systemFlags)
+            assertEquals(0x66666666L, result.graphicsFlags)
             assertTrue(bytes.contentEquals(ByteArrayOutputStream().also { reopened.copyRaw(result, it) }.toByteArray()))
         } finally {
             dir.deleteRecursively()
