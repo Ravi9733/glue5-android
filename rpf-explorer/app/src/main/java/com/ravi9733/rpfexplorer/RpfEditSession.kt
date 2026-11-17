@@ -21,7 +21,7 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
     private val removals = linkedSetOf<Int>()
     private val additions = mutableListOf<Added>()
 
-    private data class Added(val parent: Int, val name: String, val file: File)
+    private data class Added(val parent: Int, val name: String, val file: File, val resource: Boolean, val systemFlags: Long, val graphicsFlags: Long)
 
     fun add(parentDirectory: Int, source: File, name: String = source.name) {
         require(parentDirectory in archive.entries.indices && archive.entries[parentDirectory].isDirectory && parentDirectory !in removals) {
@@ -33,15 +33,20 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         additions.filter { it.parent == parentDirectory }.forEach { siblings.add(it.name.lowercase()) }
         require(name.lowercase() !in siblings) { "A file or folder with this name already exists" }
         val copy = File(workDir, "add-${System.nanoTime()}").also { source.copyTo(it, overwrite = true) }
-        additions += Added(parentDirectory, name, copy)
+        val meta = readResourceMeta(copy)
+        additions += Added(parentDirectory, name, copy, meta != null, meta?.first ?: 0L, meta?.second ?: 0L)
     }
 
     fun replace(entryIndex: Int, source: File) {
         require(entryIndex in archive.entries.indices) { "Invalid entry" }
         val entry = archive.entries[entryIndex]
-        require(!entry.isDirectory && !entry.isResource) { "Only ordinary binary files can be replaced in this version" }
+        require(!entry.isDirectory) { "Directories cannot be replaced" }
         require(!entry.encrypted) { "Encrypted files cannot be replaced without the matching GTA V key" }
         require(source.isFile) { "Selected source is not a file" }
+        val meta = readResourceMeta(source)
+        require(entry.isResource == (meta != null)) {
+            if (entry.isResource) "Replace this RSC7 resource with another RSC7 file" else "A binary entry cannot be replaced by an RSC7 resource"
+        }
         replacements[entryIndex] = File(workDir, "replace-$entryIndex-${System.nanoTime()}").also {
             source.copyTo(it, overwrite = true)
         }
@@ -73,23 +78,21 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         require(archive.encryptionLabel == "OPEN" || archive.encryptionLabel == "NONE") {
             "Only OPEN/NONE archives can be written"
         }
-        require(archive.entries.none { it.isResource }) {
-            "This archive contains RSC7 resource entries. Safe resource-preserving repacking is not implemented yet; no output was written."
-        }
         require(archive.entries.none { it.encrypted && it.index !in removals }) {
             "Archive contains encrypted payloads. Matching GTA V keys are required before repacking."
         }
 
         data class Node(
             val old: RpfEntry?, val name: String, val parentOld: Int?,
-            val file: File?, val directory: Boolean
+            val file: File?, val directory: Boolean, val resource: Boolean,
+            val systemFlags: Long, val graphicsFlags: Long
         )
         val nodes = mutableListOf<Node>()
         val childrenByOld = archive.entries.filter { it.index != 0 && it.index !in removals }
             .groupBy { it.parent }.mapValues { (_, v) -> v.sortedBy { it.index } }
         val root = archive.entries.firstOrNull { it.index == 0 && it.isDirectory }
             ?: error("Archive root directory is missing")
-        nodes += Node(root, root.name, null, null, true)
+        nodes += Node(root, root.name, null, null, true, false, 0L, 0L)
 
         // Breadth-first order ensures every directory's direct children occupy a
         // contiguous range, as required by the RPF directory entry.
@@ -102,11 +105,11 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
             val start = nodes.size
             childrenByOld[oldParent].orEmpty().forEach { e ->
                 val f = if (e.isDirectory) null else replacements[e.index]
-                nodes += Node(e, e.name, oldParent, f, e.isDirectory)
+                nodes += Node(e, e.name, oldParent, f, e.isDirectory, e.isResource, e.systemFlags, e.graphicsFlags)
                 oldToNew[e.index] = nodes.lastIndex
             }
             additions.filter { it.parent == oldParent }.forEach { a ->
-                nodes += Node(null, a.name, oldParent, a.file, false)
+                nodes += Node(null, a.name, oldParent, a.file, false, a.resource, a.systemFlags, a.graphicsFlags)
             }
             val directCount = nodes.size - start
             directoryRanges[oldParent] = start to directCount
@@ -140,8 +143,11 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
             if (staged != null) staged.copyTo(tmp, overwrite = true)
             else {
                 val old = n.old ?: error("Missing staged file data")
-                FileOutputStream(tmp).use { output -> archive.extract(old, output) }
+                FileOutputStream(tmp).use { output ->
+                    if (n.resource) archive.copyRaw(old, output) else archive.extract(old, output)
+                }
             }
+            if (n.resource && tmp.length() >= 0xFFFFFFL) patchResourceLargeSize(tmp, tmp.length())
             payloadFiles[i] = tmp
             payloadSizes[i] = tmp.length()
         }
@@ -170,6 +176,15 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
                     out.writeU32(0x7FFFFF00L)
                     out.writeU32(range.first.toLong())
                     out.writeU32(range.second.toLong())
+                } else if (n.resource) {
+                    require(nameOffset <= 0xFFFF) { "RPF resource filename table offset exceeds 65535 bytes" }
+                    require(offsets[i] / 512L <= 0x7FFFFFL) { "Archive payload offset exceeds RPF7 limit" }
+                    val sizeField = if (payloadSizes[i] >= 0xFFFFFFL) 0xFFFFFF else payloadSizes[i].toInt()
+                    out.writeU16(nameOffset)
+                    out.writeU24(sizeField)
+                    out.writeU24((offsets[i] / 512L).toInt() or 0x800000)
+                    out.writeU32(n.systemFlags)
+                    out.writeU32(n.graphicsFlags)
                 } else {
                     require(nameOffset <= 0xFFFF) { "RPF binary filename table offset exceeds 65535 bytes" }
                     require(offsets[i] / 512L <= 0x7FFFFFL) { "Archive payload offset exceeds RPF7 limit" }
@@ -196,6 +211,30 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
     }
 
     private val directoryRanges = mutableMapOf<Int, Pair<Int, Int>>()
+
+    private fun readResourceMeta(file: File): Pair<Long, Long>? {
+        if (!file.isFile || file.length() < 16L) return null
+        RandomAccessFile(file, "r").use { r ->
+            if (readU32(r, 0) != 0x37435352L) return null
+            return readU32(r, 8) to readU32(r, 12)
+        }
+    }
+
+    private fun patchResourceLargeSize(file: File, size: Long) {
+        require(size <= 0xFFFFFFFFL) { "RSC7 resource exceeds 4 GiB" }
+        RandomAccessFile(file, "rw").use { r ->
+            r.seek(2); r.write((size ushr 24).toInt() and 255)
+            r.seek(5); r.write((size ushr 16).toInt() and 255)
+            r.seek(7); r.write(size.toInt() and 255)
+            r.seek(14); r.write((size ushr 8).toInt() and 255)
+        }
+    }
+
+    private fun readU32(r: RandomAccessFile, pos: Long): Long {
+        r.seek(pos)
+        return r.readUnsignedByte().toLong() or (r.readUnsignedByte().toLong() shl 8) or
+            (r.readUnsignedByte().toLong() shl 16) or (r.readUnsignedByte().toLong() shl 24)
+    }
 
     private fun align512(v: Long) = (v + 511L) and -512L
     private fun RandomAccessFile.writeU16(v: Int) { write(v and 255); write((v ushr 8) and 255) }
