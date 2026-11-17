@@ -147,3 +147,9 @@ constraint, not a claim that the streaming hitch is fixed.
 - Reservations are attached to decode entries and released on successful upload, stale texture destruction, or worker disconnection. The previous `make_decode_room()` blocking `recv()` path and its upload helper have been removed.
 - The nominal working-set budget is 256 MiB. A single oversized job is allowed only when no other decode reservation is active, avoiding a permanent ring deadlock on a texture larger than the nominal cap while still preventing concurrent oversubscription.
 - This is the first runtime integration, not yet a verified performance fix. Code has not been compiled or tested here; validate Rust borrow/type correctness, ring behavior under saturation, per-texture region ordering, and Android memory/latency before treating it as ready. Add stress tests for reservation release and blocked-command replay next.
+
+### Follow-up safety checks for the first integration
+
+- Added in-memory ring tests for repeated `peek`, exactly-once `next`, and tail/executed counter publication. The fixtures use explicitly aligned storage for atomic ring words.
+- Decode-budget admission now permits one oversized upload only when no other reservation is active; without this exception a single texture larger than 256 MiB could otherwise leave the ring permanently blocked. Concurrent work remains constrained by the nominal budget.
+- The tests are committed but still unexecuted. Before merging or distributing an APK, run the workspace formatter and the `glue5-runtime` and `glue5-gpu` test suites, then stress-test ring saturation and texture destruction while decode is pending.
