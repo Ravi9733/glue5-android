@@ -23,6 +23,7 @@ class MainActivity : Activity() {
     private val SAVE_FILE = 11
     private var pendingExtract: RpfEntry? = null
     private var editor: RpfEditSession? = null
+    private var ngMaterial: GtaNgMaterial? = null
     private var pendingEditEntry: RpfEntry? = null
     private var editAction: String? = null
     private val PICK_EDIT_SOURCE = 12
@@ -40,17 +41,24 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18,18,18,18); setBackgroundColor(0xFF101318.toInt()) }
         val title = TextView(this).apply { text = "GTA V  •  RPF EXPLORER"; textSize = 22f; setTextColor(0xFFFFFFFF.toInt()); gravity = Gravity.CENTER_VERTICAL; setPadding(0,8,0,14) }
         status = TextView(this).apply { text = "Open a GTA V PC .rpf archive"; textSize = 13f; setTextColor(0xFFB8C3D1.toInt()); setPadding(0,0,0,12) }
+        ngMaterial = runCatching { GtaNgMaterial.load(File(filesDir, "gtav-ng-material.bin")) }.getOrNull()
         openButton = Button(this).apply { text = "OPEN RPF FILE"; setOnClickListener { openArchive() } }
         addButton = Button(this).apply { text = "ADD FILE TO THIS FOLDER"; isEnabled = false; setOnClickListener { chooseEditSource("add", null) } }
         keyButton = Button(this).apply {
-            text = if (File(filesDir, "gtav-aes-key.bin").exists()) "GTA V AES KEY READY" else "IMPORT GTA5.EXE (AES KEY)"
+            text = when {
+                ngMaterial != null && File(filesDir, "gtav-aes-key.bin").exists() -> "GTA V KEYS READY (AES + NG)"
+                File(filesDir, "gtav-aes-key.bin").exists() -> "AES KEY READY • IMPORT GTA5.EXE FOR NG"
+                else -> "IMPORT GTA5.EXE (AES + NG)"
+            }
             setOnClickListener { importGtaExecutable() }
             setOnLongClickListener {
                 android.app.AlertDialog.Builder(this@MainActivity)
                     .setMessage("Delete the locally stored GTA V AES key from this app?")
                     .setPositiveButton("Delete key") { _, _ ->
                         File(filesDir, "gtav-aes-key.bin").delete()
-                        text = "IMPORT GTA5.EXE (AES KEY)"
+                        File(filesDir, "gtav-ng-material.bin").delete()
+                        ngMaterial = null
+                        text = "IMPORT GTA5.EXE (AES + NG)"
                         Toast.makeText(this@MainActivity, "Local AES key deleted", Toast.LENGTH_SHORT).show()
                     }.setNegativeButton("Cancel", null).show()
                 true
@@ -80,13 +88,16 @@ class MainActivity : Activity() {
         if (resultCode != Activity.RESULT_OK || data?.data == null) return
         val uri = data.data!!
         if (requestCode == PICK_RPF) {
+            val archiveDisplayName = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            } ?: "archive.rpf"
             status.text = "Reading archive…"
             thread {
                 try {
                     val temp = File(cacheDir, "selected-${System.currentTimeMillis()}.rpf")
                     contentResolver.openInputStream(uri).use { input -> FileOutputStream(temp).use { out -> input!!.copyTo(out, 1024 * 1024) } }
                     val keyFile = File(filesDir, "gtav-aes-key.bin")
-                    val parsed = RpfArchive.open(temp, if (keyFile.exists()) keyFile.readBytes() else null)
+                    val parsed = RpfArchive.open(temp, if (keyFile.exists()) keyFile.readBytes() else null, ngMaterial, archiveDisplayName)
                     runOnUiThread {
                         archive?.close()
                         editor?.dispose()
@@ -103,20 +114,27 @@ class MainActivity : Activity() {
                 } catch (e: Exception) { runOnUiThread { status.text = "Could not open: ${e.message}"; Toast.makeText(this, e.message ?: "Invalid archive", Toast.LENGTH_LONG).show() } }
             }
         } else if (requestCode == IMPORT_GTA5_EXE) {
-            status.text = "Scanning GTA5.exe for its AES key…"
+            status.text = "Scanning GTA5.exe for AES + NG key material…"
             val exe = File(cacheDir, "gta5-exe-${System.currentTimeMillis()}.bin")
             thread {
                 try {
                     contentResolver.openInputStream(uri).use { input -> FileOutputStream(exe).use { output -> input!!.copyTo(output, 1024 * 1024) } }
                     val key = RpfCrypto.extractAesKey(exe) { done, total ->
-                        runOnUiThread { status.text = "Scanning GTA5.exe… ${(done * 100 / total).toInt()}%" }
+                        runOnUiThread { status.text = "Scanning AES key… ${(done * 100 / total).toInt()}%" }
                     }
                     File(filesDir, "gtav-aes-key.bin").writeBytes(key)
+                    val ngError = runCatching {
+                        GtaNgMaterial.extractFromExe(exe) { stage, percent ->
+                            runOnUiThread { status.text = "$stage… $percent%" }
+                        }.also { it.save(File(filesDir, "gtav-ng-material.bin")) }
+                    }.exceptionOrNull()
+                    ngMaterial = if (ngError == null) GtaNgMaterial.load(File(filesDir, "gtav-ng-material.bin")) else null
                     exe.delete()
                     runOnUiThread {
-                        keyButton.text = "GTA V AES KEY READY"
-                        status.text = "GTA V AES key extracted locally. Key stays in app-private storage."
-                        Toast.makeText(this, "AES key ready for AES-encrypted RPF archives", Toast.LENGTH_LONG).show()
+                        keyButton.text = if (ngMaterial != null) "GTA V KEYS READY (AES + NG)" else "AES KEY READY • NG UNSUPPORTED"
+                        status.text = if (ngMaterial != null) "AES + NG material extracted from your GTA5.exe and stored privately on this device."
+                            else "AES key ready. NG extraction failed: ${ngError?.message ?: "unknown error"}"
+                        Toast.makeText(this, if (ngMaterial != null) "AES + NG keys ready" else "AES ready; NG not available for this GTA5.exe build", Toast.LENGTH_LONG).show()
                     }
                 } catch (e: Exception) {
                     exe.delete()
@@ -262,7 +280,7 @@ class MainActivity : Activity() {
                 setBackgroundColor(0xFF1A2029.toInt())
                 setOnClickListener {
                     if (entry.isDirectory) { currentDir = entry.index; render() }
-                    else if (entry.name.endsWith(".rpf", ignoreCase = true) && !entry.isResource && !entry.encrypted) openNested(entry)
+                    else if (entry.name.endsWith(".rpf", ignoreCase = true) && !entry.isResource) openNested(entry)
                     else if (entry.isResource && archive?.encryptionLabel == "AES") Toast.makeText(this@MainActivity, "AES-encrypted RSC7 inspection/export is not enabled yet.", Toast.LENGTH_LONG).show()
                     else if (entry.isResource) showResourceInspector(entry)
                     else if (entry.encrypted) Toast.makeText(this@MainActivity, "This file is encrypted. GTA V keys are required.", Toast.LENGTH_LONG).show()
@@ -328,7 +346,7 @@ class MainActivity : Activity() {
                 val stagedNested = editor?.replacementFile(entry.index)
                 if (stagedNested != null) stagedNested.copyTo(nestedFile, overwrite = true)
                 else FileOutputStream(nestedFile).use { output -> archive!!.extract(entry, output) }
-                val nestedArchive = RpfArchive.open(nestedFile, archive?.aesKeyCopy())
+                val nestedArchive = RpfArchive.open(nestedFile, archive?.aesKeyCopy(), ngMaterial, entry.name)
                 runOnUiThread {
                     nestedStack += NestedFrame(archive!!, editor!!, currentDir, entry.index)
                     archive = nestedArchive
