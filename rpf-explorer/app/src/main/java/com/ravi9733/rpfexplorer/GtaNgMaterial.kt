@@ -12,7 +12,7 @@ import java.security.MessageDigest
  *
  * NG block-decryption follows the MIT-licensed CodeWalker GTACrypto implementation.
  */
-internal class GtaNgMaterial private constructor(
+internal class GtaNgMaterial internal constructor(
     private val keys: Array<ByteArray>,
     private val tables: Array<Array<IntArray>>,
     private val hashLut: ByteArray
