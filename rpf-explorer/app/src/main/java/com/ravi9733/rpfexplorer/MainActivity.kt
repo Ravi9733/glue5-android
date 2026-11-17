@@ -259,6 +259,7 @@ class MainActivity : Activity() {
             val info = buildString {
                 appendLine("Name: ${entry.name}")
                 appendLine("RSC7 header: ${if (magic == "RSC7") "valid magic" else "unrecognized ($magic)"}")
+                appendLine("Encrypted script resource: ${if (entry.encrypted) "yes (.ysc)" else "no"}")
                 appendLine("RSC7 version: 0x${version.toString(16).uppercase()}")
                 appendLine("System pages: ${rscPageBytes(entry.systemFlags)} bytes")
                 appendLine("Graphics pages: ${rscPageBytes(entry.graphicsFlags)} bytes")
@@ -599,6 +600,7 @@ internal class RpfArchive private constructor(
                         val resourceOffset = u24(b,5) and 0x7FFFFF
                         val encodedSize = u24(b,2)
                         val absolute = resourceOffset * 512L
+                        val resourceName = name(u16(b,0))
                         val resourceSize = if (encodedSize == 0xFFFFFFL) {
                             require(absolute + 16L <= raf.length()) { "RSC7 resource header is truncated" }
                             val h = ByteArray(16); raf.seek(absolute); raf.readFully(h)
@@ -606,7 +608,8 @@ internal class RpfArchive private constructor(
                                 ((h[5].toLong() and 255L) shl 16) or ((h[2].toLong() and 255L) shl 24)
                         } else encodedSize
                         require(resourceSize >= 16L && absolute + resourceSize <= raf.length()) { "RSC7 resource data range is invalid" }
-                        temps.add(Temp(i,name(u16(b,0)),false,true,absolute,resourceSize,0,false,0,0))
+                        val encryptedScript = resourceName.endsWith(".ysc", ignoreCase = true)
+                        temps.add(Temp(i,resourceName,false,true,absolute,resourceSize,0,encryptedScript,0,0))
                     }
                 }
                 val parents=IntArray(count){0}
