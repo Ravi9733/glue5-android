@@ -270,6 +270,9 @@ class MainActivity : Activity() {
                 append(hex.ifBlank { "(empty)" })
                 appendLine()
                 appendLine()
+                if (entry.encrypted) {
+                    appendLine("WARNING: YSC script payload is NG-encrypted. Raw export remains encrypted and this editor blocks repacking it.")
+                }
                 append("This is a raw RSC7 header inspector. It does not decode texture/model data or generate a visual preview.")
             }
             android.app.AlertDialog.Builder(this)
