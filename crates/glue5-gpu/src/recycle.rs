@@ -22,7 +22,8 @@ use crate::submit::Grave;
 // Android world streaming repeatedly destroys and recreates same-sized
 // GPU resources. Keep a modestly larger reuse pool to avoid driver allocation
 // spikes, while bounding the additional resident GPU memory to 64 MiB.
-const MAX_BYTES: u64 = if cfg!(target_os = "android") { 64 << 20 } else { 32 << 20 };
+const MAX_BYTES: u64 = if cfg!(target_os = "android") { 48 << 20 } else { 32 << 20 };
+const PRESSURE_MAX_BYTES: u64 = 8 << 20;
 /// Kept at most for this many batches (a few seconds).
 const MAX_AGE: u64 = 1000;
 
@@ -90,7 +91,12 @@ impl Recycler {
     /// Hands what is too old, or over the budget, to the graveyard.
     pub fn trim(&mut self, epoch: u64, graveyard: &mut Vec<Grave>) {
         while let Some(&(at, _)) = self.order.front() {
-            if self.bytes <= MAX_BYTES && epoch.saturating_sub(at) <= MAX_AGE {
+            let byte_limit = if cfg!(target_os = "android") && crate::perf::memory_pressure() {
+                PRESSURE_MAX_BYTES
+            } else {
+                MAX_BYTES
+            };
+            if self.bytes <= byte_limit && epoch.saturating_sub(at) <= MAX_AGE {
                 break;
             }
             let (at, key) = self.order.pop_front().unwrap();
