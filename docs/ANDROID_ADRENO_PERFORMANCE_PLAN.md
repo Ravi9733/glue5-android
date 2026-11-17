@@ -120,3 +120,10 @@ constraint, not a claim that the streaming hitch is fixed.
 - Added tests for ETC2 and non-ETC2 reservation arithmetic and overflow rejection.
 - This is the accounting primitive needed by the deferred scheduler; it is not yet wired into `Gpu` admission. The current `make_decode_room()` blocking receive and `urgent_bounded()` queue wait remain unchanged. No runtime performance improvement is claimed from this commit.
 - Next: locate and update every `Gpu` construction site, add a bounded deferred-job queue with explicit byte reservations, then pump it nonblocking from flush completion. The integration must preserve FIFO ordering per texture and account for cancellation/disconnection.
+
+## Decode budget tracker foundation
+
+- Added `decode_budget.rs` with nonblocking byte reservations, checked addition/subtraction, capacity reporting, and unit tests for saturation, reuse, overflow, and invalid release.
+- Registered the module in `glue5-gpu`.
+- Important: the tracker is not yet connected to `Gpu::upload_texture` or `finish_decodes`. The current blocking `make_decode_room()` receive and `urgent_bounded()` wait remain in the live path. This commit establishes the accounting primitive only; it does not yet change runtime behavior.
+- Integration is being staged deliberately: the upload command owns its source bytes in the GPU command ring, so a safe deferred queue must apply backpressure without dropping commands or retaining an unbounded copied backlog. Next inspect the ring reader/release boundary and all `Gpu` construction sites before wiring the queue.
