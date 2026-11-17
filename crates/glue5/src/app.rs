@@ -683,6 +683,13 @@ impl App {
         self.presentation.set_vsync(self.settings.vsync);
         self.presentation.set_metal_hud(self.settings.overlay == PerfOverlay::MetalHud);
         glue5_gpu::perf::set_on(in_game && self.settings.overlay == PerfOverlay::Glue5);
+        // Keep the analyser wired to the live settings. Analysis is opt-in;
+        // automatic pacing is a separate opt-in and only affects presentation.
+        glue5_gpu::perf::set_smart_performance(
+            self.settings.smart_performance,
+            self.settings.max_fps,
+            self.settings.smart_auto_fps,
+        );
         let presentation_fps = if self.settings.smart_auto_fps {
             glue5_gpu::perf::effective_fps_cap().unwrap_or(self.settings.max_fps).min(60)
         } else {
