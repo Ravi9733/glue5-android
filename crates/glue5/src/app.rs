@@ -683,7 +683,12 @@ impl App {
         self.presentation.set_vsync(self.settings.vsync);
         self.presentation.set_metal_hud(self.settings.overlay == PerfOverlay::MetalHud);
         glue5_gpu::perf::set_on(in_game && self.settings.overlay == PerfOverlay::Glue5);
-        self.presentation.set_frame_rate(self.settings.max_fps.min(30));
+        let presentation_fps = if self.settings.smart_auto_fps {
+            glue5_gpu::perf::effective_fps_cap().unwrap_or(self.settings.max_fps).min(60)
+        } else {
+            self.settings.max_fps.min(30)
+        };
+        self.presentation.set_frame_rate(presentation_fps);
         self.presentation.set_upscaler(upscaler(&self.settings));
         self.presentation.set_sharpness(self.settings.sharpness);
         self.presentation.set_color_boost(self.settings.light_graphics_mode);
