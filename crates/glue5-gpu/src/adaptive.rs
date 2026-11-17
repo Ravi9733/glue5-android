@@ -1,7 +1,9 @@
 //! A conservative, measurement-driven performance controller for mobile GPUs.
 //!
 //! The controller recommends frame caps only. It never changes render scale,
-//! texture quality, shaders, or the selected upscaler.
+//! texture quality, shaders, or the selected upscaler. Severe sustained
+//! frame-time overruns are handled faster than ordinary overload so a phone
+//! does not spend many minutes running well beyond its thermal/power budget.
 use std::collections::VecDeque;
 
 /// Measurements from one presented frame. GPU timing may be unavailable.
@@ -45,6 +47,8 @@ impl Controller {
     }
 
     /// Feed exactly one presented frame. The budget is the selected FPS target's frame-time budget.
+    /// A severe window means at least 75% of frames exceed 1.5x the budget;
+    /// it triggers a quicker step-down than ordinary sustained overload.
     pub fn observe(&mut self, metrics: FrameMetrics, budget_ms: f32) -> Decision {
         if !metrics.frame_ms.is_finite()
             || metrics.frame_ms <= 0.0
@@ -64,6 +68,11 @@ impl Controller {
                 || m.render_ms.is_some_and(|v| v.is_finite() && v > budget_ms * 0.90)
                 || m.gpu_ms.is_some_and(|v| v.is_finite() && v > budget_ms * 0.95)
         }).count();
+        let severe = self.samples.iter().filter(|m| {
+            m.frame_ms > budget_ms * 1.50
+                || m.render_ms.is_some_and(|v| v.is_finite() && v > budget_ms * 1.35)
+                || m.gpu_ms.is_some_and(|v| v.is_finite() && v > budget_ms * 1.35)
+        }).count();
         self.samples.clear();
 
         if overloaded >= 45 {
@@ -77,9 +86,19 @@ impl Controller {
             self.stable_windows = 0;
         }
 
-        if self.overload_windows >= 3 && self.current_cap > 30 {
-            self.current_cap = if self.current_cap <= 45 { 30 } else { 45 };
+        // At very poor sustained frame times, respond after one complete
+        // measurement window; ordinary overload still uses two windows.
+        let degrade_now = severe >= 45 || self.overload_windows >= 2;
+        if degrade_now && self.current_cap > 30 {
+            self.current_cap = if severe >= 45 {
+                30
+            } else if self.current_cap <= 45 {
+                30
+            } else {
+                45
+            };
             self.overload_windows = 0;
+            self.stable_windows = 0;
             return Decision::RecommendCap { fps_cap: self.current_cap };
         }
 
@@ -117,22 +136,28 @@ mod tests {
     }
 
     #[test]
-    fn sustained_overload_recommends_lower_cap_after_three_windows() {
+    fn severe_sustained_slowdown_recommends_30_fps_after_one_window() {
         let mut c = Controller::new(60);
-        assert_eq!(feed(&mut c, 179, 24.0, Some(18.0)), Decision::Hold { fps_cap: 60 });
-        assert_eq!(feed(&mut c, 1, 24.0, Some(18.0)), Decision::RecommendCap { fps_cap: 45 });
+        assert_eq!(feed(&mut c, 59, 55.0, Some(45.0)), Decision::Hold { fps_cap: 60 });
+        assert_eq!(feed(&mut c, 1, 55.0, Some(45.0)), Decision::RecommendCap { fps_cap: 30 });
+    }
+
+    #[test]
+    fn ordinary_overload_uses_two_windows_before_step_down() {
+        let mut c = Controller::new(60);
+        assert_eq!(feed(&mut c, 120, 24.0, Some(18.0)), Decision::RecommendCap { fps_cap: 45 });
     }
 
     #[test]
     fn missing_gpu_timestamps_still_uses_frame_time() {
         let mut c = Controller::new(60);
-        assert_eq!(feed(&mut c, 180, 24.0, None), Decision::RecommendCap { fps_cap: 45 });
+        assert_eq!(feed(&mut c, 120, 24.0, None), Decision::RecommendCap { fps_cap: 45 });
     }
 
     #[test]
     fn recovery_is_slower_and_never_exceeds_original_target() {
         let mut c = Controller::new(45);
-        let _ = feed(&mut c, 180, 24.0, None);
+        let _ = feed(&mut c, 60, 55.0, None);
         assert_eq!(c.fps_cap(), 30);
         assert_eq!(feed(&mut c, 600, 10.0, Some(7.0)), Decision::RecommendCap { fps_cap: 45 });
     }
