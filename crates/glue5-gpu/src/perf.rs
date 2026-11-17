@@ -21,6 +21,7 @@ pub const FRAMES: usize = 120;
 static ON: AtomicBool = AtomicBool::new(false);
 /// Android PowerManager thermal status (0..6); 255 means unavailable.
 static THERMAL_STATUS: AtomicU8 = AtomicU8::new(255);
+static MEMORY_PRESSURE: AtomicBool = AtomicBool::new(false);
 static LIVE: Mutex<Live> = Mutex::new(Live::new());
 static SMART: Mutex<SmartState> = Mutex::new(SmartState::new());
 
@@ -80,6 +81,15 @@ pub fn effective_fps_cap() -> Option<u32> {
 /// Receives Android PowerManager thermal status. 255 clears unavailable data.
 pub fn set_thermal_status(status: Option<u8>) {
     THERMAL_STATUS.store(status.map_or(255, |value| value.min(6)), Ordering::Relaxed);
+}
+
+/// Enables tighter cache limits when Android reports critically low free RAM.
+pub fn set_memory_pressure(pressure: bool) {
+    MEMORY_PRESSURE.store(pressure, Ordering::Relaxed);
+}
+
+pub(crate) fn memory_pressure() -> bool {
+    MEMORY_PRESSURE.load(Ordering::Relaxed)
 }
 
 /// The overlay's figures and optional Smart Performance recommendation.
