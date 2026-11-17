@@ -24,6 +24,7 @@ static SMART: Mutex<SmartState> = Mutex::new(SmartState::new());
 
 struct SmartState {
     enabled: bool,
+    auto_apply: bool,
     target_fps: u32,
     controller: Option<crate::adaptive::Controller>,
     recommendation: Option<u32>,
@@ -31,17 +32,18 @@ struct SmartState {
 
 impl SmartState {
     const fn new() -> Self {
-        Self { enabled: false, target_fps: 60, controller: None, recommendation: None }
+        Self { enabled: false, auto_apply: false, target_fps: 60, controller: None, recommendation: None }
     }
 }
 
 /// Enables the opt-in adaptive analyser and sets the player's current FPS target.
 /// A zero target means uncapped; the analyser conservatively uses 60 as its baseline.
-pub fn set_smart_performance(enabled: bool, target_fps: u32) {
+pub fn set_smart_performance(enabled: bool, target_fps: u32, auto_apply: bool) {
     let target = if target_fps == 0 { 60 } else { target_fps.clamp(30, 60) };
     let mut smart = SMART.lock().unwrap();
     if !enabled {
         smart.enabled = false;
+        smart.auto_apply = false;
         smart.controller = None;
         smart.recommendation = None;
         return;
@@ -51,7 +53,17 @@ pub fn set_smart_performance(enabled: bool, target_fps: u32) {
         smart.recommendation = None;
     }
     smart.enabled = true;
+    smart.auto_apply = auto_apply;
     smart.target_fps = target;
+}
+
+/// Current live cap selected by the analyser, only when automatic pacing is
+/// explicitly enabled. This is applied to presentation pacing, not persisted
+/// back into the user's preferred max_fps setting.
+pub fn effective_fps_cap() -> Option<u32> {
+    let smart = SMART.lock().unwrap();
+    (smart.enabled && smart.auto_apply)
+        .then(|| smart.recommendation.unwrap_or(smart.target_fps))
 }
 
 /// The overlay's figures and optional Smart Performance recommendation.
