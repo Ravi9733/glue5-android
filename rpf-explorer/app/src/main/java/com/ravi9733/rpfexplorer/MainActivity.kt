@@ -53,13 +53,13 @@ class MainActivity : Activity() {
             setOnClickListener { importGtaExecutable() }
             setOnLongClickListener {
                 android.app.AlertDialog.Builder(this@MainActivity)
-                    .setMessage("Delete the locally stored GTA V AES key from this app?")
+                    .setMessage("Delete the locally stored GTA V AES key and NG key material from this app?")
                     .setPositiveButton("Delete key") { _, _ ->
                         File(filesDir, "gtav-aes-key.bin").delete()
                         File(filesDir, "gtav-ng-material.bin").delete()
                         ngMaterial = null
                         text = "IMPORT GTA5.EXE (AES + NG)"
-                        Toast.makeText(this@MainActivity, "Local AES key deleted", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity, "Local AES + NG key material deleted", Toast.LENGTH_SHORT).show()
                     }.setNegativeButton("Cancel", null).show()
                 true
             }
