@@ -28,7 +28,7 @@ class MainActivity : Activity() {
         val title = TextView(this).apply { text = "GTA V  •  RPF EXPLORER"; textSize = 22f; setTextColor(0xFFFFFFFF.toInt()); gravity = Gravity.CENTER_VERTICAL; setPadding(0,8,0,14) }
         status = TextView(this).apply { text = "Open a GTA V PC .rpf archive"; textSize = 13f; setTextColor(0xFFB8C3D1.toInt()); setPadding(0,0,0,12) }
         openButton = Button(this).apply { text = "OPEN RPF FILE"; setOnClickListener { openArchive() } }
-        search = EditText(this).apply { hint = "Search current folder"; singleLine = true; setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFF8B96A5.toInt()); visibility = android.view.View.GONE }
+        search = EditText(this).apply { hint = "Search current folder"; setSingleLine(true); setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFF8B96A5.toInt()); visibility = android.view.View.GONE }
         val back = Button(this).apply { text = "↑  PARENT FOLDER"; setOnClickListener { if (currentDir != 0) { currentDir = archive?.parentOf(currentDir) ?: 0; render() } } }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(this).apply { addView(list) }
