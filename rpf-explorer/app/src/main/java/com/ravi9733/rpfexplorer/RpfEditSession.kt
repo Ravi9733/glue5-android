@@ -105,7 +105,9 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
             val start = nodes.size
             childrenByOld[oldParent].orEmpty().forEach { e ->
                 val f = if (e.isDirectory) null else replacements[e.index]
-                nodes += Node(e, e.name, oldParent, f, e.isDirectory, e.isResource, e.systemFlags, e.graphicsFlags)
+                val newResourceMeta = if (e.isResource && f != null) readResourceMeta(f) else null
+                nodes += Node(e, e.name, oldParent, f, e.isDirectory, e.isResource,
+                    newResourceMeta?.first ?: e.systemFlags, newResourceMeta?.second ?: e.graphicsFlags)
                 oldToNew[e.index] = nodes.lastIndex
             }
             additions.filter { it.parent == oldParent }.forEach { a ->
