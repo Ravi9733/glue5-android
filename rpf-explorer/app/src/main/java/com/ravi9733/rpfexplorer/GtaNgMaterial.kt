@@ -59,7 +59,8 @@ internal class GtaNgMaterial internal constructor(
 
     private fun deriveWords(name: String, length: Long): IntArray {
         require(length in 0..0xFFFFFFFFL) { "NG archive/file length is outside the supported range" }
-        val keyIndex = ((calculateHash(name).toLong() and 0xFFFFFFFFL) + length + 61L) % 101L
+        val combined = ((calculateHash(name).toLong() and 0xFFFFFFFFL) + length + 61L) and 0xFFFFFFFFL
+        val keyIndex = combined % 101L
         val key = keys[keyIndex.toInt()]
         return IntArray(68) { i ->
             val o = i * 4
