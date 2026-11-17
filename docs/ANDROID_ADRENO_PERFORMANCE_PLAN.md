@@ -99,3 +99,11 @@ constraint, not a claim that the streaming hitch is fixed.
 - Commit: `dc54102` (`perf(gpu): add checked texture decode memory estimates`).
 - These helpers and tests are committed but have not yet been run in CI or on
   Android. The blocking admission path is still present; no APK was built.
+
+## Follow-up audit — layered ETC2 accounting
+
+- Confirmed the ETC2 encoder receives array layers as vertically stacked block rows (width = cols * 4, height = block_rows * 4 * layers). Its allocation is therefore cols * block_rows * layers * 16 bytes, matching `etc2_bytes`.
+- Added a regression test that encodes two stacked 8x8 layers and compares the actual output length with the estimate.
+- Reconfirmed the remaining render-thread hitch: `make_decode_room()` still calls blocking `recv()` when all 16 decode slots are occupied. The later `finish_decodes()` path is nonblocking, but that does not remove this admission-time wait.
+- Next implementation must replace the blocking slot reclamation with deferred, byte-budgeted admission. It must retain compressed input ownership, preserve per-texture region order, and release reservations on every completion/drop path. Do not remove the cap or silently discard uploads.
+- Test status: the new regression test is committed but has not been executed; no Android APK or device validation has been performed.
