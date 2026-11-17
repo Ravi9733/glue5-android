@@ -7,6 +7,9 @@ on:
     paths:
       - "rpf-explorer/**"
       - ".github/workflows/rpf-explorer-tests.yml"
+concurrency:
+  group: rpf-explorer-tests-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
