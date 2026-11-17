@@ -210,6 +210,42 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancel", null).show()
     }
 
+    private fun showResourceInspector(entry: RpfEntry) {
+        try {
+            val bytes = archive!!.readRawPrefix(entry, 32)
+            val hex = bytes.joinToString(" ") { "%02X".format(it) }
+            val magic = if (bytes.size >= 4) String(bytes.copyOfRange(0, 4), Charsets.US_ASCII) else "Unknown"
+            val info = buildString {
+                appendLine("Name: ${entry.name}")
+                appendLine("RSC7 header: ${if (magic == "RSC7") "valid magic" else "unrecognized ($magic)"}")
+                appendLine("Stored payload: ${entry.storedSize} bytes")
+                appendLine("System page flags: 0x${entry.systemFlags.toString(16).uppercase()}")
+                appendLine("Graphics page flags: 0x${entry.graphicsFlags.toString(16).uppercase()}")
+                appendLine("First 32 bytes:")
+                append(hex.ifBlank { "(empty)" })
+                appendLine()
+                appendLine()
+                append("This is a raw RSC7 header inspector. It does not decode texture/model data or generate a visual preview.")
+            }
+            android.app.AlertDialog.Builder(this)
+                .setTitle("RSC7 Resource Inspector")
+                .setMessage(info)
+                .setPositiveButton("Export raw RSC7") { _, _ ->
+                    pendingExtract = entry
+                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "application/octet-stream"
+                        putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/'))
+                    }
+                    startActivityForResult(intent, SAVE_FILE)
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Resource inspection failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun render() {
         list.removeAllViews()
         val a = archive ?: return
@@ -222,8 +258,8 @@ class MainActivity : Activity() {
                 setOnClickListener {
                     if (entry.isDirectory) { currentDir = entry.index; render() }
                     else if (entry.name.endsWith(".rpf", ignoreCase = true) && !entry.isResource && !entry.encrypted) openNested(entry)
-                    else if (entry.isResource && archive?.encryptionLabel == "AES") Toast.makeText(this@MainActivity, "AES-encrypted RSC7 export is not enabled yet.", Toast.LENGTH_LONG).show()
-                    else if (entry.isResource) { pendingExtract = entry; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
+                    else if (entry.isResource && archive?.encryptionLabel == "AES") Toast.makeText(this@MainActivity, "AES-encrypted RSC7 inspection/export is not enabled yet.", Toast.LENGTH_LONG).show()
+                    else if (entry.isResource) showResourceInspector(entry)
                     else if (entry.encrypted) Toast.makeText(this@MainActivity, "This file is encrypted. GTA V keys are required.", Toast.LENGTH_LONG).show()
                     else { pendingExtract = entry; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
                 }
@@ -366,6 +402,17 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
     fun parentOf(index: Int) = entries.firstOrNull { it.index == index }?.parent ?: 0
     fun close() = file.close()
     fun aesKeyCopy(): ByteArray? = aesKey?.clone()
+
+    fun readRawPrefix(e: RpfEntry, maxBytes: Int): ByteArray {
+        require(!e.isDirectory && maxBytes >= 0)
+        val size = minOf(e.storedSize, maxBytes.toLong()).toInt()
+        val result = ByteArray(size)
+        synchronized(file) {
+            file.seek(e.offset)
+            file.readFully(result)
+        }
+        return result
+    }
 
     fun copyRaw(e: RpfEntry, output: OutputStream) {
         require(!e.isDirectory) { "Cannot copy a directory payload" }
