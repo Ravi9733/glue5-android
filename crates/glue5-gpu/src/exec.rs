@@ -1076,26 +1076,20 @@ impl Gpu {
     /// A texture's regions go in the order they came.
     fn finish_decodes(&mut self) {
         let started = Instant::now();
-        let mut waited = Duration::ZERO;
-        let mut waited_textures = 0usize;
         let mut later: Vec<Decode> = Vec::new();
         let mut oldest_ready = Duration::ZERO;
         let mut oldest_pending = Duration::ZERO;
         for d in std::mem::take(&mut self.decodes) {
             let age = d.queued_at.elapsed();
-            let Some(t) = self.objs.tex(d.id).filter(|t| t.tex == d.texture) else {
+            if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
                 continue; // destroyed meanwhile
-            };
-            let used_now = t.used.get() == self.epoch;
+            }
+            // Never stall the command/render thread waiting for CPU BCn decode
+            // or ETC2 re-encoding. Newly-created WebGPU textures are safely
+            // zero-initialized; a not-yet-ready region can appear on a later
+            // frame when its background decode completes.
             let texels = if later.iter().any(|l| l.texture == d.texture) {
                 None
-            } else if used_now {
-                let waiting = Instant::now();
-                let received = d.data.recv();
-                waited += waiting.elapsed();
-                waited_textures += 1;
-                let Ok(texels) = received else { continue };
-                Some(texels)
             } else {
                 match d.data.try_recv() {
                     Ok(texels) => Some(texels),
@@ -1119,17 +1113,14 @@ impl Gpu {
         }
         let pending = later.len();
         self.decodes = later;
-        // Keep diagnostics quiet during normal streaming. A frame that blocks
-        // on CPU BCn decode, or a large decode backlog, is a likely source of
-        // visible texture pop-in and frame pacing spikes on mobile Vulkan.
-        if waited >= Duration::from_millis(8)
-            || pending >= 12
+        // A growing decode backlog can cause texture pop-in even when it no
+        // longer blocks frame submission. Keep a diagnostic for sustained load.
+        if pending >= 12
             || oldest_pending >= Duration::from_millis(50)
             || oldest_ready >= Duration::from_millis(50)
         {
             log::warn!(
-                "texture streaming: waited {:.1} ms for {waited_textures} in-use decode(s); {pending} pending (oldest {:.1} ms), oldest ready {:.1} ms; pass {:.1} ms",
-                waited.as_secs_f64() * 1000.0,
+                "texture streaming: {pending} pending decode(s) (oldest pending {:.1} ms), oldest ready {:.1} ms; pass {:.1} ms",
                 oldest_pending.as_secs_f64() * 1000.0,
                 oldest_ready.as_secs_f64() * 1000.0,
                 started.elapsed().as_secs_f64() * 1000.0,
