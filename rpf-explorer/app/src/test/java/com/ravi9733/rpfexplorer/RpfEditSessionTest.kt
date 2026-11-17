@@ -101,7 +101,7 @@ class RpfEditSessionTest {
 
     private fun aesFixture(dir: File, key: ByteArray): Pair<File, ByteArray> {
         val f = File(dir, "aes-fixture.rpf")
-        val names = "root\\u0000hello.txt\\u0000\\u0000".toByteArray(Charsets.UTF_8)
+        val names = "root\u0000hello.txt\u0000\u0000".toByteArray(Charsets.UTF_8)
         val payload = "0123456789ABCDEF".toByteArray(Charsets.UTF_8)
         val toc = ByteArrayOutputStream()
         val tocFile = File(dir, "toc-plain.bin")
