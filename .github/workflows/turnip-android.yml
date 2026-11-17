@@ -17,6 +17,7 @@ on:
       - turnip-driver-port-foundation
       - android-frame-pacing-tune
       - turnip-import-native-wiring
+      - ai-performance-engine-foundation
     paths-ignore:
       - .github/workflows/build.yml
 
