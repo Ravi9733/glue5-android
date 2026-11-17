@@ -158,3 +158,25 @@ constraint, not a claim that the streaming hitch is fixed.
 ## Nonblocking decode worker admission
 
 The BC texture upload path now uses `Pool::try_urgent_bounded` instead of the blocking `urgent_bounded` call. When the urgent worker queue is full, ownership of the decode closure is retained in a FIFO deferred-job queue on the GPU backend. Completion polling retries admission without waiting for a worker condition variable. Deferred jobs remain covered by the command-ring preflight reservation and the existing 16-upload in-flight limit. This removes worker-queue-capacity waits from the GPU command thread; it does not guarantee that all texture decode work completes before a frame, and it still requires Rust tests, stress testing, and Android Vulkan validation.
+
+
+## Smart performance controller — first implementation stage
+
+- Added `glue5_gpu::adaptive::Controller`, a deterministic, measurement-driven
+  decision core using presented frame time and optional renderer/GPU timings.
+- It waits for a 60-frame sample window, requires sustained overload across
+  three windows before recommending a 60→45→30 FPS pacing step, and requires
+  ten stable windows before recommending recovery. Invalid measurements are
+  ignored; missing GPU timestamp support does not disable frame-time feedback.
+- It only recommends a frame cap. It does not silently lower render scale,
+  change texture quality, enable FSR, add blur, or change the Bicubic upscaler.
+- Added unit tests for sustained overload, missing GPU timestamps, slow
+  recovery, invalid samples and bounded caps.
+- Commits: `8ba8850` (controller core), `b97d841` (module export).
+- Status: controller core is committed but is not yet wired to live frame
+  telemetry, runtime settings or an in-game AI panel. Tests have not yet been
+  executed in CI or on the phone. Do not describe this stage as a completed
+  in-game AI feature.
+- Next: connect the controller to each presented-frame sample, expose its
+  state and recommendation in the existing performance HUD/settings, then
+  add an explicit opt-in setting before applying pacing changes.
