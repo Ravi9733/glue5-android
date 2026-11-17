@@ -153,3 +153,8 @@ constraint, not a claim that the streaming hitch is fixed.
 - Added in-memory ring tests for repeated `peek`, exactly-once `next`, and tail/executed counter publication. The fixtures use explicitly aligned storage for atomic ring words.
 - Decode-budget admission now permits one oversized upload only when no other reservation is active; without this exception a single texture larger than 256 MiB could otherwise leave the ring permanently blocked. Concurrent work remains constrained by the nominal budget.
 - The tests are committed but still unexecuted. Before merging or distributing an APK, run the workspace formatter and the `glue5-runtime` and `glue5-gpu` test suites, then stress-test ring saturation and texture destruction while decode is pending.
+
+
+## Nonblocking decode worker admission
+
+The BC texture upload path now uses `Pool::try_urgent_bounded` instead of the blocking `urgent_bounded` call. When the urgent worker queue is full, ownership of the decode closure is retained in a FIFO deferred-job queue on the GPU backend. Completion polling retries admission without waiting for a worker condition variable. Deferred jobs remain covered by the command-ring preflight reservation and the existing 16-upload in-flight limit. This removes worker-queue-capacity waits from the GPU command thread; it does not guarantee that all texture decode work completes before a frame, and it still requires Rust tests, stress testing, and Android Vulkan validation.
