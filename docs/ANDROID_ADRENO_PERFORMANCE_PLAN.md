@@ -180,3 +180,15 @@ The BC texture upload path now uses `Pool::try_urgent_bounded` instead of the bl
 - Next: connect the controller to each presented-frame sample, expose its
   state and recommendation in the existing performance HUD/settings, then
   add an explicit opt-in setting before applying pacing changes.
+
+
+### Smart Performance runtime integration — current stage
+
+- Added a persisted, opt-in `smart_performance` setting (off by default).
+- The Video settings page now exposes **Smart Performance (AI Assist)**.
+- While gameplay is active and the option is enabled, the renderer gathers frame intervals and available render/GPU timing, feeds the adaptive controller, and displays a compact AI status row in the performance HUD even if the normal HUD option was off.
+- The analyser compares measurements with the player's selected FPS budget. It reports an advisory FPS target after sustained overload; it does not silently modify the saved FPS cap, render scale, graphics quality, Bicubic upscaler, or game files.
+- The controller evaluates non-overlapping 60-frame windows, requires three overloaded windows before lowering its recommendation, and requires ten stable windows before stepping back toward the original target.
+- This is a lightweight adaptive controller, not a neural-network model. It is intended to reduce oscillation and expose measured recommendations without adding a large ML runtime to the render thread.
+- Current commits include `2c8ef8b` (windowing and recovery logic), `8f4a242` (telemetry integration), `3b23908` (persisted setting), `2f9dca7` (Video settings toggle), `369d76c` (runtime activation), `d10b6aa` (HUD status), and `b06b486` (consistent telemetry snapshot).
+- CI is running for Rust tests and Android Adreno type-check. The resulting APK and device behavior are not yet verified.
