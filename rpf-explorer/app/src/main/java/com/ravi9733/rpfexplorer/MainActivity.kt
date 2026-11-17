@@ -112,7 +112,7 @@ class MainActivity : Activity() {
             val entry = pendingExtract ?: return
             thread {
                 try {
-                    contentResolver.openOutputStream(uri)?.use { archive!!.extract(entry, it) } ?: error("Cannot open destination")
+                    contentResolver.openOutputStream(uri)?.use { if (entry.isResource) archive!!.copyRaw(entry, it) else archive!!.extract(entry, it) } ?: error("Cannot open destination")
                     runOnUiThread { Toast.makeText(this, "Extracted ${entry.name}", Toast.LENGTH_LONG).show() }
                 } catch (e: Exception) { runOnUiThread { Toast.makeText(this, "Extract failed: ${e.message}", Toast.LENGTH_LONG).show() } }
             }
@@ -153,7 +153,7 @@ class MainActivity : Activity() {
                 setOnClickListener {
                     if (entry.isDirectory) { currentDir = entry.index; render() }
                     else if (entry.name.endsWith(".rpf", ignoreCase = true) && !entry.isResource && !entry.encrypted) openNested(entry)
-                    else if (entry.isResource) Toast.makeText(this@MainActivity, "RSC7 resource listed; resource extraction/preview is not enabled in this first build.", Toast.LENGTH_LONG).show()
+                    else if (entry.isResource) { pendingExtract = entry; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
                     else if (entry.encrypted) Toast.makeText(this@MainActivity, "This file is encrypted. GTA V keys are required.", Toast.LENGTH_LONG).show()
                     else { pendingExtract = entry; val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"; putExtra(Intent.EXTRA_TITLE, entry.name.substringAfterLast('/')) }; startActivityForResult(intent, SAVE_FILE) }
                 }
