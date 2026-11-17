@@ -382,5 +382,5 @@ internal object GtaNgKeyHashes {
         "B9E15DE5A083C1AA9EAB099B7E09395E2CE02BE4",
         "4323B0AA5F0151748904A4B2C4033D5E9AF01DBB"
     )
-    const val lutHash = "undefined"
+    const val lutHash = "88D3793B8E7A6CACAA8B892897BE728D9E7FBAD4"
 }
