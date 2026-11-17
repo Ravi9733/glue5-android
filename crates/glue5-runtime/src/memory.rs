@@ -243,7 +243,9 @@ pub fn footprint() -> (Option<u64>, Option<u64>) {
         let ok = proc_pid_rusage(libc::getpid(), libc::RUSAGE_INFO_V4, &mut info as *mut _ as *mut libc::c_void) == 0;
         ok.then_some(info.ri_phys_footprint)
     };
-    #[cfg(not(target_vendor = "apple"))]
+    #[cfg(target_os = "android")]
+    let used = proc_status_kb("VmRSS").map(|kb| kb.saturating_mul(1024));
+    #[cfg(all(not(target_os = "android"), not(target_vendor = "apple")))]
     let used = None;
     #[cfg(any(target_os = "ios", target_os = "tvos"))]
     let available = {
@@ -252,9 +254,32 @@ pub fn footprint() -> (Option<u64>, Option<u64>) {
         }
         Some(unsafe { os_proc_available_memory() } as u64)
     };
-    #[cfg(not(any(target_os = "ios", target_os = "tvos")))]
+    #[cfg(target_os = "android")]
+    let available = proc_meminfo_kb("MemAvailable").map(|kb| kb.saturating_mul(1024));
+    #[cfg(all(not(any(target_os = "ios", target_os = "tvos")), not(target_os = "android")))]
     let available = None;
     (used, available)
+}
+
+#[cfg(target_os = "android")]
+fn proc_status_kb(key: &str) -> Option<u64> {
+    let contents = std::fs::read_to_string("/proc/self/status").ok()?;
+    parse_proc_kb(&contents, key)
+}
+
+#[cfg(target_os = "android")]
+fn proc_meminfo_kb(key: &str) -> Option<u64> {
+    let contents = std::fs::read_to_string("/proc/meminfo").ok()?;
+    parse_proc_kb(&contents, key)
+}
+
+#[cfg(target_os = "android")]
+fn parse_proc_kb(contents: &str, key: &str) -> Option<u64> {
+    contents.lines().find_map(|line| {
+        let (name, rest) = line.split_once(':')?;
+        if name != key { return None; }
+        rest.split_whitespace().next()?.parse().ok()
+    })
 }
 
 // ---- the engine's resource heap ----------------------------------------------
