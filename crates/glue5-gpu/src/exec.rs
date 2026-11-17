@@ -307,23 +307,6 @@ impl Gpu {
         true
     }
 
-    /// Uploads a completed BC decode if its texture still exists.
-    fn upload_decoded(&mut self, d: Decode, texels: &[u8]) {
-        if !self.objs.tex(d.id).is_some_and(|t| t.tex == d.texture) {
-            return;
-        }
-        let target = wgpu::TexelCopyTextureInfo {
-            texture: &d.texture,
-            mip_level: d.level,
-            origin: d.origin,
-            aspect: wgpu::TextureAspect::All,
-        };
-        self.uploads.texture(target, texels, d.bpr, d.src_rows, d.rows, d.extent, d.row_bytes);
-        if let Some(t) = self.objs.tex(d.id) {
-            t.uploaded.set(self.epoch);
-        }
-    }
-
     pub fn run(mut self) {
         let mut reader = self.ring.reader();
         self.ring.set_state(glue5_runtime::gpu::State::Running);
