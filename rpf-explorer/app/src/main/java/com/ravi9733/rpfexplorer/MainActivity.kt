@@ -398,15 +398,28 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                     if (n < 0) error("Unexpected end of archive")
                     output.write(bytes, 0, n); remaining -= n
                 }
+            } else if (e.storedSize == 0L && e.encrypted) {
+                val limited = object : InputStream() {
+                    private var remaining = size
+                    override fun read(): Int {
+                        if (remaining <= 0) return -1
+                        val value = file.read()
+                        if (value >= 0) remaining--
+                        return value
+                    }
+                    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                        if (remaining <= 0) return -1
+                        val n = file.read(buffer, offset, minOf(length.toLong(), remaining).toInt())
+                        if (n > 0) remaining -= n
+                        return n
+                    }
+                }
+                RpfCrypto.decryptAes(limited, size, output, aesKey!!)
             } else {
                 val stored = ByteArray(size.toInt())
                 file.readFully(stored)
                 val decoded = if (e.encrypted) RpfCrypto.decryptAes(stored, aesKey!!) else stored
-                if (e.storedSize > 0L) {
-                    InflaterInputStream(ByteArrayInputStream(decoded), Inflater(true)).use { it.copyTo(output) }
-                } else {
-                    output.write(decoded)
-                }
+                InflaterInputStream(ByteArrayInputStream(decoded), Inflater(true)).use { it.copyTo(output) }
             }
         }
     }
