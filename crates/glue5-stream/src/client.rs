@@ -129,7 +129,7 @@ pub enum Phase {
 }
 
 /// Read-only counters for Smart Streaming decisions; cumulative per client.
-#[derive(Clone, Copy, Debug, Default]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct StreamTelemetry {
     pub cache_hits: u64,
     pub cache_misses: u64,
