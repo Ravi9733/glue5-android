@@ -67,9 +67,58 @@ impl Pool {
         cv.notify_one();
     }
 
+
+    /// Try to queue urgent work without ever waiting for a worker to free a
+    /// slot. On saturation, return ownership of the job to the caller so it
+    /// can defer admission and retry from a non-render thread / later tick.
+    ///
+    /// This is intentionally separate from `urgent_bounded`: callers that
+    /// cannot safely defer work may continue to use the blocking API.
+    pub fn try_urgent_bounded(
+        &self,
+        job: impl FnOnce() + Send + 'static,
+        max_queued: usize,
+    ) -> Result<(), Box<dyn FnOnce() + Send + 'static>> {
+        let (lock, cv) = &*self.queues;
+        let mut queues = lock.lock().unwrap();
+        if queues.urgent.len() >= max_queued.max(1) {
+            return Err(Box::new(job));
+        }
+        queues.urgent.push_back(Box::new(job));
+        cv.notify_one();
+        Ok(())
+    }
+
     pub fn background(&self, job: impl FnOnce() + Send + 'static) {
         let (lock, cv) = &*self.queues;
         lock.lock().unwrap().background.push_back(Box::new(job));
         cv.notify_one();
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::Pool;
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+
+    #[test]
+    fn try_urgent_bounded_returns_job_when_full() {
+        let pool = Pool::new("test", 0);
+        pool.urgent(|| {});
+        let returned = pool.try_urgent_bounded(|| {}, 1);
+        assert!(returned.is_err());
+    }
+
+    #[test]
+    fn try_urgent_bounded_accepts_job_below_limit() {
+        let pool = Pool::new("test", 0);
+        let ran = Arc::new(AtomicBool::new(false));
+        let marker = ran.clone();
+        assert!(pool.try_urgent_bounded(move || marker.store(true, Ordering::Relaxed), 1).is_ok());
+        let (lock, _) = &*pool.queues;
+        let job = lock.lock().unwrap().urgent.pop_front().unwrap();
+        job();
+        assert!(ran.load(Ordering::Relaxed));
     }
 }
