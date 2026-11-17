@@ -127,3 +127,9 @@ constraint, not a claim that the streaming hitch is fixed.
 - Registered the module in `glue5-gpu`.
 - Important: the tracker is not yet connected to `Gpu::upload_texture` or `finish_decodes`. The current blocking `make_decode_room()` receive and `urgent_bounded()` wait remain in the live path. This commit establishes the accounting primitive only; it does not yet change runtime behavior.
 - Integration is being staged deliberately: the upload command owns its source bytes in the GPU command ring, so a safe deferred queue must apply backpressure without dropping commands or retaining an unbounded copied backlog. Next inspect the ring reader/release boundary and all `Gpu` construction sites before wiring the queue.
+
+## Command-ring preflight support
+
+- Added `Reader::peek(head)` in `glue5-runtime`: it exposes the next command without advancing the ring tail or counting it as executed. Wrap markers are followed safely, while the command payload remains unconsumed for the subsequent `next()` call.
+- This is the prerequisite for GPU-side backpressure: the renderer can inspect a texture upload and decide whether decode memory is available before consuming/releasing the ring slot. If admission is blocked, it can leave the upload command in the ring instead of copying its source into an unbounded deferred queue.
+- `exec.rs` still uses the old blocking decode-room path; the peek API is groundwork only. Next integration must preflight BC upload size, reserve bytes, stop at the unconsumed command on saturation, poll completions, and only then consume it.
