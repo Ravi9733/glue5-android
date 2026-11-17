@@ -67,6 +67,43 @@ class RpfEditSessionTest {
             dir.deleteRecursively()
         }
     }
+ 
+    private fun resourceFixture(dir: File): File {
+        val f = File(dir, "resource.rpf")
+        val names = "root\\u0000sample.ytd\\u0000".toByteArray(Charsets.UTF_8)
+        RandomAccessFile(f, "rw").use { r ->
+            r.setLength(0)
+            u32(r, 0x52504637L); u32(r, 2); u32(r, names.size.toLong()); u32(r, 0x4E45504FL)
+            u32(r, 0); u32(r, 0x7FFFFF00L); u32(r, 1); u32(r, 1)
+            r.write(5); r.write(0); r.write(16); r.write(0); r.write(0)
+            r.write(1); r.write(0); r.write(0x80)
+            u32(r, 0x12345678L); u32(r, 0x23456789L)
+            r.write(names)
+            r.seek(512)
+            r.write(byteArrayOf(0x52,0x53,0x43,0x37, 1,0,0,0, 0x78,0x56,0x34,0x12, 0x89,0x67,0x45,0x23))
+        }
+        return f
+    }
+
+    @Test fun resourcePayloadAndPageFlagsSurviveRepack() {
+        val dir = createTempDir(prefix = "rpf-resource-test-")
+        try {
+            val source = resourceFixture(dir)
+            val archive = RpfArchive.open(source)
+            val resource = archive.entries.single { it.isResource }
+            val output = File(dir, "resource-copy.rpf")
+            RpfEditSession(archive, File(dir, "work").apply { mkdirs() }).saveAs(output)
+            val reopened = RpfArchive.open(output)
+            val copied = reopened.entries.single { it.isResource }
+            assertEquals(resource.systemFlags, copied.systemFlags)
+            assertEquals(resource.graphicsFlags, copied.graphicsFlags)
+            val before = ByteArrayOutputStream().also { archive.copyRaw(resource, it) }.toByteArray()
+            val after = ByteArrayOutputStream().also { reopened.copyRaw(copied, it) }.toByteArray()
+            assertTrue(before.contentEquals(after))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 
     @Test fun removeEntryIsReflectedInSavedArchive() {
         val dir = createTempDir(prefix = "rpf-remove-test-")
