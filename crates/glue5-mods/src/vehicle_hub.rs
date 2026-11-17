@@ -170,6 +170,13 @@ mod tests {
     }
 
     #[test]
+    fn rejects_invalid_vehicle_tags() {
+        let text = String::from_utf8(catalog("loose_files")).unwrap()
+            .replace(r#""format":"loose_files""#, r#""format":"loose_files","tags":["../escape"]"#);
+        assert!(Catalog::parse(text.as_bytes()).unwrap_err().contains("invalid tag"));
+    }
+
+    #[test]
     fn rejects_bad_hash_and_oversized_catalog() {
         let text = String::from_utf8(catalog("loose_files")).unwrap().replace(&"a".repeat(64), "bad");
         assert!(Catalog::parse(text.as_bytes()).unwrap_err().contains("sha256"));
