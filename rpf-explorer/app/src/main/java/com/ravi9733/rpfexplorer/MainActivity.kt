@@ -97,7 +97,7 @@ class MainActivity : Activity() {
                     val temp = File(cacheDir, "selected-${System.currentTimeMillis()}.rpf")
                     contentResolver.openInputStream(uri).use { input -> FileOutputStream(temp).use { out -> input!!.copyTo(out, 1024 * 1024) } }
                     val keyFile = File(filesDir, "gtav-aes-key.bin")
-                    val parsed = RpfArchive.open(temp, if (keyFile.exists()) keyFile.readBytes() else null, ngMaterial, archiveDisplayName)
+                    val parsed = RpfArchive.open(temp, if (keyFile.exists()) keyFile.readBytes() else null, ngMaterial, archiveDisplayName, deleteBackingOnClose = true)
                     runOnUiThread {
                         archive?.close()
                         editor?.dispose()
@@ -111,7 +111,12 @@ class MainActivity : Activity() {
                         search.visibility = android.view.View.VISIBLE
                         render()
                     }
-                } catch (e: Exception) { runOnUiThread { status.text = "Could not open: ${e.message}"; Toast.makeText(this, e.message ?: "Invalid archive", Toast.LENGTH_LONG).show() } }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Could not open: ${e.message}"; Toast.makeText(this, e.message ?: "Invalid archive", Toast.LENGTH_LONG).show() }
+                } finally {
+                    // The opened RpfArchive owns the temporary file after a successful parse.
+                    if (archive?.archiveName != archiveDisplayName) temp.delete()
+                }
             }
         } else if (requestCode == IMPORT_GTA5_EXE) {
             status.text = "Scanning GTA5.exe for AES + NG key material…"
@@ -159,7 +164,10 @@ class MainActivity : Activity() {
                             render()
                         } catch (e: Exception) { Toast.makeText(this, e.message ?: "Edit failed", Toast.LENGTH_LONG).show() }
                     }
-                } catch (e: Exception) { runOnUiThread { Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show() } }
+                } catch (e: Exception) {
+                    target.delete()
+                    runOnUiThread { Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show() }
+                }
             }
         } else if (requestCode == SAVE_RPF) {
             val destination = File(cacheDir, "edited-${System.currentTimeMillis()}.rpf")
@@ -169,7 +177,11 @@ class MainActivity : Activity() {
                     contentResolver.openOutputStream(uri)?.use { output -> destination.inputStream().use { it.copyTo(output, 1024 * 1024) } } ?: error("Cannot create output document")
                     destination.delete()
                     runOnUiThread { status.text = "Saved new RPF • source archive untouched"; Toast.makeText(this, "New RPF saved successfully", Toast.LENGTH_LONG).show() }
-                } catch (e: Exception) { runOnUiThread { status.text = "Save blocked: ${e.message}"; Toast.makeText(this, e.message ?: "Save failed", Toast.LENGTH_LONG).show() } }
+                } catch (e: Exception) {
+                    runOnUiThread { status.text = "Save blocked: ${e.message}"; Toast.makeText(this, e.message ?: "Save failed", Toast.LENGTH_LONG).show() }
+                } finally {
+                    destination.delete()
+                }
             }
         } else if (requestCode == SAVE_FILE) {
             val entry = pendingExtract ?: return
@@ -371,7 +383,7 @@ class MainActivity : Activity() {
                 val stagedNested = editor?.replacementFile(entry.index)
                 if (stagedNested != null) stagedNested.copyTo(nestedFile, overwrite = true)
                 else FileOutputStream(nestedFile).use { output -> archive!!.extract(entry, output) }
-                val nestedArchive = RpfArchive.open(nestedFile, archive?.aesKeyCopy(), ngMaterial, entry.name)
+                val nestedArchive = RpfArchive.open(nestedFile, archive?.aesKeyCopy(), ngMaterial, entry.name, deleteBackingOnClose = true)
                 runOnUiThread {
                     nestedStack += NestedFrame(archive!!, editor!!, currentDir, entry.index)
                     archive = nestedArchive
@@ -381,6 +393,7 @@ class MainActivity : Activity() {
                     render()
                 }
             } catch (e: Exception) {
+                nestedFile.delete()
                 runOnUiThread { status.text = "Nested RPF open failed: ${e.message}"; Toast.makeText(this, e.message ?: "Nested archive error", Toast.LENGTH_LONG).show() }
             }
         }
@@ -447,15 +460,20 @@ internal data class RpfEntry(
 
 internal class RpfArchive private constructor(
     private val file: RandomAccessFile,
+    private val filePath: File,
     val entries: List<RpfEntry>,
     val encryptionLabel: String,
     private val aesKey: ByteArray?,
     private val ngMaterial: GtaNgMaterial?,
-    val archiveName: String
+    val archiveName: String,
+    private val deleteBackingOnClose: Boolean
 ) {
     fun children(parent: Int) = entries.filter { it.parent == parent && it.index != parent }
     fun parentOf(index: Int) = entries.firstOrNull { it.index == index }?.parent ?: 0
-    fun close() = file.close()
+    fun close() {
+        file.close()
+        if (deleteBackingOnClose) filePath.delete()
+    }
     fun aesKeyCopy(): ByteArray? = aesKey?.clone()
 
     fun readRawPrefix(e: RpfEntry, maxBytes: Int): ByteArray {
@@ -540,7 +558,8 @@ internal class RpfArchive private constructor(
             f: File,
             aesKey: ByteArray? = null,
             ngMaterial: GtaNgMaterial? = null,
-            archiveName: String = f.name
+            archiveName: String = f.name,
+            deleteBackingOnClose: Boolean = false
         ): RpfArchive {
             val raf = RandomAccessFile(f,"r")
             try {
@@ -645,7 +664,7 @@ internal class RpfArchive private constructor(
                     }
                 }
                 val label = when (enc) { 0L -> "NONE"; 0x4E45504FL -> "OPEN"; 0x0FFFFFF9L -> "AES"; else -> "NG" }
-                return RpfArchive(raf, result, label, aesKey?.clone(), ngMaterial, archiveName)
+                return RpfArchive(raf, f, result, label, aesKey?.clone(), ngMaterial, archiveName, deleteBackingOnClose)
             } catch(e:Exception) { raf.close(); throw e }
         }
         private fun readU32(r:RandomAccessFile,pos:Long):Long { r.seek(pos); return (r.readUnsignedByte().toLong()) or (r.readUnsignedByte().toLong() shl 8) or (r.readUnsignedByte().toLong() shl 16) or (r.readUnsignedByte().toLong() shl 24) }
