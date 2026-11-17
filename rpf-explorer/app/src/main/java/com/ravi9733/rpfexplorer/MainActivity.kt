@@ -70,6 +70,8 @@ class MainActivity : Activity() {
                     contentResolver.openInputStream(uri).use { input -> FileOutputStream(temp).use { out -> input!!.copyTo(out, 1024 * 1024) } }
                     val parsed = RpfArchive.open(temp)
                     runOnUiThread {
+                        archive?.close()
+                        nestedStack.forEach { it.archive.close() }
                         nestedStack.clear()
                         archive = parsed; currentDir = 0
                         editor = RpfEditSession(parsed, File(cacheDir, "rpf-edit-${System.currentTimeMillis()}").apply { mkdirs() })
@@ -226,6 +228,7 @@ class MainActivity : Activity() {
                 editor!!.saveAs(nestedOutput)
                 frame.editor.replace(frame.parentEntryIndex, nestedOutput)
                 runOnUiThread {
+                    archive?.close()
                     nestedStack.removeAt(nestedStack.lastIndex)
                     archive = frame.archive; editor = frame.editor; currentDir = frame.directory
                     status.text = "Nested archive changes staged in parent • original files untouched"
@@ -237,11 +240,18 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onDestroy() {
+        try { archive?.close() } catch (_: Exception) {}
+        nestedStack.forEach { try { it.archive.close() } catch (_: Exception) {} }
+        super.onDestroy()
+    }
+
     private fun finishNested(save: Boolean) {
         if (save) { applyNestedToParent(); return }
         android.app.AlertDialog.Builder(this)
             .setMessage("Discard staged changes in this nested archive and return to the parent?")
             .setPositiveButton("Discard") { _, _ ->
+                archive?.close()
                 val frame = nestedStack.removeAt(nestedStack.lastIndex)
                 archive = frame.archive; editor = frame.editor; currentDir = frame.directory
                 status.text = "Returned to parent archive • nested edits discarded"
@@ -265,6 +275,7 @@ internal data class RpfEntry(
 internal class RpfArchive private constructor(private val file: RandomAccessFile, val entries: List<RpfEntry>, val encryptionLabel: String) {
     fun children(parent: Int) = entries.filter { it.parent == parent && it.index != parent }
     fun parentOf(index: Int) = entries.firstOrNull { it.index == index }?.parent ?: 0
+    fun close() = file.close()
 
     fun copyRaw(e: RpfEntry, output: OutputStream) {
         require(!e.isDirectory) { "Cannot copy a directory payload" }
