@@ -26,7 +26,7 @@ This branch is for the standalone Android RPF Explorer only. Do not change the G
 ## UI and safety
 - [x] Add actions for Add file, long-press Replace/Remove, and Save as new RPF.
 - [x] Show staged-change count and require confirmation before opening the Android output-document picker.
-- [x] Warn/block unknown encryption markers, AES RSC7 operations, oversized new RSC7 assets, and malformed entries.
+- [x] Warn/block unknown encryption markers, encrypted YSC resource operations, oversized new RSC7 assets, and malformed entries.
 - [x] Add a bounded-memory RSC7 header/version/page-size inspector and raw export action (decoded texture/model preview remains unsupported).
 - [x] Keep source archive read-only and report save only after the writer's reopen/TOC/payload-hash validation.
 
