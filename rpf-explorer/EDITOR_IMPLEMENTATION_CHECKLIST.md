@@ -13,6 +13,7 @@ This branch is for the standalone Android RPF Explorer only. Do not change the G
 
 ## Format and compatibility
 - [x] Parse RPF7 directory, binary and resource entries, including RSC7 size sentinel and 23-bit offsets.
+- [x] Detect NG-encrypted `.ysc` resource entries and block unsafe raw repacking unless removed.
 - [x] Handle NONE and OPEN TOCs.
 - [x] Add AES TOC/data decryption using the AES key extracted locally from the user's own compatible PC GTA5.exe.
 - [x] Add streaming AES and NG block-decryption regression tests and app-private persistence for locally extracted NG tables.
@@ -26,7 +27,7 @@ This branch is for the standalone Android RPF Explorer only. Do not change the G
 - [x] Add actions for Add file, long-press Replace/Remove, and Save as new RPF.
 - [x] Show staged-change count and require confirmation before opening the Android output-document picker.
 - [x] Warn/block unknown encryption markers, AES RSC7 operations, oversized new RSC7 assets, and malformed entries.
-- [x] Add a bounded-memory RSC7 header/page-flags inspector and raw export action (decoded texture/model preview remains unsupported).
+- [x] Add a bounded-memory RSC7 header/version/page-size inspector and raw export action (decoded texture/model preview remains unsupported).
 - [x] Keep source archive read-only and report save only after the writer's reopen/TOC/payload-hash validation.
 
 ## Release gate
