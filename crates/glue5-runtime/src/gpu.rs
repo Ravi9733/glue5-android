@@ -318,10 +318,13 @@ mod reader_tests {
     use super::{GpuRing, RING_DATA, op};
     use crate::memory::Mem;
 
+    #[repr(align(4))]
+    struct Aligned([u8; 128]);
+
     #[test]
     fn peek_does_not_consume_or_count_command() {
-        let mut bytes = [0u8; 128];
-        let mem = Mem::over(&mut bytes);
+        let mut bytes = Aligned([0u8; 128]);
+        let mem = Mem::over(&mut bytes.0);
         let ring = GpuRing::new(mem, 0, 128);
         mem.set_u32(0, RING_DATA + 16);
         mem.set_u32(RING_DATA as u64, op::UPLOAD_TEXTURE);
