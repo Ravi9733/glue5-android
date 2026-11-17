@@ -455,7 +455,15 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                 fun u16(b:ByteArray,o:Int)= (b[o].toInt() and 255) or ((b[o+1].toInt() and 255) shl 8)
                 fun u24(b:ByteArray,o:Int)= (b[o].toLong() and 255) or ((b[o+1].toLong() and 255) shl 8) or ((b[o+2].toLong() and 255) shl 16)
                 fun u32(b:ByteArray,o:Int)= (b[o].toLong() and 255) or ((b[o+1].toLong() and 255) shl 8) or ((b[o+2].toLong() and 255) shl 16) or ((b[o+3].toLong() and 255) shl 24)
-                fun name(off:Int):String { if(off !in names.indices) return "entry_$off"; var end=off; while(end<names.size && names[end].toInt()!=0) end++; return String(names,off,end-off,Charsets.UTF_8).ifBlank { "entry_$off" } }
+                fun name(off:Int):String {
+                    require(off in names.indices) { "RPF entry name offset is outside the name table" }
+                    var end = off
+                    while (end < names.size && names[end].toInt() != 0) end++
+                    require(end < names.size && end > off) { "RPF entry name is empty or not null-terminated" }
+                    val value = String(names, off, end - off, Charsets.UTF_8)
+                    require(value.none { it == '/' || it == '\\' || it == '\u0000' }) { "RPF entry contains an invalid path component" }
+                    return value
+                }
                 data class Temp(val idx:Int,val nm:String,val dir:Boolean,val res:Boolean,val off:Long,val sz:Long,val usz:Long,val crypt:Boolean,val start:Int,val cnt:Int)
                 val temps=ArrayList<Temp>(count)
                 for(i in 0 until count) {
@@ -463,7 +471,7 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                     if(second==0x7FFFFF00L) {
                         val childStart = u32(b,8); val childCount = u32(b,12)
                         require(childStart <= count.toLong() && childCount <= count.toLong() && childStart + childCount <= count.toLong()) { "Directory child range is invalid" }
-                        temps.add(Temp(i,name(u32(b,0).toInt()),true,false,0,0,0,false,childStart.toInt(),childCount.toInt()))
+                        temps.add(Temp(i,name(u32(b,0).also { require(it <= Int.MAX_VALUE.toLong()) }.toInt()),true,false,0,0,0,false,childStart.toInt(),childCount.toInt()))
                     } else if((second and 0x80000000L)==0L) {
                         val off=u24(b,5)*512L; val sz=u24(b,2); val usz=u32(b,8); val cryptType=u32(b,12)
                         require(cryptType == 0L || cryptType == 1L) { "Unknown binary encryption type" }
@@ -505,10 +513,12 @@ internal class RpfArchive private constructor(private val file: RandomAccessFile
                     val gfx = if (t.res) u32(rawEntry, 12) else 0L
                     RpfEntry(t.idx,t.nm,parents[t.idx],t.dir,t.res,t.off,t.sz,t.usz,t.crypt,t.start,t.cnt,sys,gfx)
                 }
-                val dataStart=((namesStart+namesLen+511L)/512L)*512L
+                val dataStart = ((namesStart + namesLen + 511L) / 512L) * 512L
                 result.filter { !it.isDirectory }.forEach {
                     val payloadSize = if (it.isResource) it.storedSize else if (it.storedSize == 0L) it.uncompressedSize else it.storedSize
-                    require(it.offset >= 0 && it.offset + payloadSize <= raf.length()) { "Entry points outside archive" }
+                    require(it.offset >= dataStart && payloadSize >= 0L && it.offset <= raf.length() - payloadSize) {
+                        "Entry points outside the archive payload region"
+                    }
                 }
                 return RpfArchive(raf,result,when(enc) { 0L -> "NONE"; 0x4E45504FL -> "OPEN"; else -> "AES" }, aesKey?.clone())
             } catch(e:Exception) { raf.close(); throw e }
