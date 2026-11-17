@@ -167,6 +167,16 @@ mod tests {
     }
 
     #[test]
+    fn etc2_byte_estimate_matches_stacked_array_layers() {
+        // Array layers are encoded as consecutive block rows by upload_texture.
+        let width = 8u32;
+        let height = 16u32; // two 8x8 layers stacked vertically
+        let texels = vec![127u8; (width * height * 4) as usize];
+        let encoded = super::etc2_rgba(texels, width, height);
+        assert_eq!(encoded.len(), super::etc2_bytes(2, 2, 2).unwrap());
+    }
+
+    #[test]
     fn byte_estimates_reject_overflow() {
         use crate::format::Bc;
         assert_eq!(super::decoded_bytes(Bc::Bc7, usize::MAX, 2, 1), None);
