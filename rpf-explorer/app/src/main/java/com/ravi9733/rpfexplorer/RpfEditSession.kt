@@ -131,8 +131,14 @@ internal class RpfEditSession(private val archive: RpfArchive, private val workD
         require(archive.encryptionLabel == "OPEN" || archive.encryptionLabel == "NONE" || archive.encryptionLabel == "AES" || archive.encryptionLabel == "NG") {
             "This archive encryption mode cannot be repacked"
         }
-        require(archive.entries.none { it.isResource && it.encrypted && it.index !in removals }) {
-            "This archive contains NG-encrypted YSC resources. Remove those entries before saving; script resource decrypt/repack is not enabled."
+        // CodeWalker treats every non-AES YSC resource as NG-encrypted. The
+        // writer preserves these resource bytes, their name and stored size exactly,
+        // so NONE/OPEN/NG archives can be rebuilt without re-encrypting the script.
+        // AES YSC bytes cannot survive conversion to NONE because the reader would
+        // subsequently interpret them as NG, so those entries must be removed.
+        require(archive.encryptionLabel != "AES" ||
+            archive.entries.none { it.isResource && it.encrypted && it.index !in removals }) {
+            "AES-encrypted YSC resources cannot be preserved in a NONE output. Remove them before saving."
         }
         require(archive.encryptionLabel == "AES" || archive.encryptionLabel == "NG" || archive.entries.none { it.encrypted && it.index !in removals }) {
             "Encrypted payloads need compatible keys before repacking."
