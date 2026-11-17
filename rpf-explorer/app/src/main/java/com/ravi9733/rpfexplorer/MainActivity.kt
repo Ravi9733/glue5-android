@@ -187,6 +187,16 @@ class MainActivity : Activity() {
                 text = "＋  $addedName  • NEW"
                 textSize = 15f; setTextColor(0xFF8FE3B0.toInt()); setPadding(12,16,8,16)
                 setBackgroundColor(0xFF1A2029.toInt())
+                setOnLongClickListener {
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setMessage("Remove this newly added file from the staged archive?")
+                        .setPositiveButton("Remove") { _, _ ->
+                            editor?.removeAdded(currentDir, addedName)
+                            status.text = "Edits staged: ${editor?.stagedCount() ?: 0} • Original unchanged"
+                            render()
+                        }.setNegativeButton("Cancel", null).show()
+                    true
+                }
             }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 3 })
         }
         if (list.childCount == 0) list.addView(TextView(this).apply { text="No matching entries"; setTextColor(0xFFB8C3D1.toInt()); setPadding(12,24,12,24) })
