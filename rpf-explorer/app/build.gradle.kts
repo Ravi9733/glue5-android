@@ -12,6 +12,7 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    testOptions { unitTests.isReturnDefaultValues = true }
     defaultConfig {
         applicationId = "com.ravi9733.rpfexplorer"
         minSdk = 26
@@ -19,4 +20,8 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
 }
