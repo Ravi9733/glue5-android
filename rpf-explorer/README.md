@@ -7,11 +7,11 @@ A standalone Android project in this repository for browsing user-supplied GTA V
 - RPF7 header and TOC validation.
 - Browse directory entries in **OPEN** and **NONE** RPF7 archives.
 - Extract unencrypted binary entries; raw-DEFLATE compressed entries are decompressed.
-- Resource entries are identified, listed, and their raw RSC7 payload/page flags are preserved when repacking; resource preview/extraction is not implemented.
+- Resource entries are identified, listed, exported as raw RSC7 files, and their raw payload/page flags are preserved when repacking; decoded preview is not implemented.
 - Long-press entries to replace or remove; add files into the currently open folder.
 - Save As New RPF rebuilds the directory TOC, name table, offsets, and 512-byte alignment without modifying the source.
 - The writer supports OPEN/NONE archives only. AES/NG encrypted TOCs and encrypted binary payloads remain unsupported until user-supplied GTA V key handling is implemented.
-- RSC7 resource entries are retained byte-for-byte; replacement/addition requires a valid RSC7 file. The RSC7 page flags are read from its header.
+- RSC7 resource entries are retained byte-for-byte; replacement/addition requires a valid RSC7 file smaller than 16 MiB so its page flags can be read unambiguously. Existing large resources can still be preserved.
 - JUnit regression tests cover binary add/replace/remove, round-trip reopening, source-hash preservation, and RSC7 payload/page-flag preservation.
 
 ## Build
@@ -29,4 +29,4 @@ The in-app editor now stages **Add file**, **Replace file**, and **Remove** oper
 Planned validation includes round-trip open/save/reopen tests, duplicate-name and nested-folder cases, compressed binary files, large-file streaming, and checks that the original archive hash is unchanged.
 
 ## Important limitations
-This is an initial functional parser, not a full OpenIV replacement. YTD/YDR/YDD preview and resource extraction, nested archive traversal, AES/NG key support, and exhaustive compatibility testing are not implemented yet. The editor deliberately blocks repacking encrypted archives and refuses malformed resource replacements. Test with a copy of an OPEN/NONE RPF7 archive first. Do not overwrite original game archives.
+This is an initial functional parser, not a full OpenIV replacement. YTD/YDR/YDD decoded preview, AES/NG key support, and exhaustive compatibility testing on retail game archives are not implemented yet. Nested RPFs can be opened and staged changes can be applied back into their parent archive. The editor deliberately blocks repacking encrypted archives and refuses malformed resource replacements. Test with a copy of an OPEN/NONE RPF7 archive first. Do not overwrite original game archives.
