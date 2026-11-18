@@ -45,6 +45,7 @@ public class Glue5Activity extends SDLActivity {
     private boolean graphicsPickerOpen = false;
     private boolean reshadePickerOpen = false;
     private boolean stuntMapsPickerOpen = false;
+    private volatile boolean vehicleCatalogFetchRunning = false;
     private File stuntMapsTarget = null;
     private PowerManager thermalPowerManager;
     private PowerManager.OnThermalStatusChangedListener thermalStatusListener;
@@ -173,6 +174,12 @@ public class Glue5Activity extends SDLActivity {
 
     private void checkTurnipImportRequest() {
         if (isFinishing() || turnipPickerOpen || graphicsPickerOpen || reshadePickerOpen || stuntMapsPickerOpen) return;
+        File vehicleCatalogRequest = new File(getFilesDir(), "vehicle-catalog-fetch-request");
+        if (vehicleCatalogRequest.isFile() && vehicleCatalogRequest.delete()) {
+            fetchVehicleCatalog();
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+            return;
+        }
         File stuntRacePageRequest = new File(getFilesDir(), "open-stunt-race-page-request");
         if (stuntRacePageRequest.isFile() && stuntRacePageRequest.delete()) {
             openStuntRaceChallengePage();
@@ -237,6 +244,71 @@ public class Glue5Activity extends SDLActivity {
             return;
         }
         turnipHandler.postDelayed(turnipImportWatcher, 500);
+    }
+
+    /** Fetch the curated public catalog off the UI thread; never accept cleartext HTTP. */
+    private void fetchVehicleCatalog() {
+        if (vehicleCatalogFetchRunning) return;
+        vehicleCatalogFetchRunning = true;
+        new Thread(() -> {
+            File result = new File(getFilesDir(), "vehicle-catalog.json");
+            File status = new File(getFilesDir(), "vehicle-catalog-status.json");
+            File temporary = new File(getFilesDir(), "vehicle-catalog.json.part");
+            java.net.HttpURLConnection connection = null;
+            try {
+                java.net.URL url = new java.net.URL(
+                        "https://raw.githubusercontent.com/Ravi9733/glue5-android/ai-performance-engine-foundation/catalog/vehicles.json");
+                if (!"https".equalsIgnoreCase(url.getProtocol())) throw new Exception("Catalog URL must use HTTPS");
+                connection = (java.net.HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(10000);
+                connection.setReadTimeout(15000);
+                connection.setInstanceFollowRedirects(false);
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("Accept", "application/json");
+                int code = connection.getResponseCode();
+                if (code != 200) throw new Exception("Catalog server returned HTTP " + code);
+                if (connection.getContentLengthLong() > 2L * 1024L * 1024L) {
+                    throw new Exception("Catalog exceeds 2 MiB");
+                }
+                java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int count;
+                try (InputStream input = connection.getInputStream()) {
+                    while ((count = input.read(buffer)) != -1) {
+                        if (bytes.size() + count > 2 * 1024 * 1024) throw new Exception("Catalog exceeds 2 MiB");
+                        bytes.write(buffer, 0, count);
+                    }
+                }
+                org.json.JSONObject parsed = new org.json.JSONObject(
+                        new String(bytes.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
+                if (parsed.optInt("version", -1) != 1 || !(parsed.opt("vehicles") instanceof org.json.JSONArray)) {
+                    throw new Exception("Catalog schema is invalid");
+                }
+                try (FileOutputStream output = new FileOutputStream(temporary, false)) {
+                    output.write(bytes.toByteArray());
+                    output.getFD().sync();
+                }
+                if (result.exists() && !result.delete()) throw new Exception("Cannot replace cached catalog");
+                if (!temporary.renameTo(result)) throw new Exception("Cannot commit catalog cache");
+                writeVehicleCatalogStatus(status, true, "Catalog updated");
+            } catch (Exception e) {
+                temporary.delete();
+                writeVehicleCatalogStatus(status, false, e.getMessage() == null ? "Catalog fetch failed" : e.getMessage());
+            } finally {
+                if (connection != null) connection.disconnect();
+                vehicleCatalogFetchRunning = false;
+            }
+        }, "Glue5VehicleCatalog").start();
+    }
+
+    private static void writeVehicleCatalogStatus(File file, boolean ok, String message) {
+        try (FileOutputStream output = new FileOutputStream(file, false)) {
+            org.json.JSONObject status = new org.json.JSONObject();
+            status.put("ok", ok);
+            status.put("message", message);
+            output.write(status.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            output.getFD().sync();
+        } catch (Exception ignored) {}
     }
 
     /** Remove Glue 5's overlay and only package folders created by this importer. */
