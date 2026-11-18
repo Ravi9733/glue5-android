@@ -33,15 +33,15 @@ This remains a single-pack validator; it does not edit setup2.xml or content.xml
 ## Full DLC load-order audit
 
 Select the GTA V root folder and tap **VALIDATE FULL DLC LOAD ORDER**. The audit is read-only:
-- It prefers \`mods/update/update.rpf\` when present (OpenIV override), otherwise \`update/update.rpf\`.
-- It reads \`common/data/dlclist.xml\` inside that archive using the imported matching AES/NG keys.
-- It recognizes both \`dlcpacks:/name/\` and Windows-backslash variants, preserves the list order, and detects duplicate, unsafe and unsupported entries.
-- For each \`dlcpacks\` entry it checks \`mods/update/x64/dlcpacks/name/dlc.rpf\` first, then \`update/x64/dlcpacks/name/dlc.rpf\`. It copies one pack at a time to app-private cache, preserves the basename \`dlc.rpf\` for NG key selection, and runs the existing setup2/content metadata validator.
-- The report shows list position separately from each pack's \`setup2.xml\` order, plus missing content references and RPF_FILE type mismatches. Source archives and XML files are never modified.
+- It prefers `mods/update/update.rpf` when present (OpenIV override), otherwise `update/update.rpf`.
+- It reads `common/data/dlclist.xml` inside that archive using the imported matching AES/NG keys.
+- It recognizes both `dlcpacks:/name/` and Windows-backslash variants, preserves the list order, and detects duplicate, unsafe and unsupported entries.
+- For each `dlcpacks` entry it checks `mods/update/x64/dlcpacks/name/dlc.rpf` first, then `update/x64/dlcpacks/name/dlc.rpf`. It copies one pack at a time to app-private cache, preserves the basename `dlc.rpf` for NG key selection, and runs the existing setup2/content metadata validator.
+- The report shows list position separately from each pack's `setup2.xml` order, plus missing content references and RPF_FILE type mismatches. Source archives and XML files are never modified.
 
-Safety limits: at most 1,024 dlclist Items are parsed, 512 packs are audited per Android run, each archive is limited to 4 GiB minus one byte, and the cumulative copied bytes are capped at 16 GiB. The audit stops at the cap instead of silently skipping the remainder.
+Safety limits: at most 1,024 dlclist Items are parsed, 512 DLC pack entries are audited per Android run, each archive is limited to 4 GiB minus one byte, and the cumulative copied bytes (including update.rpf) are capped at 16 GiB. The audit stops at the cap instead of silently skipping the remainder.
 
-\`platform:/dlcPacks/\` entries are identified but are not yet resolved inside base \`x64*.rpf\` archives. This is a list/metadata audit, not a game mount test; it does not certify Glue5 compatibility or rewrite DLC registration.
+`platform:/dlcPacks/` entries are identified but are not yet resolved inside base `x64*.rpf` archives. This is a list/metadata audit, not a game mount test; it does not certify Glue5 compatibility or rewrite DLC registration.
 
 ## Key import
 
