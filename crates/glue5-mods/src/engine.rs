@@ -26,6 +26,39 @@ const REPL: &str = "~eval";
 
 pub(crate) fn hooks(h: &mut Hooks) {
     h.script_wait = Some(script_wait);
+    h.packfile_load_rpf = Some(packfile_load_rpf);
+    h.packfile_init = Some(packfile_init);
+}
+
+/// Observe the real game's RPF load path without changing its behavior.
+/// The exact symbol names and ABIs are resolved from the pinned game.wasm.
+unsafe extern "C" fn packfile_load_rpf(env: *mut Env, manager: u64, path: u64, index: u32) {
+    let name = unsafe { Mem::of(env).str(path) };
+    if name.to_ascii_lowercase().ends_with(".rpf") {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("LoadRpf manager=0x{manager:x} index={index} path={name}"));
+    }
+    unsafe { orig::packfile_load_rpf(env, manager, path, index) };
+}
+
+/// Observe packfile initialization (including encryption/cache mode), then forward unchanged.
+unsafe extern "C" fn packfile_init(
+    env: *mut Env,
+    packfile: u64,
+    path: u64,
+    encrypted: u32,
+    cache_mode: u32,
+    key_path: u64,
+) -> u32 {
+    let mem = unsafe { Mem::of(env) };
+    let name = mem.str(path);
+    let key = mem.str(key_path);
+    if name.to_ascii_lowercase().ends_with(".rpf") {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("fiPackfile::Init object=0x{packfile:x} encrypted={} cache={cache_mode} path={name} key={key}",
+                encrypted != 0));
+    }
+    unsafe { orig::packfile_init(env, packfile, path, encrypted, cache_mode, key_path) }
 }
 
 /// The program registry's slots (`scrProgram::GetProgram`): 176 u64.
