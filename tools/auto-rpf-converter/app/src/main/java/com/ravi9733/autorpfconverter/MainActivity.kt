@@ -309,6 +309,11 @@ class MainActivity : Activity() {
                     when (kind) {
                         "DLC" -> {
                             registered++
+                            if (registered > MAX_DLC_AUDIT_PACKS) {
+                                report.appendLine("STOP — 512 DLC pack audit limit reached.")
+                                budgetReached = true
+                                break
+                            }
                             if (!seen.add(value.lowercase())) {
                                 duplicates++
                                 report.appendLine("DUPLICATE [" + (position + 1) + "] " + value)
@@ -931,6 +936,8 @@ class MainActivity : Activity() {
         private const val MAX_BULK_ARCHIVES = 500
         private const val MAX_FOLDER_ITEMS = 250_000
         private const val MAX_ARCHIVE_BYTES = 4L * 1024L * 1024L * 1024L - 1L
+        private const val MAX_DLC_AUDIT_PACKS = 512
+        private const val MAX_DLC_AUDIT_TOTAL_BYTES = 16L * 1024L * 1024L * 1024L
         private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ysc", "awc", "rel", "dat")
     }
 }
