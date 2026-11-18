@@ -88,7 +88,8 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
         setting(ui, "Mods", Control::Toggle, Some(note.unwrap_or("Luau scripts that change the game, run with it")), |ui| {
             toggle(ui, &mut settings.mods);
         });
-        pc_packages_tab(ui);\n        if !settings.mods && !status.mods {
+        pc_packages_tab(ui);
+        if !settings.mods && !status.mods {
             ui.add_space(4.0 * scale);
             panel(ui, |ui| {
                 card_title(ui, "WHAT MODS ARE", None);
