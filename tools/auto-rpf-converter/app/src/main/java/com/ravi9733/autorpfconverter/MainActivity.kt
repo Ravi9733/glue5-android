@@ -193,8 +193,7 @@ class MainActivity : Activity() {
         worker.execute {
             val work = java.io.File(cacheDir, "rpf-work")
             val result = try {
-                work.deleteRecursively()
-                check(work.mkdirs()) { "Cannot create temporary folder" }
+                TemporaryWorkspacePolicy.prepare(work)
                 val safeName = selectedArchiveName.replace(Regex("[^A-Za-z0-9._-]"), "_")
                 check(selectedArchiveName.isNotBlank() && !selectedArchiveName.contains('/')) {
                     "Unsafe selected archive filename"
@@ -216,7 +215,7 @@ class MainActivity : Activity() {
             } finally {
                 // RPF input and generated output can each be several GiB. Do not leave
                 // either copy in cache after the SAF export has been verified.
-                work.deleteRecursively()
+                TemporaryWorkspacePolicy.clean(work)
             }
             runOnUiThread { output.text = result }
         }
@@ -240,8 +239,7 @@ class MainActivity : Activity() {
         worker.execute {
             val work = java.io.File(cacheDir, "dlc-metadata-work")
             val report = try {
-                work.deleteRecursively()
-                check(work.mkdirs()) { "Cannot create temporary DLC inspection folder" }
+                TemporaryWorkspacePolicy.prepare(work)
                 val source = java.io.File(work, "dlc.rpf")
                 copyUriToFile(sourceUri, source, MAX_ARCHIVE_BYTES)
                 NativeAssets.inspectDlcPackMetadata(source.absolutePath, rpfKeyDirectory.absolutePath)
@@ -287,8 +285,7 @@ class MainActivity : Activity() {
                 check(updateDocument.isFile) { "Selected update.rpf path is not a file" }
                 val updatePathLabel = if (modsUpdate != null) "mods/update/update.rpf" else "update/update.rpf"
 
-                work.deleteRecursively()
-                check(work.mkdirs()) { "Cannot create DLC audit work folder" }
+                TemporaryWorkspacePolicy.prepare(work)
                 val updateCopy = java.io.File(work, "update.rpf")
                 copyUriToFile(updateDocument.uri, updateCopy, MAX_ARCHIVE_BYTES)
                 totalBytes = updateCopy.length()
@@ -370,8 +367,7 @@ class MainActivity : Activity() {
                             }
 
                             val packWork = java.io.File(work, "pack-" + (position + 1))
-                            packWork.deleteRecursively()
-                            check(packWork.mkdirs()) { "Cannot create temporary pack folder" }
+                            TemporaryWorkspacePolicy.prepare(packWork)
                             try {
                                 val packCopy = java.io.File(packWork, "dlc.rpf")
                                 copyUriToFile(packDocument.uri, packCopy, MAX_ARCHIVE_BYTES)
@@ -406,7 +402,7 @@ class MainActivity : Activity() {
                                 report.appendLine("FAIL [" + (position + 1) + "] " + value + " — " +
                                     (e.message ?: e.javaClass.simpleName))
                             } finally {
-                                packWork.deleteRecursively()
+                                TemporaryWorkspacePolicy.clean(packWork)
                             }
                             val progress = "DLC audit " + (position + 1) + "/" + entries.size +
                                 " | validated=" + validated + " missing=" + missing + " failed=" + failed
@@ -566,7 +562,7 @@ class MainActivity : Activity() {
                     } finally {
                         // Release the source copy and generated RPF before processing
                         // the next archive; large DLC trees must not accumulate in cache.
-                        work.deleteRecursively()
+                        TemporaryWorkspacePolicy.clean(work)
                     }
                     val status = "Bulk conversion " + (index + 1) + "/" + archives.size +
                         "\nSuccess: " + done + " • Failed: " + failed + " • Skipped: " + skipped
