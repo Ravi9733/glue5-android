@@ -216,6 +216,37 @@ mod tests {
         assert!(!temp.join("my-car").exists());
         let _ = std::fs::remove_dir_all(temp);
     }
+    #[test]
+    fn file_import_lists_and_removes_only_managed_package() {
+        let temp = std::env::temp_dir().join(format!("glue5-import-file-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp);
+        std::fs::create_dir_all(&temp).unwrap();
+        let archive_path = temp.join("car.zip");
+        std::fs::write(&archive_path, zip_with("car/dlc.rpf", b"RPF")).unwrap();
+        let mods = temp.join("mods");
+        let report = import_zip_file(&mods, "car-pack", &archive_path).unwrap();
+        assert_eq!(report.rpf_archives, 1);
+        let listed = installed(&mods);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "car-pack");
+        remove(&mods, "car-pack").unwrap();
+        assert!(installed(&mods).is_empty());
+        assert!(archive_path.is_file());
+        let _ = std::fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn refuses_to_remove_unmanaged_folder() {
+        let temp = std::env::temp_dir().join(format!("glue5-import-unmanaged-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp);
+        let folder = temp.join("pc/not-a-mod");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("important.txt"), b"keep").unwrap();
+        assert!(remove(&temp, "not-a-mod").is_err());
+        assert!(folder.join("important.txt").is_file());
+        let _ = std::fs::remove_dir_all(temp);
+    }
+
 }
 
 
