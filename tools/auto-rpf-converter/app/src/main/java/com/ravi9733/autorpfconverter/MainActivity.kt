@@ -47,7 +47,7 @@ class MainActivity : Activity() {
         ))
 
         val subtitle = TextView(this).apply {
-            text = "Android converter 0.3.3 • direct RPF7 conversion"
+            text = "Android converter 0.3.5 • direct RPF7 conversion + DLC audit"
             textSize = 13f
             setTextColor(0xFFB9C6B5.toInt())
             gravity = Gravity.CENTER
@@ -123,6 +123,11 @@ class MainActivity : Activity() {
             setOnClickListener { inspectSelectedDlcPack() }
         }
         root.addView(validateDlc)
+        val validateLoadOrder = Button(this).apply {
+            text = "VALIDATE FULL DLC LOAD ORDER"
+            setOnClickListener { inspectFullDlcLoadOrder() }
+        }
+        root.addView(validateLoadOrder)
         val bulkExtract = Button(this).apply {
             text = "CONVERT ALL RPF FROM SELECTED GTA V FOLDER"
             setOnClickListener { convertAllOpenArchives() }
@@ -242,6 +247,215 @@ class MainActivity : Activity() {
                 output.text = report
             }
         }
+    }
+
+
+    private fun inspectFullDlcLoadOrder() {
+        val sourceTree = selectedFolderUri
+        if (sourceTree == null) {
+            output.text = "Select the GTA V root folder first."
+            return
+        }
+        output.text = "Reading update.rpf/dlclist.xml and checking registered DLC packs. This is read-only."
+        worker.execute {
+            val report = StringBuilder()
+            var registered = 0
+            var validated = 0
+            var missing = 0
+            var failed = 0
+            var duplicates = 0
+            var platform = 0
+            var unsafe = 0
+            var unsupported = 0
+            var totalBytes = 0L
+            try {
+                val sourceRoot = DocumentFile.fromTreeUri(this, sourceTree)
+                    ?: error("Cannot open selected GTA V folder")
+                val modsUpdate = findDocumentPath(sourceRoot, listOf("mods", "update", "update.rpf"))
+                val baseUpdate = findDocumentPath(sourceRoot, listOf("update", "update.rpf"))
+                val updateDocument = modsUpdate ?: baseUpdate
+                    ?: error("Cannot find mods/update/update.rpf or update/update.rpf")
+                check(updateDocument.isFile) { "Selected update.rpf path is not a file" }
+                val updatePathLabel = if (modsUpdate != null) "mods/update/update.rpf" else "update/update.rpf"
+
+                val work = java.io.File(cacheDir, "dlc-load-order-work")
+                work.deleteRecursively()
+                check(work.mkdirs()) { "Cannot create DLC audit work folder" }
+                val updateCopy = java.io.File(work, "update.rpf")
+                copyUriToFile(updateDocument.uri, updateCopy, MAX_ARCHIVE_BYTES)
+                totalBytes = updateCopy.length()
+                check(totalBytes <= MAX_DLC_AUDIT_TOTAL_BYTES) { "update.rpf exceeds the DLC audit byte budget" }
+
+                val listReport = NativeAssets.readDlcListEntries(
+                    updateCopy.absolutePath, rpfKeyDirectory.absolutePath
+                )
+                check(listReport.startsWith("DLC_LIST_V1")) { listReport }
+                val entries = listReport.lineSequence()
+                    .filter { it.contains('|') }
+                    .map { it.substringBefore('|') to it.substringAfter('|') }
+                    .toList()
+
+                report.appendLine("GTA V DLC LOAD-ORDER AUDIT — READ ONLY")
+                report.appendLine("List source: " + updatePathLabel + "/common/data/dlclist.xml")
+                report.appendLine("Entries in dlclist.xml: " + entries.size)
+                report.appendLine("Order below follows dlclist.xml; setup2.xml order is shown separately.")
+                report.appendLine()
+
+                val seen = mutableSetOf<String>()
+                var budgetReached = false
+                for ((position, item) in entries.withIndex()) {
+                    val kind = item.first
+                    val value = item.second
+                    when (kind) {
+                        "DLC" -> {
+                            registered++
+                            if (!seen.add(value.lowercase())) {
+                                duplicates++
+                                report.appendLine("DUPLICATE [" + (position + 1) + "] " + value)
+                                continue
+                            }
+                            if (value.isBlank() || value == "." || value == ".." ||
+                                value.contains('/') || value.contains('\\') || value.contains(':')) {
+                                unsafe++
+                                report.appendLine("UNSAFE [" + (position + 1) + "] invalid pack name")
+                                continue
+                            }
+
+                            var packDocument: DocumentFile? = null
+                            var packPath = ""
+                            val candidates = listOf(
+                                Pair(listOf("mods", "update", "x64", "dlcpacks", value, "dlc.rpf"),
+                                    "mods/update/x64/dlcpacks/" + value + "/dlc.rpf"),
+                                Pair(listOf("update", "x64", "dlcpacks", value, "dlc.rpf"),
+                                    "update/x64/dlcpacks/" + value + "/dlc.rpf")
+                            )
+                            for (candidate in candidates) {
+                                val found = findDocumentPath(sourceRoot, candidate.first)
+                                if (found != null) {
+                                    packDocument = found
+                                    packPath = candidate.second
+                                    break
+                                }
+                            }
+                            if (packDocument == null || !packDocument.isFile) {
+                                missing++
+                                report.appendLine("MISSING [" + (position + 1) + "] " + value +
+                                    " — no dlc.rpf under update/x64/dlcpacks or mods/update/x64/dlcpacks")
+                                continue
+                            }
+
+                            val sizeHint = packDocument.length()
+                            if (sizeHint > MAX_ARCHIVE_BYTES) {
+                                failed++
+                                report.appendLine("FAIL [" + (position + 1) + "] " + value + " — archive exceeds 4 GiB limit")
+                                continue
+                            }
+                            if (sizeHint > 0 && totalBytes > MAX_DLC_AUDIT_TOTAL_BYTES - sizeHint) {
+                                report.appendLine("STOP — 16 GiB cumulative DLC audit read budget reached.")
+                                budgetReached = true
+                                break
+                            }
+
+                            val packWork = java.io.File(work, "pack-" + (position + 1))
+                            packWork.deleteRecursively()
+                            check(packWork.mkdirs()) { "Cannot create temporary pack folder" }
+                            try {
+                                val packCopy = java.io.File(packWork, "dlc.rpf")
+                                copyUriToFile(packDocument.uri, packCopy, MAX_ARCHIVE_BYTES)
+                                val copiedBytes = packCopy.length()
+                                if (copiedBytes > MAX_DLC_AUDIT_TOTAL_BYTES - totalBytes) {
+                                    report.appendLine("STOP — 16 GiB cumulative DLC audit read budget reached.")
+                                    budgetReached = true
+                                    break
+                                }
+                                totalBytes += copiedBytes
+                                val packReport = NativeAssets.inspectDlcPackMetadata(
+                                    packCopy.absolutePath, rpfKeyDirectory.absolutePath
+                                )
+                                if (!packReport.startsWith("DLC metadata validation complete")) {
+                                    failed++
+                                    report.appendLine("FAIL [" + (position + 1) + "] " + value + " — " +
+                                        packReport.lineSequence().firstOrNull().orEmpty())
+                                } else {
+                                    validated++
+                                    report.appendLine("OK [" + (position + 1) + "] " + value +
+                                        " | source=" + packPath +
+                                        " | device=" + dlcReportField(packReport, "Device name") +
+                                        " | setup2 order=" + dlcReportField(packReport, "Load order") +
+                                        " | data refs=" + dlcReportField(packReport, "Data files resolved") +
+                                        "/" + dlcReportField(packReport, "Data files declared") +
+                                        " | missing=" + dlcReportField(packReport, "Missing references") +
+                                        " | unsafe=" + dlcReportField(packReport, "Unsafe references") +
+                                        " | RPF kind mismatch=" + dlcReportField(packReport, "RPF_FILE type mismatches"))
+                                }
+                            } catch (e: Throwable) {
+                                failed++
+                                report.appendLine("FAIL [" + (position + 1) + "] " + value + " — " +
+                                    (e.message ?: e.javaClass.simpleName))
+                            } finally {
+                                packWork.deleteRecursively()
+                            }
+                            val progress = "DLC audit " + (position + 1) + "/" + entries.size +
+                                " | validated=" + validated + " missing=" + missing + " failed=" + failed
+                            runOnUiThread { output.text = progress }
+                        }
+                        "PLATFORM" -> {
+                            platform++
+                            report.appendLine("PLATFORM [" + (position + 1) + "] " + value +
+                                " — identified, but base x64*.rpf resolution is not implemented yet")
+                        }
+                        "UNSAFE" -> {
+                            unsafe++
+                            report.appendLine("UNSAFE [" + (position + 1) + "] traversal or invalid pack path")
+                        }
+                        else -> {
+                            unsupported++
+                            report.appendLine("UNSUPPORTED [" + (position + 1) + "] unrecognized dlclist mount path")
+                        }
+                    }
+                }
+
+                report.appendLine()
+                report.appendLine("Registered dlcpacks entries: " + registered)
+                report.appendLine("Pack metadata validated: " + validated)
+                report.appendLine("Missing DLC archives: " + missing)
+                report.appendLine("Unreadable/invalid DLC archives: " + failed)
+                report.appendLine("Duplicate list entries: " + duplicates)
+                report.appendLine("Platform references not resolved: " + platform)
+                report.appendLine("Unsafe list entries: " + unsafe)
+                report.appendLine("Unsupported list entries: " + unsupported)
+                report.appendLine("Bytes read: " + totalBytes)
+                if (budgetReached) report.appendLine("Audit stopped at the cumulative 16 GiB safety budget.")
+                report.appendLine("Source update.rpf and DLC archives were not modified.")
+                report.appendLine("Platform:/dlcPacks entries still need lookup inside base x64*.rpf archives.")
+                report.appendLine("A clean metadata audit does not prove Glue5 mounts the packs.")
+            } catch (e: Throwable) {
+                report.appendLine("DLC load-order audit failed: " + (e.message ?: e.javaClass.simpleName))
+                report.appendLine("Source game files were not modified.")
+            }
+            runOnUiThread {
+                latestReport = report.toString()
+                output.text = latestReport
+            }
+        }
+    }
+
+    private fun findDocumentPath(root: DocumentFile, parts: List<String>): DocumentFile? {
+        var current = root
+        for ((index, part) in parts.withIndex()) {
+            val next = current.listFiles().firstOrNull {
+                it.name?.equals(part, ignoreCase = true) == true
+            } ?: return null
+            if (index < parts.lastIndex && !next.isDirectory) return null
+            current = next
+        }
+        return current
+    }
+
+    private fun dlcReportField(report: String, field: String): String {
+        val prefix = field + ":"
+        return report.lineSequence().firstOrNull { it.startsWith(prefix) }
+            ?.substringAfter(':')?.trim() ?: "?"
     }
 
     private fun convertAllOpenArchives() {
@@ -684,7 +898,7 @@ class MainActivity : Activity() {
 
         rows.sort()
         return buildString {
-            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.3.2")
+            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.3.5")
             appendLine("RPF files found: ${rows.size}")
             appendLine("GTA V RPF7 archives: $gtaVArchives")
             appendLine("OPEN archives: $openArchives")
@@ -698,7 +912,7 @@ class MainActivity : Activity() {
             appendLine("Read-only scan. No source files were changed.")
             appendLine("OPEN/unencrypted RPF7 TOCs are inspected for YTD/YDR/YFT/YMAP and related asset names. AES/NG TOCs need the matching key material.")
             appendLine("RPF7 structure and resource conversion do not prove that the result will mount or run in a specific Android game port such as Glue5.")
-            appendLine("Bulk conversion is available for OPEN RPF7 archives. Supported Gen9 YTD/YDR/YDD/YFT/YPT resources are converted to Legacy before RPF7 repacking; other formats remain unchanged.")
+            appendLine("Bulk conversion supports OPEN and AES/NG encrypted RPF7 archives when matching user-provided keys are imported. Supported Gen9 YTD/YDR/YDD/YFT/YPT resources are converted to Legacy before RPF7 repacking; other formats remain unchanged.")
         }
     }
 
