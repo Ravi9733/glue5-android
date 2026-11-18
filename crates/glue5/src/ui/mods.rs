@@ -88,7 +88,7 @@ pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut
         setting(ui, "Mods", Control::Toggle, Some(note.unwrap_or("Luau scripts that change the game, run with it")), |ui| {
             toggle(ui, &mut settings.mods);
         });
-        if !settings.mods && !status.mods {
+        pc_packages_tab(ui);\n        if !settings.mods && !status.mods {
             ui.add_space(4.0 * scale);
             panel(ui, |ui| {
                 card_title(ui, "WHAT MODS ARE", None);
@@ -191,29 +191,53 @@ fn menu_item(ui: &mut egui::Ui, module: &str, item: &glue5_mods::MenuItem) {
 /// not as active replacement/DLC mods.
 fn pc_packages_tab(ui: &mut egui::Ui) {
     let Some(root) = glue5_mods::dir() else { return };
+    let files_dir = std::env::var_os("GLUE5_APP_FILES_DIR").map(std::path::PathBuf::from);
+    if let Some(files_dir) = files_dir.as_deref() {
+        let request = files_dir.join("pc-mod-import-request");
+        panel(ui, |ui| {
+            card_title(ui, "FIVE STAR-STYLE PC MODS", None);
+            small(ui, "Import a ZIP package. Files are stored separately; RPF/DLC replacement and Windows ASI execution remain inactive until the game VFS/runtime integration is finished.", theme::MUTED);
+            if action_button(ui, "Install mod ZIP…").clicked() {
+                if let Err(error) = std::fs::create_dir_all(files_dir).and_then(|_| std::fs::write(&request, b"open")) {
+                    log::warn!("PC mod picker request: {error}");
+                }
+            }
+        });
+        let ready = files_dir.join("pc-mod-import-ready");
+        let archive_path = files_dir.join("pc-mod-import.zip");
+        let processing = files_dir.join("pc-mod-import.processing");
+        if ready.is_file() && std::fs::rename(&ready, &processing).is_ok() {
+            let display_name = std::fs::read_to_string(&processing).unwrap_or_else(|_| "Imported ZIP".into());
+            let id = std::path::Path::new(display_name.trim())
+                .file_stem().and_then(|v| v.to_str()).unwrap_or("pc-mod")
+                .to_ascii_lowercase().chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+                .collect::<String>()
+                .split('-').filter(|v| !v.is_empty()).collect::<Vec<_>>().join("-");
+            let id = if id.is_empty() { "pc-mod".to_owned() } else { id.chars().take(40).collect() };
+            let result = std::fs::read(&archive_path)
+                .map_err(|e| e.to_string())
+                .and_then(|bytes| glue5_mods::pc_import::import_zip(root, &id, &bytes));
+            match result {
+                Ok(report) => log::info!("PC mod {} imported: {} files, {} RPF, {} Windows plugins (stored only)", report.id, report.files, report.rpf_archives, report.windows_plugins),
+                Err(error) => log::warn!("PC mod import failed: {error}"),
+            }
+            let _ = std::fs::remove_file(&archive_path);
+            let _ = std::fs::remove_file(&processing);
+        }
+    }
     let packages = glue5_mods::pc_import::installed(root);
     ui.add_space(4.0 * theme::density(ui));
     panel(ui, |ui| {
-        card_title(ui, "PC MOD PACKAGES", None);
-        small(
-            ui,
-            "ZIP packages are stored separately from game files and saves. RPF/DLC mounting and Windows ASI execution are not enabled in this build.",
-            theme::MUTED,
-        );
-        if packages.is_empty() {
-            muted(ui, "No PC ZIP packages imported yet.");
-        }
+        card_title(ui, "IMPORTED PC PACKAGES", None);
+        if packages.is_empty() { muted(ui, "No PC ZIP packages imported yet."); }
         for package in packages {
             ui.horizontal_wrapped(|ui| {
                 ui.vertical(|ui| {
                     ui.label(RichText::new(&package.id).size(14.0 * theme::density(ui)).color(Color32::WHITE));
                     let size_mb = package.bytes as f64 / (1024.0 * 1024.0);
-                    small(
-                        ui,
-                        &format!("Stored · {} files · {size_mb:.1} MiB · {} RPF · {} Windows plugins",
-                            package.files, package.rpf_archives, package.windows_plugins),
-                        theme::MUTED,
-                    );
+                    small(ui, &format!("Stored · {} files · {size_mb:.1} MiB · {} RPF · {} Windows plugins",
+                        package.files, package.rpf_archives, package.windows_plugins), theme::MUTED);
                 });
                 if action_button(ui, "Remove").clicked() {
                     if let Err(error) = glue5_mods::pc_import::remove(root, &package.id) {
