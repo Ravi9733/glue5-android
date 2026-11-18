@@ -8,6 +8,7 @@
 //! (engine.rs). [`studio`] serves GLUE 5 Studio and the MCP endpoint.
 
 pub mod pc_runtime;
+pub mod pc_import;
 mod checker;
 mod bundled_trainer;
 mod engine;
