@@ -174,6 +174,12 @@ public class Glue5Activity extends SDLActivity {
 
     private void checkTurnipImportRequest() {
         if (isFinishing() || turnipPickerOpen || graphicsPickerOpen || reshadePickerOpen || stuntMapsPickerOpen) return;
+        File vehiclePackageRequest = new File(getFilesDir(), "vehicle-package-download-request");
+        if (vehiclePackageRequest.isFile() && vehiclePackageRequest.delete()) {
+            downloadVehiclePackage(vehiclePackageRequest);
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+            return;
+        }
         File vehicleCatalogRequest = new File(getFilesDir(), "vehicle-catalog-fetch-request");
         if (vehicleCatalogRequest.isFile() && vehicleCatalogRequest.delete()) {
             fetchVehicleCatalog();
@@ -244,6 +250,103 @@ public class Glue5Activity extends SDLActivity {
             return;
         }
         turnipHandler.postDelayed(turnipImportWatcher, 500);
+    }
+
+    /** Stream one catalog-approved package to private storage and verify exact size + SHA-256. */
+    private void downloadVehiclePackage(File requestFile) {
+        new Thread(() -> {
+            File status = new File(getFilesDir(), "vehicle-package-status.json");
+            File staging = null;
+            java.net.HttpURLConnection connection = null;
+            try {
+                org.json.JSONObject request = new org.json.JSONObject(readTextFile(requestFile));
+                String id = request.getString("id");
+                String downloadUrl = request.getString("download_url");
+                String expectedHash = request.getString("sha256").toLowerCase(java.util.Locale.ROOT);
+                long expectedBytes = request.getLong("size_bytes");
+                if (!id.matches("[a-z0-9_-]{1,48}")) throw new Exception("Invalid vehicle package ID");
+                if (!downloadUrl.startsWith("https://") || downloadUrl.length() > 2048) {
+                    throw new Exception("Package URL must use HTTPS");
+                }
+                if (!expectedHash.matches("[0-9a-f]{64}")) throw new Exception("Invalid package SHA-256");
+                if (expectedBytes < 1 || expectedBytes > 1024L * 1024L * 1024L) {
+                    throw new Exception("Package must be between 1 byte and 1 GiB");
+                }
+                File root = new File(getFilesDir(), "vehicles/downloads");
+                if (!root.isDirectory() && !root.mkdirs()) throw new Exception("Cannot create private vehicle download folder");
+                File canonicalRoot = root.getCanonicalFile();
+                File destination = new File(canonicalRoot, id + ".zip");
+                if (!canonicalRoot.equals(destination.getCanonicalFile().getParentFile())) {
+                    throw new Exception("Unsafe package destination");
+                }
+                if (destination.exists()) throw new Exception("Package already downloaded; refusing to overwrite");
+                staging = new File(canonicalRoot, "." + id + "." + android.os.Process.myPid() + ".part");
+                if (staging.exists()) throw new Exception("A package download is already in progress");
+                java.net.URL url = new java.net.URL(downloadUrl);
+                if (!"https".equalsIgnoreCase(url.getProtocol())) throw new Exception("Package URL must use HTTPS");
+                connection = (java.net.HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(30000);
+                connection.setInstanceFollowRedirects(false);
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("Accept", "application/zip, application/octet-stream");
+                int code = connection.getResponseCode();
+                if (code != 200) throw new Exception("Package server returned HTTP " + code + " (redirects are not followed)");
+                long contentLength = connection.getContentLengthLong();
+                if (contentLength >= 0 && contentLength != expectedBytes) {
+                    throw new Exception("Server package size does not match catalog");
+                }
+                java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+                long received = 0;
+                try (InputStream input = connection.getInputStream();
+                     java.io.BufferedOutputStream output = new java.io.BufferedOutputStream(new FileOutputStream(staging, false))) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) {
+                        received += count;
+                        if (received > expectedBytes || received > 1024L * 1024L * 1024L) {
+                            throw new Exception("Package exceeded catalog size; download rejected");
+                        }
+                        digest.update(buffer, 0, count);
+                        output.write(buffer, 0, count);
+                        if (received % (1024L * 1024L) < count) {
+                            writeVehiclePackageStatus(status, "downloading",
+                                    "Downloaded " + received + " / " + expectedBytes + " bytes");
+                        }
+                    }
+                    output.flush();
+                }
+                if (received != expectedBytes) throw new Exception("Incomplete package: received " + received + " of " + expectedBytes + " bytes");
+                StringBuilder actual = new StringBuilder(64);
+                for (byte b : digest.digest()) actual.append(String.format(java.util.Locale.ROOT, "%02x", b & 0xff));
+                if (!expectedHash.equals(actual.toString())) throw new Exception("SHA-256 mismatch; package rejected");
+                try (java.io.RandomAccessFile sync = new java.io.RandomAccessFile(staging, "rw")) {
+                    sync.getFD().sync();
+                }
+                if (destination.exists()) throw new Exception("Package appeared during download; refusing to overwrite");
+                if (!staging.renameTo(destination)) throw new Exception("Cannot commit verified package");
+                staging = null;
+                writeVehiclePackageStatus(status, "complete",
+                        "Verified download saved: " + destination.getAbsolutePath());
+            } catch (Exception e) {
+                if (staging != null) staging.delete();
+                writeVehiclePackageStatus(status, "error",
+                        e.getMessage() == null ? "Vehicle package download failed" : e.getMessage());
+            } finally {
+                if (connection != null) connection.disconnect();
+                requestFile.delete();
+            }
+        }, "Glue5VehiclePackageDownload").start();
+    }
+
+    private static void writeVehiclePackageStatus(File file, String state, String message) {
+        try (FileOutputStream output = new FileOutputStream(file, false)) {
+            org.json.JSONObject status = new org.json.JSONObject();
+            status.put("state", state);
+            status.put("message", message);
+            output.write(status.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            output.getFD().sync();
+        } catch (Exception ignored) {}
     }
 
     /** Fetch the curated public catalog off the UI thread; never accept cleartext HTTP. */
