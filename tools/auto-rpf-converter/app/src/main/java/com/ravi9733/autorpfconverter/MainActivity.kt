@@ -191,8 +191,8 @@ class MainActivity : Activity() {
         if (!selectedArchiveName.endsWith(".rpf", true)) { output.text = "Choose a .rpf file."; return }
         output.text = "Converting the RPF directly. Keep the app open; this can take time."
         worker.execute {
+            val work = java.io.File(cacheDir, "rpf-work")
             val result = try {
-                val work = java.io.File(cacheDir, "rpf-work")
                 work.deleteRecursively()
                 check(work.mkdirs()) { "Cannot create temporary folder" }
                 val safeName = selectedArchiveName.replace(Regex("[^A-Za-z0-9._-]"), "_")
@@ -211,7 +211,13 @@ class MainActivity : Activity() {
                 val target = writeOutputFileSafely(converted, root, selectedArchiveName)
                 conversionReport + "\n\nSaved: " + target.name +
                     "\nOriginal PC archive unchanged. Only reported Gen9 resources were converted; unsupported files remain unchanged."
-            } catch (e: Throwable) { "Conversion failed: " + (e.message ?: e.javaClass.simpleName) }
+            } catch (e: Throwable) {
+                "Conversion failed: " + (e.message ?: e.javaClass.simpleName)
+            } finally {
+                // RPF input and generated output can each be several GiB. Do not leave
+                // either copy in cache after the SAF export has been verified.
+                work.deleteRecursively()
+            }
             runOnUiThread { output.text = result }
         }
     }
@@ -483,7 +489,9 @@ class MainActivity : Activity() {
             var failed = 0
             var skipped = 0
             var totalBytes = 0L
+            val work = java.io.File(cacheDir, "bulk-rpf-work")
             try {
+                work.deleteRecursively()
                 check(sourceRoot != null && destination != null) { "Cannot open selected folders" }
                 val archives = mutableListOf<Pair<DocumentFile, String>>()
                 val stack = ArrayDeque<Pair<DocumentFile, String>>()
@@ -529,7 +537,6 @@ class MainActivity : Activity() {
                             report.appendLine("SKIP " + name + " — archive exceeds the 4 GiB input limit")
                             continue
                         }
-                        val work = java.io.File(cacheDir, "bulk-rpf-work")
                         work.deleteRecursively()
                         check(work.mkdirs()) { "Cannot create temporary folder" }
                         val safeName = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
@@ -556,6 +563,10 @@ class MainActivity : Activity() {
                     } catch (e: Throwable) {
                         failed++
                         report.appendLine("FAIL " + relativeDir + "/" + name + " — " + (e.message ?: e.javaClass.simpleName))
+                    } finally {
+                        // Release the source copy and generated RPF before processing
+                        // the next archive; large DLC trees must not accumulate in cache.
+                        work.deleteRecursively()
                     }
                     val status = "Bulk conversion " + (index + 1) + "/" + archives.size +
                         "\nSuccess: " + done + " • Failed: " + failed + " • Skipped: " + skipped
@@ -568,6 +579,8 @@ class MainActivity : Activity() {
                 report.appendLine("Nested RPF file entries are rebuilt recursively up to the configured depth and RPF7 size limits.")
             } catch (e: Throwable) {
                 report.appendLine("Bulk operation stopped: " + (e.message ?: e.javaClass.simpleName))
+            } finally {
+                work.deleteRecursively()
             }
             runOnUiThread { latestReport = report.toString(); output.text = latestReport }
         }
