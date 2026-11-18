@@ -683,6 +683,7 @@ int main() {
     const fs::path dlc_list_root = fs::temp_directory_path() / "gta-rpf-dlclist-tests";
     fs::remove_all(dlc_list_root, ignored);
     fs::create_directories(dlc_list_root);
+    fs::create_directories(dlc_empty_keys);
     const fs::path update_rpf_path = dlc_list_root / "update.rpf";
     const std::string dlclist_xml =
         "<SMandatoryPacksData><Paths>"
