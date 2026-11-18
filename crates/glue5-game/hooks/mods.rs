@@ -24,6 +24,7 @@
     ("datafile_add_rpf", "CFileLoader::AddRpfFile(CDataFileMgr::DataFile const*, bool)"),
     ("packfile_add_all_rpf_files", "CFileLoader::AddAllRpfFiles(bool)"),
     ("packfile_get_streaming_module", "rage::strPackfileManager::GetStreamingModule()"),
+    ("packfile_register_individual_file", "rage::strPackfileManager::RegisterIndividualFile(char const*, bool, char const*, bool, bool)"),
     ("device_mount", "rage::fiDevice::Mount(char const*, rage::fiDevice const&, bool)"),
     ("device_unmount", "rage::fiDevice::Unmount(char const*)"),
 ]

@@ -32,6 +32,7 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.datafile_add_rpf = Some(datafile_add_rpf);
     h.packfile_add_all_rpf_files = Some(packfile_add_all_rpf_files);
     h.packfile_get_streaming_module = Some(packfile_get_streaming_module);
+    h.packfile_register_individual_file = Some(packfile_register_individual_file);
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
 }
@@ -100,6 +101,25 @@ unsafe extern "C" fn packfile_get_streaming_module(env: *mut Env) -> u64 {
             &format!("strPackfileManager::GetStreamingModule module=0x{module:x}"));
     }
     module
+}
+
+/// Observe individual-file streaming registrations; forward every argument unchanged.
+unsafe extern "C" fn packfile_register_individual_file(
+    env: *mut Env,
+    manager: u64,
+    is_dlc: u32,
+    path: u64,
+    flag_a: u32,
+    flag_b: u32,
+) -> u32 {
+    let name = unsafe { Mem::of(env).str(path) };
+    let result = unsafe {
+        orig::packfile_register_individual_file(env, manager, is_dlc, path, flag_a, flag_b)
+    };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("RegisterIndividualFile manager=0x{manager:x} dlc={} flag_a={} flag_b={} result={} path={name}",
+            is_dlc != 0, flag_a != 0, flag_b != 0, result));
+    result
 }
 
 /// Observe device mount/unmount calls without taking ownership of engine devices.
