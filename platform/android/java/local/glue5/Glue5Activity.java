@@ -175,8 +175,9 @@ public class Glue5Activity extends SDLActivity {
     private void checkTurnipImportRequest() {
         if (isFinishing() || turnipPickerOpen || graphicsPickerOpen || reshadePickerOpen || stuntMapsPickerOpen) return;
         File vehiclePackageRequest = new File(getFilesDir(), "vehicle-package-download-request");
-        if (vehiclePackageRequest.isFile() && vehiclePackageRequest.delete()) {
-            downloadVehiclePackage(vehiclePackageRequest);
+        File vehiclePackageProcessing = new File(getFilesDir(), "vehicle-package-download-request.processing");
+        if (vehiclePackageRequest.isFile() && vehiclePackageRequest.renameTo(vehiclePackageProcessing)) {
+            downloadVehiclePackage(vehiclePackageProcessing);
             turnipHandler.postDelayed(turnipImportWatcher, 500);
             return;
         }
