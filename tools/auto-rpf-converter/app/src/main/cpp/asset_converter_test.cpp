@@ -678,6 +678,52 @@ int main() {
             "DLC validator must reject traversal paths in content.xml");
     fs::remove_all(dlc_test_root, ignored);
 
+
+    // Read update.rpf/common/data/dlclist.xml using the pinned RAGEKIT XML and RPF APIs.
+    const fs::path dlc_list_root = fs::temp_directory_path() / "gta-rpf-dlclist-tests";
+    fs::remove_all(dlc_list_root, ignored);
+    fs::create_directories(dlc_list_root);
+    const fs::path update_rpf_path = dlc_list_root / "update.rpf";
+    const std::string dlclist_xml =
+        "<SMandatoryPacksData><Paths>"
+        "<Item>dlcpacks:\\testPack\\</Item>"
+        "<Item>platform:/dlcPacks/mpBeach/</Item>"
+        "<Item>dlcpacks:/../escape/</Item>"
+        "<Item>custom:/unknown/</Item>"
+        "</Paths></SMandatoryPacksData>";
+    rk::RpfBuilder update_builder;
+    update_builder.add_binary("common/data/dlclist.xml", bytes_of(dlclist_xml));
+    rk::RpfWriteOptions update_options;
+    update_options.encryption = rk::RpfEncryption::Open;
+    update_options.name = "update.rpf";
+    update_builder.save(update_rpf_path.string(), update_options);
+    const std::string dlc_list_report =
+        gta_asset_converter::read_dlc_list_entries(update_rpf_path, dlc_empty_keys);
+    require(dlc_list_report.find("DLC_LIST_V1") == 0,
+            "dlclist reader must return the versioned list format");
+    require(dlc_list_report.find("DLC|testPack") != std::string::npos,
+            "dlclist reader must normalize Windows separators for dlcpacks entries");
+    require(dlc_list_report.find("PLATFORM|mpBeach") != std::string::npos,
+            "dlclist reader must identify platform DLC entries separately");
+    require(dlc_list_report.find("UNSAFE|3") != std::string::npos,
+            "dlclist reader must reject traversal pack paths");
+    require(dlc_list_report.find("UNSUPPORTED|4") != std::string::npos,
+            "dlclist reader must report unknown mount schemes without guessing");
+
+    const fs::path missing_dlclist_path = dlc_list_root / "missing_dlclist.rpf";
+    rk::RpfBuilder missing_dlclist_builder;
+    missing_dlclist_builder.add_binary("common/data/not_dlclist.xml", bytes_of("<Paths/>"));
+    missing_dlclist_builder.save(missing_dlclist_path.string(), update_options);
+    bool missing_dlclist_rejected = false;
+    try {
+        (void)gta_asset_converter::read_dlc_list_entries(missing_dlclist_path, dlc_empty_keys);
+    } catch (const std::exception&) {
+        missing_dlclist_rejected = true;
+    }
+    require(missing_dlclist_rejected,
+            "dlclist reader must fail when common/data/dlclist.xml is absent");
+    fs::remove_all(dlc_list_root, ignored);
+
     std::cout << "Gen9 conversion, keyed extraction, nested RPF7 and DLC metadata tests passed\n";
     return 0;
 }
