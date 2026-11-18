@@ -284,15 +284,30 @@ public class Glue5Activity extends SDLActivity {
                 staging = new File(canonicalRoot, "." + id + "." + android.os.Process.myPid() + ".part");
                 if (staging.exists()) throw new Exception("A package download is already in progress");
                 java.net.URL url = new java.net.URL(downloadUrl);
-                if (!"https".equalsIgnoreCase(url.getProtocol())) throw new Exception("Package URL must use HTTPS");
-                connection = (java.net.HttpURLConnection) url.openConnection();
-                connection.setConnectTimeout(15000);
-                connection.setReadTimeout(30000);
-                connection.setInstanceFollowRedirects(false);
-                connection.setRequestMethod("GET");
-                connection.setRequestProperty("Accept", "application/zip, application/octet-stream");
-                int code = connection.getResponseCode();
-                if (code != 200) throw new Exception("Package server returned HTTP " + code + " (redirects are not followed)");
+                if (!"https".equalsIgnoreCase(url.getProtocol()) || url.getHost().isEmpty()
+                        || url.getUserInfo() != null) throw new Exception("Package URL must be a valid HTTPS URL");
+                int code = -1;
+                for (int redirect = 0; redirect <= 5; redirect++) {
+                    if (!"https".equalsIgnoreCase(url.getProtocol()) || url.getHost().isEmpty()
+                            || url.getUserInfo() != null) throw new Exception("Package redirect left HTTPS");
+                    connection = (java.net.HttpURLConnection) url.openConnection();
+                    connection.setConnectTimeout(15000);
+                    connection.setReadTimeout(30000);
+                    connection.setInstanceFollowRedirects(false);
+                    connection.setRequestMethod("GET");
+                    connection.setRequestProperty("Accept", "application/zip, application/octet-stream");
+                    code = connection.getResponseCode();
+                    if (code == 200) break;
+                    if (code != 301 && code != 302 && code != 303 && code != 307 && code != 308) {
+                        throw new Exception("Package server returned HTTP " + code);
+                    }
+                    String location = connection.getHeaderField("Location");
+                    connection.disconnect();
+                    connection = null;
+                    if (location == null || redirect == 5) throw new Exception("Too many or invalid package redirects");
+                    url = new java.net.URL(url, location);
+                }
+                if (code != 200 || connection == null) throw new Exception("Package redirect limit exceeded");
                 long contentLength = connection.getContentLengthLong();
                 if (contentLength >= 0 && contentLength != expectedBytes) {
                     throw new Exception("Server package size does not match catalog");
