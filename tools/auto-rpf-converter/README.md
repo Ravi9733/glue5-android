@@ -27,7 +27,21 @@ Android ARM64 conversion prototype for GTA V RPF7 archives. It reads a selected 
 
 The Android app includes a read-only validator for one selected dlc.rpf. Choose the pack's actual dlc.rpf (not update.rpf) and tap **VALIDATE SELECTED DLC.RPF METADATA**. It opens the archive with the imported matching AES/NG keys when needed, parses its root setup2.xml, follows the declared datFile (normally content.xml), and validates the CDataFileMgr__ContentsOfDataFileXml data-file list. It checks the deviceName prefix, unsafe/traversal paths, missing references, and whether entries declared as RPF_FILE are nested RPF archives. Nested paths are resolved through the RPF tree. The validator never edits the source archive.
 
-This is pack-level validation only. It does not yet read dlclist.xml from update/update.rpf, compare the full game's DLC load order, resolve platform:/dlcPacks/ entries from base x64*.rpf archives, or rewrite setup2.xml/content.xml. Platform-dependent %PLATFORM% references are reported separately rather than guessed. A clean metadata report does not prove Glue5 mounts the pack.
+This remains a single-pack validator; it does not edit setup2.xml or content.xml. A separate full load-order audit now reads dlclist.xml from update.rpf and cross-checks dlcpacks entries against the selected game folder.
+
+
+## Full DLC load-order audit
+
+Select the GTA V root folder and tap **VALIDATE FULL DLC LOAD ORDER**. The audit is read-only:
+- It prefers \`mods/update/update.rpf\` when present (OpenIV override), otherwise \`update/update.rpf\`.
+- It reads \`common/data/dlclist.xml\` inside that archive using the imported matching AES/NG keys.
+- It recognizes both \`dlcpacks:/name/\` and Windows-backslash variants, preserves the list order, and detects duplicate, unsafe and unsupported entries.
+- For each \`dlcpacks\` entry it checks \`mods/update/x64/dlcpacks/name/dlc.rpf\` first, then \`update/x64/dlcpacks/name/dlc.rpf\`. It copies one pack at a time to app-private cache, preserves the basename \`dlc.rpf\` for NG key selection, and runs the existing setup2/content metadata validator.
+- The report shows list position separately from each pack's \`setup2.xml\` order, plus missing content references and RPF_FILE type mismatches. Source archives and XML files are never modified.
+
+Safety limits: at most 1,024 dlclist Items are parsed, 512 packs are audited per Android run, each archive is limited to 4 GiB minus one byte, and the cumulative copied bytes are capped at 16 GiB. The audit stops at the cap instead of silently skipping the remainder.
+
+\`platform:/dlcPacks/\` entries are identified but are not yet resolved inside base \`x64*.rpf\` archives. This is a list/metadata audit, not a game mount test; it does not certify Glue5 compatibility or rewrite DLC registration.
 
 ## Key import
 
@@ -83,6 +97,7 @@ GitHub Actions runs:
 - End-to-end direct archive-to-archive conversion tests covering supported resource families, nested RPFs, AES/NG input, OPEN RPF7 output and encrypted .ysc stored-byte preservation
 - Synthetic AES- and NG-keyed RPF extraction and missing-key rejection
 - A nested RPF7 round-trip larger than 16 MiB
+- Synthetic dlclist.xml parsing for Windows separators, platform entries, traversal rejection, unknown mount schemes and missing-file rejection
 - Android ARM64 debug APK build
 
 Fixtures are synthetic, not a full retail GTA V installation. Physical Android and Glue5 in-game tests have not been completed.
