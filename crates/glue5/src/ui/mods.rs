@@ -251,7 +251,6 @@ fn pc_packages_tab(ui: &mut egui::Ui) {
 }
 
 fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
-    pc_packages_tab(ui);
     let held = glue5_mods::held_back();
     if !held.is_empty() {
         small(
