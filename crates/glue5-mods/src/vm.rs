@@ -180,6 +180,62 @@ impl Vm {
                 Ok((done, message))
             })?,
         )?;
+        let vehicle_install_request_dir = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from);
+        world.set(
+            "requestVehiclePackageInstall",
+            lua.create_function(move |_, id: String| {
+                let app_files = vehicle_install_request_dir.as_ref()
+                    .ok_or_else(|| mlua::Error::runtime("Android vehicle installer is unavailable on this platform"))?
+                    .clone();
+                let catalog_bytes = std::fs::read(app_files.join("vehicle-catalog.json"))
+                    .map_err(|e| mlua::Error::runtime(format!("refresh catalog first: {e}")))?;
+                let catalog = crate::vehicle_hub::Catalog::parse(&catalog_bytes)
+                    .map_err(|e| mlua::Error::runtime(format!("catalog validation failed: {e}")))?;
+                let package = catalog.vehicles.into_iter().find(|p| p.id == id)
+                    .ok_or_else(|| mlua::Error::runtime("vehicle package is not in the validated catalog"))?;
+                let archive = app_files.join("vehicles/downloads").join(format!("{}.zip", package.id));
+                if !archive.is_file() {
+                    return Err(mlua::Error::runtime("download this vehicle package first"));
+                }
+                let install_root = app_files.join("vehicles/installed");
+                let status = app_files.join("vehicle-install-status.json");
+                std::fs::write(&status, br#"{"state":"running","ok":false,"message":"Preparing safe install"}"#)
+                    .map_err(|e| mlua::Error::runtime(format!("cannot write install status: {e}")))?;
+                std::thread::Builder::new().name("Glue5VehicleInstall".into()).spawn(move || {
+                    let outcome = crate::vehicle_manager::install_verified_package(&archive, &install_root, &package);
+                    let (state, ok, message) = match outcome {
+                        Ok(result) => ("complete", true, format!(
+                            "Verified and extracted {}: {} files, {} bytes. Static checks passed; native spawning is not enabled yet.",
+                            result.id, result.extracted_files, result.extracted_bytes
+                        )),
+                        Err(error) => ("error", false, error),
+                    };
+                    let value = serde_json::json!({"state":state,"ok":ok,"message":message});
+                    let _ = std::fs::write(status, value.to_string());
+                }).map_err(|e| mlua::Error::runtime(format!("cannot start installer: {e}")))?;
+                Ok(())
+            })?,
+        )?;
+        let vehicle_install_status_dir = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from);
+        world.set(
+            "vehiclePackageInstallStatus",
+            lua.create_function(move |_, ()| {
+                let Some(dir) = &vehicle_install_status_dir else {
+                    return Ok((false, false, "Installer unavailable".to_string()));
+                };
+                let path = dir.join("vehicle-install-status.json");
+                let Ok(text) = std::fs::read_to_string(path) else {
+                    return Ok((false, false, "not started".to_string()));
+                };
+                let value: serde_json::Value = serde_json::from_str(&text)
+                    .map_err(|e| mlua::Error::runtime(format!("invalid install status: {e}")))?;
+                let state = value.get("state").and_then(|v| v.as_str()).unwrap_or("running");
+                let done = state == "complete" || state == "error";
+                let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                let message = value.get("message").and_then(|v| v.as_str()).unwrap_or("Installing").to_string();
+                Ok((done, ok, message))
+            })?,
+        )?;
         let placement_dir = dir.to_path_buf();
         let map_dir = placement_dir.join("maps");
         let import_dir = map_dir.clone();
