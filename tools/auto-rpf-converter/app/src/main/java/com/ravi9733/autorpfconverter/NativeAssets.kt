@@ -16,4 +16,5 @@ internal object NativeAssets {
     external fun buildOpenRpf7(sourceDirectoryAbsolutePath: String, outputAbsolutePath: String): String
     external fun convertArchiveToOpenRpf7(sourceAbsolutePath: String, outputAbsolutePath: String, keyDirectoryAbsolutePath: String): String
     external fun inspectDlcPackMetadata(sourceAbsolutePath: String, keyDirectoryAbsolutePath: String): String
+    external fun readDlcListEntries(updateRpfAbsolutePath: String, keyDirectoryAbsolutePath: String): String
 }
