@@ -33,4 +33,6 @@ std::string convert_rpf_archive_to_open_rpf7(const std::filesystem::path& source
                                              const std::filesystem::path& key_directory);
 std::string inspect_dlc_pack_metadata(const std::filesystem::path& source_path,
                                       const std::filesystem::path& key_directory);
+std::string read_dlc_list_entries(const std::filesystem::path& update_rpf_path,
+                                  const std::filesystem::path& key_directory);
 }
