@@ -889,4 +889,83 @@ std::string inspect_dlc_pack_metadata(const fs::path& source_path,
 }
 
 
+std::string read_dlc_list_entries(const fs::path& update_rpf_path,
+                                  const fs::path& key_directory) {
+    constexpr std::uint64_t max_archive_bytes = 0xFFFFFFFFull;
+    constexpr std::uint64_t max_xml_bytes = 8ull * 1024ull * 1024ull;
+    constexpr std::size_t max_items = 1024;
+
+    const auto source_status = fs::symlink_status(update_rpf_path);
+    if (fs::is_symlink(source_status) || !fs::is_regular_file(source_status)) {
+        throw std::runtime_error("update.rpf must be a regular, non-symlink file");
+    }
+    if (fs::file_size(update_rpf_path) > max_archive_bytes) {
+        throw std::runtime_error("update.rpf exceeds the 4 GiB RPF7 safety limit");
+    }
+
+    auto keys = std::make_shared<rk::RpfKeys>(rk::RpfKeys::load(key_directory.string()));
+    const rk::Rpf update = rk::Rpf::open(update_rpf_path.string(), keys);
+    const auto location = update.resolve("common/data/dlclist.xml");
+    if (!location.archive || location.entry < 0) {
+        throw std::runtime_error("update.rpf is missing common/data/dlclist.xml");
+    }
+    const rk::RpfEntry& entry =
+        location.archive->entries().at(static_cast<std::size_t>(location.entry));
+    if (entry.is_directory() || entry.size() > max_xml_bytes) {
+        throw std::runtime_error("dlclist.xml is a directory or exceeds the 8 MiB limit");
+    }
+    const auto bytes = location.archive->extract(location.entry);
+    if (bytes.empty() || bytes.size() > max_xml_bytes) {
+        throw std::runtime_error("dlclist.xml is empty or exceeds the 8 MiB limit");
+    }
+
+    const std::string xml(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    const rk::XmlElement root = rk::parse_xml(xml);
+    const rk::XmlElement* paths =
+        lower(root.name) == "paths" ? &root : root.child_ci("Paths");
+    if (paths == nullptr) {
+        throw std::runtime_error("dlclist.xml is missing SMandatoryPacksData/Paths");
+    }
+
+    std::ostringstream report;
+    report << "DLC_LIST_V1\n";
+    std::size_t item_index = 0;
+    for (const rk::XmlElement& item : paths->children) {
+        if (lower(item.name) != "item") continue;
+        if (++item_index > max_items) {
+            throw std::runtime_error("dlclist.xml exceeds the 1,024 Item safety limit");
+        }
+
+        std::string value = item.text;
+        std::replace(value.begin(), value.end(), '\\', '/');
+        const std::string value_lower = lower(value);
+
+        auto emit_pack = [&](const std::string& prefix, const std::string& kind) {
+            if (value_lower.rfind(prefix, 0) != 0) return false;
+            std::string pack = value.substr(prefix.size());
+            if (!pack.empty() && pack.back() == '/') pack.pop_back();
+            bool safe = !pack.empty() && pack != "." && pack != ".." &&
+                        pack.find_first_of("/\\:") == std::string::npos;
+            for (unsigned char c : pack) {
+                if (c < 0x20 || c == 0x7F) safe = false;
+            }
+            if (!safe) {
+                report << "UNSAFE|" << item_index << "\n";
+            } else {
+                report << kind << "|" << pack << "\n";
+            }
+            return true;
+        };
+
+        if (value.empty()) {
+            report << "UNSUPPORTED|" << item_index << "\n";
+        } else if (!emit_pack("dlcpacks:/", "DLC") &&
+                   !emit_pack("platform:/dlcPacks/", "PLATFORM")) {
+            report << "UNSUPPORTED|" << item_index << "\n";
+        }
+    }
+    return report.str();
+}
+
+
 } // namespace gta_asset_converter
