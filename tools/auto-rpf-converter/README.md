@@ -108,3 +108,8 @@ Fixtures are synthetic, not a full retail GTA V installation. Physical Android a
 - Native preflight walks the RPF entry tree, rejects unreachable/duplicate paths and enforces the nested depth/count/size limits before the writer is created.
 - After a converted RPF is copied to the selected SAF output folder, the app reads the finalized document back with a fixed-size buffer and compares SHA-256 plus the byte count against the generated archive. A failed verification deletes the partial/finalized output and reports failure.
 - The Android APK links the pinned ragekit C++ JNI library. The older Rust native-core crate remains covered by a separate CI test job as legacy prototype code, but its unused JNI wrapper and shared library are no longer packaged into the APK.
+
+
+## Temporary workspace cleanup
+
+The Android app uses a guarded app-private workspace for each selected-archive conversion, each bulk archive, and each DLC audit. The workspace is cleared before use and deleted in a `finally` block after success or failure, so multi-gigabyte source/output copies do not accumulate between archives. Workspace paths are checked for symbolic links before recursive deletion. JVM tests cover stale-workspace replacement, cleanup after use, and symlink rejection.
