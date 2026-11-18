@@ -185,7 +185,48 @@ fn menu_item(ui: &mut egui::Ui, module: &str, item: &glue5_mods::MenuItem) {
     }
 }
 
+
+/// PC packages are kept separate from the Luau runtime. Until the game VFS
+/// overlay is connected, imported archives are explicitly shown as stored,
+/// not as active replacement/DLC mods.
+fn pc_packages_tab(ui: &mut egui::Ui) {
+    let Some(root) = glue5_mods::dir() else { return };
+    let packages = glue5_mods::pc_import::installed(root);
+    ui.add_space(4.0 * theme::density(ui));
+    panel(ui, |ui| {
+        card_title(ui, "PC MOD PACKAGES", None);
+        small(
+            ui,
+            "ZIP packages are stored separately from game files and saves. RPF/DLC mounting and Windows ASI execution are not enabled in this build.",
+            theme::MUTED,
+        );
+        if packages.is_empty() {
+            muted(ui, "No PC ZIP packages imported yet.");
+        }
+        for package in packages {
+            ui.horizontal_wrapped(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(&package.id).size(14.0 * theme::density(ui)).color(Color32::WHITE));
+                    let size_mb = package.bytes as f64 / (1024.0 * 1024.0);
+                    small(
+                        ui,
+                        &format!("Stored · {} files · {size_mb:.1} MiB · {} RPF · {} Windows plugins",
+                            package.files, package.rpf_archives, package.windows_plugins),
+                        theme::MUTED,
+                    );
+                });
+                if action_button(ui, "Remove").clicked() {
+                    if let Err(error) = glue5_mods::pc_import::remove(root, &package.id) {
+                        log::warn!("PC mod remove {}: {}", package.id, error);
+                    }
+                }
+            });
+        }
+    });
+}
+
 fn mods_tab(ui: &mut egui::Ui, page: &mut ModsPage, status: &Status) {
+    pc_packages_tab(ui);
     let held = glue5_mods::held_back();
     if !held.is_empty() {
         small(
