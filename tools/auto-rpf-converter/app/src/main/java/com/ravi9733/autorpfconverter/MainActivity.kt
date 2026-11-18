@@ -47,7 +47,7 @@ class MainActivity : Activity() {
         ))
 
         val subtitle = TextView(this).apply {
-            text = "Android converter 0.3.5 • direct RPF7 conversion + DLC audit"
+            text = "Android converter 0.3.6 • direct RPF7 conversion + DLC audit"
             textSize = 13f
             setTextColor(0xFFB9C6B5.toInt())
             gravity = Gravity.CENTER
@@ -915,7 +915,7 @@ class MainActivity : Activity() {
 
         rows.sort()
         return buildString {
-            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.3.5")
+            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.3.6")
             appendLine("RPF files found: ${rows.size}")
             appendLine("GTA V RPF7 archives: $gtaVArchives")
             appendLine("OPEN archives: $openArchives")
