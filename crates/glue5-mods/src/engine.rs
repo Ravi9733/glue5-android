@@ -33,6 +33,7 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.packfile_add_all_rpf_files = Some(packfile_add_all_rpf_files);
     h.packfile_get_streaming_module = Some(packfile_get_streaming_module);
     h.packfile_register_individual_file = Some(packfile_register_individual_file);
+    h.stream_request_object = Some(stream_request_object);
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
 }
@@ -101,6 +102,22 @@ unsafe extern "C" fn packfile_get_streaming_module(env: *mut Env) -> u64 {
             &format!("strPackfileManager::GetStreamingModule module=0x{module:x}"));
     }
     module
+}
+
+/// Observe streaming object requests so vehicle model requests can be correlated with registration.
+unsafe extern "C" fn stream_request_object(
+    env: *mut Env,
+    local_index: u32,
+    flags: u32,
+    priority: u32,
+) -> u32 {
+    let result = unsafe {
+        orig::stream_request_object(env, local_index, flags, priority)
+    };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CStreaming::RequestObject index={} flags={} priority={} result={}",
+            local_index, flags, priority, result));
+    result
 }
 
 /// Observe individual-file streaming registrations; forward every argument unchanged.
