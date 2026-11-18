@@ -32,13 +32,13 @@ pub(crate) fn hooks(h: &mut Hooks) {
 
 /// Observe the real game's RPF load path without changing its behavior.
 /// The exact symbol names and ABIs are resolved from the pinned game.wasm.
-unsafe extern "C" fn packfile_load_rpf(env: *mut Env, manager: u64, path: u64, index: u32) {
+unsafe extern "C" fn packfile_load_rpf(env: *mut Env, path: u64, index: u32) {
     let name = unsafe { Mem::of(env).str(path) };
     if name.to_ascii_lowercase().ends_with(".rpf") {
         log_line("vehicle-loader", LogLevel::Info,
-            &format!("LoadRpf manager=0x{manager:x} index={index} path={name}"));
+            &format!("LoadRpf index={index} path={name}"));
     }
-    unsafe { orig::packfile_load_rpf(env, manager, path, index) };
+    unsafe { orig::packfile_load_rpf(env, path, index) };
 }
 
 /// Observe packfile initialization (including encryption/cache mode), then forward unchanged.
