@@ -30,6 +30,8 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.packfile_init = Some(packfile_init);
     h.packfile_mount_as = Some(packfile_mount_as);
     h.datafile_add_rpf = Some(datafile_add_rpf);
+    h.packfile_add_all_rpf_files = Some(packfile_add_all_rpf_files);
+    h.packfile_get_streaming_module = Some(packfile_get_streaming_module);
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
 }
@@ -80,6 +82,24 @@ unsafe extern "C" fn datafile_add_rpf(env: *mut Env, data_file: u64, load: u32) 
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CFileLoader::AddRpfFile data_file=0x{data_file:x} load={} result={result}", load != 0));
     result
+}
+
+/// Observe the game's bulk RPF registration phase without changing it.
+unsafe extern "C" fn packfile_add_all_rpf_files(env: *mut Env, load: u32) {
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CFileLoader::AddAllRpfFiles begin load={}", load != 0));
+    unsafe { orig::packfile_add_all_rpf_files(env, load) };
+    log_line("vehicle-loader", LogLevel::Info, "CFileLoader::AddAllRpfFiles complete");
+}
+
+/// Capture the engine-owned streaming module pointer for later ABI/layout research.
+unsafe extern "C" fn packfile_get_streaming_module(env: *mut Env) -> u64 {
+    let module = unsafe { orig::packfile_get_streaming_module(env) };
+    if module != 0 {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("strPackfileManager::GetStreamingModule module=0x{module:x}"));
+    }
+    module
 }
 
 /// Observe device mount/unmount calls without taking ownership of engine devices.
