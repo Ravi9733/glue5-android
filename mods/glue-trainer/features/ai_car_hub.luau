@@ -60,9 +60,64 @@ function M.build(root: Menu)
 			return "Showing matches for " .. term
 		end)
 	end
-	menu:separator("Online downloads")
-	menu:label("Coming next: connect the verified HTTPS catalog and Download → Verify → Install flow.")
-	menu:label("Add-on cars will appear here only after the native RPF/DLC loader is implemented and tested.")
+	menu:separator("Online vehicle catalog")
+	local online = menu:submenu("Browse online cars", "Fetch the curated HTTPS catalog maintained for Glue 5")
+	local onlineStatus = online:label("Catalog not fetched yet.")
+	local onlineResults = online:submenu("Catalog vehicles", "Packages published in the Glue 5 catalog")
+	bind.action(online, "Refresh online catalog", {
+		note = "Downloads a small HTTPS JSON catalog; no game files are changed",
+		action = "Refresh",
+	}, function(): string?
+		local requested, requestError = pcall(function()
+			world.requestVehicleCatalog()
+		end)
+		if not requested then return "Catalog request unavailable: " .. tostring(requestError) end
+		onlineStatus:set("Connecting securely to Glue 5 catalog…")
+		task.spawn(function()
+			for _ = 1, 80 do
+				wait(250)
+				local statusOk, done, succeeded, message = pcall(function()
+					return world.vehicleCatalogStatus()
+				end)
+				if statusOk and done then
+					if not succeeded then
+						onlineStatus:set("Catalog error: " .. tostring(message))
+						return
+					end
+					local raw = world.vehicleCatalogJson()
+					if not raw then
+						onlineStatus:set("Catalog fetched, but cached data is missing.")
+						return
+					end
+					local parsedOk, parsed = pcall(function() return json.decode(raw) end)
+					if not parsedOk or type(parsed) ~= "table" or type(parsed.vehicles) ~= "table" then
+						onlineStatus:set("Catalog rejected: invalid JSON structure.")
+						return
+					end
+					onlineResults:clear()
+					local count = 0
+					for _, entry in parsed.vehicles do
+						if type(entry) == "table" and type(entry.name) == "string"
+							and type(entry.id) == "string" and type(entry.author) == "string" then
+							count += 1
+							onlineResults:label(entry.name .. " | by " .. entry.author
+								.. " | v" .. tostring(entry.version or "?")
+								.. " | " .. tostring(entry.format or "unknown"))
+						end
+					end
+					onlineStatus:set("Catalog updated: " .. tostring(count) .. " package(s) listed.")
+					if count == 0 then
+						onlineResults:label("No vehicle packages have been published yet. The secure catalog connection is ready.")
+					end
+					return
+				end
+			end
+			onlineStatus:set("Catalog request timed out. Check internet access and try again.")
+		end)
+		return "Secure catalog request started"
+	end)
+	online:label("Downloads are not enabled yet. Each package must be streamed, SHA-256 verified, safely extracted and checked before installation.")
+	online:label("Add-on RPF/DLC vehicles remain non-spawnable until native runtime mounting is implemented and verified.")
 end
 
 return M
