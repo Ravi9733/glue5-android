@@ -216,9 +216,7 @@ fn pc_packages_tab(ui: &mut egui::Ui) {
                 .collect::<String>()
                 .split('-').filter(|v| !v.is_empty()).collect::<Vec<_>>().join("-");
             let id = if id.is_empty() { "pc-mod".to_owned() } else { id.chars().take(40).collect() };
-            let result = std::fs::read(&archive_path)
-                .map_err(|e| e.to_string())
-                .and_then(|bytes| glue5_mods::pc_import::import_zip(root, &id, &bytes));
+            let result = glue5_mods::pc_import::import_zip_file(root, &id, &archive_path);
             match result {
                 Ok(report) => log::info!("PC mod {} imported: {} files, {} RPF, {} Windows plugins (stored only)", report.id, report.files, report.rpf_archives, report.windows_plugins),
                 Err(error) => log::warn!("PC mod import failed: {error}"),
