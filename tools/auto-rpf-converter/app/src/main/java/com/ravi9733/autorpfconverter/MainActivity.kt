@@ -232,8 +232,8 @@ class MainActivity : Activity() {
 
         output.text = "Reading setup2.xml and its declared content metadata. The source DLC archive will not be changed."
         worker.execute {
+            val work = java.io.File(cacheDir, "dlc-metadata-work")
             val report = try {
-                val work = java.io.File(cacheDir, "dlc-metadata-work")
                 work.deleteRecursively()
                 check(work.mkdirs()) { "Cannot create temporary DLC inspection folder" }
                 val source = java.io.File(work, "dlc.rpf")
@@ -241,6 +241,8 @@ class MainActivity : Activity() {
                 NativeAssets.inspectDlcPackMetadata(source.absolutePath, rpfKeyDirectory.absolutePath)
             } catch (e: Throwable) {
                 "DLC metadata validation failed: " + (e.message ?: e.javaClass.simpleName)
+            } finally {
+                work.deleteRecursively()
             }
             runOnUiThread {
                 latestReport = report
@@ -259,6 +261,7 @@ class MainActivity : Activity() {
         output.text = "Reading update.rpf/dlclist.xml and checking registered DLC packs. This is read-only."
         worker.execute {
             val report = StringBuilder()
+            val work = java.io.File(cacheDir, "dlc-load-order-work")
             var registered = 0
             var validated = 0
             var missing = 0
@@ -278,7 +281,6 @@ class MainActivity : Activity() {
                 check(updateDocument.isFile) { "Selected update.rpf path is not a file" }
                 val updatePathLabel = if (modsUpdate != null) "mods/update/update.rpf" else "update/update.rpf"
 
-                val work = java.io.File(cacheDir, "dlc-load-order-work")
                 work.deleteRecursively()
                 check(work.mkdirs()) { "Cannot create DLC audit work folder" }
                 val updateCopy = java.io.File(work, "update.rpf")
@@ -437,6 +439,8 @@ class MainActivity : Activity() {
             } catch (e: Throwable) {
                 report.appendLine("DLC load-order audit failed: " + (e.message ?: e.javaClass.simpleName))
                 report.appendLine("Source game files were not modified.")
+            } finally {
+                work.deleteRecursively()
             }
             runOnUiThread {
                 latestReport = report.toString()
