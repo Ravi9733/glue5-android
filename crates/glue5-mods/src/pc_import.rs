@@ -4,7 +4,7 @@
 //! does not mount RPF/DLC archives or execute PE/ASI binaries: those require
 //! a game VFS integration and a compatible plugin ABI, respectively.
 
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::path::{Component, Path, PathBuf};
 
 const MAX_ENTRIES: usize = 20_000;
@@ -58,6 +58,17 @@ fn safe_relative(name: &str) -> Result<PathBuf, String> {
 /// Extract a user-selected ZIP into an isolated folder under the existing
 /// mods directory. Nothing is written to game/data or the user's saves.
 pub fn import_zip(mods_root: &Path, id: &str, archive: &[u8]) -> Result<ImportReport, String> {
+    import_zip_reader(mods_root, id, std::io::Cursor::new(archive))
+}
+
+/// Import from a seekable file so Android does not need to keep a 100+ MiB
+/// compressed archive in memory alongside the expanded package.
+pub fn import_zip_file(mods_root: &Path, id: &str, archive_path: &Path) -> Result<ImportReport, String> {
+    let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
+    import_zip_reader(mods_root, id, file)
+}
+
+fn import_zip_reader<R: Read + Seek>(mods_root: &Path, id: &str, archive: R) -> Result<ImportReport, String> {
     if !valid_id(id) {
         return Err("mod ID must use lowercase letters, digits, '-' or '_' (max 48)".into());
     }
@@ -74,8 +85,7 @@ pub fn import_zip(mods_root: &Path, id: &str, archive: &[u8]) -> Result<ImportRe
     std::fs::create_dir(&staging).map_err(|e| e.to_string())?;
 
     let result = (|| {
-        let cursor = std::io::Cursor::new(archive);
-        let mut zip = zip::ZipArchive::new(cursor).map_err(|e| format!("invalid ZIP: {e}"))?;
+        let mut zip = zip::ZipArchive::new(archive).map_err(|e| format!("invalid ZIP: {e}"))?;
         if zip.len() > MAX_ENTRIES {
             return Err(format!("ZIP has too many entries (limit {MAX_ENTRIES})"));
         }
