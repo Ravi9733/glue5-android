@@ -35,6 +35,7 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.packfile_register_individual_file = Some(packfile_register_individual_file);
     h.stream_request_object = Some(stream_request_object);
     h.stream_index_by_filename = Some(stream_index_by_filename);
+    h.model_get_base_info = Some(model_get_base_info);
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
 }
@@ -103,6 +104,16 @@ unsafe extern "C" fn packfile_get_streaming_module(env: *mut Env) -> u64 {
             &format!("strPackfileManager::GetStreamingModule module=0x{module:x}"));
     }
     module
+}
+
+/// Observe model-info resolution for requested vehicle models; never alter the lookup.
+unsafe extern "C" fn model_get_base_info(env: *mut Env, model_id: u64) -> u64 {
+    let result = unsafe { orig::model_get_base_info(env, model_id) };
+    if result != 0 {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("CModelInfo::GetBaseModelInfo model_id=0x{model_id:x} model_info=0x{result:x}"));
+    }
+    result
 }
 
 /// Observe model-file lookup and its streaming index; forward unchanged.
