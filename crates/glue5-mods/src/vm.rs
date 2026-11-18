@@ -97,6 +97,46 @@ impl Vm {
                 Ok(())
             })?,
         )?;
+        let vehicle_app_files = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from);
+        world.set(
+            "requestVehicleCatalog",
+            lua.create_function(move |_, ()| {
+                let app_files = vehicle_app_files.as_ref()
+                    .ok_or_else(|| mlua::Error::runtime("Android catalog service is unavailable on this platform"))?;
+                std::fs::create_dir_all(app_files)
+                    .map_err(|e| mlua::Error::runtime(format!("cannot access app files: {e}")))?;
+                let _ = std::fs::remove_file(app_files.join("vehicle-catalog-status.json"));
+                std::fs::write(app_files.join("vehicle-catalog-fetch-request"), b"fetch")
+                    .map_err(|e| mlua::Error::runtime(format!("cannot request vehicle catalog: {e}")))?;
+                Ok(())
+            })?,
+        )?;
+        let vehicle_status_dir = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from);
+        world.set(
+            "vehicleCatalogStatus",
+            lua.create_function(move |_, ()| {
+                let Some(dir) = &vehicle_status_dir else { return Ok((false, false, "Catalog service unavailable".to_string())); };
+                let path = dir.join("vehicle-catalog-status.json");
+                let Ok(text) = std::fs::read_to_string(path) else { return Ok((false, false, "pending".to_string())); };
+                let value: serde_json::Value = serde_json::from_str(&text)
+                    .map_err(|e| mlua::Error::runtime(format!("invalid catalog status: {e}")))?;
+                let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                let message = value.get("message").and_then(|v| v.as_str()).unwrap_or("Catalog request finished").to_string();
+                Ok((true, ok, message))
+            })?,
+        )?;
+        let vehicle_catalog_dir = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from);
+        world.set(
+            "vehicleCatalogJson",
+            lua.create_function(move |_, ()| {
+                let Some(dir) = &vehicle_catalog_dir else { return Ok(None::<String>); };
+                match std::fs::read_to_string(dir.join("vehicle-catalog.json")) {
+                    Ok(text) if text.len() <= 2 * 1024 * 1024 => Ok(Some(text)),
+                    Ok(_) => Err(mlua::Error::runtime("cached vehicle catalog exceeds 2 MiB")),
+                    Err(_) => Ok(None),
+                }
+            })?,
+        )?;
         let placement_dir = dir.to_path_buf();
         let map_dir = placement_dir.join("maps");
         let import_dir = map_dir.clone();
