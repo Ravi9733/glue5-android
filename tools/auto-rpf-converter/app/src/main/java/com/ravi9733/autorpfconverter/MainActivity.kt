@@ -246,7 +246,7 @@ class MainActivity : Activity() {
             } catch (e: Throwable) {
                 "DLC metadata validation failed: " + (e.message ?: e.javaClass.simpleName)
             } finally {
-                work.deleteRecursively()
+                TemporaryWorkspacePolicy.clean(work)
             }
             runOnUiThread {
                 latestReport = report
@@ -487,7 +487,7 @@ class MainActivity : Activity() {
             var totalBytes = 0L
             val work = java.io.File(cacheDir, "bulk-rpf-work")
             try {
-                work.deleteRecursively()
+                TemporaryWorkspacePolicy.prepare(work)
                 check(sourceRoot != null && destination != null) { "Cannot open selected folders" }
                 val archives = mutableListOf<Pair<DocumentFile, String>>()
                 val stack = ArrayDeque<Pair<DocumentFile, String>>()
@@ -533,8 +533,7 @@ class MainActivity : Activity() {
                             report.appendLine("SKIP " + name + " — archive exceeds the 4 GiB input limit")
                             continue
                         }
-                        work.deleteRecursively()
-                        check(work.mkdirs()) { "Cannot create temporary folder" }
+                        TemporaryWorkspacePolicy.prepare(work)
                         val safeName = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
                         check(name.isNotBlank() && !name.contains('/')) { "Unsafe source archive filename" }
                         // Keep the real basename: NG decryption selects a key from filename + size.
@@ -576,7 +575,7 @@ class MainActivity : Activity() {
             } catch (e: Throwable) {
                 report.appendLine("Bulk operation stopped: " + (e.message ?: e.javaClass.simpleName))
             } finally {
-                work.deleteRecursively()
+                TemporaryWorkspacePolicy.clean(work)
             }
             runOnUiThread { latestReport = report.toString(); output.text = latestReport }
         }
