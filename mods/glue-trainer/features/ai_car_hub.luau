@@ -16,7 +16,7 @@ end
 function M.build(root: Menu)
 	local menu = root:submenu("AI Car Hub", "Search, discover and deliver cars")
 	menu:label("Smart search works offline with cars already registered in GTA V.")
-	menu:label("Online packages can be downloaded and SHA-256 verified. Native add-on spawning is still under development.")
+	menu:label("Online packages can be downloaded, SHA-256 verified and safely extracted. Native add-on spawning is still under development.")
 	local query = menu:text("Search cars", "", { placeholder = "e.g. Mazda, Ferrari, drift, adder", max = 48 })
 	local results = menu:submenu("Search results", "Cars currently available in loaded game data")
 	results:label("Enter a name or model, then choose Search.")
@@ -113,6 +113,30 @@ function M.build(root: Menu)
 								local queued, queueError = pcall(function()
 									world.requestVehiclePackageDownload(packageId)
 								end)
+							bind.action(row, "Install downloaded package", {
+								note = "Re-checks SHA-256, safely extracts ZIP and inspects GTA vehicle assets",
+								action = "Install",
+							}, function(): string?
+								local queued, queueError = pcall(function()
+									world.requestVehiclePackageInstall(packageId)
+								end)
+								if not queued then return "Cannot install package: " .. tostring(queueError) end
+								onlineStatus:set("Safely installing " .. packageName .. "…")
+								task.spawn(function()
+									for _ = 1, 600 do
+										wait(500)
+										local statusOk, done, succeeded, message = pcall(function()
+											return world.vehiclePackageInstallStatus()
+										end)
+										if statusOk and done then
+											onlineStatus:set(tostring(message))
+											return
+										end
+									end
+									onlineStatus:set("Install is still running. Check the package status again shortly.")
+								end)
+								return "Install started for " .. packageName
+							end)
 								if not queued then return "Cannot start download: " .. tostring(queueError) end
 								onlineStatus:set("Downloading " .. packageName .. "…")
 								task.spawn(function()
@@ -144,7 +168,7 @@ function M.build(root: Menu)
 		end)
 		return "Secure catalog request started"
 	end)
-	online:label("Downloads are streamed and SHA-256 verified into private app storage. Safe extraction and installation are the next step.")
+	online:label("Downloads are streamed and SHA-256 verified into private app storage. Install safely extracts and inspects the package; it does not yet mount add-on DLC into the game.")
 	online:label("Add-on RPF/DLC vehicles remain non-spawnable until native runtime mounting is implemented and verified.")
 end
 
