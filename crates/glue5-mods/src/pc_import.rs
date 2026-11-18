@@ -207,3 +207,63 @@ mod tests {
         let _ = std::fs::remove_dir_all(temp);
     }
 }
+
+
+/// A safely extracted PC package. Extraction alone does not make its files
+/// active in the game: archive/VFS integration is a separate capability.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstalledPcMod {
+    pub id: String,
+    pub files: usize,
+    pub bytes: u64,
+    pub rpf_archives: usize,
+    pub windows_plugins: usize,
+}
+
+/// List only importer-owned package directories with valid metadata.
+pub fn installed(mods_root: &Path) -> Vec<InstalledPcMod> {
+    let root = mods_root.join("pc");
+    let Ok(entries) = std::fs::read_dir(root) else { return Vec::new() };
+    let mut result = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() { continue; }
+        let id = entry.file_name().to_string_lossy().into_owned();
+        if !valid_id(&id) { continue; }
+        let Ok(text) = std::fs::read_to_string(path.join("glue5-pc-mod.json")) else { continue };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else { continue };
+        if value["id"].as_str() != Some(id.as_str()) || value["source"].as_str() != Some("pc-zip") {
+            continue;
+        }
+        result.push(InstalledPcMod {
+            id,
+            files: value["files"].as_u64().unwrap_or(0) as usize,
+            bytes: value["expanded_bytes"].as_u64().unwrap_or(0),
+            rpf_archives: value["rpf_archives"].as_u64().unwrap_or(0) as usize,
+            windows_plugins: value["windows_plugins"].as_u64().unwrap_or(0) as usize,
+        });
+    }
+    result.sort_by(|a, b| a.id.cmp(&b.id));
+    result
+}
+
+/// Remove exactly one importer-owned package. Original game files, saves and
+/// Lua mod folders are outside this path and are never traversed.
+pub fn remove(mods_root: &Path, id: &str) -> Result<(), String> {
+    if !valid_id(id) { return Err("invalid PC mod ID".into()); }
+    let root = mods_root.join("pc");
+    let target = root.join(id);
+    let metadata = target.join("glue5-pc-mod.json");
+    let text = std::fs::read_to_string(&metadata)
+        .map_err(|_| format!("PC mod '{id}' is not an installed importer package"))?;
+    let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    if value["id"].as_str() != Some(id) || value["source"].as_str() != Some("pc-zip") {
+        return Err("refusing to remove a folder not created by the PC ZIP importer".into());
+    }
+    let canonical_root = root.canonicalize().map_err(|e| e.to_string())?;
+    let canonical_target = target.canonicalize().map_err(|e| e.to_string())?;
+    if canonical_target.parent() != Some(canonical_root.as_path()) {
+        return Err("PC mod folder is outside the managed package directory".into());
+    }
+    std::fs::remove_dir_all(canonical_target).map_err(|e| e.to_string())
+}
