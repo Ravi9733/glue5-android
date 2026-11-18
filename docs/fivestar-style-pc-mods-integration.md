@@ -27,9 +27,9 @@ The reference app's documented PC-mod workflow accepts archives/loose files, unp
 6. Preserve existing Luau mods and Studio data; never delete or rewrite user game saves.
 
 ### Phase 2 — archive and asset integration
-1. Inspect the current game's VFS/archive layer and define a read-only overlay/priority model for replacement files.
-2. Add DLC pack discovery and pack-list integration only after confirming the game's archive loader can mount external RPFs.
-3. Add OpenIV OIV parsing as a declarative install plan; reject executable installers and unsupported operations.
+1. Connect the existing same-size loose-file overlay to the PC mod manager, with per-package enable/disable and rollback. The existing runtime already has an Android graphics overlay path and an RPF7/OpenIV archive rewrite module; these need to be unified with the PC package lifecycle.
+2. Add DLC pack discovery and pack-list integration only after confirming the engine's runtime archive loader can mount external RPFs. A parser for GTA V dlclist/setup2 ordering exists, but that alone does not mount packs.
+3. Reuse the existing Android JNI bridge and RPF7 OpenIV archive rewrite implementation for OIV operations, but wire its output into the per-mod overlay and test against real game archives; reject unsupported operations.
 4. Support loose replacement assets/data only where the runtime has a verified path mapping. Show ambiguous mappings as skipped, not guessed.
 5. Add rollback/uninstall by removing only that mod's overlay directory and metadata.
 
@@ -46,5 +46,14 @@ The reference app's documented PC-mod workflow accepts archives/loose files, unp
 - Do not silently claim that a DLC/RPF or ASI mod works merely because it imported.
 - Every format must show a compatibility status: supported, partial, unsupported, or needs runtime work.
 
-## Current implementation status
-This document records the confirmed scope and engineering plan only. The APK installer has not yet been ported, no PC mod installer UI has been added in this commit, and no APK has been built or tested. The next code target is Phase 1's safe ZIP import + preview + isolated per-mod enable/disable manager.
+## Current implementation status (2026-11-18)
+- Inspected the supplied Five Star Port Android APK and recorded binary-level findings in `docs/fivestar-apk-reverse-engineering.md`. The APK is a compiled ARM64 app, not a reusable source tree.
+- Added Android document-picker flow for a PC mod ZIP. The selected archive is copied to app-private staging (512 MiB compressed-file cap), then handed to the Rust importer.
+- The ZIP importer rejects traversal/absolute paths, symlinks, excessive entries and expanded sizes, and extracts to `mods/pc/<id>/` with a machine-readable manifest.
+- Added a package list and safe remove operation to Glue 5's Mods page. This package panel remains visible even when the Luau mods switch is off.
+- Existing Glue 5 code already has a same-size loose-file overlay, an Android JNI OIV entry point, RPF7 nested archive rewrite support, and DLC list/setup-order parsers. These are useful foundations but are not yet connected to the PC package lifecycle.
+- Import currently means **safe storage**, not that the mod is active in-game. The UI explicitly labels this. RPF/DLC mounting, actual replacement preview/install/rollback, RAR support and compatible ASI execution remain incomplete.
+- No APK has been built or device-tested from these commits. GitHub Actions status has not reported a build run for these direct branch commits.
+- Existing game data, original archives and saves are not modified by the ZIP import/remove path.
+
+The next implementation target is to connect the existing RPF7/OIV and loose-file overlay code to isolated per-mod activation and rollback, then add add-on DLC loading only where the engine's archive loader can actually mount the pack.
