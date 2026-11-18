@@ -35,13 +35,15 @@ import org.w3c.dom.NodeList;
 public class Glue5Activity extends SDLActivity {
     private static final int REQUEST_TURNIP_ZIP = 47112;
     private static final int REQUEST_GRAPHICS_ARCHIVE = 47113;
-    private static final int REQUEST_RESHADE_ARCHIVE = 47114;\n    private static final int REQUEST_PC_MOD_ZIP = 47115;
+    private static final int REQUEST_RESHADE_ARCHIVE = 47114;
+    private static final int REQUEST_PC_MOD_ZIP = 47115;
     private static native String applyOivArchiveNative(String archivePath, String archiveXml,
             String contentRoot, String outputPath, String keysDir);
     private final Handler turnipHandler = new Handler(Looper.getMainLooper());
     private boolean turnipPickerOpen = false;
     private boolean graphicsPickerOpen = false;
-    private boolean reshadePickerOpen = false;\n    private boolean pcModPickerOpen = false;
+    private boolean reshadePickerOpen = false;
+    private boolean pcModPickerOpen = false;
     private final Runnable turnipImportWatcher = new Runnable() {
         @Override public void run() { checkTurnipImportRequest(); }
     };
@@ -898,21 +900,35 @@ public class Glue5Activity extends SDLActivity {
 
         try {
             File info = new File(staging, "GLUE5_IMPORT_INFO.txt");
-            String note = "Graphics package import report\n"
-                    + "Archive: " + displayName + "\n"
-                    + "Loose-file and edited/whole-file RPF replacements installed: " + installed + "\n"
-                    + "RPF archives edited or replaced: " + installedRpf + "\n"
-                    + "Nested RPF archive operations not applied or unsupported: " + skippedArchive + "\n"
-                    + (archiveWarnings.isEmpty() ? "" : "RPF warnings: " + android.text.TextUtils.join(" | ", archiveWarnings) + "\n")
-                    + "RPF archive targets declared by package: " + archiveTargets.size() + "\n"
-                    + (archiveTargets.isEmpty() ? "" : "Archive targets: " + android.text.TextUtils.join(", ", archiveTargets) + "\n")
-                    + "RPF editor: GTA V RPF7 Open/None/AES; nested Add/Delete and YSC resource replacement supported; 512 MiB per archive. NG/TFIT encryption unsupported.\n"
-                    + "Optional AES key file: " + new File(getFilesDir(), "rpf-keys/gtav_aes_key.dat").getAbsolutePath() + "\n"
-                    + "Unsupported, missing, or size-mismatched entries: " + skippedUnsupported + "\n"
+            String note = "Graphics package import report
+"
+                    + "Archive: " + displayName + "
+"
+                    + "Loose-file and edited/whole-file RPF replacements installed: " + installed + "
+"
+                    + "RPF archives edited or replaced: " + installedRpf + "
+"
+                    + "Nested RPF archive operations not applied or unsupported: " + skippedArchive + "
+"
+                    + (archiveWarnings.isEmpty() ? "" : "RPF warnings: " + android.text.TextUtils.join(" | ", archiveWarnings) + "
+")
+                    + "RPF archive targets declared by package: " + archiveTargets.size() + "
+"
+                    + (archiveTargets.isEmpty() ? "" : "Archive targets: " + android.text.TextUtils.join(", ", archiveTargets) + "
+")
+                    + "RPF editor: GTA V RPF7 Open/None/AES; nested Add/Delete and YSC resource replacement supported; 512 MiB per archive. NG/TFIT encryption unsupported.
+"
+                    + "Optional AES key file: " + new File(getFilesDir(), "rpf-keys/gtav_aes_key.dat").getAbsolutePath() + "
+"
+                    + "Unsupported, missing, or size-mismatched entries: " + skippedUnsupported + "
+"
                     + (installed == 0
-                        ? "STATUS: Package extracted, but no game files were activated. This archive may contain only RPF edits or unsupported entries.\n"
-                        : "STATUS: Supported loose files and rebuilt RPF archives are active through Glue 5's VFS overlay.\n")
-                    + "Original GTA V game/data files were not modified.\n";
+                        ? "STATUS: Package extracted, but no game files were activated. This archive may contain only RPF edits or unsupported entries.
+"
+                        : "STATUS: Supported loose files and rebuilt RPF archives are active through Glue 5's VFS overlay.
+")
+                    + "Original GTA V game/data files were not modified.
+";
             try (FileOutputStream output = new FileOutputStream(info)) {
                 output.write(note.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
