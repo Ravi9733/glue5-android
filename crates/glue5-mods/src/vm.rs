@@ -137,6 +137,49 @@ impl Vm {
                 }
             })?,
         )?;
+        let vehicle_package_request_dir = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from);
+        world.set(
+            "requestVehiclePackageDownload",
+            lua.create_function(move |_, id: String| {
+                let app_files = vehicle_package_request_dir.as_ref()
+                    .ok_or_else(|| mlua::Error::runtime("Android package downloader is unavailable on this platform"))?;
+                let catalog_path = app_files.join("vehicle-catalog.json");
+                let catalog_bytes = std::fs::read(&catalog_path)
+                    .map_err(|e| mlua::Error::runtime(format!("refresh the online catalog first: {e}")))?;
+                let catalog = crate::vehicle_hub::Catalog::parse(&catalog_bytes)
+                    .map_err(|e| mlua::Error::runtime(format!("catalog validation failed: {e}")))?;
+                let package = catalog.vehicles.iter().find(|p| p.id == id)
+                    .ok_or_else(|| mlua::Error::runtime("vehicle package is not in the validated catalog"))?;
+                let request = serde_json::json!({
+                    "id": package.id,
+                    "download_url": package.download_url,
+                    "sha256": package.sha256,
+                    "size_bytes": package.size_bytes
+                });
+                std::fs::create_dir_all(app_files)
+                    .map_err(|e| mlua::Error::runtime(format!("cannot access app files: {e}")))?;
+                std::fs::write(app_files.join("vehicle-package-status.json"), br#"{"state":"pending","message":"Waiting for downloader"}"#)
+                    .map_err(|e| mlua::Error::runtime(format!("cannot reset download status: {e}")))?;
+                std::fs::write(app_files.join("vehicle-package-download-request"), request.to_string())
+                    .map_err(|e| mlua::Error::runtime(format!("cannot queue package download: {e}")))?;
+                Ok(())
+            })?,
+        )?;
+        let package_status_dir = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from);
+        world.set(
+            "vehiclePackageDownloadStatus",
+            lua.create_function(move |_, ()| {
+                let Some(dir) = &package_status_dir else { return Ok((false, "Downloader unavailable".to_string())); };
+                let path = dir.join("vehicle-package-status.json");
+                let Ok(text) = std::fs::read_to_string(path) else { return Ok((false, "pending".to_string())); };
+                let value: serde_json::Value = serde_json::from_str(&text)
+                    .map_err(|e| mlua::Error::runtime(format!("invalid package status: {e}")))?;
+                let done = value.get("state").and_then(|v| v.as_str()) == Some("complete")
+                    || value.get("state").and_then(|v| v.as_str()) == Some("error");
+                let message = value.get("message").and_then(|v| v.as_str()).unwrap_or("Downloading").to_string();
+                Ok((done, message))
+            })?,
+        )?;
         let placement_dir = dir.to_path_buf();
         let map_dir = placement_dir.join("maps");
         let import_dir = map_dir.clone();
