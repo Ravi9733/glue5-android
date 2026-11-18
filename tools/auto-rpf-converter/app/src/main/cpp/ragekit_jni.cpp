@@ -145,3 +145,28 @@ Java_com_ravi9733_autorpconverter_NativeAssets_inspectDlcPackMetadata(
     env->ReleaseStringUTFChars(key_directory, key_chars);
     return env->NewStringUTF(report.c_str());
 }
+
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ravi9733_autorpconverter_NativeAssets_readDlcListEntries(
+    JNIEnv* env, jclass, jstring update_rpf_path, jstring key_directory) {
+    const char* update_chars = env->GetStringUTFChars(update_rpf_path, nullptr);
+    if (update_chars == nullptr) return nullptr;
+    const char* key_chars = env->GetStringUTFChars(key_directory, nullptr);
+    if (key_chars == nullptr) {
+        env->ReleaseStringUTFChars(update_rpf_path, update_chars);
+        return nullptr;
+    }
+
+    std::string report;
+    try {
+        report = gta_asset_converter::read_dlc_list_entries(update_chars, key_chars);
+    } catch (const std::exception& error) {
+        report = std::string("DLC list read failed: ") + error.what();
+    } catch (...) {
+        report = "DLC list read failed: unknown native error";
+    }
+    env->ReleaseStringUTFChars(update_rpf_path, update_chars);
+    env->ReleaseStringUTFChars(key_directory, key_chars);
+    return env->NewStringUTF(report.c_str());
+}
