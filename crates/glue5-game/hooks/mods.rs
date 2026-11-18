@@ -17,4 +17,7 @@
         "script_start_program",
         "CTheScripts::GtaStartNewThreadWithProgramId(rage::scrProgramId, void const*, int, int, char const*)",
     ),
+    // Passive probes for the game's actual RPF loading path. These only log and forward.
+    ("packfile_load_rpf", "rage::strPackfileManager::LoadRpf(char const*, int)"),
+    ("packfile_init", "rage::fiPackfile::Init(char const*, bool, rage::fiPackfile::CacheMode, char*)"),
 ]
