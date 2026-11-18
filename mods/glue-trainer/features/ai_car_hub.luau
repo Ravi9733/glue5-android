@@ -16,7 +16,7 @@ end
 function M.build(root: Menu)
 	local menu = root:submenu("AI Car Hub", "Search, discover and deliver cars")
 	menu:label("Smart search works offline with cars already registered in GTA V.")
-	menu:label("Online car downloads and add-on DLC spawning are not connected yet.")
+	menu:label("Online packages can be downloaded and SHA-256 verified. Native add-on spawning is still under development.")
 	local query = menu:text("Search cars", "", { placeholder = "e.g. Mazda, Ferrari, drift, adder", max = 48 })
 	local results = menu:submenu("Search results", "Cars currently available in loaded game data")
 	results:label("Enter a name or model, then choose Search.")
@@ -100,9 +100,37 @@ function M.build(root: Menu)
 						if type(entry) == "table" and type(entry.name) == "string"
 							and type(entry.id) == "string" and type(entry.author) == "string" then
 							count += 1
-							onlineResults:label(entry.name .. " | by " .. entry.author
-								.. " | v" .. tostring(entry.version or "?")
-								.. " | " .. tostring(entry.format or "unknown"))
+							local packageName = entry.name
+							local packageId = entry.id
+							local packageFormat = tostring(entry.format or "unknown")
+							local row = onlineResults:submenu(packageName, "by " .. entry.author .. " | v"
+								.. tostring(entry.version or "?") .. " | " .. packageFormat)
+							row:label("Package size: " .. tostring(entry.size_bytes or "unknown") .. " bytes")
+							bind.action(row, "Download and verify", {
+								note = "Streams package to private app storage and checks SHA-256",
+								action = "Download",
+							}, function(): string?
+								local queued, queueError = pcall(function()
+									world.requestVehiclePackageDownload(packageId)
+								end)
+								if not queued then return "Cannot start download: " .. tostring(queueError) end
+								onlineStatus:set("Downloading " .. packageName .. "…")
+								task.spawn(function()
+									for _ = 1, 600 do
+										wait(500)
+										local statusOk, done, message = pcall(function()
+											return world.vehiclePackageDownloadStatus()
+										end)
+										if statusOk and done then
+											onlineStatus:set(tostring(message))
+											return
+										end
+									end
+									onlineStatus:set("Download is still running. Check Installed/Downloads later.")
+								end)
+								return "Download started for " .. packageName
+							end)
+
 						end
 					end
 					onlineStatus:set("Catalog updated: " .. tostring(count) .. " package(s) listed.")
@@ -116,7 +144,7 @@ function M.build(root: Menu)
 		end)
 		return "Secure catalog request started"
 	end)
-	online:label("Downloads are not enabled yet. Each package must be streamed, SHA-256 verified, safely extracted and checked before installation.")
+	online:label("Downloads are streamed and SHA-256 verified into private app storage. Safe extraction and installation are the next step.")
 	online:label("Add-on RPF/DLC vehicles remain non-spawnable until native runtime mounting is implemented and verified.")
 end
 
