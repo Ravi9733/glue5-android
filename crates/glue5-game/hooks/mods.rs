@@ -20,4 +20,8 @@
     // Passive probes for the game's actual RPF loading path. These only log and forward.
     ("packfile_load_rpf", "rage::strPackfileManager::LoadRpf(char const*, int)"),
     ("packfile_init", "rage::fiPackfile::Init(char const*, bool, rage::fiPackfile::CacheMode, char*)"),
+    ("packfile_mount_as", "rage::fiPackfile::MountAs(char const*)"),
+    ("datafile_add_rpf", "CFileLoader::AddRpfFile(CDataFileMgr::DataFile const*, bool)"),
+    ("device_mount", "rage::fiDevice::Mount(char const*, rage::fiDevice const&, bool)"),
+    ("device_unmount", "rage::fiDevice::Unmount(char const*)"),
 ]

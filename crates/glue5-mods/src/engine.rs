@@ -28,6 +28,10 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.script_wait = Some(script_wait);
     h.packfile_load_rpf = Some(packfile_load_rpf);
     h.packfile_init = Some(packfile_init);
+    h.packfile_mount_as = Some(packfile_mount_as);
+    h.datafile_add_rpf = Some(datafile_add_rpf);
+    h.device_mount = Some(device_mount);
+    h.device_unmount = Some(device_unmount);
 }
 
 /// Observe the real game's RPF load path without changing its behavior.
@@ -59,6 +63,40 @@ unsafe extern "C" fn packfile_init(
                 encrypted != 0));
     }
     unsafe { orig::packfile_init(env, packfile, path, encrypted, cache_mode, key_path) }
+}
+
+/// Passive probe for the RPF's virtual mount point. Never changes mount behavior.
+unsafe extern "C" fn packfile_mount_as(env: *mut Env, packfile: u64, mount_path: u64) -> u32 {
+    let path = unsafe { Mem::of(env).str(mount_path) };
+    let result = unsafe { orig::packfile_mount_as(env, packfile, mount_path) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiPackfile::MountAs object=0x{packfile:x} result={result} mount={path}"));
+    result
+}
+
+/// Observe the game's metadata-to-RPF handoff; the data-file object remains engine-owned.
+unsafe extern "C" fn datafile_add_rpf(env: *mut Env, data_file: u64, load: u32) -> u32 {
+    let result = unsafe { orig::datafile_add_rpf(env, data_file, load) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CFileLoader::AddRpfFile data_file=0x{data_file:x} load={} result={result}", load != 0));
+    result
+}
+
+/// Observe device mount/unmount calls without taking ownership of engine devices.
+unsafe extern "C" fn device_mount(env: *mut Env, path: u64, device: u64, create: u32) -> u32 {
+    let name = unsafe { Mem::of(env).str(path) };
+    let result = unsafe { orig::device_mount(env, path, device, create) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiDevice::Mount path={name} device=0x{device:x} create={} result={result}", create != 0));
+    result
+}
+
+unsafe extern "C" fn device_unmount(env: *mut Env, path: u64) -> u32 {
+    let name = unsafe { Mem::of(env).str(path) };
+    let result = unsafe { orig::device_unmount(env, path) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiDevice::Unmount path={name} result={result}"));
+    result
 }
 
 /// The program registry's slots (`scrProgram::GetProgram`): 176 u64.
