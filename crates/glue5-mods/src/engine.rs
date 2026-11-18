@@ -34,6 +34,7 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.packfile_get_streaming_module = Some(packfile_get_streaming_module);
     h.packfile_register_individual_file = Some(packfile_register_individual_file);
     h.stream_request_object = Some(stream_request_object);
+    h.stream_index_by_filename = Some(stream_index_by_filename);
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
 }
@@ -102,6 +103,17 @@ unsafe extern "C" fn packfile_get_streaming_module(env: *mut Env) -> u64 {
             &format!("strPackfileManager::GetStreamingModule module=0x{module:x}"));
     }
     module
+}
+
+/// Observe model-file lookup and its streaming index; forward unchanged.
+unsafe extern "C" fn stream_index_by_filename(env: *mut Env, filename: u64, flags: u32) -> u32 {
+    let name = unsafe { Mem::of(env).str(filename) };
+    let result = unsafe { orig::stream_index_by_filename(env, filename, flags) };
+    if name.to_ascii_lowercase().ends_with(".yft") || name.to_ascii_lowercase().ends_with(".ydr") {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("GetStreamingIndexByFilename flags={flags} result={result} file={name}"));
+    }
+    result
 }
 
 /// Observe streaming object requests so vehicle model requests can be correlated with registration.
