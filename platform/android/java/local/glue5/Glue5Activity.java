@@ -35,13 +35,13 @@ import org.w3c.dom.NodeList;
 public class Glue5Activity extends SDLActivity {
     private static final int REQUEST_TURNIP_ZIP = 47112;
     private static final int REQUEST_GRAPHICS_ARCHIVE = 47113;
-    private static final int REQUEST_RESHADE_ARCHIVE = 47114;
+    private static final int REQUEST_RESHADE_ARCHIVE = 47114;\n    private static final int REQUEST_PC_MOD_ZIP = 47115;
     private static native String applyOivArchiveNative(String archivePath, String archiveXml,
             String contentRoot, String outputPath, String keysDir);
     private final Handler turnipHandler = new Handler(Looper.getMainLooper());
     private boolean turnipPickerOpen = false;
     private boolean graphicsPickerOpen = false;
-    private boolean reshadePickerOpen = false;
+    private boolean reshadePickerOpen = false;\n    private boolean pcModPickerOpen = false;
     private final Runnable turnipImportWatcher = new Runnable() {
         @Override public void run() { checkTurnipImportRequest(); }
     };
@@ -121,7 +121,7 @@ public class Glue5Activity extends SDLActivity {
     }
 
     private void checkTurnipImportRequest() {
-        if (isFinishing() || turnipPickerOpen || graphicsPickerOpen || reshadePickerOpen) return;
+        if (isFinishing() || turnipPickerOpen || graphicsPickerOpen || reshadePickerOpen || pcModPickerOpen) return;
         File clearGraphicsRequest = new File(getFilesDir(), "graphics-mod-clear-request");
         if (clearGraphicsRequest.isFile() && clearGraphicsRequest.delete()) {
             try {
@@ -143,6 +143,12 @@ public class Glue5Activity extends SDLActivity {
         if (reshadeRequest.isFile() && reshadeRequest.delete()) {
             reshadePickerOpen = true;
             openReshadeArchivePicker();
+            return;
+        }
+        File pcModRequest = new File(getFilesDir(), "pc-mod-import-request");
+        if (pcModRequest.isFile() && pcModRequest.delete()) {
+            pcModPickerOpen = true;
+            openPcModPicker();
             return;
         }
         File request = new File(getFilesDir(), "turnip-import-request");
@@ -209,6 +215,60 @@ public class Glue5Activity extends SDLActivity {
         }
     }
 
+    private void openPcModPicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/zip");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
+                    "application/zip", "application/x-zip-compressed", "application/octet-stream", "*/*"
+            });
+            startActivityForResult(intent, REQUEST_PC_MOD_ZIP);
+        } catch (Exception e) {
+            pcModPickerOpen = false;
+            Toast.makeText(this, "Cannot open PC mod picker: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+        }
+    }
+
+    private void importPcModZip(Uri uri) throws Exception {
+        File target = new File(getFilesDir(), "pc-mod-import.zip");
+        File staging = new File(getFilesDir(), "pc-mod-import.zip.part");
+        staging.delete();
+        long total = 0;
+        try (InputStream input = getContentResolver().openInputStream(uri);
+             FileOutputStream output = new FileOutputStream(staging)) {
+            if (input == null) throw new Exception("Cannot read selected ZIP");
+            byte[] buffer = new byte[64 * 1024];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                total += count;
+                if (total > 512L * 1024L * 1024L) throw new Exception("ZIP exceeds 512 MiB import limit");
+                output.write(buffer, 0, count);
+            }
+            output.getFD().sync();
+        } catch (Exception e) {
+            staging.delete();
+            throw e;
+        }
+        if (total == 0) { staging.delete(); throw new Exception("Selected file is empty"); }
+        if (target.exists() && !target.delete()) { staging.delete(); throw new Exception("Cannot replace pending import"); }
+        if (!staging.renameTo(target)) { staging.delete(); throw new Exception("Cannot stage selected ZIP"); }
+        String name = "pc-mod";
+        try (android.database.Cursor cursor = getContentResolver().query(uri,
+                new String[] { android.provider.OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                String selected = cursor.getString(0);
+                if (selected != null && !selected.trim().isEmpty()) name = selected;
+            }
+        } catch (Exception ignored) {}
+        File ready = new File(getFilesDir(), "pc-mod-import-ready");
+        try (FileOutputStream output = new FileOutputStream(ready)) {
+            output.write(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            output.getFD().sync();
+        }
+    }
+
     private void openTurnipPicker() {
         try {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -237,6 +297,20 @@ public class Glue5Activity extends SDLActivity {
                 }
             } catch (Exception e) {
                 Toast.makeText(this, "Graphics archive import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            } finally {
+                turnipHandler.postDelayed(turnipImportWatcher, 500);
+            }
+            return;
+        }
+        if (requestCode == REQUEST_PC_MOD_ZIP) {
+            pcModPickerOpen = false;
+            try {
+                if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                    importPcModZip(data.getData());
+                    Toast.makeText(this, "PC mod ZIP staged. Return to Glue 5 Mods to finish the safe import.", Toast.LENGTH_LONG).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(this, "PC mod import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
             } finally {
                 turnipHandler.postDelayed(turnipImportWatcher, 500);
             }
