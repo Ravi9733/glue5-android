@@ -960,7 +960,7 @@ std::string read_dlc_list_entries(const fs::path& update_rpf_path,
         if (value.empty()) {
             report << "UNSUPPORTED|" << item_index << "\n";
         } else if (!emit_pack("dlcpacks:/", "DLC") &&
-                   !emit_pack("platform:/dlcPacks/", "PLATFORM")) {
+                   !emit_pack("platform:/dlcpacks/", "PLATFORM")) {
             report << "UNSUPPORTED|" << item_index << "\n";
         }
     }
