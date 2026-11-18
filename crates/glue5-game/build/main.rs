@@ -115,7 +115,7 @@ fn run() -> Result<()> {
     let mut function_inventory: Vec<String> = module.functions.iter().map(|(name, sig)| {
         let params = sig.params.iter().map(|ty| type_name(*ty)).collect::<Vec<_>>().join(",");
         let result = sig.result.map_or("void", type_name);
-        format!("{name}\\t({params}) -> {result}\\n")
+        format!("{name}\t({params}) -> {result}\n")
     }).collect();
     function_inventory.sort_unstable();
     fs::write(gen_dir.join("game-functions.tsv"), function_inventory.concat())?;
