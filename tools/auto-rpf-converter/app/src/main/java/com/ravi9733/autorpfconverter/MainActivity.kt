@@ -442,7 +442,7 @@ class MainActivity : Activity() {
                 report.appendLine("DLC load-order audit failed: " + (e.message ?: e.javaClass.simpleName))
                 report.appendLine("Source game files were not modified.")
             } finally {
-                work.deleteRecursively()
+                TemporaryWorkspacePolicy.clean(work)
             }
             runOnUiThread {
                 latestReport = report.toString()
