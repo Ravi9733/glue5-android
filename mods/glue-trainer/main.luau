@@ -18,6 +18,7 @@ hub.rows(root)
 
 -- Put this first so it is immediately visible in the F7 / touch Trainer menu.
 require("./features/customs").build(root, "Car Customizer")
+require("./features/ai_car_hub").build(root)
 
 -- Load Stunt Races independently and first. A syntax/runtime error in one feature
 -- must never abort the whole trainer before its other menus can be registered.
