@@ -66,10 +66,10 @@ function M.build(root: Menu)
 		pathStatus:set(string.format("RPF: %s | mount: %s | content folder: %s",
 			tostring(data.last_rpf_path or "(none)"), tostring(data.last_mount_path or "(none)"),
 			tostring(data.last_content_folder or "(none)")))
-		lifecycleStatus:set(string.format("Enumerate: %s | update array: %s | change groups: %s | manager destroyed: %s | content shutdown: %s | content destroyed: %s",
+		lifecycleStatus:set(string.format("Enumerate: %s | update array: %s | change groups: %s | manager destroyed: %s | content shutdown: %s",
 			tostring(data.begin_enumerate_calls or 0), tostring(data.update_content_array_calls or 0),
 			tostring(data.execute_change_group_calls or 0), tostring(data.manager_destructor_calls or 0),
-			tostring(data.mountable_shutdown_calls or 0), tostring(data.mountable_destructor_calls or 0)))
+			tostring(data.mountable_shutdown_calls or 0)))
 		return "Loader diagnostics refreshed"
 	end)
 	local pathStatus = loaderDiagnostics:label("Last paths: not read.")
