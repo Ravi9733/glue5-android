@@ -13,6 +13,7 @@ pub enum DlcCompatibility {
     EncryptedArchiveUnsupported,
     MissingDlcMetadata,
     MissingDlcListRegistration,
+    InvalidDlcLoadOrder,
     OpenRpfMetadataPresent,
 }
 
@@ -42,7 +43,10 @@ pub fn assess_dlc_compatibility(
         && !metadata.content_xml_files.is_empty();
     let dlclist_registered = metadata.dlclist_entries.iter()
         .any(|id| id.eq_ignore_ascii_case(expected_dlc_id));
-    let metadata_complete = has_setup_and_content && dlclist_registered;
+    // setup2.xml must provide a real non-negative load order; the parser uses
+    // -1 when the attribute is absent or malformed.
+    let has_valid_load_order = metadata.setup_orders.iter().any(|(_, order)| *order >= 0);
+    let metadata_complete = has_setup_and_content && dlclist_registered && has_valid_load_order;
 
     let (status, explanation) = if package.rpf_files.is_empty() {
         (DlcCompatibility::NoRpfArchive,
@@ -59,6 +63,9 @@ pub fn assess_dlc_compatibility(
     } else if !dlclist_registered {
         (DlcCompatibility::MissingDlcListRegistration,
          format!("DLC metadata is present, but dlclist.xml does not register the expected package id '{expected_dlc_id}'."))
+    } else if !has_valid_load_order {
+        (DlcCompatibility::InvalidDlcLoadOrder,
+         "setup2.xml was found, but it has no valid non-negative <order value=...> load order.".to_string())
     } else {
         (DlcCompatibility::OpenRpfMetadataPresent,
          "All detected RPF archives have OPEN markers and setup2.xml/content.xml were found. Native mount and spawn are still unverified.".to_string())
@@ -123,6 +130,15 @@ mod tests {
         assert_eq!(report.status, DlcCompatibility::MissingDlcListRegistration);
         assert!(!report.metadata_complete);
         assert!(!report.runtime_mount_supported);
+    }
+
+    #[test]
+    fn rejects_missing_or_invalid_setup_load_order() {
+        let mut metadata = metadata(true);
+        metadata.setup_orders = vec![("setup2.xml".into(), -1)];
+        let report = assess_dlc_compatibility(&package(RpfEncryption::Open), &metadata, "dyfurai");
+        assert_eq!(report.status, DlcCompatibility::InvalidDlcLoadOrder);
+        assert!(!report.metadata_complete);
     }
 
     #[test]
