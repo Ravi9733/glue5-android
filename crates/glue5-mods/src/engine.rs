@@ -61,6 +61,8 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.model_get_local_info = Some(model_get_local_info);
     h.extra_content_manager_dtor = Some(extra_content_manager_dtor);
     h.mountable_content_shutdown = Some(mountable_content_shutdown);
+    h.mountable_content_execute_changeset = Some(mountable_content_execute_changeset);
+    h.mountable_content_revert_changeset = Some(mountable_content_revert_changeset);
 }
 
 /// Observe the real game's RPF load path without changing its behavior.
@@ -565,6 +567,24 @@ unsafe extern "C" fn mountable_content_mount_content(
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CMountableContent::MountContent object=0x{content:x} result={result} path={name}"));
     result
+}
+
+/// Trace the mountable-content execution path selected by the game.
+unsafe extern "C" fn mountable_content_execute_changeset(
+    env: *mut Env, group: u64, change_set: u64
+) {
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::ExecuteContentChangeSet content=0x{:x} group=0x{group:x} change_set=0x{change_set:x}", env as u64));
+    unsafe { orig::mountable_content_execute_changeset(env, group, change_set) };
+}
+
+/// Trace rollback for a specific mountable-content change set.
+unsafe extern "C" fn mountable_content_revert_changeset(
+    env: *mut Env, group: u64, change_set: u64, flags: u32
+) {
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::RevertContentChangeSet content=0x{:x} group=0x{group:x} change_set=0x{change_set:x} flags={flags}", env as u64));
+    unsafe { orig::mountable_content_revert_changeset(env, group, change_set, flags) };
 }
 
 /// Observe unmount calls; no content is unmounted by the diagnostics layer.
