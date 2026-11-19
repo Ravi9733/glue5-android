@@ -22,6 +22,14 @@ pub enum RpfEncryption {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RpfArchiveInfo {
+    /// Package-relative path; never an absolute device path.
+    pub path: String,
+    pub size_bytes: u64,
+    pub encryption: RpfEncryption,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VehiclePackageReport {
     pub files_scanned: usize,
     pub total_bytes: u64,
@@ -29,6 +37,8 @@ pub struct VehiclePackageReport {
     pub rpf7_open: usize,
     pub rpf7_aes: usize,
     pub rpf7_ng_or_unknown: usize,
+    /// Per-archive inventory used by the native DLC compatibility gate.
+    pub rpf_files: Vec<RpfArchiveInfo>,
     pub vehicle_assets: usize,
     pub metadata_files: Vec<String>,
     pub blocked_executables: Vec<String>,
@@ -45,7 +55,7 @@ pub fn inspect_vehicle_package(root: &Path) -> Result<VehiclePackageReport, Stri
     let mut report = VehiclePackageReport {
         files_scanned: 0, total_bytes: 0, rpf_archives: 0,
         rpf7_open: 0, rpf7_aes: 0, rpf7_ng_or_unknown: 0,
-        vehicle_assets: 0, metadata_files: Vec::new(),
+        rpf_files: Vec::new(), vehicle_assets: 0, metadata_files: Vec::new(),
         blocked_executables: Vec::new(), warnings: Vec::new(),
         spawn_supported: false,
     };
@@ -97,15 +107,30 @@ fn scan_dir(root: &Path, dir: &Path, depth: usize, report: &mut VehiclePackageRe
             let mut f = fs::File::open(&path).map_err(|e| format!("cannot open RPF header: {e}"))?;
             let mut header = [0u8; 16];
             let n = f.read(&mut header).map_err(|e| format!("cannot read RPF header: {e}"))?;
-            if n < 16 || &header[0..4] != b"7FPR" {
+            let encryption = if n < 16 || &header[0..4] != b"7FPR" {
                 report.warnings.push(format!("{relative}: not a recognized GTA V RPF7 header"));
+                RpfEncryption::NotRpf7
             } else {
                 match u32::from_le_bytes(header[12..16].try_into().unwrap()) {
-                    0x4E45504F => report.rpf7_open += 1,
-                    0x0FFFFFF9 => report.rpf7_aes += 1,
-                    _ => report.rpf7_ng_or_unknown += 1,
+                    0x4E45504F => {
+                        report.rpf7_open += 1;
+                        RpfEncryption::Open
+                    }
+                    0x0FFFFFF9 => {
+                        report.rpf7_aes += 1;
+                        RpfEncryption::Aes
+                    }
+                    _ => {
+                        report.rpf7_ng_or_unknown += 1;
+                        RpfEncryption::NgOrUnknown
+                    }
                 }
-            }
+            };
+            report.rpf_files.push(RpfArchiveInfo {
+                path: relative,
+                size_bytes: metadata.len(),
+                encryption,
+            });
         }
     }
     Ok(())
@@ -120,6 +145,29 @@ mod tests {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let p = std::env::temp_dir().join(format!("glue5-vehicle-inspect-{}-{n}", std::process::id()));
         fs::create_dir_all(&p).unwrap(); p
+    }
+
+    #[test]
+    fn records_each_rpf_path_size_and_encryption_marker() {
+        let root = temp();
+        let mut open = [0u8; 16];
+        open[0..4].copy_from_slice(b"7FPR");
+        open[12..16].copy_from_slice(b"OPEN");
+        fs::write(root.join("furai.rpf"), open).unwrap();
+
+        let mut aes = [0u8; 16];
+        aes[0..4].copy_from_slice(b"7FPR");
+        aes[12..16].copy_from_slice(&0x0FFFFFF9u32.to_le_bytes());
+        fs::create_dir(root.join("dlc")).unwrap();
+        fs::write(root.join("dlc").join("content.rpf"), aes).unwrap();
+
+        let report = inspect_vehicle_package(&root).unwrap();
+        assert_eq!(report.rpf_files.len(), 2);
+        assert!(report.rpf_files.iter().any(|r| r.path == "furai.rpf"
+            && r.size_bytes == 16 && r.encryption == RpfEncryption::Open));
+        assert!(report.rpf_files.iter().any(|r| r.path == "dlc/content.rpf"
+            && r.encryption == RpfEncryption::Aes));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
