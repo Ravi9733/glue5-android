@@ -55,4 +55,6 @@
     ("model_get_local_info", "CModelInfo::GetModelInfoFromLocalIndex(int)"),
     ("extra_content_manager_dtor", "CExtraContentManager::~CExtraContentManager()"),
     ("mountable_content_shutdown", "CMountableContent::ShutdownContent()"),
+    ("mountable_content_execute_changeset", "CMountableContent::ExecuteContentChangeSet(rage::atNonFinalHashString, rage::atNonFinalHashString)"),
+    ("mountable_content_revert_changeset", "CMountableContent::RevertContentChangeSet(rage::atNonFinalHashString, rage::atNonFinalHashString, unsigned int)"),
 ]
