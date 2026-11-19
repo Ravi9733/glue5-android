@@ -570,8 +570,8 @@ class MainActivity : Activity() {
                                 " — at least one base archive was unreadable or no x64 archive was available; not marked missing")
                         } else {
                             platformMissing++
-                            report.appendLine("MISSING PLATFORM [" + packPosition + "] " + packName +
-                                " — not found in the readable x64w.rpf through x64a.rpf archives")
+                            report.appendLine("NOT FOUND AT EXPECTED PATH PLATFORM [" + packPosition + "] " + packName +
+                                " — dlcpacks/<name>/dlc.rpf was not found in readable x64w.rpf through x64a.rpf archives")
                         }
                     }
                 }
@@ -586,7 +586,7 @@ class MainActivity : Activity() {
                 report.appendLine("Platform pack metadata validated: " + platformValidated)
                 report.appendLine("Platform packs found but invalid: " + platformFailed)
                 report.appendLine("Platform packs found but key-locked: " + platformLocked)
-                report.appendLine("Missing platform pack archives: " + platformMissing)
+                report.appendLine("Platform packs not found at expected path: " + platformMissing)
                 report.appendLine("Platform references unresolved: " + platformUnresolved)
                 report.appendLine("Unreadable base x64 archives: " + unreadableBaseArchives)
                 report.appendLine("Readable base x64 archives scanned: " + readableBaseArchives)
