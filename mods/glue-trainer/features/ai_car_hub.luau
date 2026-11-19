@@ -17,6 +17,36 @@ function M.build(root: Menu)
 	local menu = root:submenu("AI Car Hub", "Search, discover and deliver cars")
 	menu:label("Offline search works with cars already registered in GTA V.")
 	menu:label("Online packages can be downloaded, verified and safely extracted; add-on spawning is still in development.")
+
+	menu:separator("Native DLC loader diagnostics")
+	local loaderDiagnostics = menu:submenu("Loader diagnostics", "Read-only counters from the game's own DLC lifecycle")
+	local loaderStatus = loaderDiagnostics:label("Diagnostics not read yet.")
+	bind.action(loaderDiagnostics, "Refresh loader diagnostics", {
+		note = "Reads counters only; does not mount or modify game files",
+		action = "Refresh",
+	}, function(): string?
+		local ok, raw = pcall(function()
+			return world.vehicleLoaderDiagnostics()
+		end)
+		if not ok or type(raw) ~= "string" then
+			loaderStatus:set("Diagnostics unavailable: " .. tostring(raw))
+			return "Could not read loader diagnostics"
+		end
+		local parsedOk, data = pcall(function() return json.decode(raw) end)
+		if not parsedOk or type(data) ~= "table" then
+			loaderStatus:set("Diagnostics response was invalid.")
+			return "Invalid diagnostics"
+		end
+		loaderStatus:set(string.format(
+			"CMountable ctor: %s | AddFolder: %s | LoadContent: %s | identity matches: %s | device lookups: %s | folder scans: %s | manager observed: %s | last match: %s",
+			tostring(data.constructor_calls or 0), tostring(data.add_folder_calls or 0),
+			tostring(data.load_calls or 0), tostring(data.load_identity_matches or 0),
+			tostring(data.device_lookups or 0), tostring(data.recursive_enumerations or 0),
+			tostring(data.manager_observed or false), tostring(data.last_load_identity_match or false)
+		))
+		return "Loader diagnostics refreshed"
+	end)
+	loaderDiagnostics:label("Counters are passive observations. They do not mean DLC mounting or vehicle spawning is enabled.")
 	local query = menu:text("Search cars", "", { placeholder = "e.g. Mazda, Ferrari, drift, adder", max = 48 })
 	local results = menu:submenu("Search results", "Cars currently available in loaded game data")
 	results:label("Enter a name or model, then choose Search.")
