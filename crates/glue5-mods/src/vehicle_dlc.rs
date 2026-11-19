@@ -108,8 +108,16 @@ pub fn inspect_rpf_dlc_metadata(root: &Path) -> Result<DlcMetadataReport, String
     if archives.len() > 64 { return Err("vehicle package contains too many RPF archives".into()); }
     let mut metadata_count = 0usize;
     for (relative, path) in archives {
-        let archive = RpfFile::open(&path, None)
-            .map_err(|e| format!("{relative}: RPF parse failed: {e}"))?;
+        let archive = match RpfFile::open(&path, None) {
+            Ok(archive) => archive,
+            Err(error) => {
+                // Packages can contain optional, unsupported, or damaged RPFs.
+                // Keep the staged package inspectable, but never treat a failed
+                // archive parse as proof that its DLC metadata is valid.
+                report.warnings.push(format!("{relative}: RPF parse failed and was skipped: {error}"));
+                continue;
+            }
+        };
         if !matches!(archive.archive.encryption, RpfEncryption::Open | RpfEncryption::None) {
             report.warnings.push(format!("{relative}: encrypted RPF metadata skipped; keys are not configured"));
             continue;
@@ -147,11 +155,15 @@ pub fn inspect_rpf_dlc_metadata(root: &Path) -> Result<DlcMetadataReport, String
                     }
                 }
                 "setup2.xml" => {
-                    let order = doc.root_element().children()
-                        .find(|n| n.is_element() && n.tag_name().name() == "order")
-                        .and_then(|n| n.attribute("value"))
-                        .and_then(|v| v.trim().parse::<i32>().ok()).unwrap_or(-1);
-                    report.setup_orders.push((format!("{relative}/{inner_path}"), order));
+                    if doc.root_element().tag_name().name() != "SSetupData" {
+                        report.warnings.push(format!("{relative}/{inner_path}: unexpected setup2 root"));
+                    } else {
+                        let order = doc.root_element().children()
+                            .find(|n| n.is_element() && n.tag_name().name() == "order")
+                            .and_then(|n| n.attribute("value"))
+                            .and_then(|v| v.trim().parse::<i32>().ok()).unwrap_or(-1);
+                        report.setup_orders.push((format!("{relative}/{inner_path}"), order));
+                    }
                 }
                 "content.xml" => report.content_xml_files.push(format!("{relative}/{inner_path}")),
                 _ => {}
