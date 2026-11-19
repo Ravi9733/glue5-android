@@ -497,6 +497,7 @@ fn set_waiting(name: &str, waiting: bool) {
 /// lifetime and ownership before any runtime DLC mounting is attempted.
 /// This hook forwards the constructor unchanged and never allocates an object.
 unsafe extern "C" fn mountable_content_ctor(env: *mut Env, object: u64) -> u64 {
+    DLC_CTOR_COUNT.fetch_add(1, Ordering::Relaxed);
     let result = unsafe { orig::mountable_content_ctor(env, object) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CMountableContent::ctor object=0x{object:x} result=0x{result:x}"));
@@ -509,8 +510,35 @@ unsafe extern "C" fn mountable_content_ctor(env: *mut Env, object: u64) -> u64 {
 static EXTRA_CONTENT_MANAGER: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
+// Bounded, pointer-free counters exposed to the AI Car Hub. These tell us
+// whether the game's own DLC lifecycle is reached without retaining engine
+// objects or attempting unsafe calls into undocumented methods.
+static DLC_CTOR_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_ADD_FOLDER_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_LOAD_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_LOAD_MATCH_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_DEVICE_LOOKUP_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_ENUM_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_LAST_IDENTITY_MATCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Return safe lifecycle counters; raw engine addresses are intentionally omitted.
+pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
+    use std::sync::atomic::Ordering::Relaxed;
+    serde_json::json!({
+        "constructor_calls": DLC_CTOR_COUNT.load(Relaxed),
+        "add_folder_calls": DLC_ADD_FOLDER_COUNT.load(Relaxed),
+        "load_calls": DLC_LOAD_COUNT.load(Relaxed),
+        "load_identity_matches": DLC_LOAD_MATCH_COUNT.load(Relaxed),
+        "last_load_identity_match": DLC_LAST_IDENTITY_MATCH.load(Relaxed),
+        "device_lookups": DLC_DEVICE_LOOKUP_COUNT.load(Relaxed),
+        "recursive_enumerations": DLC_ENUM_COUNT.load(Relaxed),
+        "manager_observed": EXTRA_CONTENT_MANAGER.load(Relaxed) != 0
+    })
+}
+
 /// Trace engine-owned folder registration and identify the manager instance.
 unsafe extern "C" fn extra_content_add_folder(env: *mut Env, manager: u64, folder: u64) {
+    DLC_ADD_FOLDER_COUNT.fetch_add(1, Ordering::Relaxed);
     let path = unsafe { Mem::of(env).str(folder) };
     if manager != 0 {
         let previous = EXTRA_CONTENT_MANAGER.swap(manager, Ordering::AcqRel);
@@ -527,8 +555,11 @@ unsafe extern "C" fn extra_content_add_folder(env: *mut Env, manager: u64, folde
 /// Confirm the manager that actually reaches the engine's load boundary.
 /// This is lifecycle evidence only; no mount method is called from the hook.
 unsafe extern "C" fn extra_content_load(env: *mut Env, manager: u64, load_a: u32, load_b: u32) {
+    DLC_LOAD_COUNT.fetch_add(1, Ordering::Relaxed);
     let candidate = EXTRA_CONTENT_MANAGER.load(Ordering::Acquire);
     let matches = manager != 0 && manager == candidate;
+    DLC_LAST_IDENTITY_MATCH.store(matches, Ordering::Relaxed);
+    if matches { DLC_LOAD_MATCH_COUNT.fetch_add(1, Ordering::Relaxed); }
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CExtraContentManager::LoadContent begin manager=0x{manager:x} candidate=0x{candidate:x} identity_match={matches} flags={load_a},{load_b}"));
     unsafe { orig::extra_content_load(env, manager, load_a, load_b) };
@@ -539,6 +570,7 @@ unsafe extern "C" fn extra_content_load(env: *mut Env, manager: u64, load_a: u32
 /// Observe the engine's device-to-content lookup. The manager remains
 /// engine-owned; this records the device key and returned content pointer.
 unsafe extern "C" fn extra_content_get_by_device(env: *mut Env, manager: u64, device: u64) -> u64 {
+    DLC_DEVICE_LOOKUP_COUNT.fetch_add(1, Ordering::Relaxed);
     let name = unsafe { Mem::of(env).str(device) };
     let result = unsafe { orig::extra_content_get_by_device(env, manager, device) };
     log_line("vehicle-loader", LogLevel::Info,
@@ -549,6 +581,7 @@ unsafe extern "C" fn extra_content_get_by_device(env: *mut Env, manager: u64, de
 /// Observe recursive extra-content enumeration without changing its path or
 /// result. This helps identify which folders the game actually scans.
 unsafe extern "C" fn extra_content_recursive_enum(env: *mut Env, manager: u64, folder: u64) -> u32 {
+    DLC_ENUM_COUNT.fetch_add(1, Ordering::Relaxed);
     let path = unsafe { Mem::of(env).str(folder) };
     let result = unsafe { orig::extra_content_recursive_enum(env, manager, folder) };
     log_line("vehicle-loader", LogLevel::Info,
