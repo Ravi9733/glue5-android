@@ -530,33 +530,32 @@ unsafe extern "C" fn mountable_content_ctor(env: *mut Env, object: u64) -> u64 {
 }
 
 /// Trace the engine-owned setup XML read; the object and path stay engine-owned.
-unsafe extern "C" fn mountable_content_load_setup(env: *mut Env, content: u64, path: u64) -> u32 {
+unsafe extern "C" fn mountable_content_load_setup(env: *mut Env, content: u64) -> u32 {
     DLC_SETUP_XML_COUNT.fetch_add(1, Ordering::Relaxed);
-    let name = unsafe { Mem::of(env).str(path) };
-    let result = unsafe { orig::mountable_content_load_setup(env, content, path) };
+    let result = unsafe { orig::mountable_content_load_setup(env, content) };
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CMountableContent::LoadSetupXML object=0x{content:x} result={result} path={name}"));
+        &format!("CMountableContent::LoadSetupXML object=0x{content:x} result={result}"));
     result
 }
 
 /// Observe the native content mount decision without initiating one ourselves.
-unsafe extern "C" fn mountable_content_mount(env: *mut Env, content: u64, mount_type: u32) -> u32 {
+unsafe extern "C" fn mountable_content_mount(env: *mut Env, content: u64) -> u32 {
     DLC_CONTENT_MOUNT_COUNT.fetch_add(1, Ordering::Relaxed);
-    let result = unsafe { orig::mountable_content_mount(env, content, mount_type) };
+    let result = unsafe { orig::mountable_content_mount(env, content) };
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CMountableContent::Mount object=0x{content:x} type={mount_type} result={result}"));
+        &format!("CMountableContent::Mount object=0x{content:x} result={result}"));
     result
 }
 
 /// Trace per-pack mount requests and forward all arguments unchanged.
 unsafe extern "C" fn mountable_content_mount_content(
-    env: *mut Env, content: u64, content_type: u32, path: u64
+    env: *mut Env, content: u64, path: u64
 ) -> u32 {
     DLC_CONTENT_MOUNT_CONTENT_COUNT.fetch_add(1, Ordering::Relaxed);
     let name = unsafe { Mem::of(env).str(path) };
-    let result = unsafe { orig::mountable_content_mount_content(env, content, content_type, path) };
+    let result = unsafe { orig::mountable_content_mount_content(env, content, path) };
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CMountableContent::MountContent object=0x{content:x} type={content_type} result={result} path={name}"));
+        &format!("CMountableContent::MountContent object=0x{content:x} result={result} path={name}"));
     result
 }
 
