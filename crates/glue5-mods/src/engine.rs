@@ -44,6 +44,12 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.extra_content_load = Some(extra_content_load);
     h.extra_content_get_by_device = Some(extra_content_get_by_device);
     h.extra_content_recursive_enum = Some(extra_content_recursive_enum);
+    h.extra_content_begin_enumerate = Some(extra_content_begin_enumerate);
+    h.extra_content_update_array = Some(extra_content_update_array);
+    h.extra_content_execute_group = Some(extra_content_execute_group);
+    h.extra_content_manager_dtor = Some(extra_content_manager_dtor);
+    h.mountable_content_shutdown = Some(mountable_content_shutdown);
+    h.mountable_content_dtor = Some(mountable_content_dtor);
 }
 
 /// Observe the real game's RPF load path without changing its behavior.
@@ -552,6 +558,12 @@ static DLC_LAST_IDENTITY_MATCH: std::sync::atomic::AtomicBool = std::sync::atomi
 static DLC_LAST_RPF_PATH: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 static DLC_LAST_MOUNT_PATH: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 static DLC_LAST_CONTENT_FOLDER: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+static DLC_BEGIN_ENUM_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_UPDATE_ARRAY_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_EXECUTE_GROUP_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_MANAGER_DTOR_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_CONTENT_SHUTDOWN_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_CONTENT_DTOR_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn remember_loader_path(slot: &std::sync::Mutex<String>, path: &str) {
     if let Ok(mut value) = slot.lock() {
@@ -585,6 +597,12 @@ pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
         "device_mount_calls": DLC_DEVICE_MOUNT_COUNT.load(Relaxed),
         "device_unmount_calls": DLC_DEVICE_UNMOUNT_COUNT.load(Relaxed),
         "manager_observed": EXTRA_CONTENT_MANAGER.load(Relaxed) != 0,
+        "begin_enumerate_calls": DLC_BEGIN_ENUM_COUNT.load(Relaxed),
+        "update_content_array_calls": DLC_UPDATE_ARRAY_COUNT.load(Relaxed),
+        "execute_change_group_calls": DLC_EXECUTE_GROUP_COUNT.load(Relaxed),
+        "manager_destructor_calls": DLC_MANAGER_DTOR_COUNT.load(Relaxed),
+        "mountable_shutdown_calls": DLC_CONTENT_SHUTDOWN_COUNT.load(Relaxed),
+        "mountable_destructor_calls": DLC_CONTENT_DTOR_COUNT.load(Relaxed),
         "last_rpf_path": DLC_LAST_RPF_PATH.lock().map(|v| v.clone()).unwrap_or_default(),
         "last_mount_path": DLC_LAST_MOUNT_PATH.lock().map(|v| v.clone()).unwrap_or_default(),
         "last_content_folder": DLC_LAST_CONTENT_FOLDER.lock().map(|v| v.clone()).unwrap_or_default()
@@ -642,5 +660,50 @@ unsafe extern "C" fn extra_content_recursive_enum(env: *mut Env, manager: u64, f
     let result = unsafe { orig::extra_content_recursive_enum(env, manager, folder) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CExtraContentManager::RecursiveEnumExtraContent manager=0x{manager:x} folder={path} result={result}"));
+    result
+}
+// Trace engine-owned content enumeration; forward every call unchanged.
+unsafe extern "C" fn extra_content_begin_enumerate(env: *mut Env, manager: u64, load_a: u32, load_b: u32) {
+    DLC_BEGIN_ENUM_COUNT.fetch_add(1, Ordering::Relaxed);
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::BeginEnumerateContent manager=0x{manager:x} flags={load_a},{load_b}"));
+    unsafe { orig::extra_content_begin_enumerate(env, manager, load_a, load_b) };
+}
+
+unsafe extern "C" fn extra_content_update_array(env: *mut Env, manager: u64) {
+    DLC_UPDATE_ARRAY_COUNT.fetch_add(1, Ordering::Relaxed);
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::UpdateContentArray manager=0x{manager:x} begin"));
+    unsafe { orig::extra_content_update_array(env, manager) };
+    log_line("vehicle-loader", LogLevel::Info, "CExtraContentManager::UpdateContentArray complete");
+}
+
+unsafe extern "C" fn extra_content_execute_group(env: *mut Env, manager: u64, group: u32) {
+    DLC_EXECUTE_GROUP_COUNT.fetch_add(1, Ordering::Relaxed);
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::ExecuteContentChangeSetGroupForAll manager=0x{manager:x} group={group}"));
+    unsafe { orig::extra_content_execute_group(env, manager, group) };
+}
+
+unsafe extern "C" fn extra_content_manager_dtor(env: *mut Env, manager: u64) -> u64 {
+    DLC_MANAGER_DTOR_COUNT.fetch_add(1, Ordering::Relaxed);
+    let result = unsafe { orig::extra_content_manager_dtor(env, manager) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::dtor manager=0x{manager:x} result=0x{result:x}"));
+    result
+}
+
+unsafe extern "C" fn mountable_content_shutdown(env: *mut Env, content: u64) {
+    DLC_CONTENT_SHUTDOWN_COUNT.fetch_add(1, Ordering::Relaxed);
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::ShutdownContent object=0x{content:x}"));
+    unsafe { orig::mountable_content_shutdown(env, content) };
+}
+
+unsafe extern "C" fn mountable_content_dtor(env: *mut Env, content: u64) -> u64 {
+    DLC_CONTENT_DTOR_COUNT.fetch_add(1, Ordering::Relaxed);
+    let result = unsafe { orig::mountable_content_dtor(env, content) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::dtor object=0x{content:x} result=0x{result:x}"));
     result
 }
