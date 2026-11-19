@@ -902,7 +902,7 @@ std::string inspect_platform_dlc_pack_metadata(const fs::path& base_archive_path
         throw std::runtime_error("base x64 archive exceeds the 4 GiB RPF7 safety limit");
     }
     if (pack_name.empty() || pack_name == "." || pack_name == ".." ||
-        pack_name.find_first_of("/\\\\:") != std::string::npos ||
+        pack_name.find_first_of("/\\:") != std::string::npos ||
         pack_name.find("..") != std::string::npos) {
         throw std::runtime_error("unsafe platform DLC pack name");
     }
@@ -915,18 +915,19 @@ std::string inspect_platform_dlc_pack_metadata(const fs::path& base_archive_path
     const std::string internal_path = "dlcpacks/" + pack_name + "/dlc.rpf";
     const auto location = base.resolve(internal_path);
     if (!location.archive || location.entry < 0) {
-        return "PLATFORM_DLC_NOT_FOUND\\n";
+        return "PLATFORM_DLC_NOT_FOUND\n";
     }
 
     const rk::RpfEntry& entry =
         location.archive->entries().at(static_cast<std::size_t>(location.entry));
-    if (entry.is_directory() || !entry.is_archive()) {
-        return "PLATFORM_DLC_INVALID_ENTRY\\nBase archive: " + base.name() +
-               "\\nInternal path: " + internal_path + "\\nExpected a nested dlc.rpf archive entry.\\n";
+    if (entry.is_directory() || !entry.is_archive() || entry.compressed() || entry.encrypted) {
+        return "PLATFORM_DLC_INVALID_ENTRY\nBase archive: " + base.name() +
+               "\nInternal path: " + internal_path +
+               "\nExpected a plain, uncompressed nested dlc.rpf archive entry.\n";
     }
     if (entry.size() == 0 || entry.size() > max_archive_bytes) {
-        return "PLATFORM_DLC_INVALID_ENTRY\\nBase archive: " + base.name() +
-               "\\nInternal path: " + internal_path + "\\nNested dlc.rpf is empty or exceeds the 4 GiB limit.\\n";
+        return "PLATFORM_DLC_INVALID_ENTRY\nBase archive: " + base.name() +
+               "\nInternal path: " + internal_path + "\nNested dlc.rpf is empty or exceeds the 4 GiB limit.\n";
     }
 
     try {
@@ -934,12 +935,12 @@ std::string inspect_platform_dlc_pack_metadata(const fs::path& base_archive_path
         // RAGEKIT uses the nested entry's real basename (dlc.rpf) for NG key selection.
         const rk::Rpf child = location.archive->open_child(location.entry);
         const std::string label = base.name() + ":" + internal_path;
-        return "PLATFORM_DLC_FOUND\\nBase archive: " + base.name() +
-               "\\nInternal path: " + internal_path + "\\n" +
+        return "PLATFORM_DLC_FOUND\nBase archive: " + base.name() +
+               "\nInternal path: " + internal_path + "\n" +
                inspect_dlc_pack_metadata_archive(child, label);
     } catch (const std::exception& error) {
-        return "PLATFORM_DLC_FOUND_INVALID\\nBase archive: " + base.name() +
-               "\\nInternal path: " + internal_path + "\\nMetadata inspection failed: " + error.what() + "\\n";
+        return "PLATFORM_DLC_FOUND_INVALID\nBase archive: " + base.name() +
+               "\nInternal path: " + internal_path + "\nMetadata inspection failed: " + error.what() + "\n";
     }
 }
 
