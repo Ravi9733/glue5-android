@@ -943,9 +943,9 @@ std::string inspect_platform_dlc_pack_metadata(const fs::path& base_archive_path
         const bool missing_keys =
             message.find("no AES keys are available") != std::string::npos ||
             message.find("no NG keys are available") != std::string::npos;
-        return std::string(missing_keys ? "PLATFORM_DLC_FOUND_LOCKED\\n" : "PLATFORM_DLC_FOUND_INVALID\\n") +
-               "Base archive: " + base.name() + "\\nInternal path: " + internal_path +
-               "\\nMetadata inspection failed: " + message + "\\n";
+        return std::string(missing_keys ? "PLATFORM_DLC_FOUND_LOCKED\n" : "PLATFORM_DLC_FOUND_INVALID\n") +
+               "Base archive: " + base.name() + "\nInternal path: " + internal_path +
+               "\nMetadata inspection failed: " + message + "\n";
     }
 }
 
