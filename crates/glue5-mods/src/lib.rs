@@ -19,6 +19,12 @@ pub mod vehicle_compat;
 mod checker;
 mod bundled_trainer;
 mod engine;
+
+/// Pointer-free diagnostics from the engine-owned DLC lifecycle hooks.
+pub fn vehicle_loader_diagnostics() -> String {
+    engine::vehicle_loader_diagnostics().to_string()
+}
+
 pub mod files;
 mod json;
 mod menus;
