@@ -62,6 +62,11 @@ function M.build(root: Menu)
 	end
 
 	menu:separator("Online vehicle catalog")
+	local settings = menu:submenu("AI Car Hub settings", "Choose how downloaded cars are handled")
+	settings:label("One-tap mode: download, verify, then automatically install the package.")
+	settings:label("Direct in-game DLC mounting and spawning are locked until the native loader is implemented and tested.")
+	settings:label("AI search currently uses offline matching; live AI recommendations need a populated catalog and service integration.")
+
 	local online = menu:submenu("Browse online cars", "Fetch the curated HTTPS catalog maintained for Glue 5")
 	local onlineStatus = online:label("Catalog not fetched yet.")
 	local onlineResults = online:submenu("Catalog vehicles", "Packages published in the Glue 5 catalog")
@@ -131,6 +136,54 @@ function M.build(root: Menu)
 								end)
 								return "Download started for " .. packageName
 							end)
+							bind.action(row, "Download + install (one tap)", {
+								note = "Automatically verifies and stages the car after download; live game mounting is not enabled yet",
+								action = "Download and install",
+							}, function(): string?
+								local queued, queueError = pcall(function()
+									world.requestVehiclePackageDownload(packageId)
+								end)
+								if not queued then return "Cannot start download: " .. tostring(queueError) end
+								onlineStatus:set("Downloading and verifying " .. packageName .. "…")
+								task.spawn(function()
+									local downloaded = false
+									for _ = 1, 600 do
+										wait(500)
+										local ok, done, message = pcall(function()
+											return world.vehiclePackageDownloadStatus()
+										end)
+										if ok and done then
+											onlineStatus:set(tostring(message))
+											downloaded = true
+											break
+										end
+									end
+									if not downloaded then
+										onlineStatus:set("Download is still running or timed out; install was not started.")
+										return
+									end
+									local installOk, installError = pcall(function()
+										world.requestVehiclePackageInstall(packageId)
+									end)
+									if not installOk then
+										onlineStatus:set("Downloaded, but install could not start: " .. tostring(installError))
+										return
+									end
+									onlineStatus:set("Download verified. Installing " .. packageName .. "…")
+									for _ = 1, 600 do
+										wait(500)
+										local ok, done, succeeded, message = pcall(function()
+											return world.vehiclePackageInstallStatus()
+										end)
+										if ok and done then
+											onlineStatus:set(tostring(message) .. " | Game spawn is not enabled yet.")
+											return
+										end
+									end
+									onlineStatus:set("Install is still running; check status shortly. Game spawn is not enabled yet.")
+								end)
+								return "One-tap download and install started for " .. packageName
+							end)
 							bind.action(row, "Install downloaded package", {
 								note = "Re-checks SHA-256, safely extracts ZIP and inspects GTA vehicle assets",
 								action = "Install",
@@ -169,7 +222,7 @@ function M.build(root: Menu)
 		return "Secure catalog request started"
 	end)
 	online:label("Downloads are streamed and SHA-256 verified into private app storage. Install safely extracts and inspects the package.")
-	online:label("RPF/DLC assets are not mounted into the game yet, so add-on cars are not spawnable yet.")
+	online:label("One-tap download + install is available per car. It stages verified files only; RPF/DLC mounting and actual in-game spawning are not implemented yet.")
 end
 
 return M
