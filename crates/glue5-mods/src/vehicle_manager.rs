@@ -93,6 +93,53 @@ pub fn install_verified_package(
 
     let compatibility = assess_dlc_compatibility(&report, &dlc_metadata, &package.id);
 
+    // Persist a small manifest alongside the extracted files so the trainer
+    // can show useful package details after an app restart. This is metadata
+    // only: it does not register or mount the DLC with the game engine.
+    let manifest = serde_json::json!({
+        "schema": 1,
+        "id": package.id,
+        "name": package.name,
+        "version": package.version,
+        "author": package.author,
+        "format": match package.format {
+            PackageFormat::LooseFiles => "loose_files",
+            PackageFormat::RpfDlc => "rpf_dlc",
+        },
+        "sha256": package.sha256,
+        "size_bytes": package.size_bytes,
+        "extracted_files": extracted.files,
+        "extracted_bytes": extracted.bytes,
+        "rpf_archives": report.rpf_archives,
+        "vehicle_assets": report.vehicle_assets,
+        "spawn_supported": false,
+        "status": "staged_not_mounted"
+    });
+    let manifest_path = extracted.directory.join(".glue5-package.json");
+    let manifest_tmp = extracted.directory.join(".glue5-package.json.tmp");
+    let manifest_result = (|| -> Result<(), String> {
+        let bytes = serde_json::to_vec_pretty(&manifest)
+            .map_err(|e| format!("cannot encode vehicle package manifest: {e}"))?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&manifest_tmp)
+            .map_err(|e| format!("cannot create vehicle package manifest: {e}"))?;
+        use std::io::Write as _;
+        file.write_all(&bytes)
+            .map_err(|e| format!("cannot write vehicle package manifest: {e}"))?;
+        file.sync_all()
+            .map_err(|e| format!("cannot sync vehicle package manifest: {e}"))?;
+        std::fs::rename(&manifest_tmp, &manifest_path)
+            .map_err(|e| format!("cannot finalize vehicle package manifest: {e}"))?;
+        Ok(())
+    })();
+    if let Err(error) = manifest_result {
+        let _ = std::fs::remove_file(&manifest_tmp);
+        let _ = std::fs::remove_dir_all(&extracted.directory);
+        return Err(format!("could not persist install metadata; staged install rolled back: {error}"));
+    }
+
     Ok(VehicleInstallResult {
         id: package.id.clone(),
         directory: extracted.directory,
