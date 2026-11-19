@@ -7,6 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
@@ -22,6 +23,17 @@ const SLICE: Duration = Duration::from_millis(2);
 const RUNAWAY: Duration = Duration::from_secs(2);
 /// Memory a mod's VM may use.
 const MEMORY: usize = 64 << 20;
+
+/// Only one vehicle package extraction may run at a time. This prevents two
+/// rapid UI taps from racing on the same install directory or status file.
+static VEHICLE_INSTALL_RUNNING: AtomicBool = AtomicBool::new(false);
+
+struct VehicleInstallGuard;
+impl Drop for VehicleInstallGuard {
+    fn drop(&mut self) {
+        VEHICLE_INSTALL_RUNNING.store(false, Ordering::Release);
+    }
+}
 
 /// Snippets for the REPL: code, and where its result goes.
 pub type Jobs = Rc<RefCell<VecDeque<(String, Sender<EvalResult>)>>>;
@@ -197,11 +209,16 @@ impl Vm {
                 if !archive.is_file() {
                     return Err(mlua::Error::runtime("download this vehicle package first"));
                 }
+                VEHICLE_INSTALL_RUNNING.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                    .map_err(|_| mlua::Error::runtime("another vehicle package is already being installed; wait for it to finish"))?;
                 let install_root = app_files.join("vehicles/installed");
                 let status = app_files.join("vehicle-install-status.json");
-                std::fs::write(&status, br#"{"state":"running","ok":false,"message":"Preparing safe install"}"#)
-                    .map_err(|e| mlua::Error::runtime(format!("cannot write install status: {e}")))?;
-                std::thread::Builder::new().name("Glue5VehicleInstall".into()).spawn(move || {
+                if let Err(error) = std::fs::write(&status, br#"{"state":"running","ok":false,"message":"Preparing safe install"}"#) {
+                    VEHICLE_INSTALL_RUNNING.store(false, Ordering::Release);
+                    return Err(mlua::Error::runtime(format!("cannot write install status: {error}")));
+                }
+                let spawn = std::thread::Builder::new().name("Glue5VehicleInstall".into()).spawn(move || {
+                    let _guard = VehicleInstallGuard;
                     let outcome = crate::vehicle_manager::install_verified_package(&archive, &install_root, &package);
                     let (state, ok, message) = match outcome {
                         Ok(result) => ("complete", true, format!(
@@ -212,7 +229,11 @@ impl Vm {
                     };
                     let value = serde_json::json!({"state":state,"ok":ok,"message":message});
                     let _ = std::fs::write(status, value.to_string());
-                }).map_err(|e| mlua::Error::runtime(format!("cannot start installer: {e}")))?;
+                });
+                if let Err(error) = spawn {
+                    VEHICLE_INSTALL_RUNNING.store(false, Ordering::Release);
+                    return Err(mlua::Error::runtime(format!("cannot start installer: {error}")));
+                }
                 Ok(())
             })?,
         )?;
