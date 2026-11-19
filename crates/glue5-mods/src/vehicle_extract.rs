@@ -277,6 +277,27 @@ mod tests {
     }
 
     #[test]
+    fn refuses_to_overwrite_an_existing_vehicle_install() {
+        let root = temp_root();
+        let zip = root.join("replacement.zip");
+        let bytes = crate::zip::write(&[("cars/readme.txt".into(), b"replacement data".to_vec())]);
+        fs::write(&zip, bytes).unwrap();
+
+        let install_root = root.join("installed");
+        let existing = install_root.join("test-car");
+        fs::create_dir_all(&existing).unwrap();
+        let sentinel = existing.join("keep-original.txt");
+        fs::write(&sentinel, b"original install").unwrap();
+
+        let error = extract_vehicle_zip(&zip, &install_root, "test-car").unwrap_err();
+        assert!(error.contains("already installed"));
+        assert_eq!(fs::read(&sentinel).unwrap(), b"original install");
+        assert!(!existing.join("cars/readme.txt").exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn rejects_traversal_and_does_not_leave_partial_install() {
         let root = temp_root();
         let zip = root.join("bad.zip");
