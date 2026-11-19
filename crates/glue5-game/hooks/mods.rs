@@ -49,6 +49,10 @@
     ("fileloader_execute_changeset", "CFileLoader::ExecuteContentChangeSet(CDataFileMgr::ContentChangeSet const&)"),
     ("fileloader_revert_changeset", "CFileLoader::RevertContentChangeSet(CDataFileMgr::ContentChangeSet const&, unsigned int)"),
     ("dlc_ittyp_load_datafile", "CDLCItypFileMounter::LoadDataFile(CDataFileMgr::DataFile const&)"),
+    ("dlc_ittyp_unload_datafile", "CDLCItypFileMounter::UnloadDataFile(CDataFileMgr::DataFile const&)"),
+    ("extra_content_execute_changeset", "CExtraContentManager::ExecuteContentChangeSetInternal(CMountableContent*, rage::atNonFinalHashString, rage::atNonFinalHashString, unsigned int)"),
+    ("model_post_load", "CModelInfo::PostLoad(rage::fwArchetype*)"),
+    ("model_get_local_info", "CModelInfo::GetModelInfoFromLocalIndex(int)"),
     ("extra_content_manager_dtor", "CExtraContentManager::~CExtraContentManager()"),
     ("mountable_content_shutdown", "CMountableContent::ShutdownContent()"),
 ]
