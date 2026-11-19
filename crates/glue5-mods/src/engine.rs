@@ -42,6 +42,8 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.mountable_content_ctor = Some(mountable_content_ctor);
     h.extra_content_add_folder = Some(extra_content_add_folder);
     h.extra_content_load = Some(extra_content_load);
+    h.extra_content_get_by_device = Some(extra_content_get_by_device);
+    h.extra_content_recursive_enum = Some(extra_content_recursive_enum);
 }
 
 /// Observe the real game's RPF load path without changing its behavior.
@@ -518,4 +520,22 @@ unsafe extern "C" fn extra_content_load(env: *mut Env, manager: u64, load_a: u32
         &format!("CExtraContentManager::LoadContent complete manager=0x{manager:x}"));
 }
 
+/// Observe the engine's device-to-content lookup. The manager remains
+/// engine-owned; this records the device key and returned content pointer.
+unsafe extern "C" fn extra_content_get_by_device(env: *mut Env, manager: u64, device: u64) -> u64 {
+    let name = unsafe { Mem::of(env).str(device) };
+    let result = unsafe { orig::extra_content_get_by_device(env, manager, device) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::GetContentByDevice manager=0x{manager:x} device={name} result=0x{result:x}"));
+    result
+}
 
+/// Observe recursive extra-content enumeration without changing its path or
+/// result. This helps identify which folders the game actually scans.
+unsafe extern "C" fn extra_content_recursive_enum(env: *mut Env, manager: u64, folder: u64) -> u32 {
+    let path = unsafe { Mem::of(env).str(folder) };
+    let result = unsafe { orig::extra_content_recursive_enum(env, manager, folder) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::RecursiveEnumExtraContent manager=0x{manager:x} folder={path} result={result}"));
+    result
+}
