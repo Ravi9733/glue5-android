@@ -63,9 +63,13 @@ function M.build(root: Menu)
 			tostring(data.device_mount_calls or 0), tostring(data.device_unmount_calls or 0),
 			tostring(data.device_lookups or 0), tostring(data.recursive_enumerations or 0)
 		))
+		pathStatus:set(string.format("RPF: %s | mount: %s | content folder: %s",
+			tostring(data.last_rpf_path or "(none)"), tostring(data.last_mount_path or "(none)"),
+			tostring(data.last_content_folder or "(none)"))
 		return "Loader diagnostics refreshed"
 	end)
-	loaderDiagnostics:label("Counters are passive observations. They do not mean DLC mounting or vehicle spawning is enabled.")
+	local pathStatus = loaderDiagnostics:label("Last paths: not read.")
+	loaderDiagnostics:label("Paths are truncated to 192 characters. Observations only; no DLC mounting or vehicle spawning is enabled.")
 	local query = menu:text("Search cars", "", { placeholder = "e.g. Mazda, Ferrari, drift, adder", max = 48 })
 	local results = menu:submenu("Search results", "Cars currently available in loaded game data")
 	results:label("Enter a name or model, then choose Search.")
