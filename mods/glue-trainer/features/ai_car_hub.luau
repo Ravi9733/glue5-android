@@ -24,6 +24,8 @@ function M.build(root: Menu)
 	local rpfStatus = loaderDiagnostics:label("RPF pipeline: not read.")
 	local streamingStatus = loaderDiagnostics:label("Streaming/model pipeline: not read.")
 	local deviceStatus = loaderDiagnostics:label("Device mounts: not read.")
+	local pathStatus = loaderDiagnostics:label("Last paths: not read.")
+	local lifecycleStatus = loaderDiagnostics:label("Content lifecycle: not read.")
 	bind.action(loaderDiagnostics, "Refresh loader diagnostics", {
 		note = "Reads counters only; does not mount or modify game files",
 		action = "Refresh",
@@ -72,8 +74,6 @@ function M.build(root: Menu)
 			tostring(data.mountable_shutdown_calls or 0)))
 		return "Loader diagnostics refreshed"
 	end)
-	local pathStatus = loaderDiagnostics:label("Last paths: not read.")
-	local lifecycleStatus = loaderDiagnostics:label("Content lifecycle: not read.")
 	loaderDiagnostics:label("Paths are truncated to 192 characters. Observations only; no DLC mounting or vehicle spawning is enabled.")
 	local query = menu:text("Search cars", "", { placeholder = "e.g. Mazda, Ferrari, drift, adder", max = 48 })
 	local results = menu:submenu("Search results", "Cars currently available in loaded game data")
