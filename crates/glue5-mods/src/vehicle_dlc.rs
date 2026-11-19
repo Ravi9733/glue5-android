@@ -119,7 +119,7 @@ fn collect_xml(root: &Path, dir: &Path, depth: usize, out: &mut Vec<(String, Pat
 /// Accept GTA V's common slash and Windows-backslash DLC path spellings,
 /// including the form used by dlclist entries in many PC add-on packages.
 fn parse_dlcpacks_entry(value: &str) -> Option<String> {
-    let normalized = value.trim().replace('\\\\', "/").to_ascii_lowercase();
+    let normalized = value.trim().replace('\\', "/").to_ascii_lowercase();
     let rest = normalized.strip_prefix("dlcpacks:/")?;
     let id = rest.trim_matches('/');
     if valid_dlc_id(id) { Some(id.to_owned()) } else { None }
