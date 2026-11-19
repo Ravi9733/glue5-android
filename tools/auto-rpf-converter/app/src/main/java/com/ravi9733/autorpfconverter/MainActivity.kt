@@ -417,6 +417,11 @@ class MainActivity : Activity() {
                         }
                         "PLATFORM" -> {
                             platform++
+                            if (registered + platform > MAX_DLC_AUDIT_PACKS) {
+                                report.appendLine("STOP — 512 combined DLC/platform pack audit limit reached.")
+                                budgetReached = true
+                                break
+                            }
                             if (!seenPlatform.add(value.lowercase())) {
                                 duplicates++
                                 report.appendLine("DUPLICATE PLATFORM [" + (position + 1) + "] " + value)
