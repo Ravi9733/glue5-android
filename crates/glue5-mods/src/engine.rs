@@ -606,11 +606,11 @@ unsafe extern "C" fn fileloader_revert_changeset(
 
 /// Observe the engine's full per-content change-set dispatch; never initiate a change.
 unsafe extern "C" fn extra_content_execute_changeset(
-    env: *mut Env, manager: u64, content: u64, group: u64, change_set: u64, flags: u32
+    env: *mut Env, content: u64, change_set_group: u64, change_set: u64, flags: u32
 ) {
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CExtraContentManager::ExecuteContentChangeSetInternal manager=0x{manager:x} content=0x{content:x} group=0x{group:x} change_set=0x{change_set:x} flags={flags}"));
-    unsafe { orig::extra_content_execute_changeset(env, manager, content, group, change_set, flags) };
+        &format!("CExtraContentManager::ExecuteContentChangeSetInternal manager=0x{:x} content=0x{content:x} group=0x{change_set_group:x} change_set=0x{change_set:x} flags={flags}", env as u64));
+    unsafe { orig::extra_content_execute_changeset(env, content, change_set_group, change_set, flags) };
 }
 
 /// Observe archetype post-load registration without altering model metadata.
@@ -631,19 +631,17 @@ unsafe extern "C" fn model_get_local_info(env: *mut Env, local_index: u32) -> u6
 }
 
 /// Observe the native DLC archetype/ityp data-file unload boundary.
-unsafe extern "C" fn dlc_ittyp_unload_datafile(env: *mut Env, mounter: u64, data_file: u64) {
+unsafe extern "C" fn dlc_ittyp_unload_datafile(env: *mut Env, data_file: u64) {
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CDLCItypFileMounter::UnloadDataFile mounter=0x{mounter:x} data_file=0x{data_file:x}"));
-    unsafe { orig::dlc_ittyp_unload_datafile(env, mounter, data_file) };
+        &format!("CDLCItypFileMounter::UnloadDataFile mounter=0x{:x} data_file=0x{data_file:x}", env as u64));
+    unsafe { orig::dlc_ittyp_unload_datafile(env, data_file) };
 }
 
 /// Trace the native DLC archetype/ityp data-file mounter used by vehicle assets.
-unsafe extern "C" fn dlc_ittyp_load_datafile(
-    env: *mut Env, mounter: u64, data_file: u64
-) -> u32 {
-    let result = unsafe { orig::dlc_ittyp_load_datafile(env, mounter, data_file) };
+unsafe extern "C" fn dlc_ittyp_load_datafile(env: *mut Env, data_file: u64) -> u32 {
+    let result = unsafe { orig::dlc_ittyp_load_datafile(env, data_file) };
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CDLCItypFileMounter::LoadDataFile mounter=0x{mounter:x} data_file=0x{data_file:x} result={result}"));
+        &format!("CDLCItypFileMounter::LoadDataFile mounter=0x{:x} data_file=0x{data_file:x} result={result}", env as u64));
     result
 }
 
