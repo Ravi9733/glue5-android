@@ -66,9 +66,14 @@ function M.build(root: Menu)
 		pathStatus:set(string.format("RPF: %s | mount: %s | content folder: %s",
 			tostring(data.last_rpf_path or "(none)"), tostring(data.last_mount_path or "(none)"),
 			tostring(data.last_content_folder or "(none)")))
+		lifecycleStatus:set(string.format("Enumerate: %s | update array: %s | change groups: %s | manager destroyed: %s | content shutdown: %s | content destroyed: %s",
+			tostring(data.begin_enumerate_calls or 0), tostring(data.update_content_array_calls or 0),
+			tostring(data.execute_change_group_calls or 0), tostring(data.manager_destructor_calls or 0),
+			tostring(data.mountable_shutdown_calls or 0), tostring(data.mountable_destructor_calls or 0)))
 		return "Loader diagnostics refreshed"
 	end)
 	local pathStatus = loaderDiagnostics:label("Last paths: not read.")
+	local lifecycleStatus = loaderDiagnostics:label("Content lifecycle: not read.")
 	loaderDiagnostics:label("Paths are truncated to 192 characters. Observations only; no DLC mounting or vehicle spawning is enabled.")
 	local query = menu:text("Search cars", "", { placeholder = "e.g. Mazda, Ferrari, drift, adder", max = 48 })
 	local results = menu:submenu("Search results", "Cars currently available in loaded game data")
