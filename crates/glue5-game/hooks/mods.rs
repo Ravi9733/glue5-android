@@ -43,5 +43,4 @@
     ("extra_content_execute_group", "CExtraContentManager::ExecuteContentChangeSetGroupForAll(unsigned int)"),
     ("extra_content_manager_dtor", "CExtraContentManager::~CExtraContentManager()"),
     ("mountable_content_shutdown", "CMountableContent::ShutdownContent()"),
-    ("mountable_content_dtor", "CMountableContent::~CMountableContent()"),
 ]
