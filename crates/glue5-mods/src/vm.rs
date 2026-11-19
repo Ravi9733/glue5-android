@@ -257,6 +257,58 @@ impl Vm {
                 Ok((done, ok, message))
             })?,
         )?;
+        // Enumerate only real child directories in the private staged-install
+        // root. Symlinks and hidden extraction staging folders are excluded.
+        let installed_vehicle_dir = std::env::var_os("GLUE5_APP_FILES_DIR")
+            .map(PathBuf::from)
+            .map(|path| path.join("vehicles/installed"));
+        world.set(
+            "listInstalledVehiclePackages",
+            lua.create_function(move |_, ()| {
+                let Some(root) = &installed_vehicle_dir else {
+                    return Ok("[]".to_string());
+                };
+                let entries = match std::fs::read_dir(root) {
+                    Ok(entries) => entries,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        return Ok("[]".to_string());
+                    }
+                    Err(error) => {
+                        return Err(mlua::Error::runtime(format!(
+                            "cannot read installed vehicle packages: {error}"
+                        )));
+                    }
+                };
+                let mut ids = Vec::new();
+                for entry in entries {
+                    let entry = entry.map_err(|error| mlua::Error::runtime(
+                        format!("cannot inspect installed vehicle entry: {error}")
+                    ))?;
+                    let file_type = entry.file_type().map_err(|error| mlua::Error::runtime(
+                        format!("cannot inspect installed vehicle entry type: {error}")
+                    ))?;
+                    if !file_type.is_dir() {
+                        continue;
+                    }
+                    let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
+                        continue;
+                    };
+                    if id.is_empty() || id.len() > 48
+                        || !id.bytes().all(|byte| byte.is_ascii_lowercase()
+                            || byte.is_ascii_digit() || byte == b'-' || byte == b'_')
+                    {
+                        continue;
+                    }
+                    ids.push(id);
+                    if ids.len() >= 100 { break; }
+                }
+                ids.sort();
+                serde_json::to_string(&ids)
+                    .map_err(|error| mlua::Error::runtime(format!(
+                        "cannot encode installed vehicle list: {error}"
+                    )))
+            })?,
+        )?;
         let placement_dir = dir.to_path_buf();
         let map_dir = placement_dir.join("maps");
         let import_dir = map_dir.clone();
