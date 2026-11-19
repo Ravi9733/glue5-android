@@ -34,6 +34,7 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.packfile_get_streaming_module = Some(packfile_get_streaming_module);
     h.packfile_register_individual_file = Some(packfile_register_individual_file);
     h.stream_request_object = Some(stream_request_object);
+    h.stream_load_object = Some(stream_load_object);
     h.stream_index_by_filename = Some(stream_index_by_filename);
     h.model_get_base_info = Some(model_get_base_info);
     h.device_mount = Some(device_mount);
@@ -140,6 +141,19 @@ unsafe extern "C" fn stream_request_object(
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CStreaming::RequestObject index={} flags={} priority={} result={}",
             local_index, flags, priority, result));
+    result
+}
+
+/// Sample the engine's object-load path without changing its behavior.
+/// The pinned wasm lowers this symbol to exactly two i32 arguments.
+static STREAM_LOAD_SAMPLES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+unsafe extern "C" fn stream_load_object(env: *mut Env, local_index: u32, flags: u32) -> u32 {
+    let result = unsafe { orig::stream_load_object(env, local_index, flags) };
+    let sample = STREAM_LOAD_SAMPLES.fetch_add(1, Ordering::Relaxed);
+    if sample % 256 == 0 {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("CStreaming::LoadObject sample={} index={} flags={} result={}", sample, local_index, flags, result));
+    }
     result
 }
 

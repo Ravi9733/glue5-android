@@ -26,6 +26,7 @@
     ("packfile_get_streaming_module", "rage::strPackfileManager::GetStreamingModule()"),
     ("packfile_register_individual_file", "rage::strPackfileManager::RegisterIndividualFile(char const*, bool, char const*, bool, bool)"),
     ("stream_request_object", "CStreaming::RequestObject(rage::strLocalIndex, int, int)"),
+    ("stream_load_object", "CStreaming::LoadObject(rage::strLocalIndex, int, bool, bool)"),
     ("stream_index_by_filename", "rage::strStreamingInfoManager::GetStreamingIndexByFilename(char const*, int)"),
     ("model_get_base_info", "CModelInfo::GetBaseModelInfo(rage::fwModelId)"),
     ("device_mount", "rage::fiDevice::Mount(char const*, rage::fiDevice const&, bool)"),
