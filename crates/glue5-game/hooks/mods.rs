@@ -38,4 +38,10 @@
     ("extra_content_load", "CExtraContentManager::LoadContent(bool, bool)"),
     ("extra_content_get_by_device", "CExtraContentManager::GetContentByDevice(char const*)"),
     ("extra_content_recursive_enum", "CExtraContentManager::RecursiveEnumExtraContent(char const*)"),
+    ("extra_content_begin_enumerate", "CExtraContentManager::BeginEnumerateContent(bool, bool)"),
+    ("extra_content_update_array", "CExtraContentManager::UpdateContentArray()"),
+    ("extra_content_execute_group", "CExtraContentManager::ExecuteContentChangeSetGroupForAll(unsigned int)"),
+    ("extra_content_manager_dtor", "CExtraContentManager::~CExtraContentManager()"),
+    ("mountable_content_shutdown", "CMountableContent::ShutdownContent()"),
+    ("mountable_content_dtor", "CMountableContent::~CMountableContent()"),
 ]
