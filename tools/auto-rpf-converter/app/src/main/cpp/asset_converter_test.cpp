@@ -649,6 +649,51 @@ int main() {
     require(valid_dlc_report.find("Missing references: 0") != std::string::npos,
             "valid DLC content references must not be reported missing");
 
+    // Platform DLC entries are stored inside base x64*.rpf archives. Resolve the
+    // dlcpacks/<name>/dlc.rpf entry without extracting the base archive or materializing
+    // the nested RPF; validate setup2/content through RAGEKIT's file-backed child reader.
+    const fs::path platform_base_path = dlc_test_root / "x64w.rpf";
+    rk::RpfBuilder platform_base;
+    platform_base.add_archive("dlcpacks/mpBeach/dlc.rpf", valid_dlc.clone());
+    platform_base.add_binary("dlcpacks/broken/dlc.rpf", bytes_of("not an RPF7 archive"), false);
+    rk::RpfWriteOptions platform_base_options;
+    platform_base_options.encryption = rk::RpfEncryption::Open;
+    platform_base_options.name = "x64w.rpf";
+    platform_base.save(platform_base_path.string(), platform_base_options);
+
+    const std::string platform_found_report =
+        gta_asset_converter::inspect_platform_dlc_pack_metadata(
+            platform_base_path, "mpBeach", dlc_empty_keys);
+    require(platform_found_report.find("PLATFORM_DLC_FOUND\\n") == 0,
+            "platform DLC resolver must find a nested dlc.rpf in a base x64 archive");
+    require(platform_found_report.find("Internal path: dlcpacks/mpBeach/dlc.rpf") != std::string::npos,
+            "platform DLC resolver must report the exact nested archive path");
+    require(platform_found_report.find("Device name: dlc_test") != std::string::npos &&
+            platform_found_report.find("Data files resolved: 2") != std::string::npos,
+            "platform DLC resolver must validate setup2.xml and content.xml in the nested pack");
+
+    const std::string platform_missing_report =
+        gta_asset_converter::inspect_platform_dlc_pack_metadata(
+            platform_base_path, "mpBusiness", dlc_empty_keys);
+    require(platform_missing_report.find("PLATFORM_DLC_NOT_FOUND\\n") == 0,
+            "platform DLC resolver must distinguish a genuinely absent pack from an unreadable archive");
+
+    const std::string platform_invalid_report =
+        gta_asset_converter::inspect_platform_dlc_pack_metadata(
+            platform_base_path, "broken", dlc_empty_keys);
+    require(platform_invalid_report.find("PLATFORM_DLC_FOUND_INVALID\\n") == 0,
+            "platform DLC resolver must report a named but malformed nested RPF as invalid");
+
+    bool unsafe_platform_name_rejected = false;
+    try {
+        (void)gta_asset_converter::inspect_platform_dlc_pack_metadata(
+            platform_base_path, "../escape", dlc_empty_keys);
+    } catch (const std::exception&) {
+        unsafe_platform_name_rejected = true;
+    }
+    require(unsafe_platform_name_rejected,
+            "platform DLC resolver must reject traversal pack names before archive lookup");
+
     const fs::path missing_dlc_path = dlc_test_root / "missing_reference.rpf";
     const std::string missing_content_xml =
         "<CDataFileMgr__ContentsOfDataFileXml><dataFiles>"
