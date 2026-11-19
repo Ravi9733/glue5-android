@@ -663,11 +663,11 @@ unsafe extern "C" fn extra_content_recursive_enum(env: *mut Env, manager: u64, f
     result
 }
 // Trace engine-owned content enumeration; forward every call unchanged.
-unsafe extern "C" fn extra_content_begin_enumerate(env: *mut Env, manager: u64, load_a: u32, load_b: u32) {
+unsafe extern "C" fn extra_content_begin_enumerate(env: *mut Env, manager: u64, flags: u32) {
     DLC_BEGIN_ENUM_COUNT.fetch_add(1, Ordering::Relaxed);
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CExtraContentManager::BeginEnumerateContent manager=0x{manager:x} flags={load_a},{load_b}"));
-    unsafe { orig::extra_content_begin_enumerate(env, manager, load_a, load_b) };
+        &format!("CExtraContentManager::BeginEnumerateContent manager=0x{manager:x} packed_flags={flags}"));
+    unsafe { orig::extra_content_begin_enumerate(env, manager, flags) };
 }
 
 unsafe extern "C" fn extra_content_update_array(env: *mut Env, manager: u64) {
