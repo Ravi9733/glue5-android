@@ -58,13 +58,26 @@ pub fn install_verified_package(
         }
     };
 
-    let dlc_metadata = match inspect_dlc_metadata(&extracted.directory) {
+    let mut dlc_metadata = match inspect_dlc_metadata(&extracted.directory) {
         Ok(report) => report,
         Err(error) => {
             let _ = std::fs::remove_dir_all(&extracted.directory);
             return Err(format!("DLC metadata validation failed; staged install rolled back: {error}"));
         }
     };
+    let rpf_metadata = match crate::vehicle_dlc::inspect_rpf_dlc_metadata(&extracted.directory) {
+        Ok(report) => report,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&extracted.directory);
+            return Err(format!("RPF metadata validation failed; staged install rolled back: {error}"));
+        }
+    };
+    dlc_metadata.dlclist_entries.extend(rpf_metadata.dlclist_entries);
+    dlc_metadata.dlclist_entries.sort();
+    dlc_metadata.dlclist_entries.dedup();
+    dlc_metadata.setup_orders.extend(rpf_metadata.setup_orders);
+    dlc_metadata.content_xml_files.extend(rpf_metadata.content_xml_files);
+    dlc_metadata.warnings.extend(rpf_metadata.warnings);
 
     match package.format {
         PackageFormat::RpfDlc if report.rpf_archives == 0 => {

@@ -14,6 +14,7 @@ log.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 roxmltree = "0.20"
+rpf-archive = "0.10"
 mlua = { version = "0.12", features = ["luau"] }
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 httparse = "1"

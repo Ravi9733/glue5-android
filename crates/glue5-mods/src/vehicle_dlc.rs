@@ -96,6 +96,90 @@ pub fn inspect_dlc_metadata(root: &Path) -> Result<DlcMetadataReport, String> {
     Ok(report)
 }
 
+
+/// Read DLC metadata embedded inside OPEN RPF archives. Encrypted archives are
+/// deliberately skipped because this path does not obtain or persist GTA keys.
+pub fn inspect_rpf_dlc_metadata(root: &Path) -> Result<DlcMetadataReport, String> {
+    use rpf_archive::{RpfEncryption, RpfFile};
+    let root = root.canonicalize().map_err(|e| format!("cannot resolve DLC package root: {e}"))?;
+    let mut report = DlcMetadataReport::default();
+    let mut archives = Vec::new();
+    collect_rpf(&root, &root, 0, &mut archives)?;
+    if archives.len() > 64 { return Err("vehicle package contains too many RPF archives".into()); }
+    let mut metadata_count = 0usize;
+    for (relative, path) in archives {
+        let archive = RpfFile::open(&path, None)
+            .map_err(|e| format!("{relative}: RPF parse failed: {e}"))?;
+        if !matches!(archive.archive.encryption, RpfEncryption::Open | RpfEncryption::None) {
+            report.warnings.push(format!("{relative}: encrypted RPF metadata skipped; keys are not configured"));
+            continue;
+        }
+        archive.walk(None, &mut |inner_path, bytes| {
+            let name = inner_path.rsplit('/').next().unwrap_or(inner_path).to_ascii_lowercase();
+            if !matches!(name.as_str(), "dlclist.xml" | "setup2.xml" | "content.xml") { return; }
+            metadata_count += 1;
+            if metadata_count > MAX_METADATA_FILES { return; }
+            if bytes.len() as u64 > MAX_XML_BYTES {
+                report.warnings.push(format!("{relative}/{inner_path}: XML exceeds 2 MiB and was skipped"));
+                return;
+            }
+            let text = match std::str::from_utf8(bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes)) {
+                Ok(text) => text,
+                Err(_) => { report.warnings.push(format!("{relative}/{inner_path}: metadata is not UTF-8")); return; }
+            };
+            let doc = match Document::parse(text) {
+                Ok(doc) => doc,
+                Err(e) => { report.warnings.push(format!("{relative}/{inner_path}: invalid XML: {e}")); return; }
+            };
+            match name.as_str() {
+                "dlclist.xml" => {
+                    if doc.root_element().tag_name().name() != "SMandatoryPacksData" {
+                        report.warnings.push(format!("{relative}/{inner_path}: unexpected dlclist root"));
+                    } else {
+                        for item in doc.descendants().filter(|n| n.is_element() && n.tag_name().name() == "Item") {
+                            let value = item.text().unwrap_or("").trim();
+                            if let Some(id) = parse_dlcpacks_entry(value) {
+                                report.dlclist_entries.push(id);
+                            } else if value.to_ascii_lowercase().starts_with("dlcpacks:") {
+                                report.warnings.push(format!("{relative}/{inner_path}: unsafe DLC path ignored"));
+                            }
+                        }
+                    }
+                }
+                "setup2.xml" => {
+                    let order = doc.root_element().children()
+                        .find(|n| n.is_element() && n.tag_name().name() == "order")
+                        .and_then(|n| n.attribute("value"))
+                        .and_then(|v| v.trim().parse::<i32>().ok()).unwrap_or(-1);
+                    report.setup_orders.push((format!("{relative}/{inner_path}"), order));
+                }
+                "content.xml" => report.content_xml_files.push(format!("{relative}/{inner_path}")),
+                _ => {}
+            }
+        }).map_err(|e| format!("{relative}: RPF walk failed: {e}"))?;
+    }
+    if metadata_count > MAX_METADATA_FILES { return Err("RPF metadata file count exceeds safety limit".into()); }
+    report.dlclist_entries.sort(); report.dlclist_entries.dedup();
+    report.setup_orders.sort_by(|a,b| a.0.cmp(&b.0));
+    report.content_xml_files.sort();
+    Ok(report)
+}
+
+fn collect_rpf(root: &Path, dir: &Path, depth: usize, out: &mut Vec<(String, PathBuf)>) -> Result<(), String> {
+    if depth > 24 { return Err("RPF folder nesting exceeds safety limit".into()); }
+    for entry in fs::read_dir(dir).map_err(|e| format!("cannot read package folder: {e}"))? {
+        let entry = entry.map_err(|e| format!("cannot read package entry: {e}"))?;
+        let path = entry.path();
+        let meta = fs::symlink_metadata(&path).map_err(|e| format!("cannot inspect package entry: {e}"))?;
+        if meta.file_type().is_symlink() { return Err(format!("symbolic link rejected: {}", path.display())); }
+        if meta.is_dir() { collect_rpf(root, &path, depth + 1, out)?; }
+        else if meta.is_file() && path.extension().is_some_and(|e| e.eq_ignore_ascii_case("rpf")) {
+            out.push((path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/"), path));
+        } else if !meta.is_file() { return Err(format!("special file rejected: {}", path.display())); }
+    }
+    Ok(())
+}
+
 fn collect_xml(root: &Path, dir: &Path, depth: usize, out: &mut Vec<(String, PathBuf)>) -> Result<(), String> {
     if depth > 24 { return Err("DLC metadata folder nesting exceeds safety limit".into()); }
     for entry in fs::read_dir(dir).map_err(|e| format!("cannot read DLC package folder: {e}"))? {
