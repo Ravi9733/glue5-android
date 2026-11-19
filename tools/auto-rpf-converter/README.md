@@ -39,9 +39,9 @@ Select the GTA V root folder and tap **VALIDATE FULL DLC LOAD ORDER**. The audit
 - For each `dlcpacks` entry it checks `mods/update/x64/dlcpacks/name/dlc.rpf` first, then `update/x64/dlcpacks/name/dlc.rpf`. It copies one pack at a time to app-private cache, preserves the basename `dlc.rpf` for NG key selection, and runs the existing setup2/content metadata validator.
 - The report shows list position separately from each pack's `setup2.xml` order, plus missing content references and RPF_FILE type mismatches. Source archives and XML files are never modified.
 
-Safety limits: at most 1,024 dlclist Items are parsed, 512 DLC pack entries are audited per Android run, each archive is limited to 4 GiB minus one byte, and the cumulative copied bytes (including update.rpf) are capped at 16 GiB. The audit stops at the cap instead of silently skipping the remainder.
+Safety limits: at most 1,024 dlclist Items are parsed, 512 DLC pack entries are audited per Android run, each archive is limited to 4 GiB minus one byte, and the cumulative copied bytes (including update.rpf, normal DLC archives and scanned base x64 archives) are capped at 16 GiB. The audit stops at the cap instead of silently skipping the remainder.
 
-`platform:/dlcPacks/` entries are identified but are not yet resolved inside base `x64*.rpf` archives. This is a list/metadata audit, not a game mount test; it does not certify Glue5 compatibility or rewrite DLC registration.
+`platform:/dlcPacks/` entries are resolved read-only by scanning the selected game root's `x64w.rpf` through `x64a.rpf` files for the case-insensitive internal path `dlcpacks/<name>/dlc.rpf`. The nested pack is opened file-backed with RAGEKIT and its `setup2.xml` plus declared content XML are validated without extracting the whole base archive. A found but malformed/unsupported nested archive is reported separately from a missing pack. If a base archive is encrypted without matching imported keys, unreadable, absent, or the cumulative 16 GiB audit budget is reached, remaining platform entries are reported as unknown/unresolved rather than falsely marked missing. This is still a read-only list/metadata audit, not a game mount test; it does not certify Glue5 compatibility or rewrite DLC registration. The audit reads the selected `update.rpf` list; the separate `common.rpf` dlclist is not scanned.
 
 ## Key import
 
@@ -98,6 +98,7 @@ GitHub Actions runs:
 - Synthetic AES- and NG-keyed RPF extraction and missing-key rejection
 - A nested RPF7 round-trip larger than 16 MiB
 - Synthetic dlclist.xml parsing for Windows separators, platform entries, traversal rejection, unknown mount schemes and missing-file rejection
+- Synthetic base x64w.rpf containing a nested platform `dlcPacks` entry, including metadata validation, missing-pack detection, malformed nested-RPF rejection and unsafe pack-name rejection
 - Android ARM64 debug APK build
 
 Fixtures are synthetic, not a full retail GTA V installation. Physical Android and Glue5 in-game tests have not been completed.
@@ -109,6 +110,10 @@ Fixtures are synthetic, not a full retail GTA V installation. Physical Android a
 - After a converted RPF is copied to the selected SAF output folder, the app reads the finalized document back with a fixed-size buffer and compares SHA-256 plus the byte count against the generated archive. A failed verification deletes the partial/finalized output and reports failure.
 - The Android APK links the pinned ragekit C++ JNI library. The older Rust native-core crate remains covered by a separate CI test job as legacy prototype code, but its unused JNI wrapper and shared library are no longer packaged into the APK.
 
+
+## Platform DLC resolution details
+
+The platform resolver uses the pinned RAGEKIT `Rpf::resolve` and `Rpf::open_child` APIs. It locates `dlcpacks/<pack>/dlc.rpf` in each base archive, rejects compressed or entry-encrypted nested archive entries instead of guessing how to open them, and opens valid nested archives file-backed so the base archive is not expanded into RAM. Community archive inventories document platform packs in base archives (for example `x64w.rpf/dlcpacks/mpbeach/dlc.rpf`); the scan covers `x64w.rpf` down through `x64a.rpf` because pack placement varies by title update. Synthetic fixtures validate the path and parser flow; retail game archive verification remains outstanding. References: [GTA V archives and content inventory](https://github.com/Goodvibes74/gta5-under-the-hood/blob/main/docs/core/archives-and-content.md) and [GTA V archive path inventory](https://smidity.com/en/docs/gta-paths).
 
 ## Temporary workspace cleanup
 
