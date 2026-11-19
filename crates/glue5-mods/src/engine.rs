@@ -40,6 +40,8 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
     h.mountable_content_ctor = Some(mountable_content_ctor);
+    h.extra_content_add_folder = Some(extra_content_add_folder);
+    h.extra_content_load = Some(extra_content_load);
 }
 
 /// Observe the real game's RPF load path without changing its behavior.
@@ -497,6 +499,23 @@ unsafe extern "C" fn mountable_content_ctor(env: *mut Env, object: u64) -> u64 {
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CMountableContent::ctor object=0x{object:x} result=0x{result:x}"));
     result
+}
+
+/// Trace engine-owned extra-content folder registration without changing it.
+unsafe extern "C" fn extra_content_add_folder(env: *mut Env, manager: u64, folder: u64) {
+    let path = unsafe { Mem::of(env).str(folder) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::AddContentFolder manager=0x{manager:x} folder={path}"));
+    unsafe { orig::extra_content_add_folder(env, manager, folder) };
+}
+
+/// Trace the engine extra-content load phase and its owning manager pointer.
+unsafe extern "C" fn extra_content_load(env: *mut Env, manager: u64, load_a: u32, load_b: u32) {
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::LoadContent begin manager=0x{manager:x} flags={load_a},{load_b}"));
+    unsafe { orig::extra_content_load(env, manager, load_a, load_b) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::LoadContent complete manager=0x{manager:x}"));
 }
 
 
