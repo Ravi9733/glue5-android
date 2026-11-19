@@ -87,6 +87,7 @@ pub fn install_verified_package(
         extracted_bytes: extracted.bytes,
         report,
         dlc_metadata,
+        compatibility,
         spawn_supported: false,
     })
 }

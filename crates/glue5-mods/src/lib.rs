@@ -15,7 +15,6 @@ pub mod vehicle_extract;
 pub mod vehicle_inspect;
 pub mod vehicle_manager;
 pub mod vehicle_dlc;
-pub mod vehicle_compat;
 mod checker;
 mod bundled_trainer;
 mod engine;
