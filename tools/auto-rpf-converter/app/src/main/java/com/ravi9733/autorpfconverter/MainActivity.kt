@@ -311,6 +311,7 @@ class MainActivity : Activity() {
                 val seenPlatform = mutableSetOf<String>()
                 var budgetReached = false
                 for ((position, item) in entries.withIndex()) {
+                    if (budgetReached) break
                     val kind = item.first
                     val value = item.second
                     when (kind) {
@@ -372,12 +373,11 @@ class MainActivity : Activity() {
                             TemporaryWorkspacePolicy.prepare(packWork)
                             try {
                                 val packCopy = java.io.File(packWork, "dlc.rpf")
-                                copyUriToFile(packDocument.uri, packCopy, MAX_ARCHIVE_BYTES)
+                                val remainingBudget = MAX_DLC_AUDIT_TOTAL_BYTES - totalBytes
+                                copyUriToFile(packDocument.uri, packCopy, minOf(MAX_ARCHIVE_BYTES, remainingBudget))
                                 val copiedBytes = packCopy.length()
-                                if (copiedBytes > MAX_DLC_AUDIT_TOTAL_BYTES - totalBytes) {
-                                    report.appendLine("STOP — 16 GiB cumulative DLC audit read budget reached.")
-                                    budgetReached = true
-                                    break
+                                check(copiedBytes <= remainingBudget) {
+                                    "DLC archive copy exceeded the remaining cumulative audit budget"
                                 }
                                 totalBytes += copiedBytes
                                 val packReport = NativeAssets.inspectDlcPackMetadata(
@@ -434,6 +434,7 @@ class MainActivity : Activity() {
 
                 var platformValidated = 0
                 var platformFailed = 0
+                var platformLocked = 0
                 var platformMissing = 0
                 var platformUnresolved = 0
                 var unreadableBaseArchives = 0
@@ -465,12 +466,11 @@ class MainActivity : Activity() {
 
                         val baseCopy = java.io.File(work, archiveName)
                         try {
-                            copyUriToFile(baseDocument.uri, baseCopy, MAX_ARCHIVE_BYTES)
+                            val remainingBudget = MAX_DLC_AUDIT_TOTAL_BYTES - totalBytes
+                            copyUriToFile(baseDocument.uri, baseCopy, minOf(MAX_ARCHIVE_BYTES, remainingBudget))
                             val copiedBytes = baseCopy.length()
-                            if (copiedBytes > MAX_DLC_AUDIT_TOTAL_BYTES - totalBytes) {
-                                report.appendLine("STOP — cumulative 16 GiB audit byte budget reached after copying " + archiveName)
-                                budgetReached = true
-                                break
+                            check(copiedBytes <= remainingBudget) {
+                                "Base archive copy exceeded the remaining cumulative audit budget"
                             }
                             totalBytes += copiedBytes
 
@@ -497,6 +497,14 @@ class MainActivity : Activity() {
                                             " | data refs=" + dlcReportField(platformReport, "Data files resolved") +
                                             "/" + dlcReportField(platformReport, "Data files declared") +
                                             " | missing=" + dlcReportField(platformReport, "Missing references"))
+                                    }
+                                    platformReport.startsWith("PLATFORM_DLC_FOUND_LOCKED\n") -> {
+                                        baseReadable = true
+                                        platformLocked++
+                                        unresolved.remove(packItem)
+                                        report.appendLine("PLATFORM FOUND BUT KEY-LOCKED [" + packPosition + "] " +
+                                            packName + " | base=" + archiveName +
+                                            " | import matching legitimate AES/NG key material to validate")
                                     }
                                     platformReport.startsWith("PLATFORM_DLC_FOUND_INVALID\n") -> {
                                         baseReadable = true
@@ -528,6 +536,11 @@ class MainActivity : Activity() {
                                     " | unresolved packs will not be marked missing")
                             }
                         } catch (e: Throwable) {
+                            if ((e.message ?: "").contains("copy limit")) {
+                                budgetReached = true
+                                report.appendLine("STOP — cumulative 16 GiB audit byte budget reached while copying " + archiveName)
+                                break
+                            }
                             unreadableBaseArchives++
                             report.appendLine("UNREADABLE " + archiveName + " — " +
                                 (e.message ?: e.javaClass.simpleName))
@@ -562,6 +575,7 @@ class MainActivity : Activity() {
                 report.appendLine("Platform references in dlclist.xml: " + platform)
                 report.appendLine("Platform pack metadata validated: " + platformValidated)
                 report.appendLine("Platform packs found but invalid: " + platformFailed)
+                report.appendLine("Platform packs found but key-locked: " + platformLocked)
                 report.appendLine("Missing platform pack archives: " + platformMissing)
                 report.appendLine("Platform references unresolved: " + platformUnresolved)
                 report.appendLine("Unreadable base x64 archives: " + unreadableBaseArchives)
