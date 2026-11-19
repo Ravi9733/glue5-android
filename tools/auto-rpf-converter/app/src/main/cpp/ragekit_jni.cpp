@@ -170,3 +170,36 @@ Java_com_ravi9733_autorpconverter_NativeAssets_readDlcListEntries(
     env->ReleaseStringUTFChars(key_directory, key_chars);
     return env->NewStringUTF(report.c_str());
 }
+
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ravi9733_autorpconverter_NativeAssets_inspectPlatformDlcPackMetadata(
+    JNIEnv* env, jclass, jstring base_archive_path, jstring pack_name, jstring key_directory) {
+    const char* base_chars = env->GetStringUTFChars(base_archive_path, nullptr);
+    if (base_chars == nullptr) return nullptr;
+    const char* pack_chars = env->GetStringUTFChars(pack_name, nullptr);
+    if (pack_chars == nullptr) {
+        env->ReleaseStringUTFChars(base_archive_path, base_chars);
+        return nullptr;
+    }
+    const char* key_chars = env->GetStringUTFChars(key_directory, nullptr);
+    if (key_chars == nullptr) {
+        env->ReleaseStringUTFChars(base_archive_path, base_chars);
+        env->ReleaseStringUTFChars(pack_name, pack_chars);
+        return nullptr;
+    }
+
+    std::string report;
+    try {
+        report = gta_asset_converter::inspect_platform_dlc_pack_metadata(
+            base_chars, pack_chars, key_chars);
+    } catch (const std::exception& error) {
+        report = std::string("Platform DLC scan failed: ") + error.what();
+    } catch (...) {
+        report = "Platform DLC scan failed: unknown native error";
+    }
+    env->ReleaseStringUTFChars(base_archive_path, base_chars);
+    env->ReleaseStringUTFChars(pack_name, pack_chars);
+    env->ReleaseStringUTFChars(key_directory, key_chars);
+    return env->NewStringUTF(report.c_str());
+}
