@@ -339,6 +339,10 @@ impl Vm {
                     )))
             })?,
         )?;
+        world.set(
+            "vehicleLoaderDiagnostics",
+            lua.create_function(|_, ()| Ok(crate::vehicle_loader_diagnostics()))?,
+        )?;
         let placement_dir = dir.to_path_buf();
         let map_dir = placement_dir.join("maps");
         let import_dir = map_dir.clone();
