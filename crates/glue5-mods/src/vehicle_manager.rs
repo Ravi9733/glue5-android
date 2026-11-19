@@ -8,6 +8,7 @@ use crate::{
     vehicle_hub::{PackageFormat, VehiclePackage},
     vehicle_extract::{extract_vehicle_zip, ExtractedPackage},
     vehicle_inspect::{inspect_vehicle_package, VehiclePackageReport},
+    vehicle_compat::{assess_dlc_compatibility, DlcCompatibilityReport},
 };
 use sha2::{Digest, Sha256};
 use std::{fs::File, io::Read, path::{Path, PathBuf}};
@@ -20,6 +21,7 @@ pub struct VehicleInstallResult {
     pub extracted_bytes: u64,
     pub report: VehiclePackageReport,
     pub dlc_metadata: DlcMetadataReport,
+    pub compatibility: DlcCompatibilityReport,
     /// Always false until native mounting and in-game spawning are implemented.
     pub spawn_supported: bool,
 }
@@ -75,6 +77,8 @@ pub fn install_verified_package(
         }
         _ => {}
     }
+
+    let compatibility = assess_dlc_compatibility(&report, &dlc_metadata);
 
     Ok(VehicleInstallResult {
         id: package.id.clone(),
