@@ -33,7 +33,4 @@
     ("device_unmount", "rage::fiDevice::Unmount(char const*)"),
     // Observe engine-owned DLC manager construction; no object is allocated or mutated here.
     ("mountable_content_ctor", "CMountableContent::CMountableContent()"),
-    ("mountable_load_setup", "CMountableContent::LoadSetupXML(char const*)"),
-    ("mountable_mount", "CMountableContent::Mount(int)"),
-    ("mountable_mount_content", "CMountableContent::MountContent(int, char const*)"),
 ]

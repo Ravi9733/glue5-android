@@ -497,28 +497,33 @@ unsafe extern "C" fn mountable_content_ctor(env: *mut Env, object: u64) -> u64 {
     result
 }
 
-/// Observe the engine-owned DLC setup parser. The opaque argument is logged
-/// only; this hook does not parse or mutate engine state itself.
-unsafe extern "C" fn mountable_load_setup(env: *mut Env, arg: u64) -> u32 {
-    let result = unsafe { orig::mountable_load_setup(env, arg) };
+/// Observe the engine-owned DLC setup parser. Preserve the member-function
+/// ABI: the first native argument is this, followed by the XML path.
+unsafe extern "C" fn mountable_load_setup(env: *mut Env, this_ptr: u64, path_ptr: u64) -> u32 {
+    let path = unsafe { Mem::of(env).str(path_ptr) };
+    let result = unsafe { orig::mountable_load_setup(env, this_ptr, path_ptr) };
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CMountableContent::LoadSetupXML arg=0x{arg:x} result={result}"));
+        &format!("CMountableContent::LoadSetupXML this=0x{this_ptr:x} path={path} result={result}"));
     result
 }
 
 /// Observe the native DLC mount lifecycle without initiating a mount.
-unsafe extern "C" fn mountable_mount(env: *mut Env, arg: u64) -> u32 {
-    let result = unsafe { orig::mountable_mount(env, arg) };
+/// Preserve the member-function ABI: this followed by the integer mode.
+unsafe extern "C" fn mountable_mount(env: *mut Env, this_ptr: u64, mode: u32) -> u32 {
+    let result = unsafe { orig::mountable_mount(env, this_ptr, mode) };
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CMountableContent::Mount arg=0x{arg:x} result={result}"));
+        &format!("CMountableContent::Mount this=0x{this_ptr:x} mode={mode} result={result}"));
     result
 }
 
-/// Observe the native content-mount call; raw arguments remain opaque until
-/// their exact object/path roles are confirmed from runtime traces.
-unsafe extern "C" fn mountable_mount_content(env: *mut Env, arg0: u64, arg1: u64) -> u32 {
-    let result = unsafe { orig::mountable_mount_content(env, arg0, arg1) };
+/// Observe the native content-mount call with its member-function arguments:
+/// this, content index, and virtual device/path.
+unsafe extern "C" fn mountable_mount_content(
+    env: *mut Env, this_ptr: u64, content_index: u32, path_ptr: u64
+) -> u32 {
+    let path = unsafe { Mem::of(env).str(path_ptr) };
+    let result = unsafe { orig::mountable_mount_content(env, this_ptr, content_index, path_ptr) };
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CMountableContent::MountContent arg0=0x{arg0:x} arg1=0x{arg1:x} result={result}"));
+        &format!("CMountableContent::MountContent this=0x{this_ptr:x} index={content_index} path={path} result={result}"));
     result
 }
