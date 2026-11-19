@@ -664,7 +664,7 @@ int main() {
     const std::string platform_found_report =
         gta_asset_converter::inspect_platform_dlc_pack_metadata(
             platform_base_path, "mpBeach", dlc_empty_keys);
-    require(platform_found_report.find("PLATFORM_DLC_FOUND\\n") == 0,
+    require(platform_found_report.find("PLATFORM_DLC_FOUND\n") == 0,
             "platform DLC resolver must find a nested dlc.rpf in a base x64 archive");
     require(platform_found_report.find("Internal path: dlcpacks/mpBeach/dlc.rpf") != std::string::npos,
             "platform DLC resolver must report the exact nested archive path");
@@ -675,13 +675,13 @@ int main() {
     const std::string platform_missing_report =
         gta_asset_converter::inspect_platform_dlc_pack_metadata(
             platform_base_path, "mpBusiness", dlc_empty_keys);
-    require(platform_missing_report.find("PLATFORM_DLC_NOT_FOUND\\n") == 0,
+    require(platform_missing_report.find("PLATFORM_DLC_NOT_FOUND\n") == 0,
             "platform DLC resolver must distinguish a genuinely absent pack from an unreadable archive");
 
     const std::string platform_invalid_report =
         gta_asset_converter::inspect_platform_dlc_pack_metadata(
             platform_base_path, "broken", dlc_empty_keys);
-    require(platform_invalid_report.find("PLATFORM_DLC_FOUND_INVALID\\n") == 0,
+    require(platform_invalid_report.find("PLATFORM_DLC_FOUND_INVALID\n") == 0,
             "platform DLC resolver must report a named but malformed nested RPF as invalid");
 
     bool unsafe_platform_name_rejected = false;
