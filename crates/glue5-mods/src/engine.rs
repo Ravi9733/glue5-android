@@ -40,6 +40,9 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
     h.mountable_content_ctor = Some(mountable_content_ctor);
+    h.mountable_load_setup = Some(mountable_load_setup);
+    h.mountable_mount = Some(mountable_mount);
+    h.mountable_mount_content = Some(mountable_mount_content);
 }
 
 /// Observe the real game's RPF load path without changing its behavior.
@@ -491,5 +494,31 @@ unsafe extern "C" fn mountable_content_ctor(env: *mut Env, object: u64) -> u64 {
     let result = unsafe { orig::mountable_content_ctor(env, object) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CMountableContent::ctor object=0x{object:x} result=0x{result:x}"));
+    result
+}
+
+/// Observe the engine-owned DLC setup parser. The opaque argument is logged
+/// only; this hook does not parse or mutate engine state itself.
+unsafe extern "C" fn mountable_load_setup(env: *mut Env, arg: u64) -> u32 {
+    let result = unsafe { orig::mountable_load_setup(env, arg) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::LoadSetupXML arg=0x{arg:x} result={result}"));
+    result
+}
+
+/// Observe the native DLC mount lifecycle without initiating a mount.
+unsafe extern "C" fn mountable_mount(env: *mut Env, arg: u64) -> u32 {
+    let result = unsafe { orig::mountable_mount(env, arg) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::Mount arg=0x{arg:x} result={result}"));
+    result
+}
+
+/// Observe the native content-mount call; raw arguments remain opaque until
+/// their exact object/path roles are confirmed from runtime traces.
+unsafe extern "C" fn mountable_mount_content(env: *mut Env, arg0: u64, arg1: u64) -> u32 {
+    let result = unsafe { orig::mountable_mount_content(env, arg0, arg1) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::MountContent arg0=0x{arg0:x} arg1=0x{arg1:x} result={result}"));
     result
 }
