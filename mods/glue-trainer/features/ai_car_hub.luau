@@ -86,11 +86,19 @@ function M.build(root: Menu)
 		if #ids == 0 then
 			installedRows:label("No staged vehicle packages found.")
 		else
-			for _, id in ids do
-				if type(id) == "string" then
-					local row = installedRows:submenu(id, "Verified extraction folder")
-					row:label("Package ID: " .. id)
-					row:label("Status: staged locally; native DLC mount and spawning are not enabled.")
+			for _, package in ids do
+				if type(package) == "table" and type(package.id) == "string" then
+					local title = type(package.name) == "string" and package.name or package.id
+					local row = installedRows:submenu(title, package.id .. " | " .. tostring(package.format or "unknown"))
+					row:label("Package ID: " .. package.id)
+					row:label("Version: " .. tostring(package.version or "unknown"))
+					row:label("Author: " .. tostring(package.author or "unknown"))
+					row:label("Extracted files: " .. tostring(package.extracted_files or 0))
+					row:label("Extracted bytes: " .. tostring(package.extracted_bytes or 0))
+					row:label("RPF archives: " .. tostring(package.rpf_archives or 0))
+					row:label("Vehicle assets: " .. tostring(package.vehicle_assets or 0))
+					row:label("Status: " .. tostring(package.status or "staged_not_mounted"))
+					row:label("Native DLC mount and vehicle spawning are not enabled yet.")
 				end
 			end
 		end
