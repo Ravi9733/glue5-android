@@ -400,6 +400,11 @@ class MainActivity : Activity() {
                                         " | RPF kind mismatch=" + dlcReportField(packReport, "RPF_FILE type mismatches"))
                                 }
                             } catch (e: Throwable) {
+                                if ((e.message ?: "").contains("copy limit")) {
+                                    budgetReached = true
+                                    report.appendLine("STOP — cumulative 16 GiB audit byte budget reached while copying " + value)
+                                    break
+                                }
                                 failed++
                                 report.appendLine("FAIL [" + (position + 1) + "] " + value + " — " +
                                     (e.message ?: e.javaClass.simpleName))
