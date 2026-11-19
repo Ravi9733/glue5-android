@@ -694,23 +694,10 @@ std::string convert_rpf_archive_to_open_rpf7(const fs::path& source_path,
 
 
 
-std::string inspect_dlc_pack_metadata(const fs::path& source_path,
-                                      const fs::path& key_directory) {
-    constexpr std::uint64_t max_archive_bytes = 0xFFFFFFFFull;
+static std::string inspect_dlc_pack_metadata_archive(const rk::Rpf& archive,
+                                                       const std::string& archive_label) {
     constexpr std::uint64_t max_xml_bytes = 8ull * 1024ull * 1024ull;
     constexpr std::size_t max_data_files = 100'000;
-
-    const auto source_status = fs::symlink_status(source_path);
-    if (fs::is_symlink(source_status) || !fs::is_regular_file(source_status)) {
-        throw std::runtime_error("DLC source must be a regular, non-symlink RPF file");
-    }
-    const std::uint64_t archive_bytes = fs::file_size(source_path);
-    if (archive_bytes > max_archive_bytes) {
-        throw std::runtime_error("DLC RPF exceeds the 4 GiB RPF7 safety limit");
-    }
-
-    auto keys = std::make_shared<rk::RpfKeys>(rk::RpfKeys::load(key_directory.string()));
-    const rk::Rpf archive = rk::Rpf::open(source_path.string(), keys);
 
     auto read_xml_entry = [&](const rk::Rpf::Location& location, const std::string& label) {
         if (!location.archive || location.entry < 0) {
@@ -860,7 +847,7 @@ std::string inspect_dlc_pack_metadata(const fs::path& source_path,
 
     std::ostringstream report;
     report << "DLC metadata validation complete\n"
-           << "Archive: " << source_path.filename().string() << "\n"
+           << "Archive: " << archive_label << "\n"
            << "Input encryption: " << rpf_encryption_name(archive.encryption()) << "\n"
            << "Device name: " << device_name << "\n"
            << "Pack type: " << (pack_type.empty() ? "not specified" : pack_type) << "\n"
@@ -886,6 +873,74 @@ std::string inspect_dlc_pack_metadata(const fs::path& source_path,
         }
     }
     return report.str();
+}
+
+std::string inspect_dlc_pack_metadata(const fs::path& source_path,
+                                      const fs::path& key_directory) {
+    constexpr std::uint64_t max_archive_bytes = 0xFFFFFFFFull;
+    const auto source_status = fs::symlink_status(source_path);
+    if (fs::is_symlink(source_status) || !fs::is_regular_file(source_status)) {
+        throw std::runtime_error("DLC source must be a regular, non-symlink RPF file");
+    }
+    if (fs::file_size(source_path) > max_archive_bytes) {
+        throw std::runtime_error("DLC RPF exceeds the 4 GiB RPF7 safety limit");
+    }
+    auto keys = std::make_shared<rk::RpfKeys>(rk::RpfKeys::load(key_directory.string()));
+    const rk::Rpf archive = rk::Rpf::open(source_path.string(), keys);
+    return inspect_dlc_pack_metadata_archive(archive, source_path.filename().string());
+}
+
+std::string inspect_platform_dlc_pack_metadata(const fs::path& base_archive_path,
+                                               const std::string& pack_name,
+                                               const fs::path& key_directory) {
+    constexpr std::uint64_t max_archive_bytes = 0xFFFFFFFFull;
+    const auto source_status = fs::symlink_status(base_archive_path);
+    if (fs::is_symlink(source_status) || !fs::is_regular_file(source_status)) {
+        throw std::runtime_error("base x64 archive must be a regular, non-symlink file");
+    }
+    if (fs::file_size(base_archive_path) > max_archive_bytes) {
+        throw std::runtime_error("base x64 archive exceeds the 4 GiB RPF7 safety limit");
+    }
+    if (pack_name.empty() || pack_name == "." || pack_name == ".." ||
+        pack_name.find_first_of("/\\\\:") != std::string::npos ||
+        pack_name.find("..") != std::string::npos) {
+        throw std::runtime_error("unsafe platform DLC pack name");
+    }
+    for (unsigned char c : pack_name) {
+        if (c < 0x20 || c == 0x7F) throw std::runtime_error("control character in platform DLC pack name");
+    }
+
+    auto keys = std::make_shared<rk::RpfKeys>(rk::RpfKeys::load(key_directory.string()));
+    const rk::Rpf base = rk::Rpf::open(base_archive_path.string(), keys);
+    const std::string internal_path = "dlcpacks/" + pack_name + "/dlc.rpf";
+    const auto location = base.resolve(internal_path);
+    if (!location.archive || location.entry < 0) {
+        return "PLATFORM_DLC_NOT_FOUND\\n";
+    }
+
+    const rk::RpfEntry& entry =
+        location.archive->entries().at(static_cast<std::size_t>(location.entry));
+    if (entry.is_directory() || !entry.is_archive()) {
+        return "PLATFORM_DLC_INVALID_ENTRY\\nBase archive: " + base.name() +
+               "\\nInternal path: " + internal_path + "\\nExpected a nested dlc.rpf archive entry.\\n";
+    }
+    if (entry.size() == 0 || entry.size() > max_archive_bytes) {
+        return "PLATFORM_DLC_INVALID_ENTRY\\nBase archive: " + base.name() +
+               "\\nInternal path: " + internal_path + "\\nNested dlc.rpf is empty or exceeds the 4 GiB limit.\\n";
+    }
+
+    try {
+        // open_child is file-backed: the nested DLC is not materialized as a multi-hundred-MiB buffer.
+        // RAGEKIT uses the nested entry's real basename (dlc.rpf) for NG key selection.
+        const rk::Rpf child = location.archive->open_child(location.entry);
+        const std::string label = base.name() + ":" + internal_path;
+        return "PLATFORM_DLC_FOUND\\nBase archive: " + base.name() +
+               "\\nInternal path: " + internal_path + "\\n" +
+               inspect_dlc_pack_metadata_archive(child, label);
+    } catch (const std::exception& error) {
+        return "PLATFORM_DLC_FOUND_INVALID\\nBase archive: " + base.name() +
+               "\\nInternal path: " + internal_path + "\\nMetadata inspection failed: " + error.what() + "\\n";
+    }
 }
 
 
