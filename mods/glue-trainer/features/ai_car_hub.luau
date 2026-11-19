@@ -65,7 +65,7 @@ function M.build(root: Menu)
 		))
 		pathStatus:set(string.format("RPF: %s | mount: %s | content folder: %s",
 			tostring(data.last_rpf_path or "(none)"), tostring(data.last_mount_path or "(none)"),
-			tostring(data.last_content_folder or "(none)"))
+			tostring(data.last_content_folder or "(none)")))
 		return "Loader diagnostics refreshed"
 	end)
 	local pathStatus = loaderDiagnostics:label("Last paths: not read.")
