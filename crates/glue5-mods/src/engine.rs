@@ -55,6 +55,10 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.fileloader_execute_changeset = Some(fileloader_execute_changeset);
     h.fileloader_revert_changeset = Some(fileloader_revert_changeset);
     h.dlc_ittyp_load_datafile = Some(dlc_ittyp_load_datafile);
+    h.dlc_ittyp_unload_datafile = Some(dlc_ittyp_unload_datafile);
+    h.extra_content_execute_changeset = Some(extra_content_execute_changeset);
+    h.model_post_load = Some(model_post_load);
+    h.model_get_local_info = Some(model_get_local_info);
     h.extra_content_manager_dtor = Some(extra_content_manager_dtor);
     h.mountable_content_shutdown = Some(mountable_content_shutdown);
 }
@@ -598,6 +602,39 @@ unsafe extern "C" fn fileloader_revert_changeset(
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CFileLoader::RevertContentChangeSet change_set=0x{change_set:x} flags={flags}"));
     unsafe { orig::fileloader_revert_changeset(env, change_set, flags) };
+}
+
+/// Observe the engine's full per-content change-set dispatch; never initiate a change.
+unsafe extern "C" fn extra_content_execute_changeset(
+    env: *mut Env, manager: u64, content: u64, group: u64, change_set: u64, flags: u32
+) {
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::ExecuteContentChangeSetInternal manager=0x{manager:x} content=0x{content:x} group=0x{group:x} change_set=0x{change_set:x} flags={flags}"));
+    unsafe { orig::extra_content_execute_changeset(env, manager, content, group, change_set, flags) };
+}
+
+/// Observe archetype post-load registration without altering model metadata.
+unsafe extern "C" fn model_post_load(env: *mut Env, archetype: u64) {
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CModelInfo::PostLoad archetype=0x{archetype:x}"));
+    unsafe { orig::model_post_load(env, archetype) };
+}
+
+/// Observe model-info resolution from a streaming-local index.
+unsafe extern "C" fn model_get_local_info(env: *mut Env, local_index: u32) -> u64 {
+    let result = unsafe { orig::model_get_local_info(env, local_index) };
+    if result != 0 {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("CModelInfo::GetModelInfoFromLocalIndex index={local_index} model_info=0x{result:x}"));
+    }
+    result
+}
+
+/// Observe the native DLC archetype/ityp data-file unload boundary.
+unsafe extern "C" fn dlc_ittyp_unload_datafile(env: *mut Env, mounter: u64, data_file: u64) {
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CDLCItypFileMounter::UnloadDataFile mounter=0x{mounter:x} data_file=0x{data_file:x}"));
+    unsafe { orig::dlc_ittyp_unload_datafile(env, mounter, data_file) };
 }
 
 /// Trace the native DLC archetype/ityp data-file mounter used by vehicle assets.
