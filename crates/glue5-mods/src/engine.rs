@@ -831,9 +831,17 @@ unsafe extern "C" fn extra_content_execute_group(env: *mut Env, manager: u64, gr
 
 unsafe extern "C" fn extra_content_manager_dtor(env: *mut Env, manager: u64) -> u64 {
     DLC_MANAGER_DTOR_COUNT.fetch_add(1, Ordering::Relaxed);
+
+    // The manager pointer is only a diagnostic candidate captured from the
+    // engine's AddContentFolder path. Clear it before forwarding destruction
+    // so a later lifecycle cannot mistake a freed object for the live manager.
+    let was_candidate = EXTRA_CONTENT_MANAGER.compare_exchange(
+        manager, 0, Ordering::AcqRel, Ordering::Acquire
+    ).is_ok();
+
     let result = unsafe { orig::extra_content_manager_dtor(env, manager) };
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CExtraContentManager::dtor manager=0x{manager:x} result=0x{result:x}"));
+        &format!("CExtraContentManager::dtor manager=0x{manager:x} cleared_candidate={was_candidate} result=0x{result:x}"));
     result
 }
 
