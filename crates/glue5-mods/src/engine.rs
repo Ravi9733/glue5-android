@@ -503,21 +503,37 @@ unsafe extern "C" fn mountable_content_ctor(env: *mut Env, object: u64) -> u64 {
     result
 }
 
-/// Trace engine-owned extra-content folder registration without changing it.
+/// The engine owns this object. Remember only the address observed at the
+/// real registration/load boundary; never construct, retain ownership of, or
+/// invoke methods on a guessed CExtraContentManager instance.
+static EXTRA_CONTENT_MANAGER: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// Trace engine-owned folder registration and identify the manager instance.
 unsafe extern "C" fn extra_content_add_folder(env: *mut Env, manager: u64, folder: u64) {
     let path = unsafe { Mem::of(env).str(folder) };
+    if manager != 0 {
+        let previous = EXTRA_CONTENT_MANAGER.swap(manager, Ordering::AcqRel);
+        if previous != manager {
+            log_line("vehicle-loader", LogLevel::Info,
+                &format!("extra-content manager candidate changed old=0x{previous:x} new=0x{manager:x}"));
+        }
+    }
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CExtraContentManager::AddContentFolder manager=0x{manager:x} folder={path}"));
     unsafe { orig::extra_content_add_folder(env, manager, folder) };
 }
 
-/// Trace the engine extra-content load phase and its owning manager pointer.
+/// Confirm the manager that actually reaches the engine's load boundary.
+/// This is lifecycle evidence only; no mount method is called from the hook.
 unsafe extern "C" fn extra_content_load(env: *mut Env, manager: u64, load_a: u32, load_b: u32) {
+    let candidate = EXTRA_CONTENT_MANAGER.load(Ordering::Acquire);
+    let matches = manager != 0 && manager == candidate;
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CExtraContentManager::LoadContent begin manager=0x{manager:x} flags={load_a},{load_b}"));
+        &format!("CExtraContentManager::LoadContent begin manager=0x{manager:x} candidate=0x{candidate:x} identity_match={matches} flags={load_a},{load_b}"));
     unsafe { orig::extra_content_load(env, manager, load_a, load_b) };
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CExtraContentManager::LoadContent complete manager=0x{manager:x}"));
+        &format!("CExtraContentManager::LoadContent complete manager=0x{manager:x} identity_match={matches}"));
 }
 
 /// Observe the engine's device-to-content lookup. The manager remains
