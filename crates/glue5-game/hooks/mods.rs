@@ -31,4 +31,6 @@
     ("model_get_base_info", "CModelInfo::GetBaseModelInfo(rage::fwModelId)"),
     ("device_mount", "rage::fiDevice::Mount(char const*, rage::fiDevice const&, bool)"),
     ("device_unmount", "rage::fiDevice::Unmount(char const*)"),
+    // Observe engine-owned DLC manager construction; no object is allocated or mutated here.
+    ("mountable_content_ctor", "CMountableContent::CMountableContent()"),
 ]

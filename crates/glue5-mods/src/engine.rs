@@ -39,6 +39,7 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.model_get_base_info = Some(model_get_base_info);
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
+    h.mountable_content_ctor = Some(mountable_content_ctor);
 }
 
 /// Observe the real game's RPF load path without changing its behavior.
@@ -481,4 +482,14 @@ fn set_waiting(name: &str, waiting: bool) {
         m.waiting = waiting;
         SHARED.generation.fetch_add(1, Ordering::Relaxed);
     }
+}
+
+/// Observe the engine's own CMountableContent construction to identify its
+/// lifetime and ownership before any runtime DLC mounting is attempted.
+/// This hook forwards the constructor unchanged and never allocates an object.
+unsafe extern "C" fn mountable_content_ctor(env: *mut Env, object: u64) -> u64 {
+    let result = unsafe { orig::mountable_content_ctor(env, object) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::ctor object=0x{object:x} result=0x{result:x}"));
+    result
 }
