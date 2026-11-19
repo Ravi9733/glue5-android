@@ -51,6 +51,10 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.extra_content_begin_enumerate = Some(extra_content_begin_enumerate);
     h.extra_content_update_array = Some(extra_content_update_array);
     h.extra_content_execute_group = Some(extra_content_execute_group);
+    h.extra_content_execute_internal = Some(extra_content_execute_internal);
+    h.fileloader_execute_changeset = Some(fileloader_execute_changeset);
+    h.fileloader_revert_changeset = Some(fileloader_revert_changeset);
+    h.dlc_ittyp_load_datafile = Some(dlc_ittyp_load_datafile);
     h.extra_content_manager_dtor = Some(extra_content_manager_dtor);
     h.mountable_content_shutdown = Some(mountable_content_shutdown);
 }
@@ -571,6 +575,41 @@ unsafe extern "C" fn mountable_content_unmount(env: *mut Env, content: u64, path
 /// The engine owns this object. Remember only the address observed at the
 /// real registration/load boundary; never construct, retain ownership of, or
 /// invoke methods on a guessed CExtraContentManager instance.
+/// Trace the manager's per-content change-set dispatch. Engine objects remain engine-owned.
+unsafe extern "C" fn extra_content_execute_internal(
+    env: *mut Env, manager: u64, content: u64, change_set: u64
+) {
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CExtraContentManager::ExecuteContentChangeSetGroupInternal manager=0x{manager:x} content=0x{content:x} change_set=0x{change_set:x}"));
+    unsafe { orig::extra_content_execute_internal(env, manager, content, change_set) };
+}
+
+/// Observe the actual data-file change-set execution boundary and forward unchanged.
+unsafe extern "C" fn fileloader_execute_changeset(env: *mut Env, change_set: u64) {
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CFileLoader::ExecuteContentChangeSet change_set=0x{change_set:x}"));
+    unsafe { orig::fileloader_execute_changeset(env, change_set) };
+}
+
+/// Observe rollback/unmount scheduling for a change set; never initiate it.
+unsafe extern "C" fn fileloader_revert_changeset(
+    env: *mut Env, change_set: u64, flags: u32
+) {
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CFileLoader::RevertContentChangeSet change_set=0x{change_set:x} flags={flags}"));
+    unsafe { orig::fileloader_revert_changeset(env, change_set, flags) };
+}
+
+/// Trace the native DLC archetype/ityp data-file mounter used by vehicle assets.
+unsafe extern "C" fn dlc_ittyp_load_datafile(
+    env: *mut Env, mounter: u64, data_file: u64
+) -> u32 {
+    let result = unsafe { orig::dlc_ittyp_load_datafile(env, mounter, data_file) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CDLCItypFileMounter::LoadDataFile mounter=0x{mounter:x} data_file=0x{data_file:x} result={result}"));
+    result
+}
+
 static EXTRA_CONTENT_MANAGER: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
