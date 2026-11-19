@@ -12,6 +12,7 @@ pub enum DlcCompatibility {
     RpfHeaderInvalid,
     EncryptedArchiveUnsupported,
     MissingDlcMetadata,
+    MissingDlcListRegistration,
     OpenRpfMetadataPresent,
 }
 
@@ -30,14 +31,18 @@ pub struct DlcCompatibilityReport {
 pub fn assess_dlc_compatibility(
     package: &VehiclePackageReport,
     metadata: &DlcMetadataReport,
+    expected_dlc_id: &str,
 ) -> DlcCompatibilityReport {
     let open = package.rpf_files.iter()
         .filter(|r| r.encryption == RpfEncryption::Open).count();
     let invalid = package.rpf_files.iter()
         .filter(|r| r.encryption == RpfEncryption::NotRpf7).count();
     let encrypted_or_unknown = package.rpf_files.len().saturating_sub(open + invalid);
-    let metadata_complete = !metadata.setup_orders.is_empty()
+    let has_setup_and_content = !metadata.setup_orders.is_empty()
         && !metadata.content_xml_files.is_empty();
+    let dlclist_registered = metadata.dlclist_entries.iter()
+        .any(|id| id.eq_ignore_ascii_case(expected_dlc_id));
+    let metadata_complete = has_setup_and_content && dlclist_registered;
 
     let (status, explanation) = if package.rpf_files.is_empty() {
         (DlcCompatibility::NoRpfArchive,
@@ -48,9 +53,12 @@ pub fn assess_dlc_compatibility(
     } else if encrypted_or_unknown > 0 {
         (DlcCompatibility::EncryptedArchiveUnsupported,
          format!("{encrypted_or_unknown} archive(s) are AES-encrypted or have an unknown encryption marker; runtime support is not established."))
-    } else if !metadata_complete {
+    } else if !has_setup_and_content {
         (DlcCompatibility::MissingDlcMetadata,
          "RPF headers are OPEN, but setup2.xml or content.xml metadata is missing.".to_string())
+    } else if !dlclist_registered {
+        (DlcCompatibility::MissingDlcListRegistration,
+         format!("DLC metadata is present, but dlclist.xml does not register the expected package id '{expected_dlc_id}'."))
     } else {
         (DlcCompatibility::OpenRpfMetadataPresent,
          "All detected RPF archives have OPEN markers and setup2.xml/content.xml were found. Native mount and spawn are still unverified.".to_string())
@@ -95,21 +103,31 @@ mod tests {
 
     #[test]
     fn open_rpf_with_metadata_is_only_a_candidate_not_spawnable() {
-        let report = assess_dlc_compatibility(&package(RpfEncryption::Open), &metadata(true));
+        let report = assess_dlc_compatibility(&package(RpfEncryption::Open), &metadata(true), "dyfurai");
         assert_eq!(report.status, DlcCompatibility::OpenRpfMetadataPresent);
         assert!(!report.runtime_mount_supported);
     }
 
     #[test]
     fn encrypted_or_unknown_archive_is_rejected_from_native_candidate_path() {
-        let report = assess_dlc_compatibility(&package(RpfEncryption::Aes), &metadata(true));
+        let report = assess_dlc_compatibility(&package(RpfEncryption::Aes), &metadata(true), "dyfurai");
         assert_eq!(report.status, DlcCompatibility::EncryptedArchiveUnsupported);
         assert!(!report.runtime_mount_supported);
     }
 
     #[test]
+    fn requires_dlclist_to_register_the_expected_package_id() {
+        let mut metadata = metadata(true);
+        metadata.dlclist_entries = vec!["another_car".into()];
+        let report = assess_dlc_compatibility(&package(RpfEncryption::Open), &metadata, "dyfurai");
+        assert_eq!(report.status, DlcCompatibility::MissingDlcListRegistration);
+        assert!(!report.metadata_complete);
+        assert!(!report.runtime_mount_supported);
+    }
+
+    #[test]
     fn missing_setup_or_content_metadata_is_not_ready() {
-        let report = assess_dlc_compatibility(&package(RpfEncryption::Open), &metadata(false));
+        let report = assess_dlc_compatibility(&package(RpfEncryption::Open), &metadata(false), "dyfurai");
         assert_eq!(report.status, DlcCompatibility::MissingDlcMetadata);
     }
 }

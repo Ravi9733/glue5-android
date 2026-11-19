@@ -78,7 +78,7 @@ pub fn install_verified_package(
         _ => {}
     }
 
-    let compatibility = assess_dlc_compatibility(&report, &dlc_metadata);
+    let compatibility = assess_dlc_compatibility(&report, &dlc_metadata, &package.id);
 
     Ok(VehicleInstallResult {
         id: package.id.clone(),
