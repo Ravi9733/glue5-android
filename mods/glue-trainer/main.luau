@@ -18,7 +18,20 @@ hub.rows(root)
 
 -- Put this first so it is immediately visible in the F7 / touch Trainer menu.
 require("./features/customs").build(root, "Car Customizer")
-require("./features/ai_car_hub").build(root)
+
+-- Keep the trainer usable if the AI Car Hub module or one of its UI bindings
+-- fails on a particular game build. Always expose a diagnostic submenu.
+local aiHubOk, aiHub = pcall(require, "./features/ai_car_hub")
+if aiHubOk then
+	local built, buildError = pcall(aiHub.build, root)
+	if not built then
+		local recovery = root:submenu("AI Car Hub", "AI vehicle discovery diagnostics")
+		recovery:label("AI Car Hub failed to initialize: " .. tostring(buildError))
+	end
+else
+	local recovery = root:submenu("AI Car Hub", "AI vehicle discovery diagnostics")
+	recovery:label("AI Car Hub module failed to load: " .. tostring(aiHub))
+end
 
 -- Load Stunt Races independently and first. A syntax/runtime error in one feature
 -- must never abort the whole trainer before its other menus can be registered.
