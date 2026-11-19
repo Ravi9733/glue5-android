@@ -52,6 +52,7 @@ unsafe extern "C" fn packfile_load_rpf(env: *mut Env, path: u64, index: u32) {
     DLC_RPF_LOAD_COUNT.fetch_add(1, Ordering::Relaxed);
     let name = unsafe { Mem::of(env).str(path) };
     if name.to_ascii_lowercase().ends_with(".rpf") {
+        remember_loader_path(&DLC_LAST_RPF_PATH, &name);
         log_line("vehicle-loader", LogLevel::Info,
             &format!("LoadRpf index={index} path={name}"));
     }
@@ -72,6 +73,7 @@ unsafe extern "C" fn packfile_init(
     let name = mem.str(path);
     let key = mem.str(key_path);
     if name.to_ascii_lowercase().ends_with(".rpf") {
+        remember_loader_path(&DLC_LAST_RPF_PATH, &name);
         log_line("vehicle-loader", LogLevel::Info,
             &format!("fiPackfile::Init object=0x{packfile:x} encrypted={} cache={cache_mode} path={name} key={key}",
                 encrypted != 0));
@@ -83,6 +85,7 @@ unsafe extern "C" fn packfile_init(
 unsafe extern "C" fn packfile_mount_as(env: *mut Env, packfile: u64, mount_path: u64) -> u32 {
     DLC_RPF_MOUNT_COUNT.fetch_add(1, Ordering::Relaxed);
     let path = unsafe { Mem::of(env).str(mount_path) };
+    remember_loader_path(&DLC_LAST_MOUNT_PATH, &path);
     let result = unsafe { orig::packfile_mount_as(env, packfile, mount_path) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("fiPackfile::MountAs object=0x{packfile:x} result={result} mount={path}"));
@@ -546,6 +549,16 @@ static DLC_LOAD_MATCH_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::A
 static DLC_DEVICE_LOOKUP_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_ENUM_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_LAST_IDENTITY_MATCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static DLC_LAST_RPF_PATH: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+static DLC_LAST_MOUNT_PATH: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+static DLC_LAST_CONTENT_FOLDER: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+fn remember_loader_path(slot: &std::sync::Mutex<String>, path: &str) {
+    if let Ok(mut value) = slot.lock() {
+        value.clear();
+        value.push_str(&path.chars().take(192).collect::<String>());
+    }
+}
 
 /// Return safe lifecycle counters; raw engine addresses are intentionally omitted.
 pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
@@ -571,7 +584,10 @@ pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
         "model_lookup_calls": DLC_MODEL_LOOKUP_COUNT.load(Relaxed),
         "device_mount_calls": DLC_DEVICE_MOUNT_COUNT.load(Relaxed),
         "device_unmount_calls": DLC_DEVICE_UNMOUNT_COUNT.load(Relaxed),
-        "manager_observed": EXTRA_CONTENT_MANAGER.load(Relaxed) != 0
+        "manager_observed": EXTRA_CONTENT_MANAGER.load(Relaxed) != 0,
+        "last_rpf_path": DLC_LAST_RPF_PATH.lock().map(|v| v.clone()).unwrap_or_default(),
+        "last_mount_path": DLC_LAST_MOUNT_PATH.lock().map(|v| v.clone()).unwrap_or_default(),
+        "last_content_folder": DLC_LAST_CONTENT_FOLDER.lock().map(|v| v.clone()).unwrap_or_default()
     })
 }
 
@@ -579,6 +595,7 @@ pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
 unsafe extern "C" fn extra_content_add_folder(env: *mut Env, manager: u64, folder: u64) {
     DLC_ADD_FOLDER_COUNT.fetch_add(1, Ordering::Relaxed);
     let path = unsafe { Mem::of(env).str(folder) };
+    remember_loader_path(&DLC_LAST_CONTENT_FOLDER, &path);
     if manager != 0 {
         let previous = EXTRA_CONTENT_MANAGER.swap(manager, Ordering::AcqRel);
         if previous != manager {
