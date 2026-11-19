@@ -47,7 +47,7 @@ class MainActivity : Activity() {
         ))
 
         val subtitle = TextView(this).apply {
-            text = "Android converter 0.3.6 • direct RPF7 conversion + DLC audit"
+            text = "Android converter 0.3.7 • direct RPF7 conversion + platform DLC audit"
             textSize = 13f
             setTextColor(0xFFB9C6B5.toInt())
             gravity = Gravity.CENTER
@@ -272,6 +272,7 @@ class MainActivity : Activity() {
             var failed = 0
             var duplicates = 0
             var platform = 0
+            val platformPacks = mutableListOf<Pair<Int, String>>()
             var unsafe = 0
             var unsupported = 0
             var totalBytes = 0L
@@ -307,6 +308,7 @@ class MainActivity : Activity() {
                 report.appendLine()
 
                 val seen = mutableSetOf<String>()
+                val seenPlatform = mutableSetOf<String>()
                 var budgetReached = false
                 for ((position, item) in entries.withIndex()) {
                     val kind = item.first
@@ -410,8 +412,14 @@ class MainActivity : Activity() {
                         }
                         "PLATFORM" -> {
                             platform++
-                            report.appendLine("PLATFORM [" + (position + 1) + "] " + value +
-                                " — identified, but base x64*.rpf resolution is not implemented yet")
+                            if (!seenPlatform.add(value.lowercase())) {
+                                duplicates++
+                                report.appendLine("DUPLICATE PLATFORM [" + (position + 1) + "] " + value)
+                            } else {
+                                platformPacks.add((position + 1) to value)
+                                report.appendLine("PLATFORM [" + (position + 1) + "] " + value +
+                                    " — queued for read-only lookup in base x64*.rpf archives")
+                            }
                         }
                         "UNSAFE" -> {
                             unsafe++
@@ -424,20 +432,147 @@ class MainActivity : Activity() {
                     }
                 }
 
+                var platformValidated = 0
+                var platformFailed = 0
+                var platformMissing = 0
+                var platformUnresolved = 0
+                var unreadableBaseArchives = 0
+                var readableBaseArchives = 0
+
+                if (platformPacks.isNotEmpty()) {
+                    report.appendLine()
+                    report.appendLine("Resolving platform packs by scanning x64w.rpf through x64a.rpf.")
+                    report.appendLine("Expected internal path: dlcpacks/<name>/dlc.rpf")
+                    val unresolved = platformPacks.toMutableList()
+                    for (letter in 'w' downTo 'a') {
+                        if (unresolved.isEmpty() || budgetReached) break
+                        val archiveName = "x64" + letter + ".rpf"
+                        val baseDocument = findDocumentPath(sourceRoot, listOf(archiveName))
+                            ?: continue
+                        if (!baseDocument.isFile) continue
+
+                        val sizeHint = baseDocument.length()
+                        if (sizeHint > MAX_ARCHIVE_BYTES) {
+                            unreadableBaseArchives++
+                            report.appendLine("UNREADABLE " + archiveName + " — exceeds the 4 GiB archive limit")
+                            continue
+                        }
+                        if (sizeHint > 0 && totalBytes > MAX_DLC_AUDIT_TOTAL_BYTES - sizeHint) {
+                            report.appendLine("STOP — cumulative 16 GiB audit byte budget reached before " + archiveName)
+                            budgetReached = true
+                            break
+                        }
+
+                        val baseCopy = java.io.File(work, archiveName)
+                        try {
+                            copyUriToFile(baseDocument.uri, baseCopy, MAX_ARCHIVE_BYTES)
+                            val copiedBytes = baseCopy.length()
+                            if (copiedBytes > MAX_DLC_AUDIT_TOTAL_BYTES - totalBytes) {
+                                report.appendLine("STOP — cumulative 16 GiB audit byte budget reached after copying " + archiveName)
+                                budgetReached = true
+                                break
+                            }
+                            totalBytes += copiedBytes
+
+                            var baseReadable = false
+                            var baseError: String? = null
+                            for (packItem in unresolved.toList()) {
+                                val packPosition = packItem.first
+                                val packName = packItem.second
+                                val platformReport = NativeAssets.inspectPlatformDlcPackMetadata(
+                                    baseCopy.absolutePath, packName, rpfKeyDirectory.absolutePath
+                                )
+                                when {
+                                    platformReport.startsWith("PLATFORM_DLC_NOT_FOUND\n") -> {
+                                        baseReadable = true
+                                    }
+                                    platformReport.startsWith("PLATFORM_DLC_FOUND\n") -> {
+                                        baseReadable = true
+                                        platformValidated++
+                                        unresolved.remove(packItem)
+                                        report.appendLine("PLATFORM OK [" + packPosition + "] " + packName +
+                                            " | base=" + archiveName +
+                                            " | device=" + dlcReportField(platformReport, "Device name") +
+                                            " | setup2 order=" + dlcReportField(platformReport, "Load order") +
+                                            " | data refs=" + dlcReportField(platformReport, "Data files resolved") +
+                                            "/" + dlcReportField(platformReport, "Data files declared") +
+                                            " | missing=" + dlcReportField(platformReport, "Missing references"))
+                                    }
+                                    platformReport.startsWith("PLATFORM_DLC_FOUND_INVALID\n") -> {
+                                        baseReadable = true
+                                        platformFailed++
+                                        unresolved.remove(packItem)
+                                        report.appendLine("PLATFORM FOUND BUT INVALID [" + packPosition + "] " +
+                                            packName + " | base=" + archiveName + " | " +
+                                            (platformReport.lineSequence().firstOrNull { it.startsWith("Metadata inspection failed:") }
+                                                ?: "nested DLC metadata validation failed"))
+                                    }
+                                    platformReport.startsWith("PLATFORM_DLC_INVALID_ENTRY\n") -> {
+                                        baseReadable = true
+                                        platformFailed++
+                                        unresolved.remove(packItem)
+                                        report.appendLine("PLATFORM INVALID ENTRY [" + packPosition + "] " +
+                                            packName + " | base=" + archiveName)
+                                    }
+                                    else -> {
+                                        baseError = platformReport.lineSequence().firstOrNull()
+                                            ?: "unknown native error"
+                                        break
+                                    }
+                                }
+                            }
+                            if (baseReadable) readableBaseArchives++
+                            if (baseError != null) {
+                                unreadableBaseArchives++
+                                report.appendLine("UNREADABLE " + archiveName + " — " + baseError +
+                                    " | unresolved packs will not be marked missing")
+                            }
+                        } catch (e: Throwable) {
+                            unreadableBaseArchives++
+                            report.appendLine("UNREADABLE " + archiveName + " — " +
+                                (e.message ?: e.javaClass.simpleName))
+                        } finally {
+                            baseCopy.delete()
+                        }
+                    }
+
+                    for ((packPosition, packName) in unresolved) {
+                        if (budgetReached) {
+                            platformUnresolved++
+                            report.appendLine("UNRESOLVED PLATFORM [" + packPosition + "] " + packName +
+                                " — audit stopped at the 16 GiB safety budget")
+                        } else if (unreadableBaseArchives > 0 || readableBaseArchives == 0) {
+                            platformUnresolved++
+                            report.appendLine("UNKNOWN PLATFORM [" + packPosition + "] " + packName +
+                                " — at least one base archive was unreadable or no x64 archive was available; not marked missing")
+                        } else {
+                            platformMissing++
+                            report.appendLine("MISSING PLATFORM [" + packPosition + "] " + packName +
+                                " — not found in the readable x64w.rpf through x64a.rpf archives")
+                        }
+                    }
+                }
+
                 report.appendLine()
                 report.appendLine("Registered dlcpacks entries: " + registered)
                 report.appendLine("Pack metadata validated: " + validated)
                 report.appendLine("Missing DLC archives: " + missing)
                 report.appendLine("Unreadable/invalid DLC archives: " + failed)
                 report.appendLine("Duplicate list entries: " + duplicates)
-                report.appendLine("Platform references not resolved: " + platform)
+                report.appendLine("Platform references in dlclist.xml: " + platform)
+                report.appendLine("Platform pack metadata validated: " + platformValidated)
+                report.appendLine("Platform packs found but invalid: " + platformFailed)
+                report.appendLine("Missing platform pack archives: " + platformMissing)
+                report.appendLine("Platform references unresolved: " + platformUnresolved)
+                report.appendLine("Unreadable base x64 archives: " + unreadableBaseArchives)
+                report.appendLine("Readable base x64 archives scanned: " + readableBaseArchives)
                 report.appendLine("Unsafe list entries: " + unsafe)
                 report.appendLine("Unsupported list entries: " + unsupported)
                 report.appendLine("Bytes read: " + totalBytes)
                 if (budgetReached) report.appendLine("Audit stopped at the cumulative 16 GiB safety budget.")
-                report.appendLine("Source update.rpf and DLC archives were not modified.")
-                report.appendLine("Platform:/dlcPacks entries still need lookup inside base x64*.rpf archives.")
-                report.appendLine("A clean metadata audit does not prove Glue5 mounts the packs.")
+                report.appendLine("Source update.rpf, base x64 archives and DLC packs were not modified.")
+                report.appendLine("Platform lookup is read-only and searches dlcpacks/<name>/dlc.rpf inside x64w.rpf through x64a.rpf.")
+                report.appendLine("This audit does not read the separate common.rpf dlclist.xml or prove Glue5 mounts the packs.")
             } catch (e: Throwable) {
                 report.appendLine("DLC load-order audit failed: " + (e.message ?: e.javaClass.simpleName))
                 report.appendLine("Source game files were not modified.")
@@ -915,7 +1050,7 @@ class MainActivity : Activity() {
 
         rows.sort()
         return buildString {
-            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.3.6")
+            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.3.7")
             appendLine("RPF files found: ${rows.size}")
             appendLine("GTA V RPF7 archives: $gtaVArchives")
             appendLine("OPEN archives: $openArchives")
