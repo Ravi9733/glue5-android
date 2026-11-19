@@ -45,6 +45,10 @@
     ("extra_content_begin_enumerate", "CExtraContentManager::BeginEnumerateContent(bool, bool)"),
     ("extra_content_update_array", "CExtraContentManager::UpdateContentArray()"),
     ("extra_content_execute_group", "CExtraContentManager::ExecuteContentChangeSetGroupForAll(unsigned int)"),
+    ("extra_content_execute_internal", "CExtraContentManager::ExecuteContentChangeSetGroupInternal(CMountableContent*, rage::atNonFinalHashString)"),
+    ("fileloader_execute_changeset", "CFileLoader::ExecuteContentChangeSet(CDataFileMgr::ContentChangeSet const&)"),
+    ("fileloader_revert_changeset", "CFileLoader::RevertContentChangeSet(CDataFileMgr::ContentChangeSet const&, unsigned int)"),
+    ("dlc_ittyp_load_datafile", "CDLCItypFileMounter::LoadDataFile(CDataFileMgr::DataFile const&)"),
     ("extra_content_manager_dtor", "CExtraContentManager::~CExtraContentManager()"),
     ("mountable_content_shutdown", "CMountableContent::ShutdownContent()"),
 ]
