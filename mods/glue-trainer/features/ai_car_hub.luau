@@ -61,6 +61,43 @@ function M.build(root: Menu)
 		end)
 	end
 
+	menu:separator("Installed vehicle packages")
+	local installed = menu:submenu("Installed downloads", "Verified packages staged in private Glue 5 storage")
+	local installedStatus = installed:label("Installed package list not loaded.")
+	local installedRows = installed:submenu("Installed packages", "These files are staged; they are not yet mounted or spawnable.")
+	installedRows:label("Tap Refresh installed list to inspect staged packages.")
+	bind.action(installed, "Refresh installed list", {
+		note = "Lists verified package folders without changing game data",
+		action = "Refresh",
+	}, function(): string?
+		local ok, raw = pcall(function()
+			return world.listInstalledVehiclePackages()
+		end)
+		if not ok or type(raw) ~= "string" then
+			installedStatus:set("Installed list unavailable: " .. tostring(raw))
+			return "Could not read installed packages"
+		end
+		local parsedOk, ids = pcall(function() return json.decode(raw) end)
+		if not parsedOk or type(ids) ~= "table" then
+			installedStatus:set("Installed list could not be parsed.")
+			return "Invalid installed package list"
+		end
+		installedRows:clear()
+		if #ids == 0 then
+			installedRows:label("No staged vehicle packages found.")
+		else
+			for _, id in ids do
+				if type(id) == "string" then
+					local row = installedRows:submenu(id, "Verified extraction folder")
+					row:label("Package ID: " .. id)
+					row:label("Status: staged locally; native DLC mount and spawning are not enabled.")
+				end
+			end
+		end
+		installedStatus:set("Found " .. tostring(#ids) .. " staged package(s).")
+		return "Installed package list refreshed"
+	end)
+
 	menu:separator("Online vehicle catalog")
 	local settings = menu:submenu("AI Car Hub settings", "Choose how downloaded cars are handled")
 	settings:label("One-tap mode: download, verify, then automatically install the package.")
