@@ -33,6 +33,10 @@
     ("device_unmount", "rage::fiDevice::Unmount(char const*)"),
     // Observe engine-owned DLC manager construction; no object is allocated or mutated here.
     ("mountable_content_ctor", "CMountableContent::CMountableContent()"),
+    ("mountable_content_load_setup", "CMountableContent::LoadSetupXML(char const*)"),
+    ("mountable_content_mount", "CMountableContent::Mount(int)"),
+    ("mountable_content_mount_content", "CMountableContent::MountContent(int, char const*)"),
+    ("mountable_content_unmount", "CMountableContent::UnmountContent(char const*)"),
     // Observe the engine-owned DLC manager lifecycle.
     ("extra_content_add_folder", "CExtraContentManager::AddContentFolder(char const*)"),
     ("extra_content_load", "CExtraContentManager::LoadContent(bool, bool)"),

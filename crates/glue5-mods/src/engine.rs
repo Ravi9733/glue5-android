@@ -40,6 +40,10 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
     h.mountable_content_ctor = Some(mountable_content_ctor);
+    h.mountable_content_load_setup = Some(mountable_content_load_setup);
+    h.mountable_content_mount = Some(mountable_content_mount);
+    h.mountable_content_mount_content = Some(mountable_content_mount_content);
+    h.mountable_content_unmount = Some(mountable_content_unmount);
     h.extra_content_add_folder = Some(extra_content_add_folder);
     h.extra_content_load = Some(extra_content_load);
     h.extra_content_get_by_device = Some(extra_content_get_by_device);
@@ -525,6 +529,46 @@ unsafe extern "C" fn mountable_content_ctor(env: *mut Env, object: u64) -> u64 {
     result
 }
 
+/// Trace the engine-owned setup XML read; the object and path stay engine-owned.
+unsafe extern "C" fn mountable_content_load_setup(env: *mut Env, content: u64, path: u64) -> u32 {
+    DLC_SETUP_XML_COUNT.fetch_add(1, Ordering::Relaxed);
+    let name = unsafe { Mem::of(env).str(path) };
+    let result = unsafe { orig::mountable_content_load_setup(env, content, path) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::LoadSetupXML object=0x{content:x} result={result} path={name}"));
+    result
+}
+
+/// Observe the native content mount decision without initiating one ourselves.
+unsafe extern "C" fn mountable_content_mount(env: *mut Env, content: u64, mount_type: u32) -> u32 {
+    DLC_CONTENT_MOUNT_COUNT.fetch_add(1, Ordering::Relaxed);
+    let result = unsafe { orig::mountable_content_mount(env, content, mount_type) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::Mount object=0x{content:x} type={mount_type} result={result}"));
+    result
+}
+
+/// Trace per-pack mount requests and forward all arguments unchanged.
+unsafe extern "C" fn mountable_content_mount_content(
+    env: *mut Env, content: u64, content_type: u32, path: u64
+) -> u32 {
+    DLC_CONTENT_MOUNT_CONTENT_COUNT.fetch_add(1, Ordering::Relaxed);
+    let name = unsafe { Mem::of(env).str(path) };
+    let result = unsafe { orig::mountable_content_mount_content(env, content, content_type, path) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::MountContent object=0x{content:x} type={content_type} result={result} path={name}"));
+    result
+}
+
+/// Observe unmount calls; no content is unmounted by the diagnostics layer.
+unsafe extern "C" fn mountable_content_unmount(env: *mut Env, content: u64, path: u64) {
+    DLC_CONTENT_UNMOUNT_COUNT.fetch_add(1, Ordering::Relaxed);
+    let name = unsafe { Mem::of(env).str(path) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CMountableContent::UnmountContent object=0x{content:x} path={name}"));
+    unsafe { orig::mountable_content_unmount(env, content, path) };
+}
+
 /// The engine owns this object. Remember only the address observed at the
 /// real registration/load boundary; never construct, retain ownership of, or
 /// invoke methods on a guessed CExtraContentManager instance.
@@ -562,6 +606,10 @@ static DLC_UPDATE_ARRAY_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic:
 static DLC_EXECUTE_GROUP_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_MANAGER_DTOR_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_CONTENT_SHUTDOWN_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_SETUP_XML_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_CONTENT_MOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_CONTENT_MOUNT_CONTENT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_CONTENT_UNMOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn remember_loader_path(slot: &std::sync::Mutex<String>, path: &str) {
     if let Ok(mut value) = slot.lock() {
@@ -600,6 +648,10 @@ pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
         "execute_change_group_calls": DLC_EXECUTE_GROUP_COUNT.load(Relaxed),
         "manager_destructor_calls": DLC_MANAGER_DTOR_COUNT.load(Relaxed),
         "mountable_shutdown_calls": DLC_CONTENT_SHUTDOWN_COUNT.load(Relaxed),
+        "setup_xml_calls": DLC_SETUP_XML_COUNT.load(Relaxed),
+        "content_mount_calls": DLC_CONTENT_MOUNT_COUNT.load(Relaxed),
+        "content_mount_content_calls": DLC_CONTENT_MOUNT_CONTENT_COUNT.load(Relaxed),
+        "content_unmount_calls": DLC_CONTENT_UNMOUNT_COUNT.load(Relaxed),
         "last_rpf_path": DLC_LAST_RPF_PATH.lock().map(|v| v.clone()).unwrap_or_default(),
         "last_mount_path": DLC_LAST_MOUNT_PATH.lock().map(|v| v.clone()).unwrap_or_default(),
         "last_content_folder": DLC_LAST_CONTENT_FOLDER.lock().map(|v| v.clone()).unwrap_or_default()
