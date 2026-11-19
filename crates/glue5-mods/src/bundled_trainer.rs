@@ -23,6 +23,7 @@ const FILES: &[(&str, &str)] = &[
     ("data/vehicles.luau", include_str!("../../../mods/glue-trainer/data/vehicles.luau")),
     ("data/world.luau", include_str!("../../../mods/glue-trainer/data/world.luau")),
     ("features/customs.luau", include_str!("../../../mods/glue-trainer/features/customs.luau")),
+    ("features/ai_car_hub.luau", include_str!("../../../mods/glue-trainer/features/ai_car_hub.luau")),
     ("features/hub.luau", include_str!("../../../mods/glue-trainer/features/hub.luau")),
     ("features/looks.luau", include_str!("../../../mods/glue-trainer/features/looks.luau")),
     ("features/misc.luau", include_str!("../../../mods/glue-trainer/features/misc.luau")),
@@ -48,6 +49,7 @@ pub fn install(mods_dir: &Path) {
         if path.exists()
             && *relative != "main.luau"
             && *relative != "features/customs.luau"
+            && *relative != "features/ai_car_hub.luau"
             && *relative != "features/spawner.luau"
             && *relative != "features/stunt_races.luau"
         {
