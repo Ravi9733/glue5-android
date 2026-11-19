@@ -656,6 +656,26 @@ int main() {
     rk::RpfBuilder platform_base;
     platform_base.add_archive("dlcpacks/mpBeach/dlc.rpf", valid_dlc.clone());
     platform_base.add_binary("dlcpacks/broken/dlc.rpf", bytes_of("not an RPF7 archive"), false);
+
+    // A real AES-marked nested DLC must be reported as key-locked without the
+    // matching user-supplied key, then validate when that exact key is imported.
+    const fs::path locked_dlc_path = dlc_test_root / "locked_child.rpf";
+    const fs::path dlc_aes_keys = dlc_test_root / "aes-keys";
+    fs::create_directories(dlc_aes_keys);
+    rk::RpfKeys locked_keys;
+    locked_keys.aes.assign(32, 0x2A);
+    locked_keys.save(dlc_aes_keys.string());
+    rk::RpfBuilder locked_dlc;
+    locked_dlc.add_binary("setup2.xml", bytes_of(setup_xml));
+    locked_dlc.add_binary("content.xml", bytes_of(content_xml));
+    rk::RpfWriteOptions locked_dlc_options;
+    locked_dlc_options.encryption = rk::RpfEncryption::Aes;
+    locked_dlc_options.keys = std::make_shared<rk::RpfKeys>(locked_keys);
+    locked_dlc_options.name = "dlc.rpf";
+    locked_dlc.save(locked_dlc_path.string(), locked_dlc_options);
+    platform_base.add_binary("dlcpacks/locked/dlc.rpf",
+        rk::rsc::read_file(locked_dlc_path.string()), false);
+
     rk::RpfWriteOptions platform_base_options;
     platform_base_options.encryption = rk::RpfEncryption::Open;
     platform_base_options.name = "x64w.rpf";
@@ -683,6 +703,18 @@ int main() {
             platform_base_path, "broken", dlc_empty_keys);
     require(platform_invalid_report.find("PLATFORM_DLC_FOUND_INVALID\n") == 0,
             "platform DLC resolver must report a named but malformed nested RPF as invalid");
+
+    const std::string platform_locked_report =
+        gta_asset_converter::inspect_platform_dlc_pack_metadata(
+            platform_base_path, "locked", dlc_empty_keys);
+    require(platform_locked_report.find("PLATFORM_DLC_FOUND_LOCKED\n") == 0,
+            "platform DLC resolver must distinguish encrypted nested packs from malformed packs");
+    const std::string platform_unlocked_report =
+        gta_asset_converter::inspect_platform_dlc_pack_metadata(
+            platform_base_path, "locked", dlc_aes_keys);
+    require(platform_unlocked_report.find("PLATFORM_DLC_FOUND\n") == 0 &&
+            platform_unlocked_report.find("Device name: dlc_test") != std::string::npos,
+            "platform DLC resolver must validate an encrypted nested pack when its matching AES key is supplied");
 
     bool unsafe_platform_name_rejected = false;
     try {
