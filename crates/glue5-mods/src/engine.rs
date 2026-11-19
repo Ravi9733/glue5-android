@@ -129,7 +129,9 @@ unsafe extern "C" fn stream_index_by_filename(env: *mut Env, filename: u64, flag
     result
 }
 
-/// Observe streaming object requests so vehicle model requests can be correlated with registration.
+/// Sample streaming object requests so loader diagnostics do not write a
+/// log line for every model/texture request during normal gameplay.
+static STREAM_REQUEST_SAMPLES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 unsafe extern "C" fn stream_request_object(
     env: *mut Env,
     local_index: u32,
@@ -139,9 +141,12 @@ unsafe extern "C" fn stream_request_object(
     let result = unsafe {
         orig::stream_request_object(env, local_index, flags, priority)
     };
-    log_line("vehicle-loader", LogLevel::Info,
-        &format!("CStreaming::RequestObject index={} flags={} priority={} result={}",
-            local_index, flags, priority, result));
+    let sample = STREAM_REQUEST_SAMPLES.fetch_add(1, Ordering::Relaxed);
+    if sample % 256 == 0 {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("CStreaming::RequestObject sample={} index={} flags={} priority={} result={}",
+                sample, local_index, flags, priority, result));
+    }
     result
 }
 
