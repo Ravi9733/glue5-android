@@ -49,6 +49,7 @@ pub(crate) fn hooks(h: &mut Hooks) {
 /// Observe the real game's RPF load path without changing its behavior.
 /// The exact symbol names and ABIs are resolved from the pinned game.wasm.
 unsafe extern "C" fn packfile_load_rpf(env: *mut Env, path: u64, index: u32) {
+    DLC_RPF_LOAD_COUNT.fetch_add(1, Ordering::Relaxed);
     let name = unsafe { Mem::of(env).str(path) };
     if name.to_ascii_lowercase().ends_with(".rpf") {
         log_line("vehicle-loader", LogLevel::Info,
@@ -66,6 +67,7 @@ unsafe extern "C" fn packfile_init(
     cache_mode: u32,
     key_path: u64,
 ) -> u32 {
+    DLC_RPF_INIT_COUNT.fetch_add(1, Ordering::Relaxed);
     let mem = unsafe { Mem::of(env) };
     let name = mem.str(path);
     let key = mem.str(key_path);
@@ -79,6 +81,7 @@ unsafe extern "C" fn packfile_init(
 
 /// Passive probe for the RPF's virtual mount point. Never changes mount behavior.
 unsafe extern "C" fn packfile_mount_as(env: *mut Env, packfile: u64, mount_path: u64) -> u32 {
+    DLC_RPF_MOUNT_COUNT.fetch_add(1, Ordering::Relaxed);
     let path = unsafe { Mem::of(env).str(mount_path) };
     let result = unsafe { orig::packfile_mount_as(env, packfile, mount_path) };
     log_line("vehicle-loader", LogLevel::Info,
@@ -88,6 +91,7 @@ unsafe extern "C" fn packfile_mount_as(env: *mut Env, packfile: u64, mount_path:
 
 /// Observe the game's metadata-to-RPF handoff; the data-file object remains engine-owned.
 unsafe extern "C" fn datafile_add_rpf(env: *mut Env, data_file: u64, load: u32) -> u32 {
+    DLC_DATAFILE_ADD_COUNT.fetch_add(1, Ordering::Relaxed);
     let result = unsafe { orig::datafile_add_rpf(env, data_file, load) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CFileLoader::AddRpfFile data_file=0x{data_file:x} load={} result={result}", load != 0));
@@ -96,6 +100,7 @@ unsafe extern "C" fn datafile_add_rpf(env: *mut Env, data_file: u64, load: u32) 
 
 /// Observe the game's bulk RPF registration phase without changing it.
 unsafe extern "C" fn packfile_add_all_rpf_files(env: *mut Env, load: u32) {
+    DLC_ADD_ALL_COUNT.fetch_add(1, Ordering::Relaxed);
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CFileLoader::AddAllRpfFiles begin load={}", load != 0));
     unsafe { orig::packfile_add_all_rpf_files(env, load) };
@@ -104,6 +109,7 @@ unsafe extern "C" fn packfile_add_all_rpf_files(env: *mut Env, load: u32) {
 
 /// Capture the engine-owned streaming module pointer for later ABI/layout research.
 unsafe extern "C" fn packfile_get_streaming_module(env: *mut Env) -> u64 {
+    DLC_STREAM_MODULE_COUNT.fetch_add(1, Ordering::Relaxed);
     let module = unsafe { orig::packfile_get_streaming_module(env) };
     if module != 0 {
         log_line("vehicle-loader", LogLevel::Info,
@@ -114,6 +120,7 @@ unsafe extern "C" fn packfile_get_streaming_module(env: *mut Env) -> u64 {
 
 /// Observe model-info resolution for requested vehicle models; never alter the lookup.
 unsafe extern "C" fn model_get_base_info(env: *mut Env, model_id: u64) -> u64 {
+    DLC_MODEL_LOOKUP_COUNT.fetch_add(1, Ordering::Relaxed);
     let result = unsafe { orig::model_get_base_info(env, model_id) };
     if result != 0 {
         log_line("vehicle-loader", LogLevel::Info,
@@ -124,6 +131,7 @@ unsafe extern "C" fn model_get_base_info(env: *mut Env, model_id: u64) -> u64 {
 
 /// Observe model-file lookup and its streaming index; forward unchanged.
 unsafe extern "C" fn stream_index_by_filename(env: *mut Env, filename: u64, flags: u32) -> u32 {
+    DLC_STREAM_INDEX_COUNT.fetch_add(1, Ordering::Relaxed);
     let name = unsafe { Mem::of(env).str(filename) };
     let result = unsafe { orig::stream_index_by_filename(env, filename, flags) };
     if name.to_ascii_lowercase().ends_with(".yft") || name.to_ascii_lowercase().ends_with(".ydr") {
@@ -142,6 +150,7 @@ unsafe extern "C" fn stream_request_object(
     flags: u32,
     priority: u32,
 ) -> u32 {
+    DLC_STREAM_REQUEST_COUNT.fetch_add(1, Ordering::Relaxed);
     let result = unsafe {
         orig::stream_request_object(env, local_index, flags, priority)
     };
@@ -158,6 +167,7 @@ unsafe extern "C" fn stream_request_object(
 /// The pinned wasm lowers this symbol to exactly two i32 arguments.
 static STREAM_LOAD_SAMPLES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 unsafe extern "C" fn stream_load_object(env: *mut Env, local_index: u32, flags: u32) -> u32 {
+    DLC_STREAM_LOAD_COUNT.fetch_add(1, Ordering::Relaxed);
     let result = unsafe { orig::stream_load_object(env, local_index, flags) };
     let sample = STREAM_LOAD_SAMPLES.fetch_add(1, Ordering::Relaxed);
     if sample % 256 == 0 {
@@ -176,6 +186,7 @@ unsafe extern "C" fn packfile_register_individual_file(
     flag_a: u32,
     flag_b: u32,
 ) -> u32 {
+    DLC_REGISTER_FILE_COUNT.fetch_add(1, Ordering::Relaxed);
     let name = unsafe { Mem::of(env).str(path) };
     let result = unsafe {
         orig::packfile_register_individual_file(env, manager, is_dlc, path, flag_a, flag_b)
@@ -188,6 +199,7 @@ unsafe extern "C" fn packfile_register_individual_file(
 
 /// Observe device mount/unmount calls without taking ownership of engine devices.
 unsafe extern "C" fn device_mount(env: *mut Env, path: u64, device: u64, create: u32) -> u32 {
+    DLC_DEVICE_MOUNT_COUNT.fetch_add(1, Ordering::Relaxed);
     let name = unsafe { Mem::of(env).str(path) };
     let result = unsafe { orig::device_mount(env, path, device, create) };
     log_line("vehicle-loader", LogLevel::Info,
@@ -196,6 +208,7 @@ unsafe extern "C" fn device_mount(env: *mut Env, path: u64, device: u64, create:
 }
 
 unsafe extern "C" fn device_unmount(env: *mut Env, path: u64) -> u32 {
+    DLC_DEVICE_UNMOUNT_COUNT.fetch_add(1, Ordering::Relaxed);
     let name = unsafe { Mem::of(env).str(path) };
     let result = unsafe { orig::device_unmount(env, path) };
     log_line("vehicle-loader", LogLevel::Info,
@@ -513,6 +526,19 @@ static EXTRA_CONTENT_MANAGER: std::sync::atomic::AtomicU64 =
 // Bounded, pointer-free counters exposed to the AI Car Hub. These tell us
 // whether the game's own DLC lifecycle is reached without retaining engine
 // objects or attempting unsafe calls into undocumented methods.
+static DLC_RPF_LOAD_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RPF_INIT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RPF_MOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_DATAFILE_ADD_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_ADD_ALL_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_STREAM_MODULE_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_REGISTER_FILE_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_STREAM_INDEX_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_STREAM_REQUEST_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_STREAM_LOAD_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_MODEL_LOOKUP_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_DEVICE_MOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_DEVICE_UNMOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_CTOR_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_ADD_FOLDER_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_LOAD_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -532,6 +558,19 @@ pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
         "last_load_identity_match": DLC_LAST_IDENTITY_MATCH.load(Relaxed),
         "device_lookups": DLC_DEVICE_LOOKUP_COUNT.load(Relaxed),
         "recursive_enumerations": DLC_ENUM_COUNT.load(Relaxed),
+        "rpf_load_calls": DLC_RPF_LOAD_COUNT.load(Relaxed),
+        "rpf_init_calls": DLC_RPF_INIT_COUNT.load(Relaxed),
+        "rpf_mount_calls": DLC_RPF_MOUNT_COUNT.load(Relaxed),
+        "datafile_add_calls": DLC_DATAFILE_ADD_COUNT.load(Relaxed),
+        "add_all_rpf_calls": DLC_ADD_ALL_COUNT.load(Relaxed),
+        "stream_module_calls": DLC_STREAM_MODULE_COUNT.load(Relaxed),
+        "register_file_calls": DLC_REGISTER_FILE_COUNT.load(Relaxed),
+        "stream_index_calls": DLC_STREAM_INDEX_COUNT.load(Relaxed),
+        "stream_request_calls": DLC_STREAM_REQUEST_COUNT.load(Relaxed),
+        "stream_load_calls": DLC_STREAM_LOAD_COUNT.load(Relaxed),
+        "model_lookup_calls": DLC_MODEL_LOOKUP_COUNT.load(Relaxed),
+        "device_mount_calls": DLC_DEVICE_MOUNT_COUNT.load(Relaxed),
+        "device_unmount_calls": DLC_DEVICE_UNMOUNT_COUNT.load(Relaxed),
         "manager_observed": EXTRA_CONTENT_MANAGER.load(Relaxed) != 0
     })
 }

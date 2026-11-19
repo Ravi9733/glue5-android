@@ -21,6 +21,9 @@ function M.build(root: Menu)
 	menu:separator("Native DLC loader diagnostics")
 	local loaderDiagnostics = menu:submenu("Loader diagnostics", "Read-only counters from the game's own DLC lifecycle")
 	local loaderStatus = loaderDiagnostics:label("Diagnostics not read yet.")
+	local rpfStatus = loaderDiagnostics:label("RPF pipeline: not read.")
+	local streamingStatus = loaderDiagnostics:label("Streaming/model pipeline: not read.")
+	local deviceStatus = loaderDiagnostics:label("Device mounts: not read.")
 	bind.action(loaderDiagnostics, "Refresh loader diagnostics", {
 		note = "Reads counters only; does not mount or modify game files",
 		action = "Refresh",
@@ -38,11 +41,27 @@ function M.build(root: Menu)
 			return "Invalid diagnostics"
 		end
 		loaderStatus:set(string.format(
-			"CMountable ctor: %s | AddFolder: %s | LoadContent: %s | identity matches: %s | device lookups: %s | folder scans: %s | manager observed: %s | last match: %s",
+			"CMountable ctor: %s | AddFolder: %s | LoadContent: %s | identity matches: %s | manager observed: %s | last match: %s",
 			tostring(data.constructor_calls or 0), tostring(data.add_folder_calls or 0),
 			tostring(data.load_calls or 0), tostring(data.load_identity_matches or 0),
-			tostring(data.device_lookups or 0), tostring(data.recursive_enumerations or 0),
 			tostring(data.manager_observed or false), tostring(data.last_load_identity_match or false)
+		))
+		rpfStatus:set(string.format(
+			"RPF load: %s | init: %s | mount: %s | AddRpfFile: %s | AddAllRpfFiles: %s | RegisterFile: %s",
+			tostring(data.rpf_load_calls or 0), tostring(data.rpf_init_calls or 0),
+			tostring(data.rpf_mount_calls or 0), tostring(data.datafile_add_calls or 0),
+			tostring(data.add_all_rpf_calls or 0), tostring(data.register_file_calls or 0)
+		))
+		streamingStatus:set(string.format(
+			"Streaming module: %s | file index: %s | requests: %s | loads: %s | model lookups: %s",
+			tostring(data.stream_module_calls or 0), tostring(data.stream_index_calls or 0),
+			tostring(data.stream_request_calls or 0), tostring(data.stream_load_calls or 0),
+			tostring(data.model_lookup_calls or 0)
+		))
+		deviceStatus:set(string.format(
+			"Mounts: %s | unmounts: %s | device lookups: %s | folder scans: %s",
+			tostring(data.device_mount_calls or 0), tostring(data.device_unmount_calls or 0),
+			tostring(data.device_lookups or 0), tostring(data.recursive_enumerations or 0)
 		))
 		return "Loader diagnostics refreshed"
 	end)
