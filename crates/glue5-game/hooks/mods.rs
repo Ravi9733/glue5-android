@@ -29,6 +29,10 @@
     ("stream_load_object", "CStreaming::LoadObject(rage::strLocalIndex, int, bool, bool)"),
     ("stream_index_by_filename", "rage::strStreamingInfoManager::GetStreamingIndexByFilename(char const*, int)"),
     ("model_get_base_info", "CModelInfo::GetBaseModelInfo(rage::fwModelId)"),
+    // Observe model readiness and the exact native vehicle factory entry point.
+    ("model_request_assets", "CModelInfo::RequestAssets(rage::fwModelId, unsigned int)"),
+    ("model_have_assets_loaded", "CModelInfo::HaveAssetsLoaded(rage::fwModelId)"),
+    ("vehicle_factory_create", "CVehicleFactory::Create(rage::fwModelId, eEntityOwnedBy, unsigned int, rage::Matrix34 const*, bool, bool)"),
     ("device_mount", "rage::fiDevice::Mount(char const*, rage::fiDevice const&, bool)"),
     ("device_unmount", "rage::fiDevice::Unmount(char const*)"),
     // Observe the exact-build relative-device setup used to expose host folders to RAGE VFS.
