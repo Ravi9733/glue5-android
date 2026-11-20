@@ -35,6 +35,7 @@ return {
 		{ "Chop's eyes", "CHOP" },
 		{ "Wasted", "MP_death_grade" },
 		{ "Underwater", "underwater" },
+		{ "Colorful (recommended)", "rply_saturation" },
 		{ "Saturated", "rply_saturation" },
 		{ "Vignette", "rply_vignette" },
 		{ "Film 1", "NG_filmic01" },
