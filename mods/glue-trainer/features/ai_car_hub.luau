@@ -24,6 +24,7 @@ function M.build(root: Menu)
 	local rpfStatus = loaderDiagnostics:label("RPF pipeline: not read.")
 	local streamingStatus = loaderDiagnostics:label("Streaming/model pipeline: not read.")
 	local deviceStatus = loaderDiagnostics:label("Device mounts: not read.")
+	local hashStatus = loaderDiagnostics:label("DLC hash lookups: not read.")
 	local pathStatus = loaderDiagnostics:label("Last paths: not read.")
 	local lifecycleStatus = loaderDiagnostics:label("Content lifecycle: not read.")
 	bind.action(loaderDiagnostics, "Refresh loader diagnostics", {
@@ -64,6 +65,11 @@ function M.build(root: Menu)
 			"Mounts: %s | unmounts: %s | device lookups: %s | folder scans: %s",
 			tostring(data.device_mount_calls or 0), tostring(data.device_unmount_calls or 0),
 			tostring(data.device_lookups or 0), tostring(data.recursive_enumerations or 0)
+		))
+		hashStatus:set(string.format(
+			"DLC hash lookups: %s | resolved hits: %s | unresolved misses: %s",
+			tostring(data.content_hash_lookups or 0), tostring(data.content_hash_hits or 0),
+			tostring(math.max(0, (data.content_hash_lookups or 0) - (data.content_hash_hits or 0)))
 		))
 		pathStatus:set(string.format("RPF: %s | mount: %s | content folder: %s",
 			tostring(data.last_rpf_path or "(none)"), tostring(data.last_mount_path or "(none)"),
