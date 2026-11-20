@@ -904,9 +904,10 @@ int main() {
         std::make_shared<rk::RpfKeys>(rk::RpfKeys::load(extra_keys.string())));
     for (const auto& [name, bytes] : extra_fixtures) {
         const int index = extra_output.find(name);
-        require(index >= 0, "rebuilt RPF7 must retain " + name);
-        require(extra_output.extract(index) == bytes,
-                "rebuilt RPF7 must preserve the original edition-independent bytes for " + name);
+        const std::string missing_message = "rebuilt RPF7 must retain " + name;
+        require(index >= 0, missing_message.c_str());
+        const std::string bytes_message = "rebuilt RPF7 must preserve the original edition-independent bytes for " + name;
+        require(extra_output.extract(index) == bytes, bytes_message.c_str());
     }
     fs::remove_all(extra_resource_root, ignored);
 
