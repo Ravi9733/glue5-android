@@ -166,7 +166,11 @@ impl Vm {
                     "id": package.id,
                     "download_url": package.download_url,
                     "sha256": package.sha256,
-                    "size_bytes": package.size_bytes
+                    "size_bytes": package.size_bytes,
+                    "format": match package.format {
+                        crate::vehicle_hub::PackageFormat::LooseFiles => "loose_files",
+                        crate::vehicle_hub::PackageFormat::RpfDlc => "rpf_dlc",
+                    }
                 });
                 std::fs::create_dir_all(app_files)
                     .map_err(|e| mlua::Error::runtime(format!("cannot access app files: {e}")))?;
@@ -222,7 +226,7 @@ impl Vm {
                     let outcome = crate::vehicle_manager::install_verified_package(&archive, &install_root, &package);
                     let (state, ok, message) = match outcome {
                         Ok(result) => ("complete", true, format!(
-                            "Verified and extracted {}: {} files, {} bytes. Static checks passed; native spawning is not enabled yet.",
+                            "Verified and extracted {}: {} files, {} bytes. Static checks passed; RPF/DLC packs are staged for native loading on next launch, but spawn still needs in-game verification.",
                             result.id, result.extracted_files, result.extracted_bytes
                         )),
                         Err(error) => ("error", false, error),

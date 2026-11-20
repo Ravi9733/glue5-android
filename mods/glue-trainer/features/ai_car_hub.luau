@@ -1,6 +1,6 @@
 --!strict
 -- AI Car Hub: discover existing vehicles and safely fetch community packages.
--- Downloaded add-on DLC is not spawnable until Glue 5 has a native DLC loader.
+-- RPF/DLC packs are staged in the separate PC-data overlay for the game native loader on next launch.
 local bind = require("../core/bind")
 local catalog = require("../core/catalog")
 local spawner = require("./spawner")
@@ -16,7 +16,7 @@ end
 function M.build(root: Menu)
 	local menu = root:submenu("AI Car Hub", "Search, discover and deliver cars")
 	menu:label("Offline search works with cars already registered in GTA V.")
-	menu:label("Online packages can be downloaded, verified and safely extracted; add-on spawning is still in development.")
+	menu:label("RPF/DLC downloads are verified and staged in the PC-data DLC folder; restart Glue 5 for the game to load them. Spawn must still be verified in-game.")
 
 	menu:separator("Native DLC loader diagnostics")
 	local loaderDiagnostics = menu:submenu("Loader diagnostics", "Read-only counters from the game's own DLC lifecycle")
@@ -80,7 +80,7 @@ function M.build(root: Menu)
 			tostring(data.mountable_shutdown_calls or 0)))
 		return "Loader diagnostics refreshed"
 	end)
-	loaderDiagnostics:label("Paths are truncated to 192 characters. Observations only; no DLC mounting or vehicle spawning is enabled.")
+	loaderDiagnostics:label("Paths are truncated to 192 characters. Diagnostics are read-only; the game mounts staged DLC on launch. Confirm success here before spawning by model name.")
 	local query = menu:text("Search cars", "", { placeholder = "e.g. Mazda, Ferrari, drift, adder", max = 48 })
 	local results = menu:submenu("Search results", "Cars currently available in loaded game data")
 	results:label("Enter a name or model, then choose Search.")
@@ -126,9 +126,9 @@ function M.build(root: Menu)
 	end
 
 	menu:separator("Installed vehicle packages")
-	local installed = menu:submenu("Installed downloads", "Verified packages staged in private Glue 5 storage")
+	local installed = menu:submenu("Installed downloads", "Verified packages and DLC packs staged for the next game launch")
 	local installedStatus = installed:label("Installed package list not loaded.")
-	local installedRows = installed:submenu("Installed packages", "These files are staged; they are not yet mounted or spawnable.")
+	local installedRows = installed:submenu("Installed packages", "RPF/DLC packs are staged for native loading after restart; spawning is not confirmed yet.")
 	installedRows:label("Tap Refresh installed list to inspect staged packages.")
 	bind.action(installed, "Refresh installed list", {
 		note = "Lists verified package folders without changing game data",
@@ -162,7 +162,7 @@ function M.build(root: Menu)
 					row:label("RPF archives: " .. tostring(package.rpf_archives or 0))
 					row:label("Vehicle assets: " .. tostring(package.vehicle_assets or 0))
 					row:label("Status: " .. tostring(package.status or "staged_not_mounted"))
-					row:label("Native DLC mount and vehicle spawning are not enabled yet.")
+					row:label("Restart Glue 5 to load this DLC. Then refresh Loader diagnostics and try Spawn by model name.")
 				end
 			end
 		end
@@ -172,8 +172,8 @@ function M.build(root: Menu)
 
 	menu:separator("Online vehicle catalog")
 	local settings = menu:submenu("AI Car Hub settings", "Choose how downloaded cars are handled")
-	settings:label("One-tap mode: download, verify, then automatically install the package.")
-	settings:label("Direct in-game DLC mounting and spawning are locked until the native loader is implemented and tested.")
+	settings:label("One-tap RPF/DLC mode: download, verify, extract into the native DLC scan folder, and register it through the read-only data overlay.")
+	settings:label("The game native DLC manager performs the mount on the next launch. Spawn support remains unverified until the model is registered in-game.")
 	settings:label("AI search currently uses offline matching; live AI recommendations need a populated catalog and service integration.")
 
 	local online = menu:submenu("Browse online cars", "Fetch the curated HTTPS catalog maintained for Glue 5")
@@ -222,7 +222,7 @@ function M.build(root: Menu)
 								.. tostring(entry.version or "?") .. " | " .. packageFormat)
 							row:label("Package size: " .. tostring(entry.size_bytes or "unknown") .. " bytes")
 							bind.action(row, "Download and verify", {
-								note = "Streams package to private app storage and checks SHA-256",
+								note = "Streams and verifies SHA-256; RPF/DLC packages are extracted to the separate PC-data DLC folder",
 								action = "Download",
 							}, function(): string?
 								local queued, queueError = pcall(function()
@@ -246,7 +246,7 @@ function M.build(root: Menu)
 								return "Download started for " .. packageName
 							end)
 							bind.action(row, "Download + install (one tap)", {
-								note = "Automatically verifies and stages the car after download; live game mounting is not enabled yet",
+								note = "Downloads, verifies, and stages the RPF/DLC for native loading on the next launch",
 								action = "Download and install",
 							}, function(): string?
 								local queued, queueError = pcall(function()
@@ -285,7 +285,7 @@ function M.build(root: Menu)
 											return world.vehiclePackageInstallStatus()
 										end)
 										if ok and done then
-											onlineStatus:set(tostring(message) .. " | Game spawn is not enabled yet.")
+											onlineStatus:set(tostring(message) .. " | Restart Glue 5, check Loader diagnostics, then try Spawn by model name.")
 											return
 										end
 									end
@@ -330,8 +330,8 @@ function M.build(root: Menu)
 		end)
 		return "Secure catalog request started"
 	end)
-	online:label("Downloads are streamed and SHA-256 verified into private app storage. Install safely extracts and inspects the package.")
-	online:label("One-tap download + install is available per car. It stages verified files only; RPF/DLC mounting and actual in-game spawning are not implemented yet.")
+	online:label("Downloads are streamed and SHA-256 verified. RPF/DLC archives are safely extracted under GLUE5_PC_DATA_DIR/update/x64/dlcpacks.")
+	online:label("One-tap RPF/DLC staging is available. Restart Glue 5 for the game native manager to mount the pack; actual vehicle spawning still needs in-game verification.")
 end
 
 return M

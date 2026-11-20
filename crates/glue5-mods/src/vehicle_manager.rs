@@ -114,7 +114,11 @@ pub fn install_verified_package(
         "rpf_archives": report.rpf_archives,
         "vehicle_assets": report.vehicle_assets,
         "spawn_supported": false,
-        "status": "staged_not_mounted",
+        "status": if package.format == PackageFormat::RpfDlc {
+            "native_mount_pending_restart"
+        } else {
+            "staged_not_mounted"
+        },
         "native_mount_plan": mount_plan
     });
     let manifest_path = extracted.directory.join(".glue5-package.json");

@@ -262,6 +262,10 @@ public class Glue5Activity extends SDLActivity {
             try {
                 org.json.JSONObject request = new org.json.JSONObject(readTextFile(requestFile));
                 String id = request.getString("id");
+                String format = request.optString("format", "rpf_dlc");
+                if (!"rpf_dlc".equals(format) && !"loose_files".equals(format)) {
+                    throw new Exception("Unsupported vehicle package format");
+                }
                 String downloadUrl = request.getString("download_url");
                 String expectedHash = request.getString("sha256").toLowerCase(java.util.Locale.ROOT);
                 long expectedBytes = request.getLong("size_bytes");
@@ -342,10 +346,16 @@ public class Glue5Activity extends SDLActivity {
                 if (destination.exists()) throw new Exception("Package appeared during download; refusing to overwrite");
                 if (!staging.renameTo(destination)) throw new Exception("Cannot commit verified package");
                 staging = null;
-                File installedDlc = installVehicleDlcPackage(destination, id);
-                writeVehiclePackageStatus(status, "complete",
-                        "Verified ZIP saved and DLC staged at " + installedDlc.getAbsolutePath()
-                                + ". Restart Glue 5 to let GTA V mount the DLC.");
+                if ("rpf_dlc".equals(format)) {
+                    File installedDlc = installVehicleDlcPackage(destination, id);
+                    writeVehiclePackageStatus(status, "complete",
+                            "Verified ZIP saved and DLC staged at " + installedDlc.getAbsolutePath()
+                                    + ". Restart Glue 5 to let GTA V mount the DLC.");
+                } else {
+                    writeVehiclePackageStatus(status, "complete",
+                            "Verified ZIP saved: " + destination.getAbsolutePath()
+                                    + ". Loose-file vehicle registration is not available yet; no game data was changed.");
+                }
             } catch (Exception e) {
                 if (staging != null) staging.delete();
                 writeVehiclePackageStatus(status, "error",
