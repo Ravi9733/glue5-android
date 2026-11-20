@@ -44,6 +44,10 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.device_get_device = Some(device_get_device);
     h.device_relative_low_level = Some(device_relative_low_level);
     h.device_relative_rpf = Some(device_relative_rpf);
+    h.device_relative_debug_name = Some(device_relative_debug_name);
+    h.device_relative_open = Some(device_relative_open);
+    h.device_relative_find_begin = Some(device_relative_find_begin);
+    h.device_relative_file_size = Some(device_relative_file_size);
     h.mountable_content_ctor = Some(mountable_content_ctor);
     h.mountable_content_load_setup = Some(mountable_content_load_setup);
     h.mountable_content_mount = Some(mountable_content_mount);
@@ -290,6 +294,55 @@ unsafe extern "C" fn device_relative_rpf(env: *mut Env, device: u64) -> u64 {
     let result = unsafe { orig::device_relative_rpf(env, device) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("fiDeviceRelative::GetRpfDevice object=0x{device:x} result=0x{result:x}"));
+    result
+}
+
+
+/// Read the engine-owned debug name for a relative device.
+unsafe extern "C" fn device_relative_debug_name(env: *mut Env, device: u64) -> u64 {
+    let result = unsafe { orig::device_relative_debug_name(env, device) };
+    let name = if result == 0 { String::new() } else { unsafe { Mem::of(env).str(result) } };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiDeviceRelative::GetDebugName object=0x{device:x} name={name}"));
+    result
+}
+
+/// Trace DLC-relevant file opens without logging normal texture traffic.
+unsafe extern "C" fn device_relative_open(env: *mut Env, device: u64, path: u64, read_only: u32) -> u64 {
+    let name = unsafe { Mem::of(env).str(path) };
+    let lower = name.to_ascii_lowercase();
+    let interesting = lower.ends_with(".rpf") || lower.ends_with("setup2.xml")
+        || lower.ends_with("content.xml") || lower.ends_with("dlclist.xml")
+        || lower.ends_with(".meta");
+    let result = unsafe { orig::device_relative_open(env, device, path, read_only) };
+    if interesting {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("fiDeviceRelative::Open object=0x{device:x} read_only={} handle=0x{result:x} path={name}",
+                read_only != 0));
+    }
+    result
+}
+
+/// Observe directory enumeration requests used to discover DLC folders.
+unsafe extern "C" fn device_relative_find_begin(env: *mut Env, device: u64, path: u64, find_data: u64) -> u64 {
+    let name = unsafe { Mem::of(env).str(path) };
+    let result = unsafe { orig::device_relative_find_begin(env, device, path, find_data) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiDeviceRelative::FindFileBegin object=0x{device:x} iterator=0x{result:x} path={name}"));
+    result
+}
+
+/// Capture file-size queries for RPF and DLC metadata paths.
+unsafe extern "C" fn device_relative_file_size(env: *mut Env, device: u64, path: u64) -> u64 {
+    let name = unsafe { Mem::of(env).str(path) };
+    let result = unsafe { orig::device_relative_file_size(env, device, path) };
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".rpf") || lower.ends_with("setup2.xml")
+        || lower.ends_with("content.xml") || lower.ends_with(".meta")
+    {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("fiDeviceRelative::GetFileSize object=0x{device:x} size={result} path={name}"));
+    }
     result
 }
 
