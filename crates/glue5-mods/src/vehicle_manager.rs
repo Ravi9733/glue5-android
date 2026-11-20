@@ -167,7 +167,7 @@ fn build_native_mount_plan(
     }
     let mut rpf_paths = Vec::with_capacity(report.rpf_files.len());
     for archive in &report.rpf_files {
-        let normalized = archive.path.replace('\\\\', "/");
+        let normalized = archive.path.replace('\\', "/");
         if normalized.is_empty()
             || normalized.starts_with('/')
             || normalized.contains(':')
