@@ -61,6 +61,8 @@ pub struct Settings {
     pub android_smooth_50_profile_applied: bool,
     /// One-time migration removing the old forced 30 FPS cap on Android.
     pub android_smooth_fps_fix_applied: bool,
+    /// One-time Android migration enabling measurement-driven thermal-aware FPS pacing.
+    pub android_smart_performance_applied: bool,
     /// The game's resolution as a fraction of the window's, per side (the
     /// back buffer follows the window). Chosen for the screen at the first
     /// start ([`Settings::for_screen`]).
@@ -283,6 +285,7 @@ impl Default for Settings {
             android_smooth_settings_persisted: false,
             android_smooth_50_profile_applied: false,
             android_smooth_fps_fix_applied: false,
+            android_smart_performance_applied: false,
             render_scale: None,
             vsync: true,
             // Phones hold a steady 60 for longer than they hold 120 (heat).
@@ -475,6 +478,18 @@ impl Settings {
         if !settings.android_smooth_fps_fix_applied {
             settings.max_fps = 60;
             settings.android_smooth_fps_fix_applied = true;
+        }
+        // One-time Android migration: start at a 60 FPS target with the
+        // measurement-driven Smart Performance controller enabled. It keeps
+        // 60 while frame times and thermals have headroom, and can step down
+        // only when sustained overload or Android thermal status requires it.
+        // The player's later FPS and graphics choices remain editable.
+        #[cfg(target_os = "android")]
+        if !settings.android_smart_performance_applied {
+            settings.max_fps = 60;
+            settings.smart_performance = true;
+            settings.smart_auto_fps = true;
+            settings.android_smart_performance_applied = true;
         }
         #[cfg(target_os = "android")]
         {
