@@ -1,4 +1,62 @@
 {
   "version": 1,
-  "vehicles": []
+  "vehicles": [],
+  "discovery": [
+    {
+      "id": "mazda-furai",
+      "name": "Mazda Furai",
+      "author": "GTA5-Mods community",
+      "kind": "Add-on DLC",
+      "source_url": "https://www.gta5-mods.com/vehicles/2008-mazda-furai-add-on-l-tunning-l-rhd"
+    },
+    {
+      "id": "nissan-gtr",
+      "name": "2017 Nissan GTR",
+      "author": "y97y",
+      "kind": "Add-on",
+      "source_url": "https://www.gta5-mods.com/vehicles/tags/add-on/most-downloaded"
+    },
+    {
+      "id": "ferrari-laferrari",
+      "name": "2015 Ferrari LaFerrari",
+      "author": "Vans123",
+      "kind": "Add-on",
+      "source_url": "https://www.gta5-mods.com/vehicles/tags/add-on/most-downloaded"
+    },
+    {
+      "id": "lamborghini-aventador",
+      "name": "2015 Lamborghini Aventador LP700-4",
+      "author": "Vans123",
+      "kind": "Add-on",
+      "source_url": "https://www.gta5-mods.com/vehicles/tags/add-on/most-downloaded"
+    },
+    {
+      "id": "toyota-supra",
+      "name": "Toyota Supra",
+      "author": "AlexHIT",
+      "kind": "Add-on",
+      "source_url": "https://www.gta5-mods.com/vehicles/tags/add-on/most-downloaded"
+    },
+    {
+      "id": "bugatti-chiron",
+      "name": "2017 Bugatti Chiron",
+      "author": "ahmeda1999",
+      "kind": "Add-on",
+      "source_url": "https://www.gta5-mods.com/vehicles/tags/add-on/most-downloaded"
+    },
+    {
+      "id": "mclaren-p1",
+      "name": "2014 McLaren P1",
+      "author": "Aige",
+      "kind": "Add-on / Replace",
+      "source_url": "https://www.gta5-mods.com/vehicles/tags/add-on/most-downloaded"
+    },
+    {
+      "id": "bmw-m4",
+      "name": "2015 BMW F82 M4",
+      "author": "KAMELKFB",
+      "kind": "Add-on",
+      "source_url": "https://www.gta5-mods.com/vehicles/tags/add-on/most-downloaded"
+    }
+  ]
 }
