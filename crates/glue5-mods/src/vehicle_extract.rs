@@ -14,7 +14,9 @@ use std::{
 };
 
 const MAX_FILES: usize = 10_000;
-const MAX_FILE_BYTES: u64 = 256 * 1024 * 1024;
+// GTA V add-on DLC archives commonly exceed 256 MiB (e.g. large dlc.rpf).
+// Keep this aligned with the RPF inspection/processing ceiling.
+const MAX_FILE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_CENTRAL_BYTES: usize = 64 * 1024 * 1024;
 const MAX_NAME_BYTES: usize = 4096;
@@ -160,7 +162,7 @@ fn read_directory(file: &mut File, length: u64) -> Result<Vec<Entry>, String> {
         let key = clean.to_ascii_lowercase();
         if !names.insert(key) { return Err(format!("duplicate ZIP path rejected: {name}")); }
         if !directory {
-            if uncompressed > MAX_FILE_BYTES { return Err(format!("ZIP entry exceeds 256 MiB: {name}")); }
+            if uncompressed > MAX_FILE_BYTES { return Err(format!("ZIP entry exceeds 512 MiB: {name}")); }
             total = total.checked_add(uncompressed).ok_or("ZIP expanded size overflow")?;
             if total > MAX_TOTAL_BYTES { return Err("ZIP expanded size exceeds 1 GiB safety limit".into()); }
         }
