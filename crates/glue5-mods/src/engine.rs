@@ -39,6 +39,9 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.model_get_base_info = Some(model_get_base_info);
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
+    h.device_relative_init = Some(device_relative_init);
+    h.device_relative_mount_as = Some(device_relative_mount_as);
+    h.device_get_device = Some(device_get_device);
     h.mountable_content_ctor = Some(mountable_content_ctor);
     h.mountable_content_load_setup = Some(mountable_content_load_setup);
     h.mountable_content_mount = Some(mountable_content_mount);
@@ -235,6 +238,40 @@ unsafe extern "C" fn device_unmount(env: *mut Env, path: u64) -> u32 {
     let result = unsafe { orig::device_unmount(env, path) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("fiDevice::Unmount path={name} result={result}"));
+    result
+}
+
+/// Observe the engine's exact-build relative-device initialization. This is
+/// the RAGE VFS bridge candidate for exposing an extracted host directory.
+unsafe extern "C" fn device_relative_init(
+    env: *mut Env,
+    device: u64,
+    path: u64,
+    allow_root: u32,
+    base_device: u64,
+) {
+    let name = unsafe { Mem::of(env).str(path) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiDeviceRelative::Init object=0x{device:x} path={name} allow_root={} base_device=0x{base_device:x}",
+            allow_root != 0));
+    unsafe { orig::device_relative_init(env, device, path, allow_root, base_device) };
+}
+
+/// Observe the virtual mount name selected for each relative device.
+unsafe extern "C" fn device_relative_mount_as(env: *mut Env, device: u64, mount: u64) -> u32 {
+    let name = unsafe { Mem::of(env).str(mount) };
+    let result = unsafe { orig::device_relative_mount_as(env, device, mount) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiDeviceRelative::MountAs object=0x{device:x} mount={name} result={result}"));
+    result
+}
+
+/// Observe path resolution through the engine's global device registry.
+unsafe extern "C" fn device_get_device(env: *mut Env, path: u64, create: u32) -> u64 {
+    let name = unsafe { Mem::of(env).str(path) };
+    let result = unsafe { orig::device_get_device(env, path, create) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiDevice::GetDevice path={name} create={} result=0x{result:x}", create != 0));
     result
 }
 
