@@ -257,6 +257,8 @@ unsafe extern "C" fn device_relative_init(
     base_device: u64,
 ) {
     let name = unsafe { Mem::of(env).str(path) };
+    DLC_RELATIVE_INIT_COUNT.fetch_add(1, Ordering::Relaxed);
+    remember_loader_path(&DLC_LAST_RELATIVE_ROOT, &name);
     log_line("vehicle-loader", LogLevel::Info,
         &format!("fiDeviceRelative::Init object=0x{device:x} path={name} allow_root={} base_device=0x{base_device:x}",
             allow_root != 0));
@@ -266,6 +268,8 @@ unsafe extern "C" fn device_relative_init(
 /// Observe the virtual mount name selected for each relative device.
 unsafe extern "C" fn device_relative_mount_as(env: *mut Env, device: u64, mount: u64) -> u32 {
     let name = unsafe { Mem::of(env).str(mount) };
+    DLC_RELATIVE_MOUNT_COUNT.fetch_add(1, Ordering::Relaxed);
+    remember_loader_path(&DLC_LAST_RELATIVE_MOUNT, &name);
     let result = unsafe { orig::device_relative_mount_as(env, device, mount) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("fiDeviceRelative::MountAs object=0x{device:x} mount={name} result={result}"));
@@ -302,6 +306,7 @@ unsafe extern "C" fn device_relative_rpf(env: *mut Env, device: u64) -> u64 {
 unsafe extern "C" fn device_relative_debug_name(env: *mut Env, device: u64) -> u64 {
     let result = unsafe { orig::device_relative_debug_name(env, device) };
     let name = if result == 0 { String::new() } else { unsafe { Mem::of(env).str(result) } };
+    remember_loader_path(&DLC_LAST_RELATIVE_DEBUG_NAME, &name);
     log_line("vehicle-loader", LogLevel::Info,
         &format!("fiDeviceRelative::GetDebugName object=0x{device:x} name={name}"));
     result
@@ -314,6 +319,9 @@ unsafe extern "C" fn device_relative_open(env: *mut Env, device: u64, path: u64,
     let interesting = lower.ends_with(".rpf") || lower.ends_with("setup2.xml")
         || lower.ends_with("content.xml") || lower.ends_with("dlclist.xml")
         || lower.ends_with(".meta");
+    DLC_RELATIVE_OPEN_COUNT.fetch_add(1, Ordering::Relaxed);
+    if lower.ends_with(".rpf") { DLC_RELATIVE_RPF_OPEN_COUNT.fetch_add(1, Ordering::Relaxed); }
+    if interesting { remember_loader_path(&DLC_LAST_RELATIVE_OPEN, &name); }
     let result = unsafe { orig::device_relative_open(env, device, path, read_only) };
     if interesting {
         log_line("vehicle-loader", LogLevel::Info,
@@ -326,6 +334,8 @@ unsafe extern "C" fn device_relative_open(env: *mut Env, device: u64, path: u64,
 /// Observe directory enumeration requests used to discover DLC folders.
 unsafe extern "C" fn device_relative_find_begin(env: *mut Env, device: u64, path: u64, find_data: u64) -> u64 {
     let name = unsafe { Mem::of(env).str(path) };
+    DLC_RELATIVE_FIND_COUNT.fetch_add(1, Ordering::Relaxed);
+    remember_loader_path(&DLC_LAST_RELATIVE_ENUM, &name);
     let result = unsafe { orig::device_relative_find_begin(env, device, path, find_data) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("fiDeviceRelative::FindFileBegin object=0x{device:x} iterator=0x{result:x} path={name}"));
@@ -335,6 +345,7 @@ unsafe extern "C" fn device_relative_find_begin(env: *mut Env, device: u64, path
 /// Capture file-size queries for RPF and DLC metadata paths.
 unsafe extern "C" fn device_relative_file_size(env: *mut Env, device: u64, path: u64) -> u64 {
     let name = unsafe { Mem::of(env).str(path) };
+    DLC_RELATIVE_SIZE_COUNT.fetch_add(1, Ordering::Relaxed);
     let result = unsafe { orig::device_relative_file_size(env, device, path) };
     let lower = name.to_ascii_lowercase();
     if lower.ends_with(".rpf") || lower.ends_with("setup2.xml")
@@ -813,6 +824,17 @@ static DLC_SETUP_XML_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::At
 static DLC_CONTENT_MOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_CONTENT_MOUNT_CONTENT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_CONTENT_UNMOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RELATIVE_INIT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RELATIVE_MOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RELATIVE_OPEN_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RELATIVE_FIND_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RELATIVE_SIZE_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RELATIVE_RPF_OPEN_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_LAST_RELATIVE_ROOT: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+static DLC_LAST_RELATIVE_MOUNT: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+static DLC_LAST_RELATIVE_OPEN: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+static DLC_LAST_RELATIVE_ENUM: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+static DLC_LAST_RELATIVE_DEBUG_NAME: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 fn remember_loader_path(slot: &std::sync::Mutex<String>, path: &str) {
     if let Ok(mut value) = slot.lock() {
@@ -855,6 +877,17 @@ pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
         "content_mount_calls": DLC_CONTENT_MOUNT_COUNT.load(Relaxed),
         "content_mount_content_calls": DLC_CONTENT_MOUNT_CONTENT_COUNT.load(Relaxed),
         "content_unmount_calls": DLC_CONTENT_UNMOUNT_COUNT.load(Relaxed),
+        "relative_device_init_calls": DLC_RELATIVE_INIT_COUNT.load(Relaxed),
+        "relative_device_mount_calls": DLC_RELATIVE_MOUNT_COUNT.load(Relaxed),
+        "relative_device_open_calls": DLC_RELATIVE_OPEN_COUNT.load(Relaxed),
+        "relative_device_rpf_open_calls": DLC_RELATIVE_RPF_OPEN_COUNT.load(Relaxed),
+        "relative_device_find_calls": DLC_RELATIVE_FIND_COUNT.load(Relaxed),
+        "relative_device_size_calls": DLC_RELATIVE_SIZE_COUNT.load(Relaxed),
+        "last_relative_root": DLC_LAST_RELATIVE_ROOT.lock().map(|v| v.clone()).unwrap_or_default(),
+        "last_relative_mount": DLC_LAST_RELATIVE_MOUNT.lock().map(|v| v.clone()).unwrap_or_default(),
+        "last_relative_open": DLC_LAST_RELATIVE_OPEN.lock().map(|v| v.clone()).unwrap_or_default(),
+        "last_relative_enum": DLC_LAST_RELATIVE_ENUM.lock().map(|v| v.clone()).unwrap_or_default(),
+        "last_relative_debug_name": DLC_LAST_RELATIVE_DEBUG_NAME.lock().map(|v| v.clone()).unwrap_or_default(),
         "last_rpf_path": DLC_LAST_RPF_PATH.lock().map(|v| v.clone()).unwrap_or_default(),
         "last_mount_path": DLC_LAST_MOUNT_PATH.lock().map(|v| v.clone()).unwrap_or_default(),
         "last_content_folder": DLC_LAST_CONTENT_FOLDER.lock().map(|v| v.clone()).unwrap_or_default()
