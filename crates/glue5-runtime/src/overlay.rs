@@ -8,7 +8,10 @@ type Patch = fn(String) -> Option<String>;
 
 /// The files (under the game's `data/`), whether this run changes them, and
 /// how.
-const OVERLAYS: [(&str, fn() -> bool, Patch); 8] = [
+const OVERLAYS: [(&str, fn() -> bool, Patch); 9] = [
+
+    ("common/data/dlclist.xml", dlc_list_changed, dlc_list),
+
     ("common/data/gameconfig.xml", game_config_changed, game_config),
     ("common/data/ui/pausemenu.xml", always, autosave_first),
     ("common/data/ui/frontend.xml", always, feed_width),
@@ -84,7 +87,11 @@ pub(crate) fn game_file(rel: &str, real: &Path, scratch: &Path) -> Option<PathBu
         }
         let path = (|| {
             let text = std::fs::read_to_string(real).ok()?;
-            let patched = patch(text.clone()).filter(|p| p.len() == text.len())?;
+            let patched = patch(text.clone()).filter(|p| p.len() == text.len());
+            if patched.is_none() && name == "common/data/dlclist.xml" {
+                log::warn!("overlay: local DLC entries did not fit the original dlclist.xml; no game file was changed");
+            }
+            let patched = patched?;
             let path = scratch.join("overlay").join(real.file_name()?);
             std::fs::create_dir_all(path.parent()?).ok()?;
             std::fs::write(&path, patched).ok()?;
@@ -117,6 +124,114 @@ pub(crate) fn game_file(rel: &str, real: &Path, scratch: &Path) -> Option<PathBu
     }
     log::info!("mod replacement: {rel}");
     Some(actual)
+}
+
+
+
+/// Add only verified, extracted local DLC packs to a same-size dlclist overlay.
+/// Packages live under the separate PC-data folder; update.rpf and game data
+/// remain read-only. The game's own ExtraContentManager mounts the listed RPFs.
+fn dlc_list_changed() -> bool {
+    !installed_dlc_names().is_empty()
+}
+
+fn installed_dlc_names() -> Vec<String> {
+    let Some(root) = std::env::var_os("GLUE5_PC_DATA_DIR").map(PathBuf::from) else {
+        return Vec::new();
+    };
+    let packs = root.join("update").join("x64").join("dlcpacks");
+    let Ok(entries) = std::fs::read_dir(packs) else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(kind) = entry.file_type() else { continue };
+        if !kind.is_dir() || kind.is_symlink() {
+            continue;
+        }
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if !valid_dlc_name(&name) {
+            continue;
+        }
+        let archive = entry.path().join("dlc.rpf");
+        let Ok(meta) = std::fs::symlink_metadata(&archive) else {
+            continue;
+        };
+        if meta.is_file() && !meta.file_type().is_symlink() && meta.len() > 0 {
+            names.push(name);
+        }
+    }
+    names.sort_by_key(|name| name.to_ascii_lowercase());
+    names
+}
+
+fn valid_dlc_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 48
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn dlc_list(text: String) -> Option<String> {
+    let names = installed_dlc_names();
+    if names.is_empty() {
+        return Some(text);
+    }
+    append_dlc_entries(&text, &names)
+}
+
+/// Insert missing dlcpacks entries while preserving the game's exact file size.
+fn append_dlc_entries(text: &str, names: &[String]) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    if !lower.contains("<smandatorypacksdata") || !lower.contains("<paths") || !lower.contains("</paths>") {
+        return None;
+    }
+    let mut missing = Vec::new();
+    for name in names {
+        if !valid_dlc_name(name) {
+            continue;
+        }
+        let slash = format!("dlcpacks:/{name}/").to_ascii_lowercase();
+        let backslash = format!("dlcpacks:\\{name}\\").to_ascii_lowercase();
+        if !lower.contains(&slash) && !lower.contains(&backslash) {
+            missing.push(format!("<Item>dlcpacks:/{name}/</Item>"));
+        }
+    }
+    if missing.is_empty() {
+        return Some(text.to_owned());
+    }
+    let mut compact = compact_intertag_whitespace(text);
+    let close = compact.to_ascii_lowercase().find("</paths>")?;
+    compact.insert_str(close, &missing.concat());
+    if compact.len() > text.len() {
+        return None;
+    }
+    compact.push_str(&" ".repeat(text.len() - compact.len()));
+    Some(compact)
+}
+
+/// Whitespace between XML tags is formatting, not element content. Removing
+/// it creates safe padding room without changing text values inside elements.
+fn compact_intertag_whitespace(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        out.push(bytes[i]);
+        if bytes[i] == b'>' {
+            let mut next = i + 1;
+            while next < bytes.len() && matches!(bytes[next], b' ' | b'\\t' | b'\\r' | b'\\n') {
+                next += 1;
+            }
+            if next < bytes.len() && bytes[next] == b'<' {
+                i = next;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| text.to_owned())
 }
 
 /// Resolve a relative overlay path without depending on ZIP/OIV path casing.

@@ -342,8 +342,10 @@ public class Glue5Activity extends SDLActivity {
                 if (destination.exists()) throw new Exception("Package appeared during download; refusing to overwrite");
                 if (!staging.renameTo(destination)) throw new Exception("Cannot commit verified package");
                 staging = null;
+                File installedDlc = installVehicleDlcPackage(destination, id);
                 writeVehiclePackageStatus(status, "complete",
-                        "Verified download saved: " + destination.getAbsolutePath());
+                        "Verified ZIP saved and DLC staged at " + installedDlc.getAbsolutePath()
+                                + ". Restart Glue 5 to let GTA V mount the DLC.");
             } catch (Exception e) {
                 if (staging != null) staging.delete();
                 writeVehiclePackageStatus(status, "error",
@@ -353,6 +355,187 @@ public class Glue5Activity extends SDLActivity {
                 requestFile.delete();
             }
         }, "Glue5VehiclePackageDownload").start();
+    }
+
+
+    /**
+     * Install only the actual DLC directory from a verified community ZIP.
+     * The game reads PC data through GLUE5_PC_DATA_DIR on the next launch;
+     * its native CExtraContentManager then scans update:/x64/dlcpacks/.
+     * Original game data and update.rpf are never modified.
+     */
+    private File installVehicleDlcPackage(File archive, String catalogId) throws Exception {
+        String configuredRoot = Os.getenv("GLUE5_PC_DATA_DIR");
+        if (configuredRoot == null || configuredRoot.trim().isEmpty()) {
+            throw new Exception("GLUE5_PC_DATA_DIR is not configured");
+        }
+        File pcRoot = new File(configuredRoot).getCanonicalFile();
+        if (!pcRoot.isDirectory() && !pcRoot.mkdirs()) {
+            throw new Exception("Cannot create PC data folder: " + pcRoot.getAbsolutePath());
+        }
+        File packsRoot = new File(pcRoot, "update/x64/dlcpacks");
+        if (!packsRoot.isDirectory() && !packsRoot.mkdirs()) {
+            throw new Exception("Cannot create GTA V DLC folder: " + packsRoot.getAbsolutePath());
+        }
+        packsRoot = packsRoot.getCanonicalFile();
+        if (!packsRoot.toPath().startsWith(pcRoot.toPath())) {
+            throw new Exception("DLC destination escaped the configured PC data folder");
+        }
+
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(archive)) {
+            String candidateRoot = null;
+            String folderName = null;
+            boolean candidateFound = false;
+            java.util.Enumeration<? extends ZipEntry> scan = zip.entries();
+            int scanned = 0;
+            while (scan.hasMoreElements()) {
+                ZipEntry entry = scan.nextElement();
+                if (++scanned > 50000) throw new Exception("Vehicle ZIP has too many entries");
+                if (entry.isDirectory()) continue;
+                String normalized = normalizeVehicleZipPath(entry.getName());
+                if (!normalized.equalsIgnoreCase("dlc.rpf")
+                        && !normalized.toLowerCase(java.util.Locale.ROOT).endsWith("/dlc.rpf")) continue;
+                int slash = normalized.lastIndexOf('/');
+                String root = slash < 0 ? "" : normalized.substring(0, slash);
+                String name = root.isEmpty() ? catalogId : root.substring(root.lastIndexOf('/') + 1);
+                if (!name.matches("[A-Za-z0-9_-]{1,48}")) {
+                    throw new Exception("DLC folder name is not safe: " + name);
+                }
+                if (candidateFound && !candidateRoot.equalsIgnoreCase(root)) {
+                    throw new Exception("Vehicle ZIP contains multiple DLC roots; refusing an ambiguous install");
+                }
+                candidateFound = true;
+                candidateRoot = root;
+                folderName = name;
+            }
+            if (!candidateFound) {
+                throw new Exception("No dlc.rpf found in this ZIP; native RPF/DLC install requires a DLC archive");
+            }
+
+            File destination = new File(packsRoot, folderName).getCanonicalFile();
+            if (!destination.getParentFile().equals(packsRoot)) {
+                throw new Exception("Unsafe DLC folder destination");
+            }
+            if (destination.exists()) {
+                throw new Exception("DLC pack already exists: " + folderName + "; existing files were left unchanged");
+            }
+            File staging = new File(packsRoot,
+                    "." + folderName + ".glue5-" + android.os.Process.myPid() + ".staging");
+            if (staging.exists() || !staging.mkdirs()) {
+                throw new Exception("Cannot create isolated DLC staging folder");
+            }
+            boolean committed = false;
+            try {
+                File stagingRoot = staging.getCanonicalFile();
+                java.util.HashSet<String> seen = new java.util.HashSet<>();
+                java.util.Enumeration<? extends ZipEntry> entries = zip.entries();
+                byte[] buffer = new byte[64 * 1024];
+                long totalBytes = 0;
+                int fileCount = 0;
+                boolean archiveFound = false;
+                while (entries.hasMoreElements()) {
+                    ZipEntry entry = entries.nextElement();
+                    String normalized = normalizeVehicleZipPath(entry.getName());
+                    if (entry.isDirectory()) continue;
+                    String relative;
+                    if (candidateRoot.isEmpty()) {
+                        relative = normalized;
+                    } else {
+                        String prefix = candidateRoot + "/";
+                        if (!normalized.regionMatches(true, 0, prefix, 0, prefix.length())) continue;
+                        relative = normalized.substring(prefix.length());
+                    }
+                    if (relative.isEmpty()) continue;
+                    if (++fileCount > 50000) throw new Exception("DLC package has too many files");
+                    String key = relative.toLowerCase(java.util.Locale.ROOT);
+                    if (!seen.add(key)) throw new Exception("DLC ZIP contains duplicate paths: " + relative);
+
+                    File outputFile = new File(stagingRoot, relative).getCanonicalFile();
+                    if (!outputFile.toPath().startsWith(stagingRoot.toPath())) {
+                        throw new Exception("DLC ZIP path escaped its staging folder");
+                    }
+                    File parent = outputFile.getParentFile();
+                    if (!parent.isDirectory() && !parent.mkdirs()) {
+                        throw new Exception("Cannot create DLC subfolder: " + parent.getAbsolutePath());
+                    }
+
+                    long entryBytes = 0;
+                    java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                    try (InputStream input = zip.getInputStream(entry);
+                         FileOutputStream output = new FileOutputStream(outputFile, false)) {
+                        int count;
+                        while ((count = input.read(buffer)) != -1) {
+                            entryBytes += count;
+                            totalBytes += count;
+                            if (entryBytes > 512L * 1024L * 1024L
+                                    || totalBytes > 1024L * 1024L * 1024L) {
+                                throw new Exception("DLC extraction exceeded the 512 MiB/file or 1 GiB/package safety limit");
+                            }
+                            crc.update(buffer, 0, count);
+                            output.write(buffer, 0, count);
+                        }
+                        output.flush();
+                        output.getFD().sync();
+                    }
+                    if (entry.getSize() >= 0 && entryBytes != entry.getSize()) {
+                        throw new Exception("DLC ZIP entry size mismatch: " + relative);
+                    }
+                    if (entry.getCrc() >= 0 && crc.getValue() != entry.getCrc()) {
+                        throw new Exception("DLC ZIP CRC mismatch: " + relative);
+                    }
+                    if (relative.equalsIgnoreCase("dlc.rpf")) archiveFound = true;
+                }
+                File mainRpf = new File(stagingRoot, "dlc.rpf");
+                if (!archiveFound || !mainRpf.isFile() || mainRpf.length() == 0) {
+                    throw new Exception("DLC archive was not extracted to the package root");
+                }
+                if (destination.exists() || !staging.renameTo(destination)) {
+                    throw new Exception("Cannot atomically publish DLC folder; existing content was not overwritten");
+                }
+                committed = true;
+                return destination;
+            } finally {
+                if (!committed) deleteVehicleInstallTree(staging);
+            }
+        }
+    }
+
+    /** Normalize and reject unsafe ZIP paths before creating any output file. */
+    private static String normalizeVehicleZipPath(String raw) throws Exception {
+        if (raw == null || raw.isEmpty()) throw new Exception("Vehicle ZIP contains an empty path");
+        String path = raw.replace('\\', '/');
+        if (path.startsWith("/") || path.matches("^[A-Za-z]:.*") || path.indexOf('\0') >= 0) {
+            throw new Exception("Vehicle ZIP contains an absolute or invalid path");
+        }
+        String[] parts = path.split("/", -1);
+        StringBuilder normalized = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            if (part.isEmpty() && i == parts.length - 1 && path.endsWith("/")) continue;
+            if (part.isEmpty() || part.equals(".") || part.equals("..") || part.indexOf(':') >= 0) {
+                throw new Exception("Vehicle ZIP contains an unsafe path component");
+            }
+            for (int j = 0; j < part.length(); j++) {
+                if (Character.isISOControl(part.charAt(j))) {
+                    throw new Exception("Vehicle ZIP contains a control character in a path");
+                }
+            }
+            if (normalized.length() > 0) normalized.append('/');
+            normalized.append(part);
+        }
+        if (normalized.length() == 0) throw new Exception("Vehicle ZIP contains an empty normalized path");
+        return normalized.toString();
+    }
+
+    private static void deleteVehicleInstallTree(File path) {
+        if (path == null || !path.exists()) return;
+        if (path.isDirectory()) {
+            File[] children = path.listFiles();
+            if (children != null) {
+                for (File child : children) deleteVehicleInstallTree(child);
+            }
+        }
+        path.delete();
     }
 
     private static void writeVehiclePackageStatus(File file, String state, String message) {
