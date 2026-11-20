@@ -194,7 +194,7 @@ fn build_native_mount_plan(
             .filter(|tail| !tail.is_empty())
             .unwrap_or_else(|| relative.clone());
         let archive = report.rpf_files.iter().find(|archive| {
-            archive.path.replace('\\\\', "/") == *relative
+            archive.path.replace(\'\\\\\', "/") == *relative
         });
         let encryption = archive.map(|archive| match archive.encryption {
             crate::vehicle_inspect::RpfEncryption::Open => "open",
