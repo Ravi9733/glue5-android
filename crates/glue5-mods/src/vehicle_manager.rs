@@ -180,11 +180,22 @@ fn build_native_mount_plan(
     }
     rpf_paths.sort();
     rpf_paths.dedup();
+    let virtual_root = format!("dlcpacks:/{package_id}/");
+    // Keep a one-to-one mapping between each extracted archive and its
+    // intended virtual archive path. The native bridge can consume this
+    // descriptor later without guessing from filenames or host paths.
+    let rpf_mounts: Vec<serde_json::Value> = rpf_paths.iter().map(|relative| {
+        serde_json::json!({
+            "package_relative_path": relative,
+            "virtual_archive_path": format!("{virtual_root}{relative}")
+        })
+    }).collect();
     Ok(serde_json::json!({
-        "schema": 1,
+        "schema": 2,
         "package_id": package_id,
-        "virtual_root": format!("dlcpacks:/{package_id}/"),
+        "virtual_root": virtual_root,
         "rpf_paths": rpf_paths,
+        "rpf_mounts": rpf_mounts,
         "path_kind": "package_relative",
         "state": "awaiting_native_vfs_mount"
     }))
@@ -235,6 +246,9 @@ mod tests {
         let plan = build_native_mount_plan("dyfurai", &report).unwrap();
         assert_eq!(plan["virtual_root"], "dlcpacks:/dyfurai/");
         assert_eq!(plan["rpf_paths"][0], "Mazda Furai/dlc/dlc.rpf");
+        assert_eq!(plan["rpf_mounts"][0]["package_relative_path"], "Mazda Furai/dlc/dlc.rpf");
+        assert_eq!(plan["rpf_mounts"][0]["virtual_archive_path"], "dlcpacks:/dyfurai/Mazda Furai/dlc/dlc.rpf");
+        assert_eq!(plan["schema"], 2);
         assert_eq!(plan["state"], "awaiting_native_vfs_mount");
         let mut unsafe_report = report;
         unsafe_report.rpf_files[0].path = "../escape/dlc.rpf".into();
