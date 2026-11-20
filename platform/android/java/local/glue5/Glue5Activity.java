@@ -446,6 +446,7 @@ public class Glue5Activity extends SDLActivity {
                         relative = normalized.substring(prefix.length());
                     }
                     if (relative.isEmpty()) continue;
+                    if (relative.equalsIgnoreCase("dlc.rpf")) relative = "dlc.rpf";
                     if (++fileCount > 50000) throw new Exception("DLC package has too many files");
                     String key = relative.toLowerCase(java.util.Locale.ROOT);
                     if (!seen.add(key)) throw new Exception("DLC ZIP contains duplicate paths: " + relative);
