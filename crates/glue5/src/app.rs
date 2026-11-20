@@ -710,7 +710,10 @@ impl App {
         let presentation_fps = if self.settings.smart_auto_fps {
             glue5_gpu::perf::effective_fps_cap().unwrap_or(self.settings.max_fps).min(60)
         } else {
-            self.settings.max_fps.min(30)
+            // Respect the selected target; the former 30 FPS clamp silently
+            // defeated the Android 60 FPS migration even when the device had
+            // enough headroom.
+            self.settings.max_fps.min(60)
         };
         self.presentation.set_frame_rate(presentation_fps);
         self.presentation.set_upscaler(upscaler(&self.settings));
