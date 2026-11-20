@@ -732,6 +732,8 @@ unsafe extern "C" fn mountable_content_load_setup(env: *mut Env, content: u64) -
 unsafe extern "C" fn mountable_content_mount(env: *mut Env, content: u64) -> u32 {
     DLC_CONTENT_MOUNT_COUNT.fetch_add(1, Ordering::Relaxed);
     let result = unsafe { orig::mountable_content_mount(env, content) };
+    if result != 0 { DLC_CONTENT_MOUNT_SUCCESS_COUNT.fetch_add(1, Ordering::Relaxed); }
+    else { DLC_CONTENT_MOUNT_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed); }
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CMountableContent::Mount object=0x{content:x} result={result}"));
     result
@@ -744,6 +746,8 @@ unsafe extern "C" fn mountable_content_mount_content(
     DLC_CONTENT_MOUNT_CONTENT_COUNT.fetch_add(1, Ordering::Relaxed);
     let name = unsafe { Mem::of(env).str(path) };
     let result = unsafe { orig::mountable_content_mount_content(env, content, path) };
+    if result != 0 { DLC_CONTENT_MOUNT_CONTENT_SUCCESS_COUNT.fetch_add(1, Ordering::Relaxed); }
+    else { DLC_CONTENT_MOUNT_CONTENT_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed); }
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CMountableContent::MountContent object=0x{content:x} result={result} path={name}"));
     result
@@ -889,6 +893,10 @@ static DLC_CONTENT_SHUTDOWN_COUNT: std::sync::atomic::AtomicU64 = std::sync::ato
 static DLC_SETUP_XML_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_CONTENT_MOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_CONTENT_MOUNT_CONTENT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_CONTENT_MOUNT_SUCCESS_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_CONTENT_MOUNT_FAILURE_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_CONTENT_MOUNT_CONTENT_SUCCESS_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_CONTENT_MOUNT_CONTENT_FAILURE_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_CONTENT_UNMOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_RELATIVE_INIT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_RELATIVE_MOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -948,6 +956,10 @@ pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
         "setup_xml_calls": DLC_SETUP_XML_COUNT.load(Relaxed),
         "content_mount_calls": DLC_CONTENT_MOUNT_COUNT.load(Relaxed),
         "content_mount_content_calls": DLC_CONTENT_MOUNT_CONTENT_COUNT.load(Relaxed),
+        "content_mount_successes": DLC_CONTENT_MOUNT_SUCCESS_COUNT.load(Relaxed),
+        "content_mount_failures": DLC_CONTENT_MOUNT_FAILURE_COUNT.load(Relaxed),
+        "content_mount_content_successes": DLC_CONTENT_MOUNT_CONTENT_SUCCESS_COUNT.load(Relaxed),
+        "content_mount_content_failures": DLC_CONTENT_MOUNT_CONTENT_FAILURE_COUNT.load(Relaxed),
         "content_unmount_calls": DLC_CONTENT_UNMOUNT_COUNT.load(Relaxed),
         "relative_device_init_calls": DLC_RELATIVE_INIT_COUNT.load(Relaxed),
         "relative_device_mount_calls": DLC_RELATIVE_MOUNT_COUNT.load(Relaxed),
