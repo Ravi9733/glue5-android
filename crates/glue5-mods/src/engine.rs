@@ -42,6 +42,8 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.device_relative_init = Some(device_relative_init);
     h.device_relative_mount_as = Some(device_relative_mount_as);
     h.device_get_device = Some(device_get_device);
+    h.device_relative_low_level = Some(device_relative_low_level);
+    h.device_relative_rpf = Some(device_relative_rpf);
     h.mountable_content_ctor = Some(mountable_content_ctor);
     h.mountable_content_load_setup = Some(mountable_content_load_setup);
     h.mountable_content_mount = Some(mountable_content_mount);
@@ -272,6 +274,22 @@ unsafe extern "C" fn device_get_device(env: *mut Env, path: u64, create: u32) ->
     let result = unsafe { orig::device_get_device(env, path, create) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("fiDevice::GetDevice path={name} create={} result=0x{result:x}", create != 0));
+    result
+}
+
+/// Identify the underlying host device selected by each relative RAGE device.
+unsafe extern "C" fn device_relative_low_level(env: *mut Env, device: u64) -> u64 {
+    let result = unsafe { orig::device_relative_low_level(env, device) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiDeviceRelative::GetLowLevelDevice object=0x{device:x} result=0x{result:x}"));
+    result
+}
+
+/// Identify whether a relative device resolves to an RPF-backed device.
+unsafe extern "C" fn device_relative_rpf(env: *mut Env, device: u64) -> u64 {
+    let result = unsafe { orig::device_relative_rpf(env, device) };
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiDeviceRelative::GetRpfDevice object=0x{device:x} result=0x{result:x}"));
     result
 }
 
