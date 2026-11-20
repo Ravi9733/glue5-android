@@ -37,6 +37,9 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.stream_load_object = Some(stream_load_object);
     h.stream_index_by_filename = Some(stream_index_by_filename);
     h.model_get_base_info = Some(model_get_base_info);
+    h.model_request_assets = Some(model_request_assets);
+    h.model_have_assets_loaded = Some(model_have_assets_loaded);
+    h.vehicle_factory_create = Some(vehicle_factory_create);
     h.device_mount = Some(device_mount);
     h.device_unmount = Some(device_unmount);
     h.device_relative_init = Some(device_relative_init);
@@ -147,6 +150,45 @@ unsafe extern "C" fn packfile_get_streaming_module(env: *mut Env) -> u64 {
             &format!("strPackfileManager::GetStreamingModule module=0x{module:x}"));
     }
     module
+}
+
+/// Observe model streaming requests used before vehicle creation; forward unchanged.
+unsafe extern "C" fn model_request_assets(env: *mut Env, model_id: u64, flags: u32) -> u32 {
+    let result = unsafe { orig::model_request_assets(env, model_id, flags) };
+    let sample = VEHICLE_MODEL_REQUEST_SAMPLES.fetch_add(1, Ordering::Relaxed);
+    if sample % 64 == 0 {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("CModelInfo::RequestAssets sample={sample} model_id=0x{model_id:x} flags={flags} result={result}"));
+    }
+    result
+}
+
+/// Observe whether a requested vehicle model has completed streaming.
+unsafe extern "C" fn model_have_assets_loaded(env: *mut Env, model_id: u64) -> u32 {
+    let result = unsafe { orig::model_have_assets_loaded(env, model_id) };
+    let sample = VEHICLE_MODEL_READY_SAMPLES.fetch_add(1, Ordering::Relaxed);
+    if sample % 64 == 0 || result != 0 {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("CModelInfo::HaveAssetsLoaded sample={sample} model_id=0x{model_id:x} ready={result}"));
+    }
+    result
+}
+
+/// Observe the native factory's actual vehicle creation path. This hook never
+/// creates a vehicle itself; it records exact runtime arguments and forwards.
+unsafe extern "C" fn vehicle_factory_create(
+    env: *mut Env,
+    model_id: u64,
+    owner: u32,
+    flags: u32,
+    matrix: u64,
+    arg_a: u32,
+    arg_b: u32,
+) -> u64 {
+    let count = VEHICLE_FACTORY_CREATE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("CVehicleFactory::Create count={count} model_id=0x{model_id:x} owner={owner} flags={flags} matrix=0x{matrix:x} arg_a={arg_a} arg_b={arg_b}"));
+    unsafe { orig::vehicle_factory_create(env, model_id, owner, flags, matrix, arg_a, arg_b) }
 }
 
 /// Observe model-info resolution for requested vehicle models; never alter the lookup.
@@ -820,6 +862,9 @@ static DLC_STREAM_INDEX_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic:
 static DLC_STREAM_REQUEST_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_STREAM_LOAD_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_MODEL_LOOKUP_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static VEHICLE_MODEL_REQUEST_SAMPLES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static VEHICLE_MODEL_READY_SAMPLES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static VEHICLE_FACTORY_CREATE_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_DEVICE_MOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_DEVICE_UNMOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_CTOR_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
