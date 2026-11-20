@@ -178,6 +178,7 @@ unsafe extern "C" fn model_have_assets_loaded(env: *mut Env, model_id: u64) -> u
 /// creates a vehicle itself; it records exact runtime arguments and forwards.
 unsafe extern "C" fn vehicle_factory_create(
     env: *mut Env,
+    factory: u64,
     model_id: u64,
     owner: u32,
     flags: u32,
@@ -187,8 +188,8 @@ unsafe extern "C" fn vehicle_factory_create(
 ) -> u64 {
     let count = VEHICLE_FACTORY_CREATE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
     log_line("vehicle-loader", LogLevel::Info,
-        &format!("CVehicleFactory::Create count={count} model_id=0x{model_id:x} owner={owner} flags={flags} matrix=0x{matrix:x} arg_a={arg_a} arg_b={arg_b}"));
-    unsafe { orig::vehicle_factory_create(env, model_id, owner, flags, matrix, arg_a, arg_b) }
+        &format!("CVehicleFactory::Create count={count} factory=0x{factory:x} model_id=0x{model_id:x} owner={owner} flags={flags} matrix=0x{matrix:x} arg_a={arg_a} arg_b={arg_b}"));
+    unsafe { orig::vehicle_factory_create(env, factory, model_id, owner, flags, matrix, arg_a, arg_b) }
 }
 
 /// Observe model-info resolution for requested vehicle models; never alter the lookup.
