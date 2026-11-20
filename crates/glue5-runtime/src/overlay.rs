@@ -221,7 +221,7 @@ fn compact_intertag_whitespace(text: &str) -> String {
         out.push(bytes[i]);
         if bytes[i] == b'>' {
             let mut next = i + 1;
-            while next < bytes.len() && matches!(bytes[next], b' ' | b'\\t' | b'\\r' | b'\\n') {
+            while next < bytes.len() && matches!(bytes[next], b' ' | b'\t' | b'\r' | b'\n') {
                 next += 1;
             }
             if next < bytes.len() && bytes[next] == b'<' {
