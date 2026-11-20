@@ -11,8 +11,8 @@ Android ARM64 conversion prototype for GTA V RPF7 archives. It reads a selected 
    - .ydr drawables and .ydd drawable dictionaries: Gen9 version 159 (and the CodeWalker-compatible 154 variant) to Legacy version 165
    - .yft fragments: Gen9 version 171 to Legacy version 162
    - .ypt particle dictionaries: Gen9 version 71 to Legacy version 68, except files containing the Enhanced-only ptfx_g9 behaviour are rejected safely
-4. Parse and validate .ybn, .ymap and .ytyp resources with ragekit, then preserve their original bytes. These formats are edition-independent in the upstream Gen9 format documentation; rewriting them is unnecessary and could introduce collision quantization or map serialization changes. They are not counted as Gen9-to-Legacy conversions.
-5. Preserve already-Legacy versions byte-for-byte. Unsupported extensions such as .ysc, .awc, .rel, .dat, PSO/meta and other files are preserved unchanged and are never reported as converted.
+4. Parse and validate edition-independent resources with the pinned ragekit readers, then preserve their original bytes: .ybn, .ymap, .ytyp, .ycd, .ynd, .yvr, .ywr, .yld, .yed, .yfd, .ybd and .ynv. YCD/YED/YFD also run ragekit's pointer-census checks and fail closed if the pinned schema encounters unknown pointer-like fields. These formats do not need Gen9-to-Legacy conversion; unnecessary reserialization could change collision, map, navigation or animation data. They are reported as validated/preserved, never as converted.
+5. Preserve already-Legacy versions byte-for-byte. Unsupported extensions such as .ysc, .awc, .rel, .dat, PSO/meta and other files are preserved unchanged and are never reported as converted. The newly validated edition-independent resource families are distinguished from these unvalidated pass-through files in the report.
 6. Rebuild a new OPEN RPF7 archive with ragekit's RpfBuilder::save file-streaming writer. The output is reopened with the RPF reader and checked for OPEN encryption, paths, entry kinds, nested archives and converted resource versions. RSC7 resources are written as resource entries with their page flags. Nested .rpf files are rebuilt as child OPEN archives.
 
 ## Nested RPF and DLC layout
@@ -70,7 +70,7 @@ AES archives require the matching AES key. NG archives require all NG keys, decr
 
 This is not a universal PC-to-Android converter and is not yet validated against Glue5's runtime. It produces Legacy-format RSC7 assets inside a structurally validated RPF7 archive. A successful parse/build does not prove that a specific Android port mounts the archive, supports the same shader/material features, loads the DLC metadata or accepts every asset.
 
-The supported Gen9-to-Legacy transformations are limited to YTD/YDR/YDD/YFT/YPT; YPT files containing the Enhanced-only ptfx_g9 behaviour fail closed because Legacy has no equivalent. YBN/YMAP/YTYP are parsed for validation and preserved byte-for-byte because their layouts are edition-independent. Audio, scripts, other metadata and unsupported resources remain unchanged. Real retail Enhanced/Legacy fixture coverage, large DLC validation, Android device testing and Glue5 in-game loading tests are still required.
+The supported Gen9-to-Legacy transformations are limited to YTD/YDR/YDD/YFT/YPT; YPT files containing the Enhanced-only ptfx_g9 behaviour fail closed because Legacy has no equivalent. YBN/YMAP/YTYP/YCD/YND/YVR/YWR/YLD/YED/YFD/YBD/YNV are parsed by pinned ragekit readers and preserved byte-for-byte because their supported layouts are edition-independent. Audio, scripts, other metadata and unsupported resources remain unchanged unless explicitly listed as validated above. Real retail Enhanced/Legacy fixture coverage, large DLC validation, Android device testing and Glue5 in-game loading tests are still required.
 
 ## Glue5 compatibility gate
 
@@ -93,7 +93,8 @@ GitHub Actions runs:
 - Rust native-core unit tests (legacy prototype)
 - Host C++ tests for Gen9-to-Legacy YTD/YDR/YDD/YFT/YPT conversion and Legacy pass-through
 - Android JVM tests for exact key-file lengths, the complete NG key group, and invalid/empty key selections
-- YBN/YMAP/YTYP parse-and-preserve tests, plus fail-closed YPT coverage for the Enhanced-only ptfx_g9 behaviour
+- YBN/YMAP/YTYP plus YCD/YND/YVR/YWR/YLD/YED/YFD/YBD/YNV parse-and-preserve tests, including pointer-census rejection for YCD/YED/YFD and fail-closed YPT coverage for Enhanced-only ptfx_g9 behaviour
+- Direct RPF7 round-trip tests proving the additional edition-independent resources remain byte-identical after repacking
 - End-to-end direct archive-to-archive conversion tests covering supported resource families, nested RPFs, AES/NG input, OPEN RPF7 output and encrypted .ysc stored-byte preservation
 - Synthetic AES- and NG-keyed RPF extraction and missing-key rejection
 - A nested RPF7 round-trip larger than 16 MiB
