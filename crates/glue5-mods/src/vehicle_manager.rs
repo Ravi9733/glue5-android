@@ -181,13 +181,22 @@ fn build_native_mount_plan(
     rpf_paths.sort();
     rpf_paths.dedup();
     let virtual_root = format!("dlcpacks:/{package_id}/");
-    // Keep a one-to-one mapping between each extracted archive and its
-    // intended virtual archive path. The native bridge can consume this
-    // descriptor later without guessing from filenames or host paths.
+    // ZIPs often wrap the actual DLC folder in vendor directories, e.g.
+    // "Mazda Furai/Legacy/dyfurai/dlc.rpf". Strip through the matching
+    // package-id directory so the virtual layout matches GTA's dlcpacks root.
+    // If no such directory exists, retain the relative path rather than
+    // silently guessing a different archive location.
     let rpf_mounts: Vec<serde_json::Value> = rpf_paths.iter().map(|relative| {
+        let components: Vec<&str> = relative.split('/').collect();
+        let package_component = components.iter().rposition(|part| part.eq_ignore_ascii_case(package_id));
+        let virtual_relative = package_component
+            .map(|index| components[index + 1..].join("/"))
+            .filter(|tail| !tail.is_empty())
+            .unwrap_or_else(|| relative.clone());
         serde_json::json!({
             "package_relative_path": relative,
-            "virtual_archive_path": format!("{virtual_root}{relative}")
+            "virtual_archive_path": format!("{virtual_root}{virtual_relative}"),
+            "matched_package_directory": package_component.is_some()
         })
     }).collect();
     Ok(serde_json::json!({
@@ -248,6 +257,13 @@ mod tests {
         assert_eq!(plan["rpf_paths"][0], "Mazda Furai/dlc/dlc.rpf");
         assert_eq!(plan["rpf_mounts"][0]["package_relative_path"], "Mazda Furai/dlc/dlc.rpf");
         assert_eq!(plan["rpf_mounts"][0]["virtual_archive_path"], "dlcpacks:/dyfurai/Mazda Furai/dlc/dlc.rpf");
+        assert_eq!(plan["rpf_mounts"][0]["matched_package_directory"], false);
+
+        let mut wrapped_report = report.clone();
+        wrapped_report.rpf_files[0].path = "Mazda Furai/Legacy/dyfurai/dlc.rpf".into();
+        let wrapped = build_native_mount_plan("dyfurai", &wrapped_report).unwrap();
+        assert_eq!(wrapped["rpf_mounts"][0]["virtual_archive_path"], "dlcpacks:/dyfurai/dlc.rpf");
+        assert_eq!(wrapped["rpf_mounts"][0]["matched_package_directory"], true);
         assert_eq!(plan["schema"], 2);
         assert_eq!(plan["state"], "awaiting_native_vfs_mount");
         let mut unsafe_report = report;
