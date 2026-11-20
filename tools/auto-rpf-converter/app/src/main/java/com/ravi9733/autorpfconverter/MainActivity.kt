@@ -47,7 +47,7 @@ class MainActivity : Activity() {
         ))
 
         val subtitle = TextView(this).apply {
-            text = "Android converter 0.3.7 • direct RPF7 conversion + platform DLC audit"
+            text = "Android converter 0.3.8 • direct RPF7 conversion + resource validation"
             textSize = 13f
             setTextColor(0xFFB9C6B5.toInt())
             gravity = Gravity.CENTER
@@ -137,7 +137,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. The converter reads RPF entries directly, converts supported Gen9 YTD/YDR/YDD/YFT/YPT resources to Legacy, validates and preserves YBN/YMAP/YTYP, and rebuilds nested archives as OPEN RPF7. Unsupported files and encrypted .ysc stored bytes are preserved unchanged. This output is not certified as Glue5 prepared game data; game.wasm and translated shaders are separate requirements."
+            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. The converter reads RPF entries directly, converts supported Gen9 YTD/YDR/YDD/YFT/YPT resources to Legacy, validates and preserves YBN/YMAP/YTYP/YCD/YND/YVR/YWR/YLD/YED/YFD/YBD/YNV, and rebuilds nested archives as OPEN RPF7. Unsupported files and encrypted .ysc stored bytes are preserved unchanged. This output is not certified as Glue5 prepared game data; game.wasm and translated shaders are separate requirements."
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)
@@ -1074,7 +1074,7 @@ class MainActivity : Activity() {
 
         rows.sort()
         return buildString {
-            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.3.7")
+            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.3.8")
             appendLine("RPF files found: ${rows.size}")
             appendLine("GTA V RPF7 archives: $gtaVArchives")
             appendLine("OPEN archives: $openArchives")
@@ -1088,7 +1088,7 @@ class MainActivity : Activity() {
             appendLine("Read-only scan. No source files were changed.")
             appendLine("OPEN/unencrypted RPF7 TOCs are inspected for YTD/YDR/YFT/YMAP and related asset names. AES/NG TOCs need the matching key material.")
             appendLine("RPF7 structure and resource conversion do not prove that the result will mount or run in a specific Android game port such as Glue5.")
-            appendLine("Bulk conversion supports OPEN and AES/NG encrypted RPF7 archives when matching user-provided keys are imported. Supported Gen9 YTD/YDR/YDD/YFT/YPT resources are converted to Legacy before RPF7 repacking; other formats remain unchanged.")
+            appendLine("Bulk conversion supports OPEN and AES/NG encrypted RPF7 archives when matching user-provided keys are imported. Supported Gen9 YTD/YDR/YDD/YFT/YPT resources are converted to Legacy before RPF7 repacking. YBN/YMAP/YTYP/YCD/YND/YVR/YWR/YLD/YED/YFD/YBD/YNV are parsed and preserved byte-for-byte; unsupported formats remain unchanged.")
         }
     }
 
@@ -1109,6 +1109,6 @@ class MainActivity : Activity() {
         private const val MAX_ARCHIVE_BYTES = 4L * 1024L * 1024L * 1024L - 1L
         private const val MAX_DLC_AUDIT_PACKS = 512
         private const val MAX_DLC_AUDIT_TOTAL_BYTES = 16L * 1024L * 1024L * 1024L
-        private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ysc", "awc", "rel", "dat")
+        private val ASSET_EXTENSIONS = setOf("ytd", "ydr", "ydd", "yft", "ybn", "ymap", "ytyp", "ycd", "ynd", "yvr", "ywr", "yld", "yed", "yfd", "ybd", "ynv", "ysc", "awc", "rel", "dat")
     }
 }
