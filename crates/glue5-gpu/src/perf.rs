@@ -54,7 +54,11 @@ pub fn set_smart_performance(enabled: bool, target_fps: u32, auto_apply: bool) {
         return;
     }
     if !smart.enabled || smart.target_fps != target {
-        smart.controller = Some(crate::adaptive::Controller::new(target));
+        smart.controller = Some(if cfg!(target_os = "android") {
+            crate::adaptive::Controller::new_mobile(target)
+        } else {
+            crate::adaptive::Controller::new(target)
+        });
         smart.recommendation = None;
         smart.bottleneck = None;
     }
@@ -69,7 +73,7 @@ pub fn set_smart_performance(enabled: bool, target_fps: u32, auto_apply: bool) {
 pub fn effective_fps_cap() -> Option<u32> {
     let smart = SMART.lock().unwrap();
     if !smart.enabled || !smart.auto_apply { return None; }
-    let mut cap = smart.recommendation.unwrap_or(smart.target_fps);
+    let mut cap = smart.controller.as_ref().map_or(smart.target_fps, |controller| controller.fps_cap());
     match THERMAL_STATUS.load(Ordering::Relaxed) {
         4..=6 => cap = cap.min(30), // critical / emergency / shutdown warning
         3 => cap = cap.min(45),     // severe
@@ -199,7 +203,11 @@ impl Mark {
         {
             let mut smart = SMART.lock().unwrap();
             if smart.enabled {
-                let budget_ms = 1000.0 / smart.target_fps as f32;
+                // Judge the live frame against the cap currently in force,
+                // not the aspirational ceiling. A stable 45-FPS fallback must
+                // not be misclassified as overloaded against a 60-FPS budget.
+                let budget_fps = smart.controller.as_ref().map_or(smart.target_fps, |controller| controller.fps_cap());
+                let budget_ms = 1000.0 / budget_fps as f32;
                 let render_ms = live.render_ms.back().copied();
                 let gpu_ms = live.gpu_ms.back().copied();
                 smart.bottleneck = match (render_ms, gpu_ms) {
