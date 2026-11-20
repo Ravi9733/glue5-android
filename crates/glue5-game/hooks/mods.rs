@@ -55,6 +55,7 @@
     ("extra_content_add_folder", "CExtraContentManager::AddContentFolder(char const*)"),
     ("extra_content_load", "CExtraContentManager::LoadContent(bool, bool)"),
     ("extra_content_get_by_device", "CExtraContentManager::GetContentByDevice(char const*)"),
+    ("extra_content_get_by_hash", "CExtraContentManager::GetContentByHash(unsigned int)"),
     ("extra_content_recursive_enum", "CExtraContentManager::RecursiveEnumExtraContent(char const*)"),
     ("extra_content_begin_enumerate", "CExtraContentManager::BeginEnumerateContent(bool, bool)"),
     ("extra_content_update_array", "CExtraContentManager::UpdateContentArray()"),
