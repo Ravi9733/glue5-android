@@ -32,11 +32,24 @@ pub struct Controller {
 
 impl Controller {
     pub fn new(initial_cap: u32) -> Self {
-        let cap = normalize_cap(initial_cap);
+        Self::with_caps(initial_cap, initial_cap)
+    }
+
+    /// Android starts at a sustainable 45 FPS when the player's ceiling is
+    /// 60, then earns 60 only after ten stable measurement windows. This
+    /// avoids launching a hot, already-overloaded phone straight into a
+    /// 60-FPS target during dense Story Mode scenes.
+    pub fn new_mobile(initial_cap: u32) -> Self {
+        let preferred = normalize_cap(initial_cap);
+        let start = if preferred >= 60 { 45 } else { preferred };
+        Self::with_caps(preferred, start)
+    }
+
+    fn with_caps(preferred_cap: u32, start_cap: u32) -> Self {
         Self {
             samples: VecDeque::with_capacity(60),
-            current_cap: cap,
-            preferred_cap: cap,
+            current_cap: normalize_cap(start_cap),
+            preferred_cap: normalize_cap(preferred_cap),
             overload_windows: 0,
             stable_windows: 0,
         }
@@ -172,9 +185,24 @@ mod tests {
     }
 
     #[test]
+    fn mobile_starts_at_45_and_only_earns_60_after_sustained_headroom() {
+        let mut c = Controller::new_mobile(60);
+        assert_eq!(c.fps_cap(), 45);
+        assert_eq!(feed(&mut c, 599, 22.0, Some(10.0)), Decision::Hold { fps_cap: 45 });
+        assert_eq!(feed(&mut c, 1, 22.0, Some(10.0)), Decision::RecommendCap { fps_cap: 60 });
+    }
+
+    #[test]
+    fn mobile_steps_down_to_30_when_45_cannot_hold() {
+        let mut c = Controller::new_mobile(60);
+        assert_eq!(feed(&mut c, 60, 55.0, Some(45.0)), Decision::RecommendCap { fps_cap: 30 });
+    }
+
+    #[test]
     fn cap_is_bounded_to_supported_steps() {
         assert_eq!(Controller::new(0).fps_cap(), 30);
         assert_eq!(Controller::new(44).fps_cap(), 44);
         assert_eq!(Controller::new(120).fps_cap(), 60);
+        assert_eq!(Controller::new_mobile(60).fps_cap(), 45);
     }
 }
