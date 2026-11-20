@@ -149,6 +149,24 @@ impl Vm {
                 }
             })?,
         )?;
+        let online_vehicle_page_dir = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from);
+        world.set(
+            "openOnlineVehiclePage",
+            lua.create_function(move |_, url: String| {
+                let app_files = online_vehicle_page_dir.as_ref()
+                    .ok_or_else(|| mlua::Error::runtime("Android browser launch is unavailable"))?;
+                let parsed = url::Url::parse(&url)
+                    .map_err(|_| mlua::Error::runtime("invalid vehicle source URL"))?;
+                if parsed.scheme() != "https" || parsed.host_str() != Some("www.gta5-mods.com") {
+                    return Err(mlua::Error::runtime("vehicle source must be an HTTPS GTA5-Mods page"));
+                }
+                std::fs::create_dir_all(app_files)
+                    .map_err(|e| mlua::Error::runtime(format!("cannot access app files: {e}")))?;
+                std::fs::write(app_files.join("open-online-vehicle-page-request"), url)
+                    .map_err(|e| mlua::Error::runtime(format!("cannot request browser: {e}")))?;
+                Ok(())
+            })?,
+        )?;
         let vehicle_package_request_dir = std::env::var_os("GLUE5_APP_FILES_DIR").map(PathBuf::from);
         world.set(
             "requestVehiclePackageDownload",
