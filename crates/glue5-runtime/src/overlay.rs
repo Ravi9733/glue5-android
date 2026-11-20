@@ -430,3 +430,32 @@ mod loose_replacement_tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 }
+
+
+#[cfg(test)]
+mod dlc_list_tests {
+    use super::*;
+
+    #[test]
+    fn adds_missing_pack_without_changing_file_size() {
+        let padding = " ".repeat(160);
+        let xml = format!(
+            "<SMandatoryPacksData>\n<Paths>\n{padding}\n</Paths>\n</SMandatoryPacksData>\n"
+        );
+        let patched = append_dlc_entries(&xml, &["dyfurai".to_owned()]).unwrap();
+        assert_eq!(patched.len(), xml.len());
+        assert!(patched.contains("<Item>dlcpacks:/dyfurai/</Item>"));
+        assert!(patched.trim_end().ends_with("</SMandatoryPacksData>"));
+    }
+
+    #[test]
+    fn avoids_duplicate_entries_and_refuses_to_grow_the_file() {
+        let existing = "<SMandatoryPacksData><Paths><Item>dlcpacks:\\dyfurai\\</Item></Paths></SMandatoryPacksData>";
+        assert_eq!(
+            append_dlc_entries(existing, &["dyfurai".to_owned()]).as_deref(),
+            Some(existing)
+        );
+        let tight = "<SMandatoryPacksData><Paths></Paths></SMandatoryPacksData>";
+        assert!(append_dlc_entries(tight, &["dyfurai".to_owned()]).is_none());
+    }
+}
