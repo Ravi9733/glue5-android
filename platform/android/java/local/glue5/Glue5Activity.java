@@ -187,6 +187,25 @@ public class Glue5Activity extends SDLActivity {
             turnipHandler.postDelayed(turnipImportWatcher, 500);
             return;
         }
+        File onlineVehiclePageRequest = new File(getFilesDir(), "open-online-vehicle-page-request");
+        if (onlineVehiclePageRequest.isFile()) {
+            try {
+                String requestedUrl = readTextFile(onlineVehiclePageRequest).trim();
+                if (!onlineVehiclePageRequest.delete()) throw new Exception("Cannot clear vehicle page request");
+                java.net.URI parsed = java.net.URI.create(requestedUrl);
+                if (!"https".equalsIgnoreCase(parsed.getScheme())
+                        || !"www.gta5-mods.com".equalsIgnoreCase(parsed.getHost())) {
+                    throw new Exception("Only verified GTA5-Mods HTTPS pages are allowed");
+                }
+                Intent browser = new Intent(Intent.ACTION_VIEW, Uri.parse(requestedUrl));
+                browser.addCategory(Intent.CATEGORY_BROWSABLE);
+                startActivity(browser);
+            } catch (Exception e) {
+                Toast.makeText(this, "Cannot open vehicle page: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+            turnipHandler.postDelayed(turnipImportWatcher, 500);
+            return;
+        }
         File stuntRacePageRequest = new File(getFilesDir(), "open-stunt-race-page-request");
         if (stuntRacePageRequest.isFile() && stuntRacePageRequest.delete()) {
             openStuntRaceChallengePage();
