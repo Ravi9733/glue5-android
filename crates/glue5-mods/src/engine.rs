@@ -874,6 +874,8 @@ static DLC_ADD_FOLDER_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::A
 static DLC_LOAD_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_LOAD_MATCH_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_DEVICE_LOOKUP_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_HASH_LOOKUP_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_HASH_LOOKUP_HIT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_ENUM_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_LAST_IDENTITY_MATCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static DLC_LAST_RPF_PATH: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
@@ -921,6 +923,8 @@ pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
         "load_identity_matches": DLC_LOAD_MATCH_COUNT.load(Relaxed),
         "last_load_identity_match": DLC_LAST_IDENTITY_MATCH.load(Relaxed),
         "device_lookups": DLC_DEVICE_LOOKUP_COUNT.load(Relaxed),
+        "content_hash_lookups": DLC_HASH_LOOKUP_COUNT.load(Relaxed),
+        "content_hash_hits": DLC_HASH_LOOKUP_HIT_COUNT.load(Relaxed),
         "recursive_enumerations": DLC_ENUM_COUNT.load(Relaxed),
         "rpf_load_calls": DLC_RPF_LOAD_COUNT.load(Relaxed),
         "rpf_init_calls": DLC_RPF_INIT_COUNT.load(Relaxed),
@@ -1011,10 +1015,18 @@ unsafe extern "C" fn extra_content_get_by_device(env: *mut Env, manager: u64, de
 
 /// Observe DLC content-hash resolution; never changes the manager's lookup.
 unsafe extern "C" fn extra_content_get_by_hash(env: *mut Env, manager: u64, hash: u32) -> u64 {
+    DLC_HASH_LOOKUP_COUNT.fetch_add(1, Ordering::Relaxed);
     let result = unsafe { orig::extra_content_get_by_hash(env, manager, hash) };
     if result != 0 {
+        DLC_HASH_LOOKUP_HIT_COUNT.fetch_add(1, Ordering::Relaxed);
         log_line("vehicle-loader", LogLevel::Info,
-            &format!("CExtraContentManager::GetContentByHash manager=0x{manager:x} hash=0x{hash:08x} content=0x{result:x}"));
+            &format!("CExtraContentManager::GetContentByHash hit manager=0x{manager:x} hash=0x{hash:08x} content=0x{result:x}"));
+    } else {
+        let sample = DLC_HASH_LOOKUP_COUNT.load(Ordering::Relaxed);
+        if sample <= 32 || sample % 128 == 0 {
+            log_line("vehicle-loader", LogLevel::Info,
+                &format!("CExtraContentManager::GetContentByHash miss sample={sample} manager=0x{manager:x} hash=0x{hash:08x}"));
+        }
     }
     result
 }
