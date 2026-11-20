@@ -52,6 +52,7 @@ pub fn install(mods_dir: &Path) {
             && *relative != "features/ai_car_hub.luau"
             && *relative != "features/spawner.luau"
             && *relative != "features/stunt_races.luau"
+            && *relative != "features/world.luau"
         {
             continue;
         }
