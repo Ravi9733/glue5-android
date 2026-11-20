@@ -100,6 +100,36 @@ local function weather(menu: Menu)
 end
 
 local function filters(root: Menu)
+	-- Native GTA V timecycle preset: no blur and no extra render pass.
+	local colorful = root:submenu("Colorful Graphics", { note = "Bright, clear colours with a lightweight native filter" })
+	local function applyColor(amount: number)
+		local value = math.clamp(amount, 0, 0.6)
+		if value <= 0 then
+			graphics.clearTimecycleModifier()
+			return
+		end
+		graphics.setTimecycleModifier("rply_saturation")
+		graphics.setTimecycleModifierStrength(value)
+	end
+	bind.slider(colorful, "world.colorfulStrength", "Color boost", 0.32, 0, 0.6,
+		{ step = 0.02, unit = "×", note = "0: natural · 0.32: colorful · 0.48: vivid" }, applyColor)
+	bind.command(colorful, "world.colorfulNatural", "Natural colours", { action = "Apply" }, function(): string?
+		applyColor(0.12)
+		return "Natural colour boost applied"
+	end)
+	bind.command(colorful, "world.colorfulBalanced", "Colorful (recommended)", { action = "Apply" }, function(): string?
+		applyColor(0.32)
+		return "Balanced colorful look applied"
+	end)
+	bind.command(colorful, "world.colorfulVivid", "Ultra vibrant", { note = "Stronger saturation; may look less natural", action = "Apply" }, function(): string?
+		applyColor(0.48)
+		return "Vibrant colours applied"
+	end)
+	bind.command(colorful, "world.colorfulOff", "Color boost OFF", { action = "Reset" }, function(): string?
+		applyColor(0)
+		return "Original colours restored"
+	end)
+
 	local menu = root:submenu("Screen filters", { note = "The game's own looks", search = true })
 	local strength = bind.slider(menu, "world.filterStrength", "Strength", 1, 0, 1, { step = 0.05, unit = "%" }, function(v)
 		graphics.setTimecycleModifierStrength(v)
