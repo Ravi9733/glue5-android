@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 //! Mods: Luau scripts, each in a script thread of the game's own, calling
 //! the game's natives.
 //!
