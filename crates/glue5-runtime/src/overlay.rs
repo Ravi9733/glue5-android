@@ -88,7 +88,7 @@ pub(crate) fn game_file(rel: &str, real: &Path, scratch: &Path) -> Option<PathBu
         let path = (|| {
             let text = std::fs::read_to_string(real).ok()?;
             let patched = patch(text.clone()).filter(|p| p.len() == text.len());
-            if patched.is_none() && name == "common/data/dlclist.xml" {
+            if patched.is_none() && *name == "common/data/dlclist.xml" {
                 log::warn!("overlay: local DLC entries did not fit the original dlclist.xml; no game file was changed");
             }
             let patched = patched?;
