@@ -259,10 +259,23 @@ unsafe extern "C" fn device_relative_init(
     let name = unsafe { Mem::of(env).str(path) };
     DLC_RELATIVE_INIT_COUNT.fetch_add(1, Ordering::Relaxed);
     remember_loader_path(&DLC_LAST_RELATIVE_ROOT, &name);
-    log_line("vehicle-loader", LogLevel::Info,
-        &format!("fiDeviceRelative::Init object=0x{device:x} path={name} allow_root={} base_device=0x{base_device:x}",
-            allow_root != 0));
     unsafe { orig::device_relative_init(env, device, path, allow_root, base_device) };
+
+    // Correlate the relative device with its resolved backing device only
+    // after the engine has initialized it. This remains observational: no
+    // object allocation, vtable mutation, mount, or ownership transfer.
+    let low_level = unsafe { orig::device_relative_low_level(env, device) };
+    let rpf_device = unsafe { orig::device_relative_rpf(env, device) };
+    let debug_ptr = unsafe { orig::device_relative_debug_name(env, device) };
+    let debug_name = if debug_ptr == 0 {
+        String::new()
+    } else {
+        unsafe { Mem::of(env).str(debug_ptr) }
+    };
+    remember_loader_path(&DLC_LAST_RELATIVE_DEBUG_NAME, &debug_name);
+    log_line("vehicle-loader", LogLevel::Info,
+        &format!("fiDeviceRelative::InitResolved object=0x{device:x} root={name} allow_root={} base_device=0x{base_device:x} low_level=0x{low_level:x} rpf_device=0x{rpf_device:x} debug_name={debug_name}",
+            allow_root != 0));
 }
 
 /// Observe the virtual mount name selected for each relative device.
