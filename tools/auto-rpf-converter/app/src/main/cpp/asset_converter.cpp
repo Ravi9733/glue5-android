@@ -22,7 +22,10 @@ std::string lower(std::string value) {
     return value;
 }
 bool supported_extension(const std::string& ext) {
-    return ext == "ytd" || ext == "ydr" || ext == "ydd" || ext == "yft" || ext == "ypt" || ext == "ybn" || ext == "ymap" || ext == "ytyp";
+    return ext == "ytd" || ext == "ydr" || ext == "ydd" || ext == "yft" || ext == "ypt" ||
+           ext == "ybn" || ext == "ymap" || ext == "ytyp" || ext == "ycd" || ext == "ynd" ||
+           ext == "yvr" || ext == "ywr" || ext == "yld" || ext == "yed" || ext == "yfd" ||
+           ext == "ybd" || ext == "ynv";
 }
 int legacy_version(const std::string& ext) {
     if (ext == "ytd") return 13;
@@ -92,6 +95,65 @@ std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std:
         ++stats.validated_ytyp;
         return {input.begin(), input.end()};
     }
+
+    // These resource families have the same on-disk layouts in GTA V Legacy and
+    // Enhanced. Parse them with the pinned ragekit readers, then preserve the
+    // original RSC7 bytes rather than introducing an unnecessary rewrite.
+    if (ext == "ycd") {
+        size_t census = 0;
+        std::string where;
+        (void)rk::read_ycd_checked(input, &census, &where);
+        if (census != 0) throw std::runtime_error("YCD has unrecognized pointer-like fields: " + where);
+        ++stats.validated_ycd;
+        return {input.begin(), input.end()};
+    }
+    if (ext == "ynd") {
+        (void)rk::read_ynd(input);
+        ++stats.validated_ynd;
+        return {input.begin(), input.end()};
+    }
+    if (ext == "yvr") {
+        (void)rk::read_yvr(input);
+        ++stats.validated_yvr;
+        return {input.begin(), input.end()};
+    }
+    if (ext == "ywr") {
+        (void)rk::read_ywr(input);
+        ++stats.validated_ywr;
+        return {input.begin(), input.end()};
+    }
+    if (ext == "yld") {
+        (void)rk::read_yld(input);
+        ++stats.validated_yld;
+        return {input.begin(), input.end()};
+    }
+    if (ext == "yed") {
+        size_t census = 0;
+        std::string where;
+        (void)rk::read_yed(input, &census, &where);
+        if (census != 0) throw std::runtime_error("YED has unrecognized pointer-like fields: " + where);
+        ++stats.validated_yed;
+        return {input.begin(), input.end()};
+    }
+    if (ext == "yfd") {
+        size_t census = 0;
+        std::string where;
+        (void)rk::read_yfd(input, &census, &where);
+        if (census != 0) throw std::runtime_error("YFD has unrecognized pointer-like fields: " + where);
+        ++stats.validated_yfd;
+        return {input.begin(), input.end()};
+    }
+    if (ext == "ybd") {
+        (void)rk::read_ybd(input);
+        ++stats.validated_ybd;
+        return {input.begin(), input.end()};
+    }
+    if (ext == "ynv") {
+        (void)rk::read_ynv(input);
+        ++stats.validated_ynv;
+        return {input.begin(), input.end()};
+    }
+
     if (resource.version == legacy_version(ext)) {
         ++stats.already_legacy;
         return {input.begin(), input.end()};
@@ -201,7 +263,16 @@ std::string convert_directory(const fs::path& root) {
            ", YPT=" + std::to_string(stats.converted_ypt) + "\n"
            "Edition-independent resources validated and preserved: YBN=" + std::to_string(stats.validated_ybn) +
            ", YMAP=" + std::to_string(stats.validated_ymap) +
-           ", YTYP=" + std::to_string(stats.validated_ytyp) + "\n"
+           ", YTYP=" + std::to_string(stats.validated_ytyp) +
+           ", YCD=" + std::to_string(stats.validated_ycd) +
+           ", YND=" + std::to_string(stats.validated_ynd) +
+           ", YVR=" + std::to_string(stats.validated_yvr) +
+           ", YWR=" + std::to_string(stats.validated_ywr) +
+           ", YLD=" + std::to_string(stats.validated_yld) +
+           ", YED=" + std::to_string(stats.validated_yed) +
+           ", YFD=" + std::to_string(stats.validated_yfd) +
+           ", YBD=" + std::to_string(stats.validated_ybd) +
+           ", YNV=" + std::to_string(stats.validated_ynv) + "\n"
            "Already Legacy resources: " + std::to_string(stats.already_legacy) + "\n"
            "Other files preserved unchanged: " + std::to_string(stats.unchanged_other) + "\n"
            "Scanned bytes: " + std::to_string(stats.bytes_scanned) + "\n"
