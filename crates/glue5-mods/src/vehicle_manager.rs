@@ -92,6 +92,7 @@ pub fn install_verified_package(
     }
 
     let compatibility = assess_dlc_compatibility(&report, &dlc_metadata, &package.id);
+    let mount_plan = build_native_mount_plan(&package.id, &report)?;
 
     // Persist a small manifest alongside the extracted files so the trainer
     // can show useful package details after an app restart. This is metadata
@@ -113,7 +114,8 @@ pub fn install_verified_package(
         "rpf_archives": report.rpf_archives,
         "vehicle_assets": report.vehicle_assets,
         "spawn_supported": false,
-        "status": "staged_not_mounted"
+        "status": "staged_not_mounted",
+        "native_mount_plan": mount_plan
     });
     let manifest_path = extracted.directory.join(".glue5-package.json");
     let manifest_tmp = extracted.directory.join(".glue5-package.json.tmp");
@@ -152,6 +154,42 @@ pub fn install_verified_package(
     })
 }
 
+
+/// Build a deterministic, host-path-free descriptor for the native VFS bridge.
+/// It records only package-relative RPF paths; it does not mount or register
+/// anything with the running game.
+fn build_native_mount_plan(
+    package_id: &str,
+    report: &VehiclePackageReport,
+) -> Result<serde_json::Value, String> {
+    if !valid_id(package_id) {
+        return Err("invalid package id in native mount plan".into());
+    }
+    let mut rpf_paths = Vec::with_capacity(report.rpf_files.len());
+    for archive in &report.rpf_files {
+        let normalized = archive.path.replace('\\\\', "/");
+        if normalized.is_empty()
+            || normalized.starts_with('/')
+            || normalized.contains(':')
+            || normalized.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+            || !normalized.to_ascii_lowercase().ends_with(".rpf")
+        {
+            return Err(format!("unsafe package-relative RPF path: {}", archive.path));
+        }
+        rpf_paths.push(normalized);
+    }
+    rpf_paths.sort();
+    rpf_paths.dedup();
+    Ok(serde_json::json!({
+        "schema": 1,
+        "package_id": package_id,
+        "virtual_root": format!("dlcpacks:/{package_id}/"),
+        "rpf_paths": rpf_paths,
+        "path_kind": "package_relative",
+        "state": "awaiting_native_vfs_mount"
+    }))
+}
+
 fn hash_file(path: &Path) -> Result<String, String> {
     let mut file = File::open(path).map_err(|e| format!("cannot open downloaded package: {e}"))?;
     let mut hash = Sha256::new();
@@ -179,6 +217,29 @@ fn valid_id(id: &str) -> bool {
 mod tests {
     use super::*;
     use crate::vehicle_hub::VehiclePackage;
+
+
+    #[test]
+    fn native_mount_plan_contains_only_safe_relative_rpf_paths() {
+        use crate::vehicle_inspect::{RpfArchiveInfo, RpfEncryption};
+        let report = VehiclePackageReport {
+            files_scanned: 2, total_bytes: 512, rpf_archives: 1,
+            rpf7_open: 1, rpf7_aes: 0, rpf7_ng_or_unknown: 0,
+            rpf_files: vec![RpfArchiveInfo {
+                path: "Mazda Furai/dlc/dlc.rpf".into(),
+                size_bytes: 512, encryption: RpfEncryption::Open,
+            }],
+            vehicle_assets: 0, metadata_files: vec![],
+            blocked_executables: vec![], warnings: vec![], spawn_supported: false,
+        };
+        let plan = build_native_mount_plan("dyfurai", &report).unwrap();
+        assert_eq!(plan["virtual_root"], "dlcpacks:/dyfurai/");
+        assert_eq!(plan["rpf_paths"][0], "Mazda Furai/dlc/dlc.rpf");
+        assert_eq!(plan["state"], "awaiting_native_vfs_mount");
+        let mut unsafe_report = report;
+        unsafe_report.rpf_files[0].path = "../escape/dlc.rpf".into();
+        assert!(build_native_mount_plan("dyfurai", &unsafe_report).is_err());
+    }
 
     #[test]
     fn hashes_file_as_lowercase_sha256_hex() {
