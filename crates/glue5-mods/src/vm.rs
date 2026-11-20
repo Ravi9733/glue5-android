@@ -155,10 +155,10 @@ impl Vm {
             lua.create_function(move |_, url: String| {
                 let app_files = online_vehicle_page_dir.as_ref()
                     .ok_or_else(|| mlua::Error::runtime("Android browser launch is unavailable"))?;
-                let parsed = url::Url::parse(&url)
-                    .map_err(|_| mlua::Error::runtime("invalid vehicle source URL"))?;
-                if parsed.scheme() != "https" || parsed.host_str() != Some("www.gta5-mods.com") {
-                    return Err(mlua::Error::runtime("vehicle source must be an HTTPS GTA5-Mods page"));
+                if !url.starts_with("https://www.gta5-mods.com/")
+                    || url.len() > 2048
+                    || url.chars().any(char::is_control) {
+                    return Err(mlua::Error::runtime("vehicle source must be a valid HTTPS GTA5-Mods page"));
                 }
                 std::fs::create_dir_all(app_files)
                     .map_err(|e| mlua::Error::runtime(format!("cannot access app files: {e}")))?;
