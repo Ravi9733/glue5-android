@@ -17,6 +17,15 @@ struct ConversionStats {
     std::size_t validated_ybn = 0;
     std::size_t validated_ymap = 0;
     std::size_t validated_ytyp = 0;
+    std::size_t validated_ycd = 0;
+    std::size_t validated_ynd = 0;
+    std::size_t validated_yvr = 0;
+    std::size_t validated_ywr = 0;
+    std::size_t validated_yld = 0;
+    std::size_t validated_yed = 0;
+    std::size_t validated_yfd = 0;
+    std::size_t validated_ybd = 0;
+    std::size_t validated_ynv = 0;
     std::size_t unchanged_other = 0;
     std::uint64_t bytes_scanned = 0;
 };
