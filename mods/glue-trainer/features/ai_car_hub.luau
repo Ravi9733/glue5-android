@@ -125,6 +125,45 @@ function M.build(root: Menu)
 		end)
 	end
 
+	-- Browse every vehicle the running game has actually registered, grouped by GTA class.
+	-- This is the reliable "all cars" library; it never invents model names or downloads fake assets.
+	menu:separator("All available game cars")
+	local allCars = menu:submenu("All game cars", "Every vehicle registered by the loaded GTA V game data")
+	local function addVehicleAction(parent: Menu, entry: catalog.VehicleEntry)
+		bind.action(parent, entry.name, {
+			note = entry.model .. " | class " .. tostring(entry.class),
+			action = "Spawn",
+		}, function(): string?
+			local car, why = spawner.spawn(entry.hash, entry.name)
+			return if car then entry.name .. " spawned" else why
+		end)
+	end
+	local function refreshAllCars()
+		allCars:clear()
+		local classes = catalog.vehicleClasses()
+		local total = 0
+		for _, class in classes do
+			local classMenu = allCars:submenu(class.name, tostring(#class.vehicles) .. " vehicle(s)")
+			for _, entry in class.vehicles do
+				addVehicleAction(classMenu, entry)
+				total += 1
+			end
+		end
+		if total == 0 then
+			allCars:label("Game vehicle catalog is still loading. Reopen this menu after the world finishes loading.")
+		else
+			allCars:label(tostring(total) .. " registered game vehicle(s), grouped by class.")
+		end
+	end
+	bind.action(allCars, "Refresh all game cars", {
+		note = "Reads the game's live vehicle catalog and groups cars by class",
+		action = "Refresh",
+	}, function(): string?
+		refreshAllCars()
+		return "Game car library refreshed"
+	end)
+	refreshAllCars()
+
 	menu:separator("Installed vehicle packages")
 	local installed = menu:submenu("Installed downloads", "Verified packages and DLC packs staged for the next game launch")
 	local installedStatus = installed:label("Installed package list not loaded.")
