@@ -193,10 +193,21 @@ fn build_native_mount_plan(
             .map(|index| components[index + 1..].join("/"))
             .filter(|tail| !tail.is_empty())
             .unwrap_or_else(|| relative.clone());
+        let archive = report.rpf_files.iter().find(|archive| {
+            archive.path.replace('\\\\', "/") == *relative
+        });
+        let encryption = archive.map(|archive| match archive.encryption {
+            crate::vehicle_inspect::RpfEncryption::Open => "open",
+            crate::vehicle_inspect::RpfEncryption::Aes => "aes",
+            crate::vehicle_inspect::RpfEncryption::NgOrUnknown => "ng_or_unknown",
+            crate::vehicle_inspect::RpfEncryption::NotRpf7 => "not_rpf7",
+        }).unwrap_or("unknown");
         serde_json::json!({
             "package_relative_path": relative,
             "virtual_archive_path": format!("{virtual_root}{virtual_relative}"),
-            "matched_package_directory": package_component.is_some()
+            "matched_package_directory": package_component.is_some(),
+            "size_bytes": archive.map(|archive| archive.size_bytes).unwrap_or(0),
+            "encryption": encryption
         })
     }).collect();
     Ok(serde_json::json!({
@@ -258,6 +269,8 @@ mod tests {
         assert_eq!(plan["rpf_mounts"][0]["package_relative_path"], "Mazda Furai/dlc/dlc.rpf");
         assert_eq!(plan["rpf_mounts"][0]["virtual_archive_path"], "dlcpacks:/dyfurai/Mazda Furai/dlc/dlc.rpf");
         assert_eq!(plan["rpf_mounts"][0]["matched_package_directory"], false);
+        assert_eq!(plan["rpf_mounts"][0]["size_bytes"], 512);
+        assert_eq!(plan["rpf_mounts"][0]["encryption"], "open");
 
         let mut wrapped_report = report.clone();
         wrapped_report.rpf_files[0].path = "Mazda Furai/Legacy/dyfurai/dlc.rpf".into();
