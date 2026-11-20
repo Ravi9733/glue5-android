@@ -35,6 +35,8 @@
     ("device_relative_init", "rage::fiDeviceRelative::Init(char const*, bool, rage::fiDevice*)"),
     ("device_relative_mount_as", "rage::fiDeviceRelative::MountAs(char const*)"),
     ("device_get_device", "rage::fiDevice::GetDevice(char const*, bool)"),
+    ("device_relative_low_level", "rage::fiDeviceRelative::GetLowLevelDevice() const"),
+    ("device_relative_rpf", "rage::fiDeviceRelative::GetRpfDevice() const"),
     // Observe engine-owned DLC manager construction; no object is allocated or mutated here.
     ("mountable_content_ctor", "CMountableContent::CMountableContent()"),
     ("mountable_content_load_setup", "CMountableContent::LoadSetupXML(char const*)"),
