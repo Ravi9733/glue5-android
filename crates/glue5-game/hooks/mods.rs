@@ -31,6 +31,10 @@
     ("model_get_base_info", "CModelInfo::GetBaseModelInfo(rage::fwModelId)"),
     ("device_mount", "rage::fiDevice::Mount(char const*, rage::fiDevice const&, bool)"),
     ("device_unmount", "rage::fiDevice::Unmount(char const*)"),
+    // Observe the exact-build relative-device setup used to expose host folders to RAGE VFS.
+    ("device_relative_init", "rage::fiDeviceRelative::Init(char const*, bool, rage::fiDevice*)"),
+    ("device_relative_mount_as", "rage::fiDeviceRelative::MountAs(char const*)"),
+    ("device_get_device", "rage::fiDevice::GetDevice(char const*, bool)"),
     // Observe engine-owned DLC manager construction; no object is allocated or mutated here.
     ("mountable_content_ctor", "CMountableContent::CMountableContent()"),
     ("mountable_content_load_setup", "CMountableContent::LoadSetupXML(char const*)"),
