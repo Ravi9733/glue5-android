@@ -272,6 +272,10 @@ unsafe extern "C" fn device_relative_init(
     } else {
         unsafe { Mem::of(env).str(debug_ptr) }
     };
+    if base_device != 0 { DLC_RELATIVE_BASE_DEVICE_PRESENT.fetch_add(1, Ordering::Relaxed); }
+    if low_level != 0 { DLC_RELATIVE_LOW_LEVEL_PRESENT.fetch_add(1, Ordering::Relaxed); }
+    if rpf_device != 0 { DLC_RELATIVE_RPF_DEVICE_PRESENT.fetch_add(1, Ordering::Relaxed); }
+    if !debug_name.is_empty() { DLC_RELATIVE_DEBUG_NAME_PRESENT.fetch_add(1, Ordering::Relaxed); }
     remember_loader_path(&DLC_LAST_RELATIVE_DEBUG_NAME, &debug_name);
     log_line("vehicle-loader", LogLevel::Info,
         &format!("fiDeviceRelative::InitResolved object=0x{device:x} root={name} allow_root={} base_device=0x{base_device:x} low_level=0x{low_level:x} rpf_device=0x{rpf_device:x} debug_name={debug_name}",
@@ -842,6 +846,10 @@ static DLC_RELATIVE_MOUNT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomi
 static DLC_RELATIVE_OPEN_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_RELATIVE_FIND_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_RELATIVE_SIZE_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RELATIVE_BASE_DEVICE_PRESENT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RELATIVE_LOW_LEVEL_PRESENT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RELATIVE_RPF_DEVICE_PRESENT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DLC_RELATIVE_DEBUG_NAME_PRESENT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_RELATIVE_RPF_OPEN_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DLC_LAST_RELATIVE_ROOT: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 static DLC_LAST_RELATIVE_MOUNT: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
@@ -896,6 +904,10 @@ pub(crate) fn vehicle_loader_diagnostics() -> serde_json::Value {
         "relative_device_rpf_open_calls": DLC_RELATIVE_RPF_OPEN_COUNT.load(Relaxed),
         "relative_device_find_calls": DLC_RELATIVE_FIND_COUNT.load(Relaxed),
         "relative_device_size_calls": DLC_RELATIVE_SIZE_COUNT.load(Relaxed),
+        "relative_base_device_present": DLC_RELATIVE_BASE_DEVICE_PRESENT.load(Relaxed),
+        "relative_low_level_device_present": DLC_RELATIVE_LOW_LEVEL_PRESENT.load(Relaxed),
+        "relative_rpf_device_present": DLC_RELATIVE_RPF_DEVICE_PRESENT.load(Relaxed),
+        "relative_debug_name_present": DLC_RELATIVE_DEBUG_NAME_PRESENT.load(Relaxed),
         "last_relative_root": DLC_LAST_RELATIVE_ROOT.lock().map(|v| v.clone()).unwrap_or_default(),
         "last_relative_mount": DLC_LAST_RELATIVE_MOUNT.lock().map(|v| v.clone()).unwrap_or_default(),
         "last_relative_open": DLC_LAST_RELATIVE_OPEN.lock().map(|v| v.clone()).unwrap_or_default(),
