@@ -249,6 +249,26 @@ function M.build(root: Menu)
 						return
 					end
 					onlineResults:clear()
+                    local discoveryCount = 0
+                    local discovery = onlineResults:submenu("Community car pages", "Open real mod pages in your browser; download is handled by the source author")
+                    for _, item in parsed.discovery or {} do
+                        if type(item) == "table" and type(item.name) == "string"
+                            and type(item.source_url) == "string" and type(item.author) == "string" then
+                            discoveryCount += 1
+                            local title = item.name
+                            local url = item.source_url
+                            bind.action(discovery, title, {
+                                note = "by " .. item.author .. " | " .. tostring(item.kind or "Vehicle mod"),
+                                action = "Open source",
+                            }, function(): string?
+                                local ok, err = pcall(function()
+                                    world.openOnlineVehiclePage(url)
+                                end)
+                                if not ok then return "Cannot open source page: " .. tostring(err) end
+                                return "Opening " .. title .. " on GTA5-Mods"
+                            end)
+                        end
+                    end
 					local count = 0
 					for _, entry in parsed.vehicles do
 						if type(entry) == "table" and type(entry.name) == "string"
