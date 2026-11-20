@@ -137,15 +137,19 @@ fn normalize_cap(cap: u32) -> u32 {
 mod tests {
     use super::*;
 
-    fn feed(c: &mut Controller, n: usize, frame: f32, gpu: Option<f32>) -> Decision {
+    fn feed_budget(c: &mut Controller, n: usize, frame: f32, gpu: Option<f32>, budget_ms: f32) -> Decision {
         let mut decision = Decision::Hold { fps_cap: c.fps_cap() };
         for _ in 0..n {
             decision = c.observe(
                 FrameMetrics { frame_ms: frame, render_ms: None, gpu_ms: gpu },
-                16.67,
+                budget_ms,
             );
         }
         decision
+    }
+
+    fn feed(c: &mut Controller, n: usize, frame: f32, gpu: Option<f32>) -> Decision {
+        feed_budget(c, n, frame, gpu, 16.67)
     }
 
     #[test]
@@ -188,14 +192,14 @@ mod tests {
     fn mobile_starts_at_45_and_only_earns_60_after_sustained_headroom() {
         let mut c = Controller::new_mobile(60);
         assert_eq!(c.fps_cap(), 45);
-        assert_eq!(feed(&mut c, 599, 22.0, Some(10.0)), Decision::Hold { fps_cap: 45 });
-        assert_eq!(feed(&mut c, 1, 22.0, Some(10.0)), Decision::RecommendCap { fps_cap: 60 });
+        assert_eq!(feed_budget(&mut c, 599, 22.0, Some(10.0), 1000.0 / 45.0), Decision::Hold { fps_cap: 45 });
+        assert_eq!(feed_budget(&mut c, 1, 22.0, Some(10.0), 1000.0 / 45.0), Decision::RecommendCap { fps_cap: 60 });
     }
 
     #[test]
     fn mobile_steps_down_to_30_when_45_cannot_hold() {
         let mut c = Controller::new_mobile(60);
-        assert_eq!(feed(&mut c, 60, 55.0, Some(45.0)), Decision::RecommendCap { fps_cap: 30 });
+        assert_eq!(feed_budget(&mut c, 60, 55.0, Some(45.0), 1000.0 / 45.0), Decision::RecommendCap { fps_cap: 30 });
     }
 
     #[test]
