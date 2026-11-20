@@ -59,6 +59,7 @@ pub(crate) fn hooks(h: &mut Hooks) {
     h.extra_content_add_folder = Some(extra_content_add_folder);
     h.extra_content_load = Some(extra_content_load);
     h.extra_content_get_by_device = Some(extra_content_get_by_device);
+    h.extra_content_get_by_hash = Some(extra_content_get_by_hash);
     h.extra_content_recursive_enum = Some(extra_content_recursive_enum);
     h.extra_content_begin_enumerate = Some(extra_content_begin_enumerate);
     h.extra_content_update_array = Some(extra_content_update_array);
@@ -1005,6 +1006,16 @@ unsafe extern "C" fn extra_content_get_by_device(env: *mut Env, manager: u64, de
     let result = unsafe { orig::extra_content_get_by_device(env, manager, device) };
     log_line("vehicle-loader", LogLevel::Info,
         &format!("CExtraContentManager::GetContentByDevice manager=0x{manager:x} device={name} result=0x{result:x}"));
+    result
+}
+
+/// Observe DLC content-hash resolution; never changes the manager's lookup.
+unsafe extern "C" fn extra_content_get_by_hash(env: *mut Env, manager: u64, hash: u32) -> u64 {
+    let result = unsafe { orig::extra_content_get_by_hash(env, manager, hash) };
+    if result != 0 {
+        log_line("vehicle-loader", LogLevel::Info,
+            &format!("CExtraContentManager::GetContentByHash manager=0x{manager:x} hash=0x{hash:08x} content=0x{result:x}"));
+    }
     result
 }
 
