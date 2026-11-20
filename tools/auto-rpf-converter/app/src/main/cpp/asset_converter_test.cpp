@@ -802,6 +802,114 @@ int main() {
             "dlclist reader must fail when common/data/dlclist.xml is absent");
     fs::remove_all(dlc_list_root, ignored);
 
-    std::cout << "Gen9 conversion, keyed extraction, nested RPF7 and DLC metadata tests passed\n";
+    // RAGEKIT's pinned Enhanced notes specify that these resource families keep
+    // the same layouts in Legacy and Enhanced. Validate them with their actual
+    // readers, preserve their source bytes, and include them in a real RPF7
+    // archive round-trip (not just an extension/byte-copy test).
+    rk::ClipDictionary clip_dictionary;
+    clip_dictionary.root = std::make_shared<rk::RscBlock>();
+    clip_dictionary.root->kind = static_cast<std::uint16_t>(rk::ClipKind::Dictionary);
+    clip_dictionary.root->bytes.resize(0x40);
+    const auto ycd = rk::write_ycd(clip_dictionary);
+
+    rk::PathNodes path_nodes;
+    const auto ynd = rk::write_ynd(path_nodes);
+    rk::VehicleRecording vehicle_recording;
+    const auto yvr = rk::write_yvr(vehicle_recording);
+    rk::WaypointRecording waypoint_recording;
+    const auto ywr = rk::write_ywr(waypoint_recording);
+    rk::ClothDictionary cloth_dictionary;
+    const auto yld = rk::write_yld(cloth_dictionary);
+
+    rk::ExpressionDictionary expression_dictionary;
+    expression_dictionary.root = std::make_shared<rk::RscBlock>();
+    expression_dictionary.root->kind = static_cast<std::uint16_t>(rk::ExpressionKind::Dictionary);
+    expression_dictionary.root->bytes.resize(0x40);
+    const auto yed = rk::write_yed(expression_dictionary);
+
+    rk::FrameFilterDictionary frame_filter_dictionary;
+    frame_filter_dictionary.root = std::make_shared<rk::RscBlock>();
+    frame_filter_dictionary.root->kind = static_cast<std::uint16_t>(rk::ExpressionKind::FilterDictionary);
+    frame_filter_dictionary.root->bytes.resize(0x40);
+    const auto yfd = rk::write_yfd(frame_filter_dictionary);
+
+    rk::BoundDictionary bound_dictionary;
+    const auto ybd = rk::write_ybd(bound_dictionary);
+    rk::NavMesh navmesh;
+    const auto ynv = rk::write_ynv(navmesh);
+
+    gta_asset_converter::ConversionStats edition_independent_stats;
+    auto require_validated_and_preserved = [&](const std::string& extension,
+                                               const std::vector<std::uint8_t>& fixture) {
+        const auto output = gta_asset_converter::convert_asset_bytes(
+            extension, fixture, edition_independent_stats);
+        require(output == fixture, (extension + " must be validated and preserved byte-for-byte").c_str());
+    };
+    require_validated_and_preserved("ycd", ycd);
+    require_validated_and_preserved("ynd", ynd);
+    require_validated_and_preserved("yvr", yvr);
+    require_validated_and_preserved("ywr", ywr);
+    require_validated_and_preserved("yld", yld);
+    require_validated_and_preserved("yed", yed);
+    require_validated_and_preserved("yfd", yfd);
+    require_validated_and_preserved("ybd", ybd);
+    require_validated_and_preserved("ynv", ynv);
+    require(edition_independent_stats.validated_ycd == 1 &&
+            edition_independent_stats.validated_ynd == 1 &&
+            edition_independent_stats.validated_yvr == 1 &&
+            edition_independent_stats.validated_ywr == 1 &&
+            edition_independent_stats.validated_yld == 1 &&
+            edition_independent_stats.validated_yed == 1 &&
+            edition_independent_stats.validated_yfd == 1 &&
+            edition_independent_stats.validated_ybd == 1 &&
+            edition_independent_stats.validated_ynv == 1,
+            "all added edition-independent resource validation counters must increment exactly once");
+
+    bool malformed_ycd_rejected = false;
+    try {
+        (void)gta_asset_converter::convert_asset_bytes("ycd", bytes_of("not an RSC7 resource"), edition_independent_stats);
+    } catch (const std::exception&) {
+        malformed_ycd_rejected = true;
+    }
+    require(malformed_ycd_rejected, "malformed YCD resources must fail closed instead of being preserved as validated");
+
+    const fs::path extra_resource_root = fs::temp_directory_path() / "gta-rpf-edition-independent-roundtrip";
+    const fs::path extra_keys = extra_resource_root / "keys";
+    fs::remove_all(extra_resource_root, ignored);
+    fs::create_directories(extra_keys);
+    const fs::path extra_source_path = extra_resource_root / "source.rpf";
+    const fs::path extra_output_path = extra_resource_root / "android.rpf";
+    const std::vector<std::pair<std::string, std::vector<std::uint8_t>>> extra_fixtures = {
+        {"edition_independent/animations.ycd", ycd},
+        {"edition_independent/pathnodes.ynd", ynd},
+        {"edition_independent/vehicle.yvr", yvr},
+        {"edition_independent/waypoints.ywr", ywr},
+        {"edition_independent/cloth.yld", yld},
+        {"edition_independent/expressions.yed", yed},
+        {"edition_independent/filters.yfd", yfd},
+        {"edition_independent/bounds.ybd", ybd},
+        {"edition_independent/navmesh.ynv", ynv},
+    };
+    rk::RpfBuilder extra_builder;
+    for (const auto& [name, bytes] : extra_fixtures) extra_builder.add_resource(name, bytes);
+    rk::RpfWriteOptions extra_options;
+    extra_options.encryption = rk::RpfEncryption::Open;
+    extra_options.name = "source.rpf";
+    extra_builder.save(extra_source_path.string(), extra_options);
+    const std::string extra_report = gta_asset_converter::convert_rpf_archive_to_open_rpf7(
+        extra_source_path, extra_output_path, extra_keys);
+    require(extra_report.find("RPF7 conversion complete") == 0,
+            "RPF7 conversion must accept the newly validated edition-independent resource families");
+    auto extra_output = rk::Rpf::open(extra_output_path.string(),
+        std::make_shared<rk::RpfKeys>(rk::RpfKeys::load(extra_keys.string())));
+    for (const auto& [name, bytes] : extra_fixtures) {
+        const int index = extra_output.find(name);
+        require(index >= 0, "rebuilt RPF7 must retain " + name);
+        require(extra_output.extract(index) == bytes,
+                "rebuilt RPF7 must preserve the original edition-independent bytes for " + name);
+    }
+    fs::remove_all(extra_resource_root, ignored);
+
+    std::cout << "Gen9 conversion, edition-independent resource validation, keyed extraction, nested RPF7 and DLC metadata tests passed\n";
     return 0;
 }
