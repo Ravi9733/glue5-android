@@ -2,9 +2,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
+namespace rk { struct RpfKeys; }
 namespace gta_asset_converter {
 struct ConversionStats {
     std::size_t files_scanned = 0;
@@ -26,10 +28,18 @@ struct ConversionStats {
     std::size_t validated_yfd = 0;
     std::size_t validated_ybd = 0;
     std::size_t validated_ynv = 0;
+    std::size_t validated_awc = 0;
+    std::size_t decoded_awc_streams = 0;
+    std::size_t opaque_awc_streams = 0;
+    std::size_t validated_rel = 0;
+    std::size_t validated_gxt2 = 0;
+    std::size_t validated_pso = 0;
+    std::size_t validated_rbf = 0;
+    std::size_t validated_nametable = 0;
     std::size_t unchanged_other = 0;
     std::uint64_t bytes_scanned = 0;
 };
-std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std::span<const std::uint8_t> input, ConversionStats& stats);
+std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std::span<const std::uint8_t> input, ConversionStats& stats, std::shared_ptr<const rk::RpfKeys> keys = {});
 std::string convert_directory(const std::filesystem::path& root);
 std::string inspect_rpf_keys(const std::filesystem::path& key_directory);
 std::string extract_rpf_archive(const std::filesystem::path& source,
