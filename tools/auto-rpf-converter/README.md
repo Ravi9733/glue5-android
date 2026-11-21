@@ -99,7 +99,7 @@ GitHub Actions runs:
 - Host C++ tests for Gen9-to-Legacy YTD/YDR/YDD/YFT/YPT conversion and Legacy pass-through
 - Android JVM tests for exact key-file lengths, the complete NG key group, and invalid/empty key selections
 - YBN/YMAP/YTYP plus YCD/YND/YVR/YWR/YLD/YED/YFD/YBD/YNV parse-and-preserve tests, including pointer-census rejection for YCD/YED/YFD and fail-closed YPT coverage for Enhanced-only ptfx_g9 behaviour
-- Binary audio/metadata tests: plain and whole-file encrypted AWC with a user-supplied test key, missing-key rejection, PCM decode, opaque codec-7 preservation, REL/DAT type validation, GXT2/PSO/RBF/nametable byte-exact round trips and OPEN RPF7 extraction equality
+- Binary audio/metadata tests: plain and whole-file encrypted AWC with a user-supplied test key, missing-key rejection, PCM decode, opaque codec-7 preservation, all nine DAT type/extension pairs, GXT2/PSO/RBF/nametable byte-exact round trips, both PSO/RBF variants under .ymt and .ymf, and OPEN RPF7 extraction equality
 - Direct RPF7 round-trip tests proving the additional edition-independent resources remain byte-identical after repacking
 - End-to-end direct archive-to-archive conversion tests covering supported resource families, nested RPFs, AES/NG input, OPEN RPF7 output, encrypted .ysc stored-byte preservation, AWC key-required parsing/decryption, REL/DAT type checks, GXT2/PSO/RBF/nametable exact round trips and binary-entry preservation
 - Synthetic AES- and NG-keyed RPF extraction and missing-key rejection
