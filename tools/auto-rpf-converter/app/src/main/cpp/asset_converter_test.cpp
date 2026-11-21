@@ -911,6 +911,157 @@ int main() {
     }
     fs::remove_all(extra_resource_root, ignored);
 
-    std::cout << "Gen9 conversion, edition-independent resource validation, keyed extraction, nested RPF7 and DLC metadata tests passed\n";
+
+    // Binary audio and metadata formats are validated with the pinned RAGEKIT readers,
+    // then preserved byte-for-byte. AWC uses only the user-imported AWC key; no key is
+    // generated or bundled. Enhanced codecs outside PCM/IMA-ADPCM remain opaque.
+    const fs::path audio_test_root = fs::temp_directory_path() / "gta-rpf-audio-metadata-tests";
+    const fs::path audio_keys_dir = audio_test_root / "keys";
+    fs::remove_all(audio_test_root, ignored);
+    fs::create_directories(audio_keys_dir);
+
+    rk::RpfKeys audio_key_material;
+    audio_key_material.awc.assign(16, 0x5A);
+    const fs::path awc_key_path = audio_keys_dir / "gtav_awc_key.dat";
+    {
+        std::ofstream key_out(awc_key_path, std::ios::binary | std::ios::trunc);
+        key_out.write(reinterpret_cast<const char*>(audio_key_material.awc.data()),
+                      static_cast<std::streamsize>(audio_key_material.awc.size()));
+        require(static_cast<bool>(key_out), "synthetic AWC key fixture must be written");
+    }
+    const auto audio_keys = std::make_shared<rk::RpfKeys>(audio_key_material);
+    const auto no_audio_keys = std::make_shared<rk::RpfKeys>();
+
+    rk::AwcSoundSource sound;
+    sound.name = "converter_test_tone";
+    sound.sample_rate = 22050;
+    sound.pcm.assign(1024, 1234);
+    sound.codec = 0;
+    sound.loop_point = -1;
+    const auto awc_plain = rk::write_awc(rk::make_awc({sound}));
+    rk::AwcFile encrypted_awc_model = rk::read_awc(awc_plain, audio_keys);
+    encrypted_awc_model.whole_file_encrypted = true;
+    encrypted_awc_model.flags = 0xFF09;
+    const auto awc_encrypted = rk::write_awc(encrypted_awc_model, audio_keys);
+
+    gta_asset_converter::ConversionStats binary_stats;
+    const auto awc_plain_checked = gta_asset_converter::convert_asset_bytes(
+        "awc", awc_plain, binary_stats, no_audio_keys);
+    require(awc_plain_checked == awc_plain && binary_stats.validated_awc == 1 &&
+            binary_stats.decoded_awc_streams == 1,
+            "plain AWC must parse, decode PCM and preserve the original bytes");
+    bool encrypted_awc_without_key_rejected = false;
+    try {
+        (void)gta_asset_converter::convert_asset_bytes("awc", awc_encrypted, binary_stats, no_audio_keys);
+    } catch (const std::exception&) {
+        encrypted_awc_without_key_rejected = true;
+    }
+    require(encrypted_awc_without_key_rejected,
+            "whole-file encrypted AWC must reject missing legitimate AWC key material");
+    const auto awc_encrypted_checked = gta_asset_converter::convert_asset_bytes(
+        "awc", awc_encrypted, binary_stats, audio_keys);
+    require(awc_encrypted_checked == awc_encrypted && binary_stats.validated_awc == 2,
+            "encrypted AWC must decrypt for validation and preserve the exact encrypted source bytes");
+
+    const rk::Rel audio_rel = rk::Rel::make(rk::reltype::Dat54, 1);
+    const auto rel_bytes = rk::write_rel(audio_rel);
+    const auto gxt2_bytes = rk::write_gxt2([&] {
+        rk::TextTable table;
+        table.set(rk::joaat_lower("CONVERTER_LABEL"), "Converter test text");
+        return table;
+    }());
+    const auto nametable_bytes = rk::write_nametable({"door_open", "door_close"});
+    rk::Pso pso_fixture;
+    pso_fixture.sections.push_back({rk::kPsoPSIN, std::vector<std::uint8_t>(8, 'p'), false});
+    const auto pso_bytes = rk::write_pso(pso_fixture);
+    rk::RbfNode rbf_fixture;
+    rbf_fixture.name = "root";
+    rk::RbfNode rbf_value;
+    rbf_value.kind = rk::RbfNode::Kind::Value;
+    rbf_value.name = "count";
+    rbf_value.value = rk::RbfValue::of(std::uint32_t(3));
+    rbf_fixture.children.push_back(rbf_value);
+    const auto rbf_bytes = rk::write_rbf(rbf_fixture);
+
+    auto require_binary_roundtrip = [&](const std::string& extension,
+                                        const std::vector<std::uint8_t>& fixture) {
+        const auto output = gta_asset_converter::convert_asset_bytes(
+            extension, fixture, binary_stats, audio_keys);
+        require(output == fixture, (extension + " must be validated and preserved byte-for-byte").c_str());
+    };
+    require_binary_roundtrip("rel", rel_bytes);
+    require_binary_roundtrip("dat54", rel_bytes);
+    require_binary_roundtrip("gxt2", gxt2_bytes);
+    require_binary_roundtrip("nametable", nametable_bytes);
+    require_binary_roundtrip("ymt", pso_bytes);
+    require_binary_roundtrip("ypdb", pso_bytes);
+    require_binary_roundtrip("pso", pso_bytes);
+    require_binary_roundtrip("cut", pso_bytes);
+    require_binary_roundtrip("ymf", rbf_bytes);
+    require(binary_stats.validated_rel == 2 && binary_stats.validated_gxt2 == 1 &&
+            binary_stats.validated_nametable == 1 && binary_stats.validated_pso == 4 &&
+            binary_stats.validated_rbf == 1,
+            "REL/DAT, GXT2, PSO, RBF and nametable counters must report each validated file");
+
+    bool wrong_dat_type_rejected = false;
+    try {
+        (void)gta_asset_converter::convert_asset_bytes("dat151", rel_bytes, binary_stats, audio_keys);
+    } catch (const std::exception&) {
+        wrong_dat_type_rejected = true;
+    }
+    require(wrong_dat_type_rejected, "a DAT extension whose embedded REL type disagrees must be rejected");
+    bool malformed_rel_rejected = false;
+    try {
+        (void)gta_asset_converter::convert_asset_bytes("rel", bytes_of("bad REL"), binary_stats, audio_keys);
+    } catch (const std::exception&) {
+        malformed_rel_rejected = true;
+    }
+    require(malformed_rel_rejected, "malformed REL must fail closed");
+    const auto unknown_ymt = bytes_of("unrecognized ymt payload");
+    require(gta_asset_converter::convert_asset_bytes("ymt", unknown_ymt, binary_stats, audio_keys) == unknown_ymt,
+            "unknown YMT containers must be preserved but not misreported as PSO/RBF");
+
+    // Exercise the same validators through an actual RPF7 archive. Encrypted AWC is
+    // validated with the imported key, while all binary entries stay source-backed in
+    // the OPEN output and must extract to the exact original bytes.
+    const fs::path audio_source_path = audio_test_root / "source.rpf";
+    const fs::path audio_output_path = audio_test_root / "android.rpf";
+    rk::RpfBuilder audio_builder;
+    const std::vector<std::pair<std::string, std::vector<std::uint8_t>>> audio_fixtures = {
+        {"audio/plain.awc", awc_plain},
+        {"audio/encrypted.awc", awc_encrypted},
+        {"audio/game.rel", rel_bytes},
+        {"audio/game.dat54", rel_bytes},
+        {"audio/names.nametable", nametable_bytes},
+        {"text/american.gxt2", gxt2_bytes},
+        {"metadata/creature.ymt", rbf_bytes},
+        {"metadata/manifest.ymf", pso_bytes},
+        {"metadata/poses.ypdb", pso_bytes},
+        {"metadata/sample.pso", pso_bytes},
+        {"metadata/cutscene.cut", pso_bytes},
+    };
+    for (const auto& [name, bytes] : audio_fixtures) audio_builder.add_binary(name, bytes);
+    rk::RpfWriteOptions audio_options;
+    audio_options.encryption = rk::RpfEncryption::Open;
+    audio_options.name = "source.rpf";
+    audio_builder.save(audio_source_path.string(), audio_options);
+
+    const std::string audio_report = gta_asset_converter::convert_rpf_archive_to_open_rpf7(
+        audio_source_path, audio_output_path, audio_keys_dir);
+    require(audio_report.find("RPF7 conversion complete") == 0 &&
+            audio_report.find("AWC=2") != std::string::npos &&
+            audio_report.find("REL/DAT=2") != std::string::npos,
+            "RPF7 conversion report must distinguish validated audio/metadata formats");
+    const rk::Rpf audio_output = rk::Rpf::open(audio_output_path.string(), no_audio_keys);
+    for (const auto& [name, bytes] : audio_fixtures) {
+        const int index = audio_output.find(name);
+        const std::string missing = "RPF7 output must retain audio/metadata entry " + name;
+        require(index >= 0, missing.c_str());
+        const std::string mismatch = "RPF7 output must preserve exact audio/metadata bytes for " + name;
+        require(audio_output.extract(index) == bytes, mismatch.c_str());
+    }
+    fs::remove_all(audio_test_root, ignored);
+
+    std::cout << "Gen9 conversion, audio/metadata validation, keyed extraction, nested RPF7 and DLC metadata tests passed\n";
     return 0;
 }
