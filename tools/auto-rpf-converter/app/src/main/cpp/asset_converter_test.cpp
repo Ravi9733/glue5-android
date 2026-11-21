@@ -1003,17 +1003,33 @@ int main() {
         require(output == fixture, (extension + " must be validated and preserved byte-for-byte").c_str());
     };
     require_binary_roundtrip("rel", rel_bytes);
-    require_binary_roundtrip("dat54", rel_bytes);
+    const std::vector<std::pair<std::string, std::uint32_t>> dat_fixtures = {
+        {"dat4", rk::reltype::Dat4},
+        {"dat10", rk::reltype::Dat10},
+        {"dat15", rk::reltype::Dat15},
+        {"dat16", rk::reltype::Dat16},
+        {"dat22", rk::reltype::Dat22},
+        {"dat54", rk::reltype::Dat54},
+        {"dat149", rk::reltype::Dat149},
+        {"dat150", rk::reltype::Dat150},
+        {"dat151", rk::reltype::Dat151},
+    };
+    for (const auto& [extension, type] : dat_fixtures) {
+        const auto fixture = rk::write_rel(rk::Rel::make(type, 1));
+        require_binary_roundtrip(extension, fixture);
+    }
     require_binary_roundtrip("gxt2", gxt2_bytes);
     require_binary_roundtrip("nametable", nametable_bytes);
     require_binary_roundtrip("ymt", pso_bytes);
+    require_binary_roundtrip("ymt", rbf_bytes);
     require_binary_roundtrip("ypdb", pso_bytes);
     require_binary_roundtrip("pso", pso_bytes);
     require_binary_roundtrip("cut", pso_bytes);
     require_binary_roundtrip("ymf", rbf_bytes);
-    require(binary_stats.validated_rel == 2 && binary_stats.validated_gxt2 == 1 &&
-            binary_stats.validated_nametable == 1 && binary_stats.validated_pso == 4 &&
-            binary_stats.validated_rbf == 1,
+    require_binary_roundtrip("ymf", pso_bytes);
+    require(binary_stats.validated_rel == 10 && binary_stats.validated_gxt2 == 1 &&
+            binary_stats.validated_nametable == 1 && binary_stats.validated_pso == 5 &&
+            binary_stats.validated_rbf == 2,
             "REL/DAT, GXT2, PSO, RBF and nametable counters must report each validated file");
 
     bool wrong_dat_type_rejected = false;
