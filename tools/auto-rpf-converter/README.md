@@ -12,8 +12,13 @@ Android ARM64 conversion prototype for GTA V RPF7 archives. It reads a selected 
    - .yft fragments: Gen9 version 171 to Legacy version 162
    - .ypt particle dictionaries: Gen9 version 71 to Legacy version 68, except files containing the Enhanced-only ptfx_g9 behaviour are rejected safely
 4. Parse and validate edition-independent resources with the pinned ragekit readers, then preserve their original bytes: .ybn, .ymap, .ytyp, .ycd, .ynd, .yvr, .ywr, .yld, .yed, .yfd, .ybd and .ynv. YCD/YED/YFD also run ragekit's pointer-census checks and fail closed if the pinned schema encounters unknown pointer-like fields. These formats do not need Gen9-to-Legacy conversion; unnecessary reserialization could change collision, map, navigation or animation data. They are reported as validated/preserved, never as converted.
-5. Preserve already-Legacy versions byte-for-byte. Unsupported extensions such as .ysc, .awc, .rel, .dat, PSO/meta and other files are preserved unchanged and are never reported as converted. The newly validated edition-independent resource families are distinguished from these unvalidated pass-through files in the report.
-6. Rebuild a new OPEN RPF7 archive with ragekit's RpfBuilder::save file-streaming writer. The output is reopened with the RPF reader and checked for OPEN encryption, paths, entry kinds, nested archives and converted resource versions. RSC7 resources are written as resource entries with their page flags. Nested .rpf files are rebuilt as child OPEN archives.
+5. Validate supported binary audio/metadata containers with the pinned ragekit readers, then preserve their original bytes:
+   - .awc: read the audio container, decrypt with the user's imported gtav_awc_key.dat when required, decode PCM/IMA-ADPCM streams for validation, and require an exact read/write byte round trip. Enhanced codecs such as codec 7 remain opaque; no audio transcoding is claimed.
+   - .rel and .dat4/.dat10/.dat15/.dat16/.dat22/.dat54/.dat149/.dat150/.dat151: parse the REL container, check the embedded type for .datN files, and require byte-identical write-back.
+   - .gxt2 text tables, .nametable sidecars, PSO (.ymt/.ypdb/.ymf/.pso/.cut) and RBF (.ymt/.ymf) metadata: parse and require byte-identical write-back. An unrecognized .ymt/.ymf magic is preserved but not reported as validated.
+   These formats are validated/preserved, not converted to another edition. RPF binary entries remain source-backed in the rebuilt archive.
+6. Preserve already-Legacy versions byte-for-byte. Unsupported extensions such as .ysc, cache .dat files and other unrecognized files are preserved unchanged and are never reported as converted. The report separates parser-validated binary formats from unvalidated pass-through files.
+7. Rebuild a new OPEN RPF7 archive with ragekit's RpfBuilder::save file-streaming writer. The output is reopened with the RPF reader and checked for OPEN encryption, paths, entry kinds, nested archives and converted resource versions. RSC7 resources are written as resource entries with their page flags. Nested .rpf files are rebuilt as child OPEN archives.
 
 ## Nested RPF and DLC layout
 
@@ -62,7 +67,7 @@ AES archives require the matching AES key. NG archives require all NG keys, decr
 - Source PC archives are read-only. The selected archive is copied to app-private cache, read file-backed by ragekit, and written to a separate temporary output archive before SAF export.
 - Top-level RPF7 input/output archives are limited to 4 GiB minus one byte (the RPF7 header/key-size and resource-offset safety bound). Each entry is limited to 512 MiB; nested archives are limited to 256 MiB and depth 8.
 - The converter validates at most one million RPF entries across the nested tree. Individual entries are limited to 512 MiB; nested archives are limited to 256 MiB so the RAGEKIT nested writer remains memory-bounded.
-- The Android app now converts archives directly: RAGEKIT reads the source archive from disk, unchanged entries remain source-backed/lazy, and only supported resources are extracted for parsing/conversion. Supported resource inspection is limited to 512 MiB aggregate per top-level archive; one entry is limited to 512 MiB. RAGEKIT streams the top-level OPEN RPF7 writer to disk. Nested RPFs are rebuilt recursively but their completed child archives are materialized in memory, hence the stricter 256 MiB nested-archive limit.
+- The Android app now converts archives directly: RAGEKIT reads the source archive from disk, unchanged entries remain source-backed/lazy, and only supported resources plus the explicitly validated audio/metadata binaries are extracted for parsing. Aggregate supported-asset inspection is limited to 512 MiB per top-level archive; one entry is limited to 512 MiB. RAGEKIT streams the top-level OPEN RPF7 writer to disk. Nested RPFs are rebuilt recursively but their completed child archives are materialized in memory, hence the stricter 256 MiB nested-archive limit.
 - Symlinks, path traversal, absolute/drive-qualified paths, duplicate case-insensitive paths, oversized inputs and output collisions are rejected. An invalid nested archive, missing nested AES/NG key, excessive nesting or size-limit violation aborts the top-level conversion; no partial final archive is reported as successful.
 - Ensure sufficient free storage for the cached source copy, temporary output archive and SAF destination.
 
@@ -70,7 +75,7 @@ AES archives require the matching AES key. NG archives require all NG keys, decr
 
 This is not a universal PC-to-Android converter and is not yet validated against Glue5's runtime. It produces Legacy-format RSC7 assets inside a structurally validated RPF7 archive. A successful parse/build does not prove that a specific Android port mounts the archive, supports the same shader/material features, loads the DLC metadata or accepts every asset.
 
-The supported Gen9-to-Legacy transformations are limited to YTD/YDR/YDD/YFT/YPT; YPT files containing the Enhanced-only ptfx_g9 behaviour fail closed because Legacy has no equivalent. YBN/YMAP/YTYP/YCD/YND/YVR/YWR/YLD/YED/YFD/YBD/YNV are parsed by pinned ragekit readers and preserved byte-for-byte because their supported layouts are edition-independent. Audio, scripts, other metadata and unsupported resources remain unchanged unless explicitly listed as validated above. Real retail Enhanced/Legacy fixture coverage, large DLC validation, Android device testing and Glue5 in-game loading tests are still required.
+The supported Gen9-to-Legacy transformations are limited to YTD/YDR/YDD/YFT/YPT; YPT files containing the Enhanced-only ptfx_g9 behaviour fail closed because Legacy has no equivalent. YBN/YMAP/YTYP/YCD/YND/YVR/YWR/YLD/YED/YFD/YBD/YNV are parsed by pinned ragekit readers and preserved byte-for-byte because their supported layouts are edition-independent. AWC/REL/DAT*/GXT2/PSO/RBF/nametable files are parser-validated and preserved byte-for-byte, not converted; AWC codecs 0 and 4 are decoded in memory for validation, while other codecs remain opaque. Scripts and unrecognized metadata/resources remain unchanged. Real retail Enhanced/Legacy fixture coverage, large DLC validation, Android device testing and Glue5 in-game loading tests are still required.
 
 ## Glue5 compatibility gate
 
@@ -94,8 +99,9 @@ GitHub Actions runs:
 - Host C++ tests for Gen9-to-Legacy YTD/YDR/YDD/YFT/YPT conversion and Legacy pass-through
 - Android JVM tests for exact key-file lengths, the complete NG key group, and invalid/empty key selections
 - YBN/YMAP/YTYP plus YCD/YND/YVR/YWR/YLD/YED/YFD/YBD/YNV parse-and-preserve tests, including pointer-census rejection for YCD/YED/YFD and fail-closed YPT coverage for Enhanced-only ptfx_g9 behaviour
+- Binary audio/metadata tests: plain and whole-file encrypted AWC with a user-supplied test key, missing-key rejection, PCM decode, REL/DAT type validation, GXT2/PSO/RBF/nametable byte-exact round trips and OPEN RPF7 extraction equality
 - Direct RPF7 round-trip tests proving the additional edition-independent resources remain byte-identical after repacking
-- End-to-end direct archive-to-archive conversion tests covering supported resource families, nested RPFs, AES/NG input, OPEN RPF7 output and encrypted .ysc stored-byte preservation
+- End-to-end direct archive-to-archive conversion tests covering supported resource families, nested RPFs, AES/NG input, OPEN RPF7 output, encrypted .ysc stored-byte preservation, AWC key-required parsing/decryption, REL/DAT type checks, GXT2/PSO/RBF/nametable exact round trips and binary-entry preservation
 - Synthetic AES- and NG-keyed RPF extraction and missing-key rejection
 - A nested RPF7 round-trip larger than 16 MiB
 - Synthetic dlclist.xml parsing for Windows separators, platform entries, traversal rejection, unknown mount schemes and missing-file rejection
