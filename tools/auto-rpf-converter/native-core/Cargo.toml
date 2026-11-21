@@ -1,0 +1,22 @@
+[package]
+name = "gta-rpf-native-core"
+version = "0.1.0"
+edition = "2021"
+license = "Unlicense"
+description = "Bounded GTA V RPF extraction, resource conversion and RPF7 repacking core"
+
+[lib]
+name = "gta_rpf_native_core"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+anyhow = "1.0"
+rpf-archive = "0.10.0"
+rage-rpf = "0.5.1"
+rage-formats = "0.5.1"
+jni = "0.21.1"
+
+[dev-dependencies]
+tempfile = "3.10"
+
+[workspace]
