@@ -963,6 +963,19 @@ int main() {
     require(awc_encrypted_checked == awc_encrypted && binary_stats.validated_awc == 2,
             "encrypted AWC must decrypt for validation and preserve the exact encrypted source bytes");
 
+    rk::AwcFile opaque_awc_model = rk::read_awc(awc_plain, no_audio_keys);
+    for (auto& stream : opaque_awc_model.streams) {
+        for (auto& chunk : stream.chunks) {
+            if (chunk.type == rk::awc_chunk::Format && chunk.data.size() >= 20) chunk.data[19] = 7;
+        }
+    }
+    const auto awc_opaque = rk::write_awc(opaque_awc_model, no_audio_keys);
+    const auto awc_opaque_checked = gta_asset_converter::convert_asset_bytes(
+        "awc", awc_opaque, binary_stats, no_audio_keys);
+    require(awc_opaque_checked == awc_opaque && binary_stats.validated_awc == 3 &&
+            binary_stats.decoded_awc_streams == 2 && binary_stats.opaque_awc_streams == 1,
+            "unsupported AWC codec 7 must be listed as opaque and preserved, never transcoded");
+
     const rk::Rel audio_rel = rk::Rel::make(rk::reltype::Dat54, 1);
     const auto rel_bytes = rk::write_rel(audio_rel);
     const auto gxt2_bytes = rk::write_gxt2([&] {
@@ -1030,6 +1043,7 @@ int main() {
     const std::vector<std::pair<std::string, std::vector<std::uint8_t>>> audio_fixtures = {
         {"audio/plain.awc", awc_plain},
         {"audio/encrypted.awc", awc_encrypted},
+        {"audio/opaque_codec.awc", awc_opaque},
         {"audio/game.rel", rel_bytes},
         {"audio/game.dat54", rel_bytes},
         {"audio/names.nametable", nametable_bytes},
@@ -1049,7 +1063,7 @@ int main() {
     const std::string audio_report = gta_asset_converter::convert_rpf_archive_to_open_rpf7(
         audio_source_path, audio_output_path, audio_keys_dir);
     require(audio_report.find("RPF7 conversion complete") == 0 &&
-            audio_report.find("AWC=2") != std::string::npos &&
+            audio_report.find("AWC=3") != std::string::npos &&
             audio_report.find("REL/DAT=2") != std::string::npos,
             "RPF7 conversion report must distinguish validated audio/metadata formats");
     const rk::Rpf audio_output = rk::Rpf::open(audio_output_path.string(), no_audio_keys);
