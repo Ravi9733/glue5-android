@@ -21,11 +21,34 @@ std::string lower(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return value;
 }
-bool supported_extension(const std::string& ext) {
+bool supported_resource_extension(const std::string& ext) {
     return ext == "ytd" || ext == "ydr" || ext == "ydd" || ext == "yft" || ext == "ypt" ||
            ext == "ybn" || ext == "ymap" || ext == "ytyp" || ext == "ycd" || ext == "ynd" ||
            ext == "yvr" || ext == "ywr" || ext == "yld" || ext == "yed" || ext == "yfd" ||
            ext == "ybd" || ext == "ynv";
+}
+int rel_type_for_extension(const std::string& ext) {
+    if (ext == "dat4") return rk::reltype::Dat4;
+    if (ext == "dat10") return rk::reltype::Dat10;
+    if (ext == "dat15") return rk::reltype::Dat15;
+    if (ext == "dat16") return rk::reltype::Dat16;
+    if (ext == "dat22") return rk::reltype::Dat22;
+    if (ext == "dat54") return rk::reltype::Dat54;
+    if (ext == "dat149") return rk::reltype::Dat149;
+    if (ext == "dat150") return rk::reltype::Dat150;
+    if (ext == "dat151") return rk::reltype::Dat151;
+    return 0;
+}
+bool is_binary_asset_extension(const std::string& ext) {
+    return ext == "awc" || ext == "rel" || ext == "gxt2" || ext == "nametable" ||
+           rel_type_for_extension(ext) != 0 || ext == "ymt" || ext == "ymf" ||
+           ext == "ypdb" || ext == "pso" || ext == "cut";
+}
+bool is_metadata_container_extension(const std::string& ext) {
+    return ext == "ymt" || ext == "ymf" || ext == "ypdb" || ext == "pso" || ext == "cut";
+}
+bool supported_extension(const std::string& ext) {
+    return supported_resource_extension(ext) || is_binary_asset_extension(ext);
 }
 int legacy_version(const std::string& ext) {
     if (ext == "ytd") return 13;
@@ -64,13 +87,100 @@ void write_replacement(const fs::path& path, std::span<const std::uint8_t> bytes
     }
 }
 }
-std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std::span<const std::uint8_t> input, ConversionStats& stats) {
+std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension,
+                                              std::span<const std::uint8_t> input,
+                                              ConversionStats& stats,
+                                              std::shared_ptr<const rk::RpfKeys> keys) {
     const std::string ext = lower(extension);
     if (!supported_extension(ext)) {
         ++stats.unchanged_other;
         return {input.begin(), input.end()};
     }
     if (input.size() > kMaxAssetBytes) throw std::runtime_error(ext + " exceeds the 512 MiB per-asset safety limit");
+
+    // AWC is a binary audio container, not RSC7. Parse it, decode the PCM/IMA-ADPCM
+    // streams that ragekit supports (including legitimate XXTEA decryption), and demand
+    // an exact stored-byte round trip before preserving the original archive entry.
+    // Other codecs, including Enhanced codec 7, remain opaque and are never transcoded.
+    if (ext == "awc") {
+        if (!rk::is_awc(input)) {
+            ++stats.unchanged_other; // e.g. a shader cache that happens to use the .awc suffix
+            return {input.begin(), input.end()};
+        }
+        const auto active_keys = keys ? keys : std::make_shared<rk::RpfKeys>();
+        const rk::AwcFile awc = rk::read_awc(input, active_keys);
+        const auto sounds = rk::awc_decode(awc, active_keys);
+        const auto roundtrip = rk::write_awc(awc, active_keys);
+        if (roundtrip.size() != input.size() || !std::equal(roundtrip.begin(), roundtrip.end(), input.begin())) {
+            throw std::runtime_error("AWC parser/writer round trip changed stored bytes; refusing to repack it");
+        }
+        ++stats.validated_awc;
+        for (const auto& sound : sounds) {
+            if (sound.decoded()) ++stats.decoded_awc_streams;
+            else ++stats.opaque_awc_streams;
+        }
+        return {input.begin(), input.end()};
+    }
+
+    // REL and DAT4/DAT10/DAT15/DAT16/DAT22/DAT54/DAT149/DAT150/DAT151
+    // are byte-preserving audio-data containers in the pinned ragekit version.
+    if (ext == "rel" || rel_type_for_extension(ext) != 0) {
+        const rk::Rel rel = rk::read_rel(input);
+        const int expected_type = rel_type_for_extension(ext);
+        if (expected_type != 0 && rel.type != static_cast<std::uint32_t>(expected_type)) {
+            throw std::runtime_error(ext + " contains REL type " + std::to_string(rel.type) +
+                                     ", expected " + std::to_string(expected_type));
+        }
+        const auto roundtrip = rk::write_rel(rel);
+        if (roundtrip.size() != input.size() || !std::equal(roundtrip.begin(), roundtrip.end(), input.begin())) {
+            throw std::runtime_error("REL parser/writer round trip changed stored bytes");
+        }
+        ++stats.validated_rel;
+        return {input.begin(), input.end()};
+    }
+    if (ext == "gxt2") {
+        const rk::TextTable table = rk::read_gxt2(input);
+        const auto roundtrip = rk::write_gxt2(table);
+        if (roundtrip.size() != input.size() || !std::equal(roundtrip.begin(), roundtrip.end(), input.begin())) {
+            throw std::runtime_error("GXT2 parser/writer round trip changed stored bytes");
+        }
+        ++stats.validated_gxt2;
+        return {input.begin(), input.end()};
+    }
+    if (ext == "nametable") {
+        const auto names = rk::read_nametable(input);
+        const auto roundtrip = rk::write_nametable(names);
+        if (roundtrip.size() != input.size() || !std::equal(roundtrip.begin(), roundtrip.end(), input.begin())) {
+            throw std::runtime_error("REL nametable round trip changed stored bytes");
+        }
+        ++stats.validated_nametable;
+        return {input.begin(), input.end()};
+    }
+    if (is_metadata_container_extension(ext)) {
+        if (rk::is_pso(input)) {
+            const rk::Pso pso = rk::read_pso(input);
+            const auto roundtrip = rk::write_pso(pso);
+            if (roundtrip.size() != input.size() || !std::equal(roundtrip.begin(), roundtrip.end(), input.begin())) {
+                throw std::runtime_error("PSO parser/writer round trip changed stored bytes");
+            }
+            ++stats.validated_pso;
+            return {input.begin(), input.end()};
+        }
+        if (rk::is_rbf(input)) {
+            const rk::RbfNode rbf = rk::read_rbf(input);
+            const auto roundtrip = rk::write_rbf(rbf);
+            if (roundtrip.size() != input.size() || !std::equal(roundtrip.begin(), roundtrip.end(), input.begin())) {
+                throw std::runtime_error("RBF parser/writer round trip changed stored bytes");
+            }
+            ++stats.validated_rbf;
+            return {input.begin(), input.end()};
+        }
+        // .ymt/.ymf can be other data containers or RSC7 resources. Without a
+        // recognized PSIN/RBF0 signature, preserve them but do not call them validated.
+        ++stats.unchanged_other;
+        return {input.begin(), input.end()};
+    }
+
     const auto resource = rk::rsc::Resource::load(input);
     // Collision and map resources do not have a Gen9-specific layout: GTA V Legacy and
     // Enhanced both use YBN=43 and YMAP/YTYP=2. Parse and serialize them through ragekit
@@ -273,6 +383,14 @@ std::string convert_directory(const fs::path& root) {
            ", YFD=" + std::to_string(stats.validated_yfd) +
            ", YBD=" + std::to_string(stats.validated_ybd) +
            ", YNV=" + std::to_string(stats.validated_ynv) + "\n"
+           "Audio/metadata validated and preserved: AWC=" + std::to_string(stats.validated_awc) +
+           " (decoded streams=" + std::to_string(stats.decoded_awc_streams) +
+           ", opaque codecs=" + std::to_string(stats.opaque_awc_streams) +
+           "), REL/DAT=" + std::to_string(stats.validated_rel) +
+           ", GXT2=" + std::to_string(stats.validated_gxt2) +
+           ", PSO=" + std::to_string(stats.validated_pso) +
+           ", RBF=" + std::to_string(stats.validated_rbf) +
+           ", nametable=" + std::to_string(stats.validated_nametable) + "\n" +
            "Already Legacy resources: " + std::to_string(stats.already_legacy) + "\n"
            "Other files preserved unchanged: " + std::to_string(stats.unchanged_other) + "\n"
            "Scanned bytes: " + std::to_string(stats.bytes_scanned) + "\n"
@@ -577,13 +695,14 @@ void convert_archive_resources(const rk::Rpf& archive,
                                rk::RpfBuilder& builder,
                                int directory_index,
                                const std::string& archive_prefix,
-                               DirectArchiveConversionStats& stats) {
+                               DirectArchiveConversionStats& stats,
+                               const std::shared_ptr<const rk::RpfKeys>& keys) {
     for (int child_index : archive.children(directory_index)) {
         const rk::RpfEntry& entry = archive.entries().at(static_cast<std::size_t>(child_index));
         const std::string relative = safe_archive_relative_path(entry.path).generic_string();
 
         if (entry.is_directory()) {
-            convert_archive_resources(archive, builder, child_index, archive_prefix, stats);
+            convert_archive_resources(archive, builder, child_index, archive_prefix, stats, keys);
             continue;
         }
 
@@ -595,7 +714,7 @@ void convert_archive_resources(const rk::Rpf& archive,
             if (child_builder == nullptr) {
                 throw std::runtime_error("RAGEKIT did not expose the nested archive builder for " + entry.path);
             }
-            convert_archive_resources(child, *child_builder, 0, archive_prefix + relative + "/", stats);
+            convert_archive_resources(child, *child_builder, 0, archive_prefix + relative + "/", stats, keys);
             ++stats.nested_rebuilt;
             continue;
         }
@@ -606,8 +725,37 @@ void convert_archive_resources(const rk::Rpf& archive,
             ++stats.assets.unchanged_other;
             continue; // the builder keeps the original entry lazy, including encrypted .ysc data
         }
+
+        if (is_binary_asset_extension(extension)) {
+            if (!entry.is_binary()) {
+                if (extension == "ymt" || extension == "ymf") {
+                    ++stats.assets.unchanged_other; // an RSC7/unknown .ymt or .ymf is not guessed as PSO/RBF
+                    continue;
+                }
+                throw std::runtime_error("binary audio/metadata extension is stored as an RSC7 resource: " + entry.path);
+            }
+            if (entry.size() > kDirectMaxEntryBytes) {
+                throw std::runtime_error("binary audio/metadata entry exceeds the 512 MiB safety limit: " + entry.path);
+            }
+            if (entry.size() > kDirectMaxConvertedResourceBytes - stats.inspected_resource_bytes) {
+                throw std::runtime_error("supported asset inspection exceeds the 512 MiB aggregate memory budget; no output was written");
+            }
+            const auto original = archive.extract(child_index);
+            if (original.size() > kDirectMaxEntryBytes) {
+                throw std::runtime_error("extracted audio/metadata entry exceeds the 512 MiB safety limit: " + entry.path);
+            }
+            stats.inspected_resource_bytes += original.size();
+            stats.assets.bytes_scanned += original.size();
+            const auto checked = convert_asset_bytes(extension, original, stats.assets, keys);
+            if (checked != original) {
+                throw std::runtime_error("binary validator unexpectedly changed " + entry.path +
+                                         "; only byte-preserving validation is enabled for this format");
+            }
+            continue; // keep the original source-backed entry and its compression
+        }
+
         if (!entry.is_resource()) {
-            throw std::runtime_error("supported resource extension is stored as a binary entry: " + entry.path);
+            throw std::runtime_error("supported RSC7 resource extension is stored as a binary entry: " + entry.path);
         }
         if (entry.size() > kDirectMaxEntryBytes) {
             throw std::runtime_error("supported resource exceeds the 512 MiB conversion limit: " + entry.path);
@@ -623,7 +771,7 @@ void convert_archive_resources(const rk::Rpf& archive,
         stats.inspected_resource_bytes += entry.size();
         stats.assets.bytes_scanned += original.size();
 
-        auto converted = convert_asset_bytes(extension, original, stats.assets);
+        auto converted = convert_asset_bytes(extension, original, stats.assets, keys);
         const bool changed = converted.size() != original.size() ||
             !std::equal(converted.begin(), converted.end(), original.begin());
         if (changed) {
@@ -698,7 +846,7 @@ std::string convert_rpf_archive_to_open_rpf7(const fs::path& source_path,
     // resources retain their original stored representation.
     rk::RpfBuilder builder = rk::RpfBuilder::from_archive(source, rk::RpfBuilder::Nested::Rewrite);
     DirectArchiveConversionStats stats;
-    convert_archive_resources(source, builder, 0, "", stats);
+    convert_archive_resources(source, builder, 0, "", stats, keys);
 
     rk::RpfWriteOptions options;
     options.encryption = rk::RpfEncryption::Open;
@@ -749,11 +897,19 @@ std::string convert_rpf_archive_to_open_rpf7(const fs::path& source_path,
                "Edition-independent resources validated and preserved: YBN=" + std::to_string(stats.assets.validated_ybn) +
                ", YMAP=" + std::to_string(stats.assets.validated_ymap) +
                ", YTYP=" + std::to_string(stats.assets.validated_ytyp) + "\n"
+               "Audio/metadata validated and preserved: AWC=" + std::to_string(stats.assets.validated_awc) +
+               " (decoded streams=" + std::to_string(stats.assets.decoded_awc_streams) +
+               ", opaque codecs=" + std::to_string(stats.assets.opaque_awc_streams) +
+               "), REL/DAT=" + std::to_string(stats.assets.validated_rel) +
+               ", GXT2=" + std::to_string(stats.assets.validated_gxt2) +
+               ", PSO=" + std::to_string(stats.assets.validated_pso) +
+               ", RBF=" + std::to_string(stats.assets.validated_rbf) +
+               ", nametable=" + std::to_string(stats.assets.validated_nametable) + "\n" +
                "Already Legacy resources preserved: " + std::to_string(stats.assets.already_legacy) + "\n"
                "Other files preserved without format conversion: " + std::to_string(stats.assets.unchanged_other) + "\n"
                "Nested RPFs rebuilt: " + std::to_string(stats.nested_rebuilt) +
                " of " + std::to_string(preflight.nested_archives) + "\n"
-               "Supported resource bytes inspected: " + std::to_string(stats.assets.bytes_scanned) + "\n"
+               "Supported asset bytes inspected: " + std::to_string(stats.assets.bytes_scanned) + "\n"
                "Archive bytes: " + std::to_string(output_bytes) + "\n"
                "Verified: RPF7 tree, nested OPEN archives, paths, entry kinds and converted resource versions.\n"
                "Unchanged entries are copied from the source lazily; encrypted .ysc stored bytes are preserved.";
