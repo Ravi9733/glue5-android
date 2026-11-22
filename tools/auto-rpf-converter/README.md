@@ -2,6 +2,11 @@
 
 Android ARM64 conversion prototype for GTA V RPF7 archives. It reads a selected archive directly from disk or recursively discovers RPF files in a selected GTA V folder, converts supported Enhanced (Gen9) resources to the Legacy resource layouts used by the classic PC edition, and builds new OPEN RPF7 archives. Original PC archives are never modified.
 
+
+## Android UI/reporting update (0.3.12)
+
+The app displays its current version in the subtitle and accurately separates Gen9-to-Legacy conversions from parser-validated, byte-preserved formats. The welcome text explicitly notes that AWC codec 7 and unsupported codecs remain opaque, and that preserved formats are not counted as converted. The share action exports the latest completed scan, conversion, key-import or DLC report. Bulk conversion summaries include the audio/metadata validation counts.
+
 ## Current supported pipeline
 
 1. Select one .rpf archive and an output folder, or select a GTA V folder and bulk-process up to 500 on-disk RPF files. Folder discovery is capped at 250,000 items. Bulk output mirrors the original relative folder paths and preserves each .rpf basename, so existing DLC path references can still match when the output tree is overlaid at the same relative location. Use an empty output folder; existing output filenames are rejected rather than renamed or overwritten.
