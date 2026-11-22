@@ -47,7 +47,7 @@ class MainActivity : Activity() {
         ))
 
         val subtitle = TextView(this).apply {
-            text = "Android converter 0.3.8 • direct RPF7 conversion + resource validation"
+            text = ConverterUiText.SUBTITLE
             textSize = 13f
             setTextColor(0xFFB9C6B5.toInt())
             gravity = Gravity.CENTER
@@ -71,7 +71,7 @@ class MainActivity : Activity() {
         ))
 
         val share = Button(this).apply {
-            text = "SHARE SCAN REPORT"
+            text = "SHARE LAST REPORT"
             setOnClickListener {
                 val send = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
@@ -137,7 +137,7 @@ class MainActivity : Activity() {
         root.addView(share)
 
         output = TextView(this).apply {
-            text = "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. The converter reads RPF entries directly, converts supported Gen9 YTD/YDR/YDD/YFT/YPT resources to Legacy, validates and preserves YBN/YMAP/YTYP/YCD/YND/YVR/YWR/YLD/YED/YFD/YBD/YNV, and rebuilds nested archives as OPEN RPF7. Unsupported files and encrypted .ysc stored bytes are preserved unchanged. This output is not certified as Glue5 prepared game data; game.wasm and translated shaders are separate requirements."
+            text = ConverterUiText.WELCOME
             textSize = 14f
             setTextColor(0xFFE4EAE1.toInt())
             setPadding(4, 18, 4, 18)
@@ -178,7 +178,7 @@ class MainActivity : Activity() {
                 worker.execute {
                     val report = try { importRpfKeys(uri) }
                     catch (e: Throwable) { "RPF key import failed: " + (e.message ?: e.javaClass.simpleName) }
-                    runOnUiThread { output.text = report }
+                    runOnUiThread { latestReport = report; output.text = report }
                 }
             }
         }
@@ -217,7 +217,7 @@ class MainActivity : Activity() {
                 // either copy in cache after the SAF export has been verified.
                 TemporaryWorkspacePolicy.clean(work)
             }
-            runOnUiThread { output.text = result }
+            runOnUiThread { latestReport = result; output.text = result }
         }
     }
 
@@ -711,7 +711,7 @@ class MainActivity : Activity() {
                         report.appendLine("OK " + relativeDir + "/" + name + " → " + relativeDir + "/" + target.name)
                         report.appendLine(packageReport.lineSequence().filter {
                             it.startsWith("Gen9 to Legacy") || it.startsWith("Edition-independent resources") ||
-                                it.startsWith("Already Legacy") || it.startsWith("Other files preserved") ||
+                                it.startsWith("Audio/metadata validated and preserved") || it.startsWith("Already Legacy") || it.startsWith("Other files preserved") ||
                                 it.startsWith("Nested RPFs rebuilt")
                         }.joinToString(" | "))
                     } catch (e: Throwable) {
