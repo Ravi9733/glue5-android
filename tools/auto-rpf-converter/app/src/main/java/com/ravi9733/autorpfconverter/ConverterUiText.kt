@@ -2,7 +2,7 @@ package com.ravi9733.autorpconverter
 
 /** Accurate, versioned copy shown in the Android converter UI. */
 internal object ConverterUiText {
-    const val VERSION = "0.3.12"
+    const val VERSION = "0.3.13"
     const val SUBTITLE =
         "Android converter $VERSION • Gen9→Legacy + RPF7 + DLC/audio metadata validation"
 
@@ -14,5 +14,5 @@ internal object ConverterUiText {
         "and unsupported codecs remain opaque. These preserved formats are not counted as converted. " +
         "Unsupported files remain unchanged. Nested archives are rebuilt as OPEN RPF7. This output is " +
         "not certified as Glue5-ready game data; the compatible game.wasm and translated shaders are " +
-        "separate runtime requirements."
+        "separate runtime requirements. Use CHECK GLUE5 RUNTIME DATA FOLDER to inspect the required data/shader directory layout; this is not an in-game test."
 }
