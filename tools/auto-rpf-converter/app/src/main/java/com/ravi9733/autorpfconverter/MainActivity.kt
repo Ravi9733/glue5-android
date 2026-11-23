@@ -128,6 +128,11 @@ class MainActivity : Activity() {
             setOnClickListener { inspectFullDlcLoadOrder() }
         }
         root.addView(validateLoadOrder)
+        val glue5Readiness = Button(this).apply {
+            text = "CHECK GLUE5 RUNTIME DATA FOLDER"
+            setOnClickListener { inspectGlue5RuntimeFolder() }
+        }
+        root.addView(glue5Readiness)
         val bulkExtract = Button(this).apply {
             text = "CONVERT ALL RPF FROM SELECTED GTA V FOLDER"
             setOnClickListener { convertAllOpenArchives() }
@@ -222,6 +227,120 @@ class MainActivity : Activity() {
     }
 
 
+
+    private data class FolderProbeStats(
+        val fileCount: Long,
+        val rpfCount: Long,
+        val scanTruncated: Boolean
+    )
+
+    private fun inspectGlue5RuntimeFolder() {
+        val rootUri = selectedFolderUri
+        if (rootUri == null) {
+            output.text = "Select the Glue5 game root folder first (the folder containing data/ and b/)."
+            return
+        }
+        output.text = "Checking the selected Glue5 runtime folder. This is read-only..."
+        worker.execute {
+            val report = try {
+                val root = DocumentFile.fromTreeUri(this, rootUri)
+                    ?: error("Cannot open selected game folder")
+                val data = root.findFile("data")?.takeIf { it.isDirectory }
+                val buildRoot = root.findFile("b")?.takeIf { it.isDirectory }
+                val buildDirectory = buildRoot
+                    ?.findFile(Glue5RuntimeReadinessPolicy.SUPPORTED_BUILD_ID)
+                    ?.takeIf { it.isDirectory }
+                val shaders = buildDirectory?.findFile("shaders")?.takeIf { it.isDirectory }
+                val dataStats = data?.let { inspectFolderTree(it) }
+                    ?: FolderProbeStats(0, 0, false)
+                val shaderStats = shaders?.let { inspectFolderTree(it) }
+                    ?: FolderProbeStats(0, 0, false)
+
+                val wasm = buildDirectory?.findFile("game.wasm")?.takeIf { it.isFile }
+                var wasmBytes: Long? = null
+                var wasmHash: String? = null
+                var wasmError: String? = null
+                if (wasm != null) {
+                    try {
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        var total = 0L
+                        val buffer = ByteArray(1024 * 1024)
+                        contentResolver.openInputStream(wasm.uri)?.use { input ->
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                if (count == 0) continue
+                                total += count.toLong()
+                                check(total <= MAX_GLUE5_WASM_BYTES) {
+                                    "game.wasm exceeds the 256 MiB verification limit"
+                                }
+                                digest.update(buffer, 0, count)
+                            }
+                        } ?: error("Cannot read game.wasm")
+                        wasmBytes = total
+                        wasmHash = digest.digest().joinToString("") { "%02x".format(it) }
+                    } catch (e: Throwable) {
+                        wasmError = e.message ?: e.javaClass.simpleName
+                    }
+                }
+
+                Glue5RuntimeReadinessPolicy.render(
+                    Glue5RuntimeReadinessPolicy.Snapshot(
+                        dataDirectoryPresent = data != null,
+                        dataStats = Glue5RuntimeReadinessPolicy.FolderStats(
+                            dataStats.fileCount, dataStats.rpfCount, dataStats.scanTruncated
+                        ),
+                        shaderDirectoryPresent = shaders != null,
+                        shaderStats = Glue5RuntimeReadinessPolicy.FolderStats(
+                            shaderStats.fileCount, shaderStats.rpfCount, shaderStats.scanTruncated
+                        ),
+                        gameWasmPresent = wasm != null,
+                        gameWasmBytes = wasmBytes,
+                        gameWasmSha256 = wasmHash,
+                        gameWasmError = wasmError
+                    )
+                )
+            } catch (e: Throwable) {
+                "Glue5 folder check failed: " + (e.message ?: e.javaClass.simpleName)
+            }
+            runOnUiThread {
+                latestReport = report
+                output.text = report
+            }
+        }
+    }
+
+    private fun inspectFolderTree(root: DocumentFile): FolderProbeStats {
+        val pending = ArrayDeque<DocumentFile>()
+        pending.add(root)
+        var visited = 0
+        var files = 0L
+        var rpfFiles = 0L
+        var truncated = false
+        while (pending.isNotEmpty() && !truncated) {
+            val directory = pending.removeLast()
+            val children = try {
+                directory.listFiles()
+            } catch (_: Throwable) {
+                truncated = true
+                emptyArray()
+            }
+            for (child in children) {
+                visited++
+                if (visited > MAX_GLUE5_PROBE_ITEMS) {
+                    truncated = true
+                    break
+                }
+                if (child.isDirectory) {
+                    pending.add(child)
+                } else if (child.isFile) {
+                    files++
+                    if (child.name?.endsWith(".rpf", ignoreCase = true) == true) rpfFiles++
+                }
+            }
+        }
+        return FolderProbeStats(files, rpfFiles, truncated)
+    }
 
     private fun inspectSelectedDlcPack() {
         val sourceUri = selectedArchiveUri
@@ -1074,7 +1193,7 @@ class MainActivity : Activity() {
 
         rows.sort()
         return buildString {
-            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER 0.3.8")
+            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER " + BuildConfig.VERSION_NAME)
             appendLine("RPF files found: ${rows.size}")
             appendLine("GTA V RPF7 archives: $gtaVArchives")
             appendLine("OPEN archives: $openArchives")
@@ -1106,6 +1225,8 @@ class MainActivity : Activity() {
         private const val MAX_TOC_BYTES = 80L * 1024L * 1024L
         private const val MAX_BULK_ARCHIVES = 500
         private const val MAX_FOLDER_ITEMS = 250_000
+        private const val MAX_GLUE5_PROBE_ITEMS = 250_000
+        private const val MAX_GLUE5_WASM_BYTES = 256L * 1024L * 1024L
         private const val MAX_ARCHIVE_BYTES = 4L * 1024L * 1024L * 1024L - 1L
         private const val MAX_DLC_AUDIT_PACKS = 512
         private const val MAX_DLC_AUDIT_TOTAL_BYTES = 16L * 1024L * 1024L * 1024L
