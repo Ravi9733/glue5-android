@@ -278,7 +278,7 @@ class MainActivity : Activity() {
                             }
                         } ?: error("Cannot read game.wasm")
                         wasmBytes = total
-                        wasmHash = digest.digest().joinToString("") { "%02x".format(it) }
+                        wasmHash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
                     } catch (e: Throwable) {
                         wasmError = e.message ?: e.javaClass.simpleName
                     }
