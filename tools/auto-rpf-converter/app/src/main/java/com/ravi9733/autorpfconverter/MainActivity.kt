@@ -1193,7 +1193,7 @@ class MainActivity : Activity() {
 
         rows.sort()
         return buildString {
-            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER " + BuildConfig.VERSION_NAME)
+            appendLine("GTA V RPF INVENTORY — ANDROID CONVERTER " + ConverterUiText.VERSION)
             appendLine("RPF files found: ${rows.size}")
             appendLine("GTA V RPF7 archives: $gtaVArchives")
             appendLine("OPEN archives: $openArchives")
