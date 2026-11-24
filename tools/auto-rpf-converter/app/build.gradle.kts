@@ -13,8 +13,8 @@ android {
         applicationId = "com.ravi9733.autorpconverter"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "0.3.13"
+        versionCode = 17
+        versionName = "0.3.14"
         ndk { abiFilters += setOf("arm64-v8a") }
         externalNativeBuild {
             cmake {
