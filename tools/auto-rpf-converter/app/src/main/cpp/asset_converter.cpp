@@ -812,6 +812,18 @@ void verify_open_archive_tree(const rk::Rpf& source, const rk::Rpf& output, int 
             source_entry.is_binary() != output_entry.is_binary()) {
             throw std::runtime_error("RPF output entry kind changed: " + source_entry.path);
         }
+        // RAGEKIT path lookup is case-insensitive. Also require the exact stored spelling
+        // to survive the rebuild so case-sensitive output consumers do not see renamed paths.
+        if (source_entry.name != output_entry.name || source_entry.path != output_entry.path) {
+            throw std::runtime_error("RPF output changed entry name or path spelling: " + source_entry.path);
+        }
+        // Non-archive binary payloads are pass-through entries. Their logical size must
+        // remain identical after the OPEN rewrite; nested RPF sizes can change because
+        // their child archives are rebuilt, and resource sizes can change during conversion.
+        if (source_entry.is_binary() && !source_entry.is_archive() &&
+            source_entry.size() != output_entry.size()) {
+            throw std::runtime_error("RPF output changed unchanged binary size: " + source_entry.path);
+        }
         if (source_entry.is_archive()) {
             rk::Rpf source_child = source.open_child(static_cast<int>(i));
             rk::Rpf output_child = output.open_child(output_index);
