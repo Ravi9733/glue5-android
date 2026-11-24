@@ -23,7 +23,7 @@ The app displays its current version in the subtitle and accurately separates Ge
    - .gxt2 text tables, .nametable sidecars, PSO (.ymt/.ypdb/.ymf/.pso/.cut) and RBF (.ymt/.ymf) metadata: parse and require byte-identical write-back. An unrecognized .ymt/.ymf magic is preserved but not reported as validated.
    These formats are validated/preserved, not converted to another edition. RPF binary entries remain source-backed in the rebuilt archive.
 6. Preserve already-Legacy versions byte-for-byte. Unsupported extensions such as .ysc, cache .dat files and other unrecognized files are preserved unchanged and are never reported as converted. The report separates parser-validated binary formats from unvalidated pass-through files.
-7. Rebuild a new OPEN RPF7 archive with ragekit's RpfBuilder::save file-streaming writer. The output is reopened with the RPF reader and checked for OPEN encryption, paths, entry kinds, nested archives and converted resource versions. RSC7 resources are written as resource entries with their page flags. Nested .rpf files are rebuilt as child OPEN archives.
+7. Rebuild a new OPEN RPF7 archive with ragekit's RpfBuilder::save file-streaming writer. The output is reopened with the RPF reader and checked for OPEN encryption, case-exact path spelling, entry kinds, unchanged binary sizes, nested archives and converted resource versions. RSC7 resources are written as resource entries with their page flags. Nested .rpf files are rebuilt as child OPEN archives.
 
 ## Nested RPF and DLC layout
 
