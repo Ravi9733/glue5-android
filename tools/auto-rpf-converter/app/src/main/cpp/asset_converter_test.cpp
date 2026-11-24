@@ -513,6 +513,8 @@ int main() {
     direct_root.add_file("maps/test.ytyp", gen_ytyp);
     direct_root.add_file("stream/legacy_model.ydr", legacy_ydr_fixture);
     direct_root.add_file("misc/keep.dat", untouched_data);
+    const auto case_sensitive_payload = bytes_of("case-sensitive RPF path");
+    direct_root.add_file("MiXeD/Case/keep.bin", case_sensitive_payload);
     direct_root.add_archive("dlcpacks/test/dlc.rpf", std::move(direct_child));
     rk::RpfWriteOptions direct_options;
     direct_options.encryption = rk::RpfEncryption::Open;
@@ -581,6 +583,18 @@ int main() {
     const int keep_index = direct_output.find("misc/keep.dat");
     require(keep_index >= 0 && direct_output.extract(keep_index) == untouched_data,
             "direct archive output must preserve unsupported binary data");
+    bool exact_case_path_found = false;
+    for (const auto& entry : direct_output.entries()) {
+        if (entry.path == "MiXeD/Case/keep.bin" && entry.is_binary() &&
+            entry.size() == case_sensitive_payload.size()) {
+            exact_case_path_found = true;
+            break;
+        }
+    }
+    const int case_sensitive_index = direct_output.find("mixed/case/keep.bin");
+    require(exact_case_path_found && case_sensitive_index >= 0 &&
+            direct_output.extract(case_sensitive_index) == case_sensitive_payload,
+            "direct archive output must preserve exact path case and binary payload size");
     fs::remove_all(direct_key_root, ignored);
     fs::remove(direct_source_path, ignored);
     fs::remove(direct_output_path, ignored);
