@@ -2,7 +2,7 @@ package com.ravi9733.autorpconverter
 
 /** Accurate, versioned copy shown in the Android converter UI. */
 internal object ConverterUiText {
-    const val VERSION = "0.3.14"
+    const val VERSION = "0.3.15"
     const val SUBTITLE =
         "Android converter $VERSION • Gen9→Legacy + RPF7 + DLC/audio metadata validation"
 
