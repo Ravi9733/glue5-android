@@ -18,7 +18,7 @@ class Glue5RuntimeReadinessPolicyTest {
     @Test
     fun reportsOnlyTheRequiredRuntimeLayoutAsPresent() {
         val report = Glue5RuntimeReadinessPolicy.render(readySnapshot())
-        assertTrue(report.contains("RESULT: REQUIRED DIRECTORY LAYOUT PRESENT"))
+        assertTrue(report.contains("RESULT: REQUIRED DIRECTORY LAYOUT AND NON-EMPTY CONTENT PRESENT"))
         assertTrue(report.contains("data/: present"))
         assertTrue(report.contains("b/8b0b5899ed/shaders/: present"))
         assertTrue(report.contains("b/8b0b5899ed/shaders/index.json: present"))
@@ -100,6 +100,6 @@ class Glue5RuntimeReadinessPolicyTest {
     fun missingOptionalWasmIsNotReportedAsRuntimeFolderFailure() {
         val report = Glue5RuntimeReadinessPolicy.render(readySnapshot())
         assertTrue(report.contains("game.wasm is checked by Glue5 at build time"))
-        assertTrue(report.contains("RESULT: REQUIRED DIRECTORY LAYOUT PRESENT"))
+        assertTrue(report.contains("RESULT: REQUIRED DIRECTORY LAYOUT AND NON-EMPTY CONTENT PRESENT"))
     }
 }
