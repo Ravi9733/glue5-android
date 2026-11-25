@@ -251,6 +251,9 @@ class MainActivity : Activity() {
                     ?.findFile(Glue5RuntimeReadinessPolicy.SUPPORTED_BUILD_ID)
                     ?.takeIf { it.isDirectory }
                 val shaders = buildDirectory?.findFile("shaders")?.takeIf { it.isDirectory }
+                val shaderIndexPresent = shaders?.findFile("index.json")?.isFile == true
+                // Glue5 rejects partial streamed copies as complete local game folders.
+                val partialStreamMarkerPresent = root.findFile(".glue5-stream") != null
                 val dataStats = data?.let { inspectFolderTree(it) }
                     ?: FolderProbeStats(0, 0, false)
                 val shaderStats = shaders?.let { inspectFolderTree(it) }
@@ -294,6 +297,8 @@ class MainActivity : Activity() {
                         shaderStats = Glue5RuntimeReadinessPolicy.FolderStats(
                             shaderStats.fileCount, shaderStats.rpfCount, shaderStats.scanTruncated
                         ),
+                        shaderIndexPresent = shaderIndexPresent,
+                        partialStreamMarkerPresent = partialStreamMarkerPresent,
                         gameWasmPresent = wasm != null,
                         gameWasmBytes = wasmBytes,
                         gameWasmSha256 = wasmHash,
