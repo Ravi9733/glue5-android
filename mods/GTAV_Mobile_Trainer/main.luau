@@ -6,15 +6,9 @@
 
 local menu = ui.menu("GTAV Mobile Trainer", "Vehicle spawning · GLUE 5 native bridge")
 
-local models = {
-    "adder",
-    "zentorno",
-    "t20",
-    "sultan",
-    "kuruma",
-    "bati",
-    "insurgent",
-}
+-- Use the installed game's own catalogue so the menu exposes the vehicles
+-- available in this exact game build, not only a short hard-coded sample.
+local models = world.vehicleModels()
 
 local selected = 1
 local busy = false
@@ -263,6 +257,43 @@ menu:button("Clear wanted level", {
     end
     player.clearPlayerWantedLevel(playerId)
     ui.notify("Wanted level cleared")
+end)
+
+
+menu:label("PLAYER PROTECTION")
+
+menu:toggle("God mode", false, "Prevents damage to the player", function(enabled)
+    local me = player.playerPedId()
+    if not me then
+        ui.notify("Player ped is not ready")
+        return
+    end
+    entity.setEntityInvincible(me, enabled)
+    ui.notify(enabled and "God mode enabled" or "God mode disabled")
+end)
+
+menu:toggle("Never wanted", false, "Keeps police from pursuing the player", function(enabled)
+    local playerId = player.playerId()
+    if not playerId then
+        ui.notify("Player is not ready")
+        return
+    end
+    player.setPoliceIgnorePlayer(playerId, enabled)
+    player.setDispatchCopsForPlayer(playerId, not enabled)
+    if enabled then
+        player.clearPlayerWantedLevel(playerId)
+    end
+    ui.notify(enabled and "Never wanted enabled" or "Never wanted disabled")
+end)
+
+menu:toggle("Infinite ammo clip", false, "Enables infinite ammunition in the current weapon clip", function(enabled)
+    local me = player.playerPedId()
+    if not me then
+        ui.notify("Player ped is not ready")
+        return
+    end
+    ped.setPedInfiniteAmmoClip(me, enabled)
+    ui.notify(enabled and "Infinite ammo enabled" or "Infinite ammo disabled")
 end)
 
 menu:label("DLC / OPENIV STATUS")
