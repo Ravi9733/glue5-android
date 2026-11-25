@@ -136,6 +136,16 @@ jobs:
           (cd /tmp/json-placement-test && zip -r "$GITHUB_WORKSPACE/Glue5-JSON-Placement-Test.zip" road-construction)
           echo "Packaged JSON placement test mod." >>"$GITHUB_STEP_SUMMARY"
 
+      - name: Package the GTAV Mobile Trainer mod
+        if: env.PLATFORM == 'android'
+        run: |
+          mkdir -p /tmp/gtav-mobile-trainer/GTAV_Mobile_Trainer
+          cp mods/GTAV_Mobile_Trainer/main.luau /tmp/gtav-mobile-trainer/GTAV_Mobile_Trainer/main.luau
+          cp mods/GTAV_Mobile_Trainer/mod.json /tmp/gtav-mobile-trainer/GTAV_Mobile_Trainer/mod.json
+          cp mods/GTAV_Mobile_Trainer/README.md /tmp/gtav-mobile-trainer/GTAV_Mobile_Trainer/README.md
+          (cd /tmp/gtav-mobile-trainer && zip -r "$GITHUB_WORKSPACE/Glue5-GTAV-Mobile-Trainer.zip" GTAV_Mobile_Trainer)
+          echo "Packaged GLUE 5-native GTAV Mobile Trainer mod." >>"$GITHUB_STEP_SUMMARY"
+
       - name: Into the draft release
         run: |
           .github/scripts/draft.sh upload "${{ steps.game.outputs.release }}" Glue5-*
