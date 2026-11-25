@@ -137,9 +137,9 @@ menu:button("Give selected weapon", {
         ui.notify("Player ped is not ready")
         return
     end
-    local weapon = weapons[selectedWeapon]
-    weapon.giveWeaponToPed(me, weapon, 250, false, true)
-    ui.notify("Weapon granted: " .. weapon)
+    local weaponName = weapons[selectedWeapon]
+    weapon.giveWeaponToPed(me, weaponName, 250, false, true)
+    ui.notify("Weapon granted: " .. weaponName)
 end)
 
 menu:label("OpenIV / DLC mounting is still a separate target")
