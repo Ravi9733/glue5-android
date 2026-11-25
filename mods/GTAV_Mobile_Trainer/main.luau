@@ -212,6 +212,61 @@ menu:button("Stop current vehicle engine", {
 end)
 
 menu:label("Player health / wanted-level controls need verified native bindings")
-menu:label("OpenIV / DLC mounting needs a Glue5 asset-mount bridge; Fuzzy libraries cannot be copied as-is")
+
+menu:label("PLAYER STATUS")
+
+menu:button("Restore health", {
+    note = "Restores player health to 200",
+    action = "Heal",
+}, function()
+    local me = player.playerPedId()
+    if not me then
+        ui.notify("Player ped is not ready")
+        return
+    end
+    entity.setEntityHealth(me, 200, 0)
+    ui.notify("Player health restored")
+end)
+
+menu:button("Give full armour", {
+    note = "Sets player armour to 100",
+    action = "Armour",
+}, function()
+    local me = player.playerPedId()
+    if not me then
+        ui.notify("Player ped is not ready")
+        return
+    end
+    ped.setPedArmour(me, 100)
+    ui.notify("Full armour applied")
+end)
+
+menu:slider("Wanted level", 0, 0, 5, 1, function(level)
+    local me = player.playerPedId()
+    if not me then
+        ui.notify("Player ped is not ready")
+        return
+    end
+    local playerId = player.playerId()
+    player.setPlayerWantedLevel(playerId, level, false)
+    player.setPlayerWantedLevelNow(playerId, false)
+    ui.notify("Wanted level: " .. tostring(level))
+end)
+
+menu:button("Clear wanted level", {
+    note = "Sets the current player's wanted level to zero",
+    action = "Clear",
+}, function()
+    local playerId = player.playerId()
+    if not playerId then
+        ui.notify("Player is not ready")
+        return
+    end
+    player.clearPlayerWantedLevel(playerId)
+    ui.notify("Wanted level cleared")
+end)
+
+menu:label("DLC / OPENIV STATUS")
+menu:label("Loose-file overlay exists in Glue5; full RPF/DLC pack mounting is not implemented yet.")
 
 ui.notify("GTAV Mobile Trainer loaded")
