@@ -159,6 +159,59 @@ menu:button("Give selected weapon", {
     ui.notify("Weapon granted: " .. weaponName)
 end)
 
-menu:label("OpenIV / DLC mounting is still a separate target")
+
+menu:label("CURRENT VEHICLE")
+
+local function currentVehicle()
+    local me = player.playerPedId()
+    if not me or not ped.isPedInAnyVehicle(me, false) then
+        return nil
+    end
+    local veh = ped.getVehiclePedIsIn(me, false)
+    if not veh or veh == 0 then return nil end
+    return veh
+end
+
+menu:button("Repair current vehicle", {
+    note = "Fixes body and engine damage on the vehicle you are driving",
+    action = "Repair",
+}, function()
+    local veh = currentVehicle()
+    if not veh then
+        ui.notify("Get into a vehicle first")
+        return
+    end
+    vehicle.setVehicleFixed(veh)
+    ui.notify("Vehicle repaired")
+end)
+
+menu:button("Start current vehicle engine", {
+    note = "Turns on the engine of the vehicle you are driving",
+    action = "Engine",
+}, function()
+    local veh = currentVehicle()
+    if not veh then
+        ui.notify("Get into a vehicle first")
+        return
+    end
+    vehicle.setVehicleEngineOn(veh, true, true, false)
+    ui.notify("Vehicle engine started")
+end)
+
+menu:button("Stop current vehicle engine", {
+    note = "Turns off the engine of the vehicle you are driving",
+    action = "Stop",
+}, function()
+    local veh = currentVehicle()
+    if not veh then
+        ui.notify("Get into a vehicle first")
+        return
+    end
+    vehicle.setVehicleEngineOn(veh, false, true, true)
+    ui.notify("Vehicle engine stopped")
+end)
+
+menu:label("Player health / wanted-level controls need verified native bindings")
+menu:label("OpenIV / DLC mounting needs a Glue5 asset-mount bridge; Fuzzy libraries cannot be copied as-is")
 
 ui.notify("GTAV Mobile Trainer loaded")
