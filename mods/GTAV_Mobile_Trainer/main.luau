@@ -18,6 +18,19 @@ local models = {
 
 local selected = 1
 local busy = false
+local savedPosition = nil
+
+local weapons = {
+    "WEAPON_PISTOL",
+    "WEAPON_COMBATPISTOL",
+    "WEAPON_SMG",
+    "WEAPON_ASSAULTRIFLE",
+    "WEAPON_CARBINERIFLE",
+    "WEAPON_PUMPSHOTGUN",
+    "WEAPON_SNIPERRIFLE",
+    "WEAPON_RPG",
+}
+local selectedWeapon = 1
 
 menu:choice("Vehicle model", models, selected, function(index)
     selected = index
@@ -75,7 +88,60 @@ menu:button("Spawn selected vehicle", {
     end
 end)
 
-menu:label("Initial port: vehicle spawning only")
-menu:label("Teleport, weapons and OpenIV/DLC are separate targets")
+menu:label("TELEPORT")
+
+menu:button("Save current position", {
+    note = "Stores your current in-game coordinates for this session",
+    action = "Save",
+}, function()
+    local me = player.playerPedId()
+    if not me then
+        ui.notify("Player ped is not ready")
+        return
+    end
+    local p = entity.getEntityCoords(me, true)
+    savedPosition = vector.create(p.x, p.y, p.z)
+    ui.notify("Current position saved")
+end)
+
+menu:button("Return to saved position", {
+    note = "Returns your player to the saved coordinates",
+    action = "Return",
+}, function()
+    if not savedPosition then
+        ui.notify("Save a position first")
+        return
+    end
+    local me = player.playerPedId()
+    if not me then
+        ui.notify("Player ped is not ready")
+        return
+    end
+    local p = savedPosition
+    entity.setEntityCoords(me, p.x, p.y, p.z, false, false, false, true)
+    ui.notify("Returned to saved position")
+end)
+
+menu:label("WEAPONS")
+
+menu:choice("Weapon", weapons, selectedWeapon, function(index)
+    selectedWeapon = index
+end)
+
+menu:button("Give selected weapon", {
+    note = "Gives the selected weapon with 250 rounds",
+    action = "Give",
+}, function()
+    local me = player.playerPedId()
+    if not me then
+        ui.notify("Player ped is not ready")
+        return
+    end
+    local weapon = weapons[selectedWeapon]
+    weapon.giveWeaponToPed(me, weapon, 250, false, true)
+    ui.notify("Weapon granted: " .. weapon)
+end)
+
+menu:label("OpenIV / DLC mounting is still a separate target")
 
 ui.notify("GTAV Mobile Trainer loaded")
