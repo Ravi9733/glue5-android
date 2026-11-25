@@ -8,6 +8,7 @@ on:
       - turnip-driver-integration
       - turnip-high-quality-smooth
       - ios-graphics-oiv-zip-installer
+      - trainer-glue5-port
     paths-ignore:
       - .github/workflows/build.yml
 
@@ -151,7 +152,16 @@ jobs:
           (cd /tmp/json-placement-test && zip -r "$GITHUB_WORKSPACE/Glue5-JSON-Placement-Test.zip" road-construction)
           echo "Packaged JSON placement test mod." >>"$GITHUB_STEP_SUMMARY"
 
+      - name: Package the GTAV Mobile Trainer mod
+        run: |
+          mkdir -p /tmp/gtav-mobile-trainer/GTAV_Mobile_Trainer
+          cp mods/GTAV_Mobile_Trainer/main.luau /tmp/gtav-mobile-trainer/GTAV_Mobile_Trainer/main.luau
+          cp mods/GTAV_Mobile_Trainer/mod.json /tmp/gtav-mobile-trainer/GTAV_Mobile_Trainer/mod.json
+          cp mods/GTAV_Mobile_Trainer/README.md /tmp/gtav-mobile-trainer/GTAV_Mobile_Trainer/README.md
+          (cd /tmp/gtav-mobile-trainer && zip -r "$GITHUB_WORKSPACE/Glue5-GTAV-Mobile-Trainer.zip" GTAV_Mobile_Trainer)
+          echo "Packaged GLUE 5-native GTAV Mobile Trainer mod." >>"$GITHUB_STEP_SUMMARY"
+
       - name: Upload APK and JSON mod ZIP to draft release
         run: |
-          .github/scripts/draft.sh upload "${{ steps.game.outputs.release }}" Glue5-android-turnip-test.apk Glue5-android.keystore Glue5-JSON-Placement-Test.zip
-          echo "Turnip APK and JSON placement test ZIP uploaded to the draft release." >>"$GITHUB_STEP_SUMMARY"
+          .github/scripts/draft.sh upload "${{ steps.game.outputs.release }}" Glue5-android-turnip-test.apk Glue5-android.keystore Glue5-JSON-Placement-Test.zip Glue5-GTAV-Mobile-Trainer.zip
+          echo "Turnip APK, JSON placement test ZIP, and GTAV Mobile Trainer mod ZIP uploaded to the draft release." >>"$GITHUB_STEP_SUMMARY"
