@@ -211,7 +211,6 @@ menu:button("Stop current vehicle engine", {
     ui.notify("Vehicle engine stopped")
 end)
 
-menu:label("Player health / wanted-level controls need verified native bindings")
 
 menu:label("PLAYER STATUS")
 
