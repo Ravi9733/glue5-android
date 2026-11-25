@@ -10,6 +10,8 @@ class Glue5RuntimeReadinessPolicyTest {
         dataStats = Glue5RuntimeReadinessPolicy.FolderStats(1200, 84, false),
         shaderDirectoryPresent = true,
         shaderStats = Glue5RuntimeReadinessPolicy.FolderStats(6615, 0, false),
+        shaderIndexPresent = true,
+        partialStreamMarkerPresent = false,
         gameWasmPresent = false
     )
 
@@ -19,8 +21,33 @@ class Glue5RuntimeReadinessPolicyTest {
         assertTrue(report.contains("RESULT: REQUIRED DIRECTORY LAYOUT PRESENT"))
         assertTrue(report.contains("data/: present"))
         assertTrue(report.contains("b/8b0b5899ed/shaders/: present"))
+        assertTrue(report.contains("b/8b0b5899ed/shaders/index.json: present"))
+        assertTrue(report.contains(".glue5-stream marker: absent"))
+        assertTrue(report.contains("Glue5 local game-directory gate (layout::is_game_dir): MATCH"))
         assertTrue(report.contains("RPF archives found: 84"))
         assertTrue(report.contains("not a Glue5 launch or compatibility test"))
+    }
+
+
+    @Test
+    fun missingShaderIndexFailsTheSamePredicateUsedByGlue5() {
+        val report = Glue5RuntimeReadinessPolicy.render(
+            readySnapshot().copy(shaderIndexPresent = false)
+        )
+        assertTrue(report.contains("shaders/index.json: MISSING"))
+        assertTrue(report.contains("Glue5 local game-directory gate (layout::is_game_dir): DOES NOT MATCH"))
+        assertTrue(report.contains("RESULT: INCOMPLETE"))
+    }
+
+    @Test
+    fun partialStreamCacheMarkerIsRejectedAsALocalGameFolder() {
+        val report = Glue5RuntimeReadinessPolicy.render(
+            readySnapshot().copy(partialStreamMarkerPresent = true)
+        )
+        assertTrue(report.contains(".glue5-stream marker: PRESENT"))
+        assertTrue(report.contains("partial stream cache"))
+        assertTrue(report.contains("Glue5 local game-directory gate (layout::is_game_dir): DOES NOT MATCH"))
+        assertTrue(report.contains("RESULT: INCOMPLETE"))
     }
 
     @Test
