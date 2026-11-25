@@ -7,7 +7,7 @@ class ConverterUiTextTest {
     @Test
     fun subtitleMatchesCurrentAppVersion() {
         assertTrue(ConverterUiText.SUBTITLE.contains(ConverterUiText.VERSION))
-        assertTrue(ConverterUiText.VERSION == "0.3.14")
+        assertTrue(ConverterUiText.VERSION == "0.3.15")
     }
 
     @Test
