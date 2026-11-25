@@ -3,9 +3,9 @@
 Android ARM64 conversion prototype for GTA V RPF7 archives. It reads a selected archive directly from disk or recursively discovers RPF files in a selected GTA V folder, converts supported Enhanced (Gen9) resources to the Legacy resource layouts used by the classic PC edition, and builds new OPEN RPF7 archives. Original PC archives are never modified.
 
 
-## Android UI/reporting and RPF verification update (0.3.14)
+## Glue5 runtime predicate verification update (0.3.15)
 
-The app displays its current version in the subtitle and accurately separates Gen9-to-Legacy conversions from parser-validated, byte-preserved formats. The welcome text explicitly notes that AWC codec 7 and unsupported codecs remain opaque, and that preserved formats are not counted as converted. The share action exports the latest completed scan, conversion, key-import or DLC report. Bulk conversion summaries include the audio/metadata validation counts. RPF output verification now also requires exact stored path spelling and unchanged logical sizes for pass-through binary entries; the mixed-case path round-trip fixture exercises this check.
+The app displays its current version in the subtitle and accurately separates Gen9-to-Legacy conversions from parser-validated, byte-preserved formats. The share action exports the latest completed report. RPF output verification requires case-exact paths and unchanged logical sizes for pass-through binary entries. The Glue5 folder probe now mirrors the actual runtime predicate: it checks data/, b/<build>/shaders/index.json, and rejects a root .glue5-stream partial-cache marker. New JVM tests cover a missing shader index and an unfinished stream cache.
 
 ## Current supported pipeline
 
@@ -93,16 +93,15 @@ The Glue5 project's main README documents the runtime game directory as `data/` 
 
 Before calling the project complete, verify the exact supported game build and data layout, establish from the actual target runtime whether OPEN RPF7 archives are accepted, confirm the resource edition requirements, and load representative real-game archives in Glue5. Implement only a preparation step proven necessary by the target runtime. Keep original data and a separate backup. The documented runtime requirements are in the [Glue5 README](https://github.com/Ravi9733/glue5-android#notes) and [design notes](https://github.com/Ravi9733/glue5-android/blob/main/docs/design.md#game-files-are-never-in-the-app).
 
-## Glue5 runtime folder readiness check (0.3.13)
+## Glue5 runtime folder readiness check (0.3.15)
 
 After selecting the game root (the directory containing `data/` and `b/`), tap **CHECK GLUE5 RUNTIME DATA FOLDER**. The read-only probe checks:
 
-- `data/` exists and contains files;
-- `b/8b0b5899ed/shaders/` exists and contains files for the supported Glue5 build;
-- it counts files and RPF archives under `data/`, and files under the shader directory, with a 250,000-item traversal cap. Counts are marked as lower bounds if the cap or a provider read error stops traversal;
+- Mirrors Glue5's actual `glue5_runtime::layout::is_game_dir` predicate: `data/` must be a directory, `b/8b0b5899ed/shaders/index.json` must be a file, and the game-root `.glue5-stream` marker must be absent. Glue5 uses this exact predicate when deciding whether a folder is a complete local game directory.
+- Separately counts files and RPF archives under `data/`, and files under the shader directory, with a 250,000-item traversal cap. Non-empty counts are an additional inventory signal, not part of the runtime predicate. Counts are marked as lower bounds if the cap or a provider read error stops traversal;
 - if `b/8b0b5899ed/game.wasm` is also present, it streams a SHA-256 check against the build script's pinned hash `11ca8d2c04c5e843d18ff4aea4899d72c86973c6b031df334e67c446b2ae83e0`, with a 256 MiB read cap. The WASM file is optional in the runtime folder because Glue5 checks it at build time.
 
-A positive result means only that the documented runtime directory layout is present and non-empty. It does not prove every game asset is complete, that the browser build mounts converted OPEN RPF7 archives, that shaders compile on the device, or that Glue5 launches. It never modifies the selected folder. The inventory report now reads the actual Gradle version name rather than a stale hard-coded version string.
+A positive result means the runtime's directory-recognition predicate matches and the probed data/shader folders are non-empty. It does not prove every game asset is complete, that the browser build mounts converted OPEN RPF7 archives, that shaders compile on the device, or that Glue5 launches. It never modifies the selected folder. The inventory report now reads the actual Gradle version name rather than a stale hard-coded version string.
 
 ## Pinned upstream implementation
 
