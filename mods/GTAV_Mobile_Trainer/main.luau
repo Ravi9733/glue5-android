@@ -18,7 +18,15 @@ local models = {
 
 local selected = 1
 local busy = false
+local spawnDistance = 3
+local ammoCount = 250
 local savedPosition = nil
+
+-- Keep the saved teleport point between game sessions.
+local storedPosition = storage.get("saved_position")
+if storedPosition then
+    savedPosition = vector.create(storedPosition.x, storedPosition.y, storedPosition.z)
+end
 
 local weapons = {
     "WEAPON_PISTOL",
@@ -31,6 +39,10 @@ local weapons = {
     "WEAPON_RPG",
 }
 local selectedWeapon = 1
+
+menu:slider("Vehicle spawn distance", spawnDistance, 2, 15, 1, function(value)
+    spawnDistance = value
+end)
 
 menu:choice("Vehicle model", models, selected, function(index)
     selected = index
@@ -65,7 +77,7 @@ menu:button("Spawn selected vehicle", {
         local pos = entity.getEntityCoords(me, true)
         local car = vehicle.createVehicle(
             model,
-            pos.x + 3,
+            pos.x + spawnDistance,
             pos.y,
             pos.z,
             0,
@@ -101,6 +113,7 @@ menu:button("Save current position", {
     end
     local p = entity.getEntityCoords(me, true)
     savedPosition = vector.create(p.x, p.y, p.z)
+    storage.set("saved_position", { x = p.x, y = p.y, z = p.z })
     ui.notify("Current position saved")
 end)
 
@@ -128,8 +141,12 @@ menu:choice("Weapon", weapons, selectedWeapon, function(index)
     selectedWeapon = index
 end)
 
+menu:slider("Weapon ammo", ammoCount, 50, 1000, 50, function(value)
+    ammoCount = value
+end)
+
 menu:button("Give selected weapon", {
-    note = "Gives the selected weapon with 250 rounds",
+    note = "Gives the selected weapon with the ammo amount selected above",
     action = "Give",
 }, function()
     local me = player.playerPedId()
@@ -138,7 +155,7 @@ menu:button("Give selected weapon", {
         return
     end
     local weaponName = weapons[selectedWeapon]
-    weapon.giveWeaponToPed(me, weaponName, 250, false, true)
+    weapon.giveWeaponToPed(me, weaponName, ammoCount, false, true)
     ui.notify("Weapon granted: " .. weaponName)
 end)
 
