@@ -5,16 +5,38 @@ the original Fuzzy-specific Android trainer libraries.
 
 ## Included source controls
 
-- Spawn a selected vehicle.
+- Spawn a vehicle from GLUE 5's installed-game vehicle catalogue.
 - Save and return to a position.
 - Give a selected weapon.
 - Repair the current vehicle and start/stop its engine.
 - Restore health and apply full armour.
 - Set or clear the wanted level.
+- Toggle player god mode, never-wanted protection, and infinite ammo clip.
 
 These are source-level integrations. Their native availability/signatures must
 be checked against the exact `game.wasm` used by the build, then exercised
 in-game before they can be called verified working.
+
+## What was found in the supplied trainer APK
+
+The supplied APK is a Fuzzy-targeted Android trainer, not a standalone GTA
+mod package. Its DEX and native libraries contain hard-coded references to
+`com.thegwchr.fuzzy`, `com.thegwchr.fuzzy:game`, and JNI entry points named
+for `com.thegwchr.fuzzy.GTAVNativeActivity`. The native agent searches for
+`libgtav.so` and hooks its GOT; the Java side also uses Fuzzy-specific
+private/external storage paths and process-launch commands.
+
+Therefore its `libopeniv.so`, `libshv.so`, and Java injection/service layer
+cannot simply be copied into GLUE 5. The GLUE 5 branch is porting the
+trainer's in-game actions to GLUE 5's own Luau/native bridge instead. The
+current source adds a live installed-vehicle catalogue and player-protection
+toggles in addition to the earlier vehicle, teleport, weapon, repair,
+health/armour, and wanted-level controls.
+
+The source has been updated on the `trainer-glue5-port` branch. This is not
+yet a built or device-tested APK: the exact game-native definitions still
+need to be generated/checked from the target `game.wasm`, then the Android
+APK must be built and tested in-game.
 
 ## OpenIV / DLC compatibility boundary
 
