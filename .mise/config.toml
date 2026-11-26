@@ -14,7 +14,7 @@ xcodegen = { version = "2.46.0", os = ["macos"] }
 # command-line tools (sdkmanager; the android tasks install the SDK packages
 # they need with it, in this tool's directory, which is ANDROID_HOME), and
 # cargo-ndk for the Rust library.
-java = "temurin-21.0.12+101.0.LTS"
+java = "temurin-21"
 gradle = "9.8.1"
 android-sdk = "20.0"
 "cargo:cargo-ndk" = "4.1.2"
