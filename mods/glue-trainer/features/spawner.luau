@@ -50,14 +50,11 @@ function M.spawn(hash: number, name: string): (Vehicle?, string?)
 	if options.replace.value and last and entity.doesEntityExist(last) then
 		local old = last :: Vehicle
 		if ped.isPedInVehicle(me, old, false) then
-			-- Out of it first: the new one takes its place.
 			entity.setEntityCoordsNoOffset(me, entity.getEntityCoords(old, true), false, false, true)
 		end
 		entity.setEntityAsMissionEntity(old, true, true)
 		vehicle.deleteVehicle(old)
 	end
-	-- Where the player stands when they get in (ahead of a vehicle they are still in), else
-	-- ahead of them; aircraft they get in, in the air.
 	local from = game.mover()
 	local inside = options.warpIn.value
 	local pos = entity.getEntityCoords(from, true)
@@ -142,8 +139,7 @@ local function garage(root: Menu)
 	build()
 end
 
--- Every vehicle of the game in `menu`, by search and by the game's classes (added once the
--- catalog is read); choosing one runs `pick` (its message said, as an action's).
+-- Every vehicle of the game in `menu`, by search and by the game's classes.
 function M.picker(menu: Menu, verb: string, pick: (entry: catalog.VehicleEntry) -> string?)
 	local function fill(target: Menu, entries: { catalog.VehicleEntry }): boolean
 		for _, entry in entries do
@@ -153,7 +149,7 @@ function M.picker(menu: Menu, verb: string, pick: (entry: catalog.VehicleEntry) 
 		end
 		return #entries > 0
 	end
-	lists.lazy(menu, "Search all", "Every vehicle, by name", function(target)
+	lists.lazy(menu, "Search installed cars", "Search every vehicle model registered by the game", function(target)
 		return fill(target, catalog.vehicles())
 	end)
 	local listed = false
@@ -172,7 +168,7 @@ function M.picker(menu: Menu, verb: string, pick: (entry: catalog.VehicleEntry) 
 end
 
 function M.build(root: Menu)
-	local menu = root:submenu("Spawn a vehicle", "Every vehicle of the game, plus custom DLC model names")
+	local menu = root:submenu("Spawn a vehicle", "Game vehicles and installed add-on DLC cars")
 	local optionsMenu = menu:submenu("Options", "How vehicles are delivered")
 	options = {
 		warpIn = (bind.feature(optionsMenu, "spawn.warpIn", "Get in", "In the driver's seat; aircraft in the air", {})),
@@ -183,18 +179,25 @@ function M.build(root: Menu)
 	}
 	garage(menu)
 
-	-- Manual model-name spawning is important for add-on DLC cars. The game may
-	-- know a DLC model by hash even when it is absent from the cached vehicle list.
-	local custom = menu:submenu("Spawn by model name", "For add-on cars: enter the model name from vehicles.meta")
-	local modelName = custom:text("Model name", "dyfurai", { placeholder = "e.g. dyfurai", max = 64 })
-	bind.action(custom, "Spawn custom model", { note = "Checks the model before requesting it", action = "Spawn" }, function(): string?
+	-- Dedicated offline add-on car browser. DLC files are supplied by the player;
+	-- the game's loaded archetype catalog provides searchable names and model hashes.
+	local addon = menu:submenu("Add-on Cars", "Search and spawn cars from DLC files you installed")
+	M.picker(addon, "Spawn", function(entry: catalog.VehicleEntry): string?
+		local car, why = M.spawn(entry.hash, entry.name)
+		return if car then `{entry.name} spawned` else why
+	end)
+
+	-- Manual model-name fallback for add-on DLCs not present in the cached catalog.
+	local custom = addon:submenu("Spawn by model name", "Use the model name from vehicles.meta")
+	local modelName = custom:text("Model name", "", { placeholder = "e.g. dyfurai", max = 64 })
+	bind.action(custom, "Spawn custom model", { note = "Checks that the game has registered this vehicle", action = "Spawn" }, function(): string?
 		local model = string.lower(string.match(modelName.value, "^%s*(.-)%s*$") or "")
 		if model == "" or not string.match(model, "^[%w_%-]+$") then
 			return "Enter a valid vehicle model name"
 		end
 		local hash = joaat(model)
 		if not streaming.isModelInCdimage(hash) then
-			return `{model}: model is not registered in the loaded game data`
+			return `{model}: model is not registered in the loaded game data; check the DLC files and model name`
 		end
 		if not streaming.isModelAVehicle(hash) then
 			return `{model}: registered model is not a vehicle`
