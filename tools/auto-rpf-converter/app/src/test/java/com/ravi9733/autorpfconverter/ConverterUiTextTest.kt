@@ -7,7 +7,7 @@ class ConverterUiTextTest {
     @Test
     fun subtitleMatchesCurrentAppVersion() {
         assertTrue(ConverterUiText.SUBTITLE.contains(ConverterUiText.VERSION))
-        assertTrue(ConverterUiText.VERSION == "0.3.15")
+        assertTrue(ConverterUiText.VERSION == "0.3.16")
     }
 
     @Test
@@ -17,5 +17,12 @@ class ConverterUiTextTest {
         assertTrue(ConverterUiText.WELCOME.contains("AWC codec 7"))
         assertTrue(ConverterUiText.WELCOME.contains("not counted as converted"))
         assertTrue(ConverterUiText.WELCOME.contains("game.wasm"))
+    }
+
+    @Test
+    fun outputGuidanceRequiresASeparateStagingFolderAndMergeIntoData() {
+        assertTrue(ConverterUiText.OUTPUT_GUIDANCE.contains("separate empty staging folder"))
+        assertTrue(ConverterUiText.OUTPUT_GUIDANCE.contains("merge only the generated RPF files"))
+        assertTrue(ConverterUiText.OUTPUT_GUIDANCE.contains("never replace the whole data/ folder"))
     }
 }
