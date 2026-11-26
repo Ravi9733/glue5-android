@@ -41,20 +41,20 @@ class BulkOutputPathPolicyTest {
     @Test
     fun windowsSeparatorsNormalizeToTheSameTarget() {
         assertEquals(
-            BulkOutputPathPolicy.normalizedKey(BulkOutputPathPolicy.Target("dlcpacks\\\\pack", "dlc.rpf")),
+            BulkOutputPathPolicy.normalizedKey(BulkOutputPathPolicy.Target("dlcpacks\\pack", "dlc.rpf")),
             BulkOutputPathPolicy.normalizedKey(BulkOutputPathPolicy.Target("dlcpacks/pack", "dlc.rpf"))
         )
     }
 
     @Test
     fun traversalAndAbsoluteOrDriveQualifiedPathsAreRejected() {
-        listOf("../outside", "/absolute", "C:\\\\outside").forEach { path ->
+        listOf("../outside", "/absolute", "C:\\outside").forEach { path ->
             val accepted = runCatching {
                 BulkOutputPathPolicy.normalizedKey(BulkOutputPathPolicy.Target(path, "dlc.rpf"))
             }.isSuccess
             assertTrue("unsafe directory accepted: $path", !accepted)
         }
-        listOf("../outside.rpf", "C:\\\\outside.rpf", "folder/name.rpf").forEach { name ->
+        listOf("../outside.rpf", "C:\\outside.rpf", "folder/name.rpf").forEach { name ->
             val accepted = runCatching {
                 BulkOutputPathPolicy.normalizedKey(BulkOutputPathPolicy.Target("", name))
             }.isSuccess
