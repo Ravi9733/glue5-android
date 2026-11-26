@@ -2,9 +2,13 @@ package com.ravi9733.autorpconverter
 
 /** Accurate, versioned copy shown in the Android converter UI. */
 internal object ConverterUiText {
-    const val VERSION = "0.3.15"
+    const val VERSION = "0.3.16"
     const val SUBTITLE =
         "Android converter $VERSION • Gen9→Legacy + RPF7 + DLC/audio metadata validation"
+
+    const val OUTPUT_GUIDANCE =
+        "Bulk conversion writes only RPF archives into a separate empty staging folder and mirrors the PC folder paths. " +
+        "After backing up your game data, merge only the generated RPF files into Glue5 game/data/; never replace the whole data/ folder."
 
     const val WELCOME =
         "Select a PC RPF or GTA V folder. Import matching AES/NG key files first for encrypted archives. " +
