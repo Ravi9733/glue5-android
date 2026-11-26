@@ -3,9 +3,11 @@
 Android ARM64 conversion prototype for GTA V RPF7 archives. It reads a selected archive directly from disk or recursively discovers RPF files in a selected GTA V folder, converts supported Enhanced (Gen9) resources to the Legacy resource layouts used by the classic PC edition, and builds new OPEN RPF7 archives. Original PC archives are never modified.
 
 
-## Glue5 runtime predicate verification update (0.3.15)
+## Latest Android safety update (0.3.16)
 
 The app displays its current version in the subtitle and accurately separates Gen9-to-Legacy conversions from parser-validated, byte-preserved formats. The share action exports the latest completed report. RPF output verification requires case-exact paths and unchanged logical sizes for pass-through binary entries. The Glue5 folder probe now mirrors the actual runtime predicate: it checks data/, b/<build>/shaders/index.json, and rejects a root .glue5-stream partial-cache marker. New JVM tests cover a missing shader index and an unfinished stream cache.
+
+Bulk conversion now requires a separate empty staging folder and rejects case-insensitive duplicate output paths before writing the first archive. Its output contains only the discovered RPF files; after backing up game data, merge those files into Glue5's data/ tree at the same relative paths. Never replace the whole data/ folder with this partial RPF-only output.
 
 ## Current supported pipeline
 
@@ -24,6 +26,12 @@ The app displays its current version in the subtitle and accurately separates Ge
    These formats are validated/preserved, not converted to another edition. RPF binary entries remain source-backed in the rebuilt archive.
 6. Preserve already-Legacy versions byte-for-byte. Unsupported extensions such as .ysc, cache .dat files and other unrecognized files are preserved unchanged and are never reported as converted. The report separates parser-validated binary formats from unvalidated pass-through files.
 7. Rebuild a new OPEN RPF7 archive with ragekit's RpfBuilder::save file-streaming writer. The output is reopened with the RPF reader and checked for OPEN encryption, case-exact path spelling, entry kinds, unchanged binary sizes, nested archives and converted resource versions. RSC7 resources are written as resource entries with their page flags. Nested .rpf files are rebuilt as child OPEN archives.
+
+## Bulk output staging and Glue5 placement
+
+For bulk conversion, select a **separate empty staging folder**. The app writes only the discovered RPF archives and mirrors their relative paths from the selected PC GTA V folder. It rejects a non-empty staging folder and checks all planned archive paths for case-insensitive collisions before writing any output.
+
+The Glue5 readiness checker takes the **Glue5 game root** (the parent containing data/ and b/<build>/shaders/). The converter's bulk output belongs inside that game's data/ tree only after a backup. Do not select the live data/ folder as the staging destination, and do not replace the whole data/ directory with converter output: this tool does not copy loose XML, other loose metadata, or translated shaders. Merge only the generated RPF files at their matching relative paths, and keep all originals.
 
 ## Nested RPF and DLC layout
 
@@ -113,6 +121,7 @@ GitHub Actions runs:
 - Rust native-core unit tests (legacy prototype)
 - Host C++ tests for Gen9-to-Legacy YTD/YDR/YDD/YFT/YPT conversion and Legacy pass-through
 - Android JVM tests for exact key-file lengths, the complete NG key group, and invalid/empty key selections
+- Android JVM tests for bulk output path traversal rejection, case-insensitive target collisions, and output staging guidance
 - YBN/YMAP/YTYP plus YCD/YND/YVR/YWR/YLD/YED/YFD/YBD/YNV parse-and-preserve tests, including pointer-census rejection for YCD/YED/YFD and fail-closed YPT coverage for Enhanced-only ptfx_g9 behaviour
 - Binary audio/metadata tests: plain and whole-file encrypted AWC with a user-supplied test key, missing-key rejection, PCM decode, opaque codec-7 preservation, all nine DAT type/extension pairs, GXT2/PSO/RBF/nametable byte-exact round trips, both PSO/RBF variants under .ymt and .ymf, and OPEN RPF7 extraction equality
 - Direct RPF7 round-trip tests proving the additional edition-independent resources remain byte-identical after repacking
