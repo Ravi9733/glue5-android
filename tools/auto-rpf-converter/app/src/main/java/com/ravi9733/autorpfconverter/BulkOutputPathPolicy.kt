@@ -11,7 +11,7 @@ internal object BulkOutputPathPolicy {
     data class Target(val relativeDirectory: String, val fileName: String)
 
     fun normalizedKey(target: Target): String {
-        val directory = target.relativeDirectory.replace('\\\\', '/')
+        val directory = target.relativeDirectory.replace('\\', '/')
         val parts = mutableListOf<String>()
         if (directory.isNotEmpty()) {
             require(!directory.startsWith('/') && !directory.endsWith('/')) {
@@ -35,7 +35,7 @@ internal object BulkOutputPathPolicy {
             val display = if (target.relativeDirectory.isEmpty()) {
                 target.fileName
             } else {
-                target.relativeDirectory.trimEnd('/', '\\\\') + "/" + target.fileName
+                target.relativeDirectory.trimEnd('/', '\\') + "/" + target.fileName
             }
             val previous = seen.putIfAbsent(key, display)
             if (previous != null) collisions += "$previous ↔ $display"
@@ -48,8 +48,8 @@ internal object BulkOutputPathPolicy {
             "Unsafe output $kind rejected"
         }
         require(
-            !value.contains('/') && !value.contains('\\\\') &&
-                !value.contains(':') && !value.contains('\\u0000')
+            !value.contains('/') && !value.contains('\\') &&
+                !value.contains(':') && !value.contains('\u0000')
         ) {
             "Unsafe output $kind rejected"
         }
