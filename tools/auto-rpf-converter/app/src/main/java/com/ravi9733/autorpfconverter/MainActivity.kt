@@ -94,7 +94,7 @@ class MainActivity : Activity() {
         }
         root.addView(chooseArchive)
         val chooseDestination = Button(this).apply {
-            text = "SELECT ANDROID RPF OUTPUT FOLDER"
+            text = "SELECT EMPTY RPF OUTPUT STAGING FOLDER"
             setOnClickListener {
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
@@ -103,6 +103,13 @@ class MainActivity : Activity() {
             }
         }
         root.addView(chooseDestination)
+        val outputGuidance = TextView(this).apply {
+            text = ConverterUiText.OUTPUT_GUIDANCE
+            textSize = 12f
+            setTextColor(0xFFB9C6B5.toInt())
+            setPadding(4, 6, 4, 12)
+        }
+        root.addView(outputGuidance)
         val chooseKeys = Button(this).apply {
             text = "IMPORT OWN GTA V RPF KEYS"
             setOnClickListener {
@@ -772,6 +779,9 @@ class MainActivity : Activity() {
             try {
                 TemporaryWorkspacePolicy.prepare(work)
                 check(sourceRoot != null && destination != null) { "Cannot open selected folders" }
+                check(destination!!.listFiles().isEmpty()) {
+                    "Bulk conversion requires a separate empty staging folder. Do not select the PC source folder or the live Glue5 data/ folder."
+                }
                 val archives = mutableListOf<Pair<DocumentFile, String>>()
                 val stack = ArrayDeque<Pair<DocumentFile, String>>()
                 var scannedItems = 0
@@ -797,7 +807,16 @@ class MainActivity : Activity() {
                         }
                     }
                 }
+                val outputTargets = archives.map { (archive, relativeDir) ->
+                    val name = archive.name ?: error("A selected RPF has no filename")
+                    BulkOutputPathPolicy.Target(relativeDir, name)
+                }
+                val outputCollisions = BulkOutputPathPolicy.caseInsensitiveCollisions(outputTargets)
+                check(outputCollisions.isEmpty()) {
+                    "Bulk output paths collide case-insensitively: " + outputCollisions.take(5).joinToString("; ")
+                }
                 report.appendLine("RPF archives discovered: " + archives.size)
+                report.appendLine("Bulk output preflight: empty staging folder and unique case-insensitive paths")
                 for ((index, pair) in archives.withIndex()) {
                     val archive = pair.first
                     val relativeDir = pair.second
