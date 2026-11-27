@@ -71,6 +71,10 @@ system, not a binary port of that APK.
       handle so either a Ped or Vehicle can be moved.
 - [x] Confirmed the vehicle/weapon catalogs are generated from the installed
       game's live archetypes and are not hard-coded lists.
+- [x] Confirmed the existing Mods setting gates installation, and the existing
+      touch-menu button opens the trainer menus.
+- [x] Added cooperative yields to bulk vehicle-upgrade and give-all-weapons
+      loops to avoid monopolizing a script frame.
 
 ## Remaining validation before the one final APK
 
