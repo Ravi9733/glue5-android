@@ -656,10 +656,6 @@ int main() {
     fs::remove(direct_source_path, ignored);
     fs::remove(direct_output_path, ignored);
 
-    fs::remove_all(direct_key_root, ignored);
-    fs::remove(direct_source_path, ignored);
-    fs::remove(direct_output_path, ignored);
-
     // A YPT with Enhanced-only behaviour must abort the archive conversion before
     // any final output is created; a partial OPEN archive would be misleading.
     const fs::path invalid_ypt_source = fs::temp_directory_path() / "gta-rpf-invalid-ypt-source.rpf";
