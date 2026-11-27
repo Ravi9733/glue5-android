@@ -44,13 +44,16 @@ impl DlcMods {
             game_dir
         };
         let mods_root = game_root.join("mods");
-        if !mods_root.is_dir() {
-            return Self::default();
+        // Create the documented Android drop folder on first run. Failure is
+        // non-fatal: Android may deny shared-storage writes until permission is granted.
+        let android_pack_root = mods_root.join("update/android/dlcpacks");
+        if let Err(error) = fs::create_dir_all(&android_pack_root) {
+            log::warn!("DLC mods: cannot create {}: {error}", android_pack_root.display());
         }
 
         // Prefer the Android OpenIV layout, then accept the PC-style layout.
         let pack_roots = [
-            mods_root.join("update/android/dlcpacks"),
+            android_pack_root,
             mods_root.join("update/x64/dlcpacks"),
             mods_root.join("x64/dlcPacks"),
         ];
@@ -67,9 +70,17 @@ impl DlcMods {
                     continue;
                 }
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if !valid_pack_name(&name) || !case_insensitive_child(&path, "dlc.rpf").is_some_and(|p| {
-                    fs::symlink_metadata(p).is_ok_and(|meta| meta.file_type().is_file())
-                }) {
+                if !valid_pack_name(&name) {
+                    continue;
+                }
+                let Some(archive_path) = case_insensitive_child(&path, "dlc.rpf") else {
+                    continue;
+                };
+                if !fs::symlink_metadata(&archive_path).is_ok_and(|meta| meta.file_type().is_file()) {
+                    continue;
+                }
+                if !valid_rpf7_header(&archive_path) {
+                    log::warn!("DLC mod {name} ignored: dlc.rpf is not a readable RPF7 archive");
                     continue;
                 }
                 let key = name.to_ascii_lowercase();
@@ -135,6 +146,15 @@ fn case_insensitive_child(dir: &Path, wanted: &str) -> Option<PathBuf> {
         .map(|entry| entry.path())
 }
 
+/// Check the RPF7 signature before exposing a pack to the game. Reading only
+/// the fixed header avoids loading large vehicle archives into RAM at startup.
+fn valid_rpf7_header(path: &Path) -> bool {
+    use std::io::Read;
+    let Ok(mut file) = fs::File::open(path) else { return false };
+    let mut header = [0u8; 16];
+    file.read_exact(&mut header).is_ok() && &header[..4] == b"RPF7"
+}
+
 fn index_pack(
     root: &Path,
     engine_rel: &str,
@@ -183,7 +203,7 @@ fn merged_dlc_list(original: &Path, packs: &[String], scratch: &Path) -> anyhow:
     }
 
     let close = source.rfind("</Paths>").ok_or_else(|| anyhow::anyhow!("dlcList.xml has no closing Paths tag"))?;
-    let mut merged = source;
+    let mut merged = source.clone();
     let insertion = format!("{}{}{}",
         if merged[..close].ends_with('\n') { "" } else { "\n" },
         additions.join("\n"),
@@ -213,7 +233,9 @@ mod tests {
         fs::create_dir_all(&pack).unwrap();
         fs::write(game_data.join("common/data/dlcList.xml"),
             "<?xml version=\"1.0\"?><SMandatoryPacksData><Paths><Item>platform:\\dlcPacks\\mpBeach\\</Item></Paths></SMandatoryPacksData>").unwrap();
-        fs::write(pack.join("dlc.rpf"), b"RPF7").unwrap();
+        let mut header = [0u8; 16];
+        header[..4].copy_from_slice(b"RPF7");
+        fs::write(pack.join("dlc.rpf"), header).unwrap();
         let mut index = HashMap::new();
         index.insert("common/data/dlclist.xml".into(), "common/data/dlcList.xml".into());
 
