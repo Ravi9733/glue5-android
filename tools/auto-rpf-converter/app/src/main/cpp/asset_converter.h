@@ -1,0 +1,62 @@
+#pragma once
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <span>
+#include <string>
+#include <vector>
+namespace rk { struct RpfKeys; }
+namespace gta_asset_converter {
+struct ConversionStats {
+    std::size_t files_scanned = 0;
+    std::size_t already_legacy = 0;
+    std::size_t converted_ytd = 0;
+    std::size_t converted_ydr = 0;
+    std::size_t converted_ydd = 0;
+    std::size_t converted_yft = 0;
+    std::size_t converted_ypt = 0;
+    std::size_t validated_ybn = 0;
+    std::size_t validated_ymap = 0;
+    std::size_t validated_ytyp = 0;
+    std::size_t validated_ycd = 0;
+    std::size_t validated_ynd = 0;
+    std::size_t validated_yvr = 0;
+    std::size_t validated_ywr = 0;
+    std::size_t validated_yld = 0;
+    std::size_t validated_yed = 0;
+    std::size_t validated_yfd = 0;
+    std::size_t validated_ybd = 0;
+    std::size_t validated_ynv = 0;
+    std::size_t validated_awc = 0;
+    std::size_t decoded_awc_streams = 0;
+    std::size_t opaque_awc_streams = 0;
+    std::size_t validated_rel = 0;
+    std::size_t validated_gxt2 = 0;
+    std::size_t validated_pso = 0;
+    std::size_t validated_rbf = 0;
+    std::size_t validated_nametable = 0;
+    std::size_t unchanged_other = 0;
+    std::uint64_t bytes_scanned = 0;
+};
+std::vector<std::uint8_t> convert_asset_bytes(const std::string& extension, std::span<const std::uint8_t> input, ConversionStats& stats, std::shared_ptr<const rk::RpfKeys> keys = {});
+std::string convert_directory(const std::filesystem::path& root);
+std::string inspect_rpf_keys(const std::filesystem::path& key_directory);
+std::string extract_rpf_archive(const std::filesystem::path& source,
+                                const std::filesystem::path& destination,
+                                const std::filesystem::path& key_directory);
+std::string build_open_rpf7(const std::filesystem::path& source_directory,
+                            const std::filesystem::path& output_path);
+std::string convert_rpf_archive_to_open_rpf7(const std::filesystem::path& source_path,
+                                             const std::filesystem::path& output_path,
+                                             const std::filesystem::path& key_directory);
+std::string verify_open_rpf7_payload_integrity(const std::filesystem::path& source_path,
+                                               const std::filesystem::path& output_path);
+std::string inspect_dlc_pack_metadata(const std::filesystem::path& source_path,
+                                      const std::filesystem::path& key_directory);
+std::string inspect_platform_dlc_pack_metadata(const std::filesystem::path& base_archive_path,
+                                               const std::string& pack_name,
+                                               const std::filesystem::path& key_directory);
+std::string read_dlc_list_entries(const std::filesystem::path& update_rpf_path,
+                                  const std::filesystem::path& key_directory);
+}

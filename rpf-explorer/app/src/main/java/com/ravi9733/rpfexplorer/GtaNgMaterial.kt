@@ -1,0 +1,250 @@
+package com.ravi9733.rpfexplorer
+
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.File
+import java.io.RandomAccessFile
+import java.security.MessageDigest
+
+/**
+ * NG material is extracted from the user's own PC GTA5.exe using SHA-1 fingerprints.
+ * No game keys or lookup tables are embedded in the application.
+ *
+ * NG block-decryption follows the MIT-licensed CodeWalker GTACrypto implementation.
+ */
+internal class GtaNgMaterial internal constructor(
+    private val keys: Array<ByteArray>,
+    private val tables: Array<Array<IntArray>>,
+    private val hashLut: ByteArray
+) {
+    fun decrypt(data: ByteArray, name: String, length: Long): ByteArray {
+        val words = deriveWords(name, length)
+        val out = ByteArray(data.size)
+        var offset = 0
+        while (offset + 16 <= data.size) {
+            val block = decryptBlock(data.copyOfRange(offset, offset + 16), words)
+            System.arraycopy(block, 0, out, offset, 16)
+            offset += 16
+        }
+        if (offset < data.size) System.arraycopy(data, offset, out, offset, data.size - offset)
+        return out
+    }
+
+    fun decrypt(input: java.io.InputStream, size: Long, output: java.io.OutputStream, name: String, length: Long) {
+        require(size >= 0L)
+        val words = deriveWords(name, length)
+        val block = ByteArray(16)
+        var remaining = size
+        while (remaining >= 16L) {
+            var filled = 0
+            while (filled < 16) {
+                val n = input.read(block, filled, 16 - filled)
+                if (n < 0) error("Unexpected end of NG-encrypted payload")
+                if (n > 0) filled += n
+            }
+            output.write(decryptBlock(block, words))
+            remaining -= 16L
+        }
+        if (remaining > 0L) {
+            var filled = 0
+            val tail = remaining.toInt()
+            while (filled < tail) {
+                val n = input.read(block, filled, tail - filled)
+                if (n < 0) error("Unexpected end of NG-encrypted payload")
+                if (n > 0) filled += n
+            }
+            output.write(block, 0, tail) // final partial block is not encrypted
+        }
+    }
+
+    private fun deriveWords(name: String, length: Long): IntArray {
+        require(length in 0..0xFFFFFFFFL) { "NG archive/file length is outside the supported range" }
+        val combined = ((calculateHash(name).toLong() and 0xFFFFFFFFL) + length + 61L) and 0xFFFFFFFFL
+        val keyIndex = combined % 101L
+        val key = keys[keyIndex.toInt()]
+        return IntArray(68) { i ->
+            val o = i * 4
+            (key[o].toInt() and 255) or
+                ((key[o + 1].toInt() and 255) shl 8) or
+                ((key[o + 2].toInt() and 255) shl 16) or
+                ((key[o + 3].toInt() and 255) shl 24)
+        }
+    }
+
+    private fun decryptBlock(data: ByteArray, words: IntArray): ByteArray {
+        var block = data
+        block = roundA(block, words, 0, 0)
+        block = roundA(block, words, 1, 4)
+        for (round in 2..15) block = roundB(block, words, round)
+        return roundA(block, words, 16, 64)
+    }
+
+    private fun calculateHash(text: String): Int {
+        var result = 0
+        for (ch in text) {
+            val index = ch.code
+            require(index < hashLut.size) { "NG hash name contains a non-ASCII character" }
+            val temp = 1025 * ((hashLut[index].toInt() and 255) + result)
+            result = (temp ushr 6) xor temp
+        }
+        val nine = 9 * result
+        return 32769 * ((nine ushr 11) xor nine)
+    }
+
+    private fun roundA(data: ByteArray, words: IntArray, round: Int, keyOffset: Int): ByteArray {
+        val result = ByteArray(16)
+        val roundTables = tables[round]
+        for (group in 0..3) {
+            val base = group * 4
+            val value = roundTables[base][data[base].toInt() and 255] xor
+                roundTables[base + 1][data[base + 1].toInt() and 255] xor
+                roundTables[base + 2][data[base + 2].toInt() and 255] xor
+                roundTables[base + 3][data[base + 3].toInt() and 255] xor
+                words[keyOffset + group]
+            putLe32(result, group * 4, value)
+        }
+        return result
+    }
+
+    private val roundBMap = arrayOf(
+        intArrayOf(0, 7, 10, 13), intArrayOf(1, 4, 11, 14),
+        intArrayOf(2, 5, 8, 15), intArrayOf(3, 6, 9, 12)
+    )
+
+    private fun roundB(data: ByteArray, words: IntArray, round: Int): ByteArray {
+        val keyOffset = round * 4
+        val result = ByteArray(16)
+        for (group in 0..3) {
+            var value = words[keyOffset + group]
+            for (j in 0..3) {
+                val index = roundBMap[group][j]
+                value = value xor tables[round][index][data[index].toInt() and 255]
+            }
+            putLe32(result, group * 4, value)
+        }
+        return result
+    }
+
+    private fun putLe32(out: ByteArray, offset: Int, value: Int) {
+        out[offset] = value.toByte()
+        out[offset + 1] = (value ushr 8).toByte()
+        out[offset + 2] = (value ushr 16).toByte()
+        out[offset + 3] = (value ushr 24).toByte()
+    }
+
+    fun save(file: File) {
+        DataOutputStream(file.outputStream().buffered()).use { out ->
+            out.writeInt(0x4E474D31)
+            out.writeInt(keys.size)
+            keys.forEach { out.write(it) }
+            out.writeInt(tables.size)
+            tables.forEach { round -> round.forEach { table -> table.forEach(out::writeInt) } }
+            out.writeInt(hashLut.size)
+            out.write(hashLut)
+        }
+    }
+
+    companion object {
+        fun load(file: File): GtaNgMaterial {
+            DataInputStream(file.inputStream().buffered()).use { input ->
+                require(input.readInt() == 0x4E474D31) { "Invalid local NG key bundle" }
+                val keyCount = input.readInt()
+                require(keyCount == 101) { "Invalid NG key count" }
+                val keys = Array(keyCount) { ByteArray(272).also { input.readFully(it) } }
+                val roundCount = input.readInt()
+                require(roundCount == 17) { "Invalid NG table round count" }
+                val tables = Array(roundCount) {
+                    Array(16) {
+                        IntArray(256) { input.readInt() }
+                    }
+                }
+                val lutLength = input.readInt()
+                require(lutLength == 256) { "Invalid NG hash LUT size" }
+                val lut = ByteArray(lutLength).also { input.readFully(it) }
+                require(input.read() == -1) { "Unexpected data at end of NG key bundle" }
+                return GtaNgMaterial(keys, tables, lut)
+            }
+        }
+
+        fun extractFromExe(executable: File, progress: (String, Int) -> Unit = { _, _ -> }): GtaNgMaterial {
+            require(executable.isFile && executable.length() > 1024L) { "Select a valid PC GTA5.exe" }
+            val keyBytes = GtaNgKeyHashes.keyHashes.map { hex(it) }
+            val tableBytes = GtaNgKeyHashes.decryptTableHashes.map { hex(it) }
+            val lutBytes = hex(GtaNgKeyHashes.lutHash)
+            val keys = searchHashes(executable, 272, keyBytes) { p -> progress("Extracting NG keys", p / 3) }
+            val tablesRaw = searchHashes(executable, 1024, tableBytes) { p -> progress("Extracting NG tables", 33 + p / 3) }
+            val lutRaw = searchHashes(executable, 256, listOf(lutBytes)) { p -> progress("Extracting NG hash table", 66 + p / 3) }
+            val keyValues = keys.mapIndexed { i, value -> value ?: error("NG key fingerprint $i was not found; this GTA5.exe build is not supported.") }.toTypedArray()
+            val tableValues = tablesRaw.mapIndexed { i, value -> value ?: error("NG table fingerprint $i was not found; this GTA5.exe build is not supported.") }
+            val tables = Array(17) { round ->
+                Array(16) { table ->
+                    val bytes = tableValues[round * 16 + table]
+                    IntArray(256) { i ->
+                        val o = i * 4
+                        (bytes[o].toInt() and 255) or
+                            ((bytes[o + 1].toInt() and 255) shl 8) or
+                            ((bytes[o + 2].toInt() and 255) shl 16) or
+                            ((bytes[o + 3].toInt() and 255) shl 24)
+                    }
+                }
+            }
+            val lut = lutRaw.single() ?: error("NG hash lookup table fingerprint was not found; this GTA5.exe build is not supported.")
+            progress("NG key material ready", 100)
+            return GtaNgMaterial(keyValues, tables, lut)
+        }
+
+        private fun searchHashes(
+            executable: File,
+            valueLength: Int,
+            hashes: List<ByteArray>,
+            progress: (Int) -> Unit
+        ): Array<ByteArray?> {
+            val found = arrayOfNulls<ByteArray>(hashes.size)
+            val byPrefix = HashMap<Long, MutableList<Int>>()
+            hashes.forEachIndexed { index, hash ->
+                require(hash.size == 20)
+                byPrefix.getOrPut(prefix(hash)) { mutableListOf() }.add(index)
+            }
+            val digest = MessageDigest.getInstance("SHA-1")
+            val digestBytes = ByteArray(20)
+            val blockSize = 1024 * 1024
+            val buffer = ByteArray(blockSize + valueLength)
+            val total = executable.length()
+            RandomAccessFile(executable, "r").use { input ->
+                var base = 0L
+                while (base < total && found.any { it == null }) {
+                    val readLength = minOf(buffer.size.toLong(), total - base).toInt()
+                    input.seek(base)
+                    input.readFully(buffer, 0, readLength)
+                    val scanLimit = minOf(blockSize.toLong(), total - base).toInt()
+                    var offset = 0
+                    while (offset < scanLimit && offset + valueLength <= readLength) {
+                        digest.update(buffer, offset, valueLength)
+                        digest.digest(digestBytes, 0, digestBytes.size)
+                        val candidates = byPrefix[prefix(digestBytes)]
+                        if (candidates != null) {
+                            for (index in candidates) {
+                                if (hashes[index].contentEquals(digestBytes)) {
+                                    found[index] = buffer.copyOfRange(offset, offset + valueLength)
+                                }
+                            }
+                        }
+                        offset += 8
+                    }
+                    base += blockSize.toLong()
+                    progress(((minOf(base, total) * 100L) / total).toInt())
+                }
+            }
+            return found
+        }
+
+        private fun prefix(bytes: ByteArray): Long {
+            var value = 0L
+            for (i in 0 until 8) value = (value shl 8) or (bytes[i].toLong() and 255L)
+            return value
+        }
+
+        private fun hex(value: String): ByteArray =
+            value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    }
+}
