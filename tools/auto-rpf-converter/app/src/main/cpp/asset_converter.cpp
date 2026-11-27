@@ -688,6 +688,9 @@ struct DirectArchiveConversionStats {
     ConversionStats assets;
     std::uint64_t inspected_resource_bytes = 0;
     std::size_t nested_rebuilt = 0;
+    std::size_t verified_binary_payloads = 0;
+    std::size_t verified_resource_streams = 0;
+    std::size_t encrypted_binary_payloads_not_compared = 0;
     std::vector<std::pair<std::string, std::uint32_t>> converted_resources;
 };
 
@@ -788,7 +791,35 @@ void convert_archive_resources(const rk::Rpf& archive,
     }
 }
 
-void verify_open_archive_tree(const rk::Rpf& source, const rk::Rpf& output, int depth) {
+bool stored_range_equal(const rk::Rpf& left_archive,
+                        int left_entry,
+                        const rk::Rpf& right_archive,
+                        int right_entry,
+                        std::uint64_t offset,
+                        std::uint64_t length) {
+    constexpr std::size_t kChunkBytes = 1024 * 1024;
+    std::uint64_t position = 0;
+    while (position < length) {
+        const std::size_t count = static_cast<std::size_t>(
+            std::min<std::uint64_t>(kChunkBytes, length - position));
+        const auto left = left_archive.read_stored(left_entry, offset + position, count);
+        const auto right = right_archive.read_stored(right_entry, offset + position, count);
+        if (left.size() != count || right.size() != count ||
+            !std::equal(left.begin(), left.end(), right.begin())) {
+            return false;
+        }
+        position += count;
+    }
+    return true;
+}
+
+void verify_open_archive_tree(
+    const rk::Rpf& source,
+    const rk::Rpf& output,
+    int depth,
+    const std::string& archive_prefix,
+    const std::unordered_set<std::string>& converted_resource_paths,
+    DirectArchiveConversionStats& stats) {
     if (depth > kDirectMaxNestedDepth) {
         throw std::runtime_error("output nested RPF depth exceeds the validated limit");
     }
@@ -817,17 +848,53 @@ void verify_open_archive_tree(const rk::Rpf& source, const rk::Rpf& output, int 
         if (source_entry.name != output_entry.name || source_entry.path != output_entry.path) {
             throw std::runtime_error("RPF output changed entry name or path spelling: " + source_entry.path);
         }
-        // Non-archive binary payloads are pass-through entries. Their logical size must
-        // remain identical after the OPEN rewrite; nested RPF sizes can change because
-        // their child archives are rebuilt, and resource sizes can change during conversion.
-        if (source_entry.is_binary() && !source_entry.is_archive() &&
-            source_entry.size() != output_entry.size()) {
-            throw std::runtime_error("RPF output changed unchanged binary size: " + source_entry.path);
+
+        const std::string full_path = archive_prefix + source_entry.path;
+        const bool converted = converted_resource_paths.find(lower(full_path)) != converted_resource_paths.end();
+
+        if (source_entry.is_resource() && !converted) {
+            // Resource entries have a synthesized 16-byte RSC7 header. Compare the stored
+            // compressed/encrypted body in bounded chunks, and compare the page flags separately.
+            if (source_entry.system_flags != output_entry.system_flags ||
+                source_entry.graphics_flags != output_entry.graphics_flags) {
+                throw std::runtime_error("RPF output changed preserved resource page flags: " + source_entry.path);
+            }
+            const std::uint64_t source_length = source.stored_length(static_cast<int>(i));
+            const std::uint64_t output_length = output.stored_length(output_index);
+            if (source_length < 16 || output_length < 16 || source_length != output_length) {
+                throw std::runtime_error("RPF output changed preserved resource stream size: " + source_entry.path);
+            }
+            if (!stored_range_equal(source, static_cast<int>(i), output, output_index,
+                                    16, source_length - 16)) {
+                throw std::runtime_error("RPF output changed preserved resource stream bytes: " + source_entry.path);
+            }
+            ++stats.verified_resource_streams;
         }
+
+        // Binary files that are not encrypted are stored byte-for-byte by RAGEKIT's
+        // source-backed builder. Compare the on-disk stored representation (including
+        // compressed bytes) in 1 MiB chunks instead of trusting equal logical sizes.
+        // Encrypted binary entries are decrypted when rewritten as OPEN; they are counted
+        // separately because their source ciphertext cannot be compared to output plaintext.
+        if (source_entry.is_binary() && !source_entry.is_archive()) {
+            if (source_entry.encrypted) {
+                ++stats.encrypted_binary_payloads_not_compared;
+            } else {
+                const std::uint64_t source_length = source.stored_length(static_cast<int>(i));
+                const std::uint64_t output_length = output.stored_length(output_index);
+                if (source_length != output_length ||
+                    !stored_range_equal(source, static_cast<int>(i), output, output_index, 0, source_length)) {
+                    throw std::runtime_error("RPF output changed preserved binary payload bytes: " + source_entry.path);
+                }
+                ++stats.verified_binary_payloads;
+            }
+        }
+
         if (source_entry.is_archive()) {
             rk::Rpf source_child = source.open_child(static_cast<int>(i));
             rk::Rpf output_child = output.open_child(output_index);
-            verify_open_archive_tree(source_child, output_child, depth + 1);
+            verify_open_archive_tree(source_child, output_child, depth + 1,
+                                     full_path + "/", converted_resource_paths, stats);
         }
     }
 }
@@ -881,7 +948,11 @@ std::string convert_rpf_archive_to_open_rpf7(const fs::path& source_path,
         }
 
         const rk::Rpf output = rk::Rpf::open(temporary.string(), std::make_shared<rk::RpfKeys>());
-        verify_open_archive_tree(source, output, 0);
+        std::unordered_set<std::string> converted_resource_paths;
+        for (const auto& converted : stats.converted_resources) {
+            converted_resource_paths.insert(lower(converted.first));
+        }
+        verify_open_archive_tree(source, output, 0, "", converted_resource_paths, stats);
         if (output.encryption() != rk::RpfEncryption::Open) {
             throw std::runtime_error("top-level RPF7 output is not OPEN/unencrypted");
         }
@@ -922,13 +993,53 @@ std::string convert_rpf_archive_to_open_rpf7(const fs::path& source_path,
                "Nested RPFs rebuilt: " + std::to_string(stats.nested_rebuilt) +
                " of " + std::to_string(preflight.nested_archives) + "\n"
                "Supported asset bytes inspected: " + std::to_string(stats.assets.bytes_scanned) + "\n"
+               "Pass-through payloads verified byte-for-byte: binary=" + std::to_string(stats.verified_binary_payloads) +
+               ", resource streams=" + std::to_string(stats.verified_resource_streams) + "\n"
+               "Encrypted binary payloads not directly compared after decryption: " +
+               std::to_string(stats.encrypted_binary_payloads_not_compared) + "\n"
                "Archive bytes: " + std::to_string(output_bytes) + "\n"
-               "Verified: RPF7 tree, nested OPEN archives, paths, entry kinds and converted resource versions.\n"
-               "Unchanged entries are copied from the source lazily; encrypted .ysc stored bytes are preserved.";
+               "Verified: RPF7 tree, nested OPEN archives, exact paths, entry kinds, preserved payload bytes and converted resource versions.\n"
+               "Unchanged entries remain source-backed; encrypted .ysc resource streams are checked byte-for-byte.";
     } catch (...) {
         fs::remove(temporary, ignored);
         throw;
     }
+}
+
+
+std::string verify_open_rpf7_payload_integrity(const fs::path& source_path,
+                                               const fs::path& output_path) {
+    auto require_regular_archive = [](const fs::path& path, const char* label) {
+        const auto status = fs::symlink_status(path);
+        if (fs::is_symlink(status) || !fs::is_regular_file(status)) {
+            throw std::runtime_error(std::string(label) + " must be a regular, non-symlink RPF file");
+        }
+        if (fs::file_size(path) > kDirectMaxArchiveBytes) {
+            throw std::runtime_error(std::string(label) + " exceeds the 4 GiB RPF7 safety limit");
+        }
+    };
+    require_regular_archive(source_path, "source archive");
+    require_regular_archive(output_path, "output archive");
+
+    auto no_keys = std::make_shared<rk::RpfKeys>();
+    const rk::Rpf source = rk::Rpf::open(source_path.string(), no_keys);
+    const rk::Rpf output = rk::Rpf::open(output_path.string(), no_keys);
+    if (source.encryption() != rk::RpfEncryption::Open &&
+        source.encryption() != rk::RpfEncryption::None) {
+        throw std::runtime_error("standalone integrity verification requires an OPEN/NONE source archive");
+    }
+    if (output.encryption() != rk::RpfEncryption::Open) {
+        throw std::runtime_error("integrity verification output must be an OPEN RPF7 archive");
+    }
+
+    DirectArchiveConversionStats stats;
+    const std::unordered_set<std::string> no_conversions;
+    verify_open_archive_tree(source, output, 0, "", no_conversions, stats);
+    return "RPF7 payload integrity verified\n"
+           "Binary stored payloads compared: " + std::to_string(stats.verified_binary_payloads) + "\n"
+           "Resource streams compared: " + std::to_string(stats.verified_resource_streams) + "\n"
+           "Encrypted binary payloads skipped after decryption: " +
+           std::to_string(stats.encrypted_binary_payloads_not_compared);
 }
 
 
