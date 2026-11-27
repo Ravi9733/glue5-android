@@ -494,6 +494,54 @@ int main() {
     const fs::path direct_key_root = fs::temp_directory_path() / "gta-rpf-direct-key-root";
     const fs::path direct_source_path = fs::temp_directory_path() / "gta-rpf-direct-source.rpf";
     const fs::path direct_output_path = fs::temp_directory_path() / "gta-rpf-direct-output.rpf";
+    // The public integrity verifier must detect same-size payload corruption; entry count,
+    // path spelling and logical size alone are not sufficient evidence of a valid round trip.
+    const fs::path corrupt_binary_path = fs::temp_directory_path() / "gta-rpf-corrupt-binary-output.rpf";
+    const fs::path corrupt_resource_path = fs::temp_directory_path() / "gta-rpf-corrupt-resource-output.rpf";
+    fs::remove(corrupt_binary_path, ignored);
+    fs::remove(corrupt_resource_path, ignored);
+    {
+        rk::RpfBuilder corrupted = rk::RpfBuilder::from_archive(direct_source, rk::RpfBuilder::Nested::Rewrite);
+        auto same_size_corruption = untouched_data;
+        require(!same_size_corruption.empty(), "binary corruption fixture must be non-empty");
+        same_size_corruption[0] ^= 0x5Au;
+        corrupted.add_binary("misc/keep.dat", same_size_corruption, false);
+        rk::RpfWriteOptions options;
+        options.encryption = rk::RpfEncryption::Open;
+        options.name = corrupt_binary_path.filename().string();
+        corrupted.save(corrupt_binary_path.string(), options);
+    }
+    bool binary_corruption_rejected = false;
+    try {
+        (void)gta_asset_converter::verify_open_rpf7_payload_integrity(direct_source_path, corrupt_binary_path);
+    } catch (const std::exception&) {
+        binary_corruption_rejected = true;
+    }
+    require(binary_corruption_rejected,
+            "integrity verifier must reject same-size pass-through binary corruption");
+
+    {
+        rk::RpfBuilder corrupted = rk::RpfBuilder::from_archive(direct_source, rk::RpfBuilder::Nested::Rewrite);
+        auto same_size_corruption = gen_ybn;
+        require(same_size_corruption.size() > 20, "resource corruption fixture must contain a payload");
+        same_size_corruption.back() ^= 0xA5u;
+        corrupted.add_file("collision/ground.ybn", same_size_corruption);
+        rk::RpfWriteOptions options;
+        options.encryption = rk::RpfEncryption::Open;
+        options.name = corrupt_resource_path.filename().string();
+        corrupted.save(corrupt_resource_path.string(), options);
+    }
+    bool resource_corruption_rejected = false;
+    try {
+        (void)gta_asset_converter::verify_open_rpf7_payload_integrity(direct_source_path, corrupt_resource_path);
+    } catch (const std::exception&) {
+        resource_corruption_rejected = true;
+    }
+    require(resource_corruption_rejected,
+            "integrity verifier must reject same-size preserved RSC7 stream corruption");
+
+    fs::remove(corrupt_binary_path, ignored);
+    fs::remove(corrupt_resource_path, ignored);
     fs::remove_all(direct_key_root, ignored);
     fs::remove(direct_source_path, ignored);
     fs::remove(direct_output_path, ignored);
@@ -513,6 +561,9 @@ int main() {
     direct_root.add_file("maps/test.ytyp", gen_ytyp);
     direct_root.add_file("stream/legacy_model.ydr", legacy_ydr_fixture);
     direct_root.add_file("misc/keep.dat", untouched_data);
+    const std::vector<std::uint8_t> compressed_payload(32u * 1024u, static_cast<std::uint8_t>('Q'));
+    direct_root.add_binary("misc/compressed.bin", compressed_payload, true);
+    direct_root.add_binary("misc/empty.bin", {}, false);
     const auto case_sensitive_payload = bytes_of("case-sensitive RPF path");
     direct_root.add_file("MiXeD/Case/keep.bin", case_sensitive_payload);
     direct_root.add_archive("dlcpacks/test/dlc.rpf", std::move(direct_child));
@@ -535,6 +586,9 @@ int main() {
             "direct archive pipeline must report completion");
     require(direct_report.find("Nested RPFs rebuilt: 1 of 1") != std::string::npos,
             "direct archive pipeline must rebuild its nested RPF");
+    require(direct_report.find("Pass-through payloads verified byte-for-byte: binary=") != std::string::npos &&
+            direct_report.find("resource streams=") != std::string::npos,
+            "direct archive report must confirm byte-level pass-through payload verification");
 
     const rk::Rpf direct_output = rk::Rpf::open(
         direct_output_path.string(), std::make_shared<rk::RpfKeys>());
@@ -583,6 +637,12 @@ int main() {
     const int keep_index = direct_output.find("misc/keep.dat");
     require(keep_index >= 0 && direct_output.extract(keep_index) == untouched_data,
             "direct archive output must preserve unsupported binary data");
+    const int compressed_index = direct_output.find("misc/compressed.bin");
+    const int empty_index = direct_output.find("misc/empty.bin");
+    require(compressed_index >= 0 && direct_output.extract(compressed_index) == compressed_payload,
+            "compressed pass-through binary must survive direct OPEN repacking");
+    require(empty_index >= 0 && direct_output.extract(empty_index).empty(),
+            "empty pass-through binary must survive direct OPEN repacking");
     bool exact_case_path_found = false;
     for (const auto& entry : direct_output.entries()) {
         if (entry.path == "MiXeD/Case/keep.bin" && entry.is_binary() &&
