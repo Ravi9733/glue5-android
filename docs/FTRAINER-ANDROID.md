@@ -58,6 +58,20 @@ tree; its release asset is `GTA_V_NS_Trainer_Skin.apk`. This GLUE 5 work is
 therefore an independent Android-native adaptation using GLUE 5's own mod
 system, not a binary port of that APK.
 
+## Source audit completed so far
+
+- [x] Confirmed menu method signatures and callback values against
+      `menus.rs`: choice callbacks receive a 1-based index, matching the
+      trainer's page selection logic; each menu stays below the 64-item cap.
+- [x] Confirmed the mods lifecycle: bundled files are copied before
+      `refresh()`, autostart mods are queued before runtime start, and the VM
+      waits for the loading screen to end and the player to be playing.
+- [x] Corrected strict Luau handle inference: the protected vehicle is typed
+      as `Vehicle?`, and teleport's target is typed as the common `Entity`
+      handle so either a Ped or Vehicle can be moved.
+- [x] Confirmed the vehicle/weapon catalogs are generated from the installed
+      game's live archetypes and are not hard-coded lists.
+
 ## Remaining validation before the one final APK
 
 - [ ] Check every native name and signature against the target game's generated
