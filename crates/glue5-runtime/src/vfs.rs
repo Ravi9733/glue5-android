@@ -694,7 +694,7 @@ fn external_dlc_packs_are_visible_and_dlc_list_is_merged_read_only() {
     let found = entries[..bytes].chunks_exact(DIRENT_SIZE).any(|record| {
         let name = &record[19..];
         let end = name.iter().position(|byte| *byte == 0).unwrap_or(name.len());
-        name[..end].eq_ignore_ascii_case(b"rmodsian")
+        String::from_utf8_lossy(&name[..end]).eq_ignore_ascii_case("rmodsian")
     });
     assert!(found, "external DLC folder is missing from directory enumeration");
 
