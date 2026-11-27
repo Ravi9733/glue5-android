@@ -494,57 +494,6 @@ int main() {
     const fs::path direct_key_root = fs::temp_directory_path() / "gta-rpf-direct-key-root";
     const fs::path direct_source_path = fs::temp_directory_path() / "gta-rpf-direct-source.rpf";
     const fs::path direct_output_path = fs::temp_directory_path() / "gta-rpf-direct-output.rpf";
-    // The public integrity verifier must detect same-size payload corruption; entry count,
-    // path spelling and logical size alone are not sufficient evidence of a valid round trip.
-    const fs::path corrupt_binary_path = fs::temp_directory_path() / "gta-rpf-corrupt-binary-output.rpf";
-    const fs::path corrupt_resource_path = fs::temp_directory_path() / "gta-rpf-corrupt-resource-output.rpf";
-    fs::remove(corrupt_binary_path, ignored);
-    fs::remove(corrupt_resource_path, ignored);
-    {
-        rk::RpfBuilder corrupted = rk::RpfBuilder::from_archive(direct_source, rk::RpfBuilder::Nested::Rewrite);
-        auto same_size_corruption = untouched_data;
-        require(!same_size_corruption.empty(), "binary corruption fixture must be non-empty");
-        same_size_corruption[0] ^= 0x5Au;
-        corrupted.add_binary("misc/keep.dat", same_size_corruption, false);
-        rk::RpfWriteOptions options;
-        options.encryption = rk::RpfEncryption::Open;
-        options.name = corrupt_binary_path.filename().string();
-        corrupted.save(corrupt_binary_path.string(), options);
-    }
-    bool binary_corruption_rejected = false;
-    try {
-        (void)gta_asset_converter::verify_open_rpf7_payload_integrity(direct_source_path, corrupt_binary_path);
-    } catch (const std::exception&) {
-        binary_corruption_rejected = true;
-    }
-    require(binary_corruption_rejected,
-            "integrity verifier must reject same-size pass-through binary corruption");
-
-    {
-        rk::RpfBuilder corrupted = rk::RpfBuilder::from_archive(direct_source, rk::RpfBuilder::Nested::Rewrite);
-        auto same_size_corruption = gen_ybn;
-        require(same_size_corruption.size() > 20, "resource corruption fixture must contain a payload");
-        same_size_corruption.back() ^= 0xA5u;
-        corrupted.add_file("collision/ground.ybn", same_size_corruption);
-        rk::RpfWriteOptions options;
-        options.encryption = rk::RpfEncryption::Open;
-        options.name = corrupt_resource_path.filename().string();
-        corrupted.save(corrupt_resource_path.string(), options);
-    }
-    bool resource_corruption_rejected = false;
-    try {
-        (void)gta_asset_converter::verify_open_rpf7_payload_integrity(direct_source_path, corrupt_resource_path);
-    } catch (const std::exception&) {
-        resource_corruption_rejected = true;
-    }
-    require(resource_corruption_rejected,
-            "integrity verifier must reject same-size preserved RSC7 stream corruption");
-
-    fs::remove(corrupt_binary_path, ignored);
-    fs::remove(corrupt_resource_path, ignored);
-    fs::remove_all(direct_key_root, ignored);
-    fs::remove(direct_source_path, ignored);
-    fs::remove(direct_output_path, ignored);
     fs::create_directories(direct_key_root);
 
     rk::RpfBuilder direct_child;
@@ -655,6 +604,58 @@ int main() {
     require(exact_case_path_found && case_sensitive_index >= 0 &&
             direct_output.extract(case_sensitive_index) == case_sensitive_payload,
             "direct archive output must preserve exact path case and binary payload size");
+    // The public integrity verifier must detect same-size payload corruption; entry count,
+    // path spelling and logical size alone are not sufficient evidence of a valid round trip.
+    const fs::path corrupt_binary_path = fs::temp_directory_path() / "gta-rpf-corrupt-binary-output.rpf";
+    const fs::path corrupt_resource_path = fs::temp_directory_path() / "gta-rpf-corrupt-resource-output.rpf";
+    fs::remove(corrupt_binary_path, ignored);
+    fs::remove(corrupt_resource_path, ignored);
+    {
+        rk::RpfBuilder corrupted = rk::RpfBuilder::from_archive(direct_source, rk::RpfBuilder::Nested::Rewrite);
+        auto same_size_corruption = untouched_data;
+        require(!same_size_corruption.empty(), "binary corruption fixture must be non-empty");
+        same_size_corruption[0] ^= 0x5Au;
+        corrupted.add_binary("misc/keep.dat", same_size_corruption, false);
+        rk::RpfWriteOptions options;
+        options.encryption = rk::RpfEncryption::Open;
+        options.name = corrupt_binary_path.filename().string();
+        corrupted.save(corrupt_binary_path.string(), options);
+    }
+    bool binary_corruption_rejected = false;
+    try {
+        (void)gta_asset_converter::verify_open_rpf7_payload_integrity(direct_source_path, corrupt_binary_path);
+    } catch (const std::exception&) {
+        binary_corruption_rejected = true;
+    }
+    require(binary_corruption_rejected,
+            "integrity verifier must reject same-size pass-through binary corruption");
+
+    {
+        rk::RpfBuilder corrupted = rk::RpfBuilder::from_archive(direct_source, rk::RpfBuilder::Nested::Rewrite);
+        auto same_size_corruption = gen_ybn;
+        require(same_size_corruption.size() > 20, "resource corruption fixture must contain a payload");
+        same_size_corruption.back() ^= 0xA5u;
+        corrupted.add_file("collision/ground.ybn", same_size_corruption);
+        rk::RpfWriteOptions options;
+        options.encryption = rk::RpfEncryption::Open;
+        options.name = corrupt_resource_path.filename().string();
+        corrupted.save(corrupt_resource_path.string(), options);
+    }
+    bool resource_corruption_rejected = false;
+    try {
+        (void)gta_asset_converter::verify_open_rpf7_payload_integrity(direct_source_path, corrupt_resource_path);
+    } catch (const std::exception&) {
+        resource_corruption_rejected = true;
+    }
+    require(resource_corruption_rejected,
+            "integrity verifier must reject same-size preserved RSC7 stream corruption");
+
+    fs::remove(corrupt_binary_path, ignored);
+    fs::remove(corrupt_resource_path, ignored);
+    fs::remove_all(direct_key_root, ignored);
+    fs::remove(direct_source_path, ignored);
+    fs::remove(direct_output_path, ignored);
+
     fs::remove_all(direct_key_root, ignored);
     fs::remove(direct_source_path, ignored);
     fs::remove(direct_output_path, ignored);
