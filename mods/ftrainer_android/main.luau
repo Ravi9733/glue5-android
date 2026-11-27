@@ -147,7 +147,7 @@ vehicleMenu:button("Max vehicle upgrades", "Apply the highest available level in
         end)
     end
 end)
-local protectedVehicle = nil
+local protectedVehicle: Vehicle? = nil
 vehicleMenu:toggle("Vehicle invincible", false, "Protect the vehicle you are driving", function(enabled)
     local car = if enabled then currentVehicle() else (protectedVehicle or currentVehicle())
     if car then
@@ -318,7 +318,7 @@ for _, location in locations do
     teleportMenu:button(location.name, "Teleport player to " .. location.name, function()
         local pedHandle = currentPed()
         if pedHandle then safe("Teleport", function()
-            local target = pedHandle
+            local target: Entity = pedHandle
             if ped.isPedInAnyVehicle(pedHandle, false) then
                 target = ped.getVehiclePedIsIn(pedHandle, false)
             end
