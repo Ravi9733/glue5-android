@@ -669,7 +669,9 @@ fn external_dlc_packs_are_visible_and_dlc_list_is_merged_read_only() {
         game_data.join("common/data/dlcList.xml"),
         "<?xml version=\"1.0\"?><SMandatoryPacksData><Paths></Paths></SMandatoryPacksData>",
     ).unwrap();
-    fs::write(pack.join("dlc.rpf"), b"RPF7").unwrap();
+    let mut header = [0u8; 16];
+    header[..4].copy_from_slice(b"RPF7");
+    fs::write(pack.join("dlc.rpf"), header).unwrap();
 
     let vfs = Vfs::new(Some(game_data.clone()), root.join("user")).unwrap();
 
