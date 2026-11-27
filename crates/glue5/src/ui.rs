@@ -940,6 +940,13 @@ fn draw_menus_button(ctx: &egui::Context, safe: Rect, scale: f32, alpha: f32) ->
         painter.line_segment([pos2(c.x - 0.48 * r, y), pos2(c.x + 0.48 * r, y)], stroke);
         painter.circle_filled(pos2(c.x + knob * r, y), r * 0.15, look.icon);
     }
+    painter.text(
+        pos2(c.x, c.y + r + 7.0 * scale),
+        Align2::CENTER_TOP,
+        "MODS",
+        FontId::proportional(8.0 * scale),
+        look.icon,
+    );
     (c, r)
 }
 
