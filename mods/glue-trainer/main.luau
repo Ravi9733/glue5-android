@@ -34,6 +34,9 @@ for _, feature in {
 	feature.build(root)
 end
 
+-- Dedicated DLC browser is built after the vehicle spawner initializes its spawn options.
+require("./features/addon_cars").build(root)
+
 -- Search and Favourites list every feature: filled last.
 hub.build()
 
