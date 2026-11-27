@@ -24,7 +24,9 @@ put packs here:
 
 The Android OpenIV layout above is preferred. The runtime also recognizes
 `mods/update/x64/dlcpacks/<pack>/dlc.rpf` and
-`mods/x64/dlcPacks/<pack>/dlc.rpf`.
+`mods/x64/dlcPacks/<pack>/dlc.rpf`. On Android it also checks the same three
+layouts under the shared `Download/mods/` folder, so an existing
+`/storage/emulated/0/Download/mods/` collection can be used without moving it.
 
 Each pack folder name must contain only letters, digits, underscore or hyphen.
 The archive must be a readable RPF7 file. Do not put the archive itself directly
