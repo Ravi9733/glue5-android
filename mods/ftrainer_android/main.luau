@@ -50,9 +50,11 @@ local function spawnVehicle(modelName: string)
     if not pedHandle then return end
 
     vehicleBusy = true
+    local model = modelName :: VehicleModel
+    local modelRequested = false
     local ok, err = pcall(function()
-        local model = modelName :: VehicleModel
         streaming.requestModel(model)
+        modelRequested = true
         local deadline = os.clock() + 15
         while not streaming.hasModelLoaded(model) and os.clock() < deadline do
             wait(100)
@@ -74,9 +76,13 @@ local function spawnVehicle(modelName: string)
             error("the game refused to create " .. modelName)
         end
         ped.setPedIntoVehicle(pedHandle, car, -1)
-        streaming.setModelAsNoLongerNeeded(model)
         ui.notify("Spawned " .. modelName)
     end)
+    if modelRequested then
+        pcall(function()
+            streaming.setModelAsNoLongerNeeded(model)
+        end)
+    end
     vehicleBusy = false
     if not ok then notifyError("Vehicle spawn", err) end
 end
@@ -141,11 +147,15 @@ vehicleMenu:button("Max vehicle upgrades", "Apply the highest available level in
         end)
     end
 end)
+local protectedVehicle = nil
 vehicleMenu:toggle("Vehicle invincible", false, "Protect the vehicle you are driving", function(enabled)
-    local car = currentVehicle()
-    if car then safe("Vehicle protection", function()
-        entity.setEntityInvincible(car, enabled)
-    end) end
+    local car = if enabled then currentVehicle() else (protectedVehicle or currentVehicle())
+    if car then
+        local ok = safe("Vehicle protection", function()
+            entity.setEntityInvincible(car, enabled)
+        end)
+        if ok then protectedVehicle = if enabled then car else nil end
+    end
 end)
 
 local appearanceMenu = ui.menu("Vehicle appearance")
