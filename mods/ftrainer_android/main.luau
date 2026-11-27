@@ -148,6 +148,43 @@ vehicleMenu:toggle("Vehicle invincible", false, "Protect the vehicle you are dri
     end) end
 end)
 
+local appearanceMenu = ui.menu("Vehicle appearance")
+local primaryPaint = 0
+local secondaryPaint = 0
+appearanceMenu:slider("Primary paint ID", 0, 0, 159, 1, function(value)
+    primaryPaint = math.floor(value)
+end)
+appearanceMenu:slider("Secondary paint ID", 0, 0, 159, 1, function(value)
+    secondaryPaint = math.floor(value)
+end)
+appearanceMenu:button("Apply paint", "Apply selected primary and secondary paint IDs", function()
+    local car = currentVehicle()
+    if car then safe("Vehicle paint", function()
+        vehicle.setVehicleModKit(car, 0)
+        vehicle.setVehicleColours(car, primaryPaint, secondaryPaint)
+        ui.notify("Vehicle paint applied")
+    end) end
+end)
+appearanceMenu:button("Enable neon lights", "Turn on neon on all four sides", function()
+    local car = currentVehicle()
+    if car then safe("Vehicle neon", function()
+        vehicle.setVehicleNeonLightsColour(car, 0, 255, 120)
+        for side = 0, 3 do
+            vehicle.setVehicleNeonLightEnabled(car, side, true)
+        end
+        ui.notify("Neon lights enabled")
+    end) end
+end)
+appearanceMenu:button("Disable neon lights", "Turn off neon on all four sides", function()
+    local car = currentVehicle()
+    if car then safe("Vehicle neon", function()
+        for side = 0, 3 do
+            vehicle.setVehicleNeonLightEnabled(car, side, false)
+        end
+        ui.notify("Neon lights disabled")
+    end) end
+end)
+
 -- PLAYER ---------------------------------------------------------------------
 
 local playerMenu = ui.menu("Player options")
@@ -217,6 +254,12 @@ weaponMenu:button("Remove all weapons", "Remove the player's weapons", function(
     if pedHandle then safe("Remove weapons", function()
         weapon.removeAllPedWeapons(pedHandle, true)
         ui.notify("Weapons removed")
+    end) end
+end)
+weaponMenu:toggle("Infinite ammo clip", false, "Toggle unlimited ammunition in the current clip", function(enabled)
+    local pedHandle = currentPed()
+    if pedHandle then safe("Infinite ammo", function()
+        weapon.setPedInfiniteAmmoClip(pedHandle, enabled)
     end) end
 end)
 
