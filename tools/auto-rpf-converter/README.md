@@ -3,7 +3,7 @@
 Android ARM64 conversion prototype for GTA V RPF7 archives. It reads a selected archive directly from disk or recursively discovers RPF files in a selected GTA V folder, converts supported Enhanced (Gen9) resources to the Legacy resource layouts used by the classic PC edition, and builds new OPEN RPF7 archives. Original PC archives are never modified.
 
 
-## Latest Android safety update (0.3.16)
+## Latest Android safety update (0.3.17)
 
 The app displays its current version in the subtitle and accurately separates Gen9-to-Legacy conversions from parser-validated, byte-preserved formats. The share action exports the latest completed report. RPF output verification requires case-exact paths and unchanged logical sizes for pass-through binary entries. The Glue5 folder probe now mirrors the actual runtime predicate: it checks data/, b/<build>/shaders/index.json, and rejects a root .glue5-stream partial-cache marker. New JVM tests cover a missing shader index and an unfinished stream cache.
 
@@ -83,6 +83,18 @@ AES archives require the matching AES key. NG archives require all NG keys, decr
 - The Android app now converts archives directly: RAGEKIT reads the source archive from disk, unchanged entries remain source-backed/lazy, and only supported resources plus the explicitly validated audio/metadata binaries are extracted for parsing. Aggregate supported-asset inspection is limited to 512 MiB per top-level archive; one entry is limited to 512 MiB. RAGEKIT streams the top-level OPEN RPF7 writer to disk. Nested RPFs are rebuilt recursively but their completed child archives are materialized in memory, hence the stricter 256 MiB nested-archive limit.
 - Symlinks, path traversal, absolute/drive-qualified paths, duplicate case-insensitive paths, oversized inputs and output collisions are rejected. An invalid nested archive, missing nested AES/NG key, excessive nesting or size-limit violation aborts the top-level conversion; no partial final archive is reported as successful.
 - Ensure sufficient free storage for the cached source copy, temporary output archive and SAF destination.
+
+## RPF pass-through payload integrity (0.3.17)
+
+After the output archive is reopened, the converter now verifies unchanged payload content rather than relying only on entry count, names, kinds and logical sizes:
+
+- Non-encrypted binary entries are compared byte-for-byte in 1 MiB chunks using the pinned RAGEKIT `Rpf::read_stored` and `Rpf::stored_length` APIs. This checks the actual stored representation, including compressed payload bytes, without inflating the file or allocating it all at once.
+- Preserved RSC7 resource entries have their system/graphics page flags checked and their stored compressed/encrypted stream compared in bounded chunks after the 16-byte synthesized RSC7 header.
+- Converted Gen9 resources are excluded from pass-through comparison and are separately checked for the expected Legacy resource version.
+- Nested RPFs are verified recursively. Encrypted binary entries that are decrypted when rewritten as OPEN are counted separately because source ciphertext cannot be byte-compared directly to output plaintext.
+- Host integration tests cover compressed and empty binary files, nested encrypted YSC resource preservation, and deliberately corrupted same-size binary/resource payloads. The standalone integrity-verifier fixture must reject both corruption cases.
+
+The pinned API explicitly documents `read_stored` as a bounded slice of the on-disk representation and `stored_length` as its stored length. This check does not claim to validate game semantics or Glue5 runtime mounting.
 
 ## Compatibility status and remaining work
 
