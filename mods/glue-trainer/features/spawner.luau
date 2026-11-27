@@ -168,32 +168,6 @@ function M.picker(menu: Menu, verb: string, pick: (entry: catalog.VehicleEntry) 
 end
 
 function M.build(root: Menu)
-	-- Add-on Cars is a top-level trainer page so it is easy to find from F7/F4.
-	-- Glue 5 discovers DLC packs in the sibling GTA5/mods folder at startup;
-	-- the game's own DLC loader mounts them before this catalog is read.
-	local addon = root:submenu("Add-on Cars", "Spawn cars from mounted DLC packs")
-	M.picker(addon, "Spawn", function(entry: catalog.VehicleEntry): string?
-		local car, why = M.spawn(entry.hash, entry.name)
-		return if car then `{entry.name} spawned` else why
-	end)
-
-	local custom = addon:submenu("Spawn by model name", "Enter the model name from the DLC vehicles.meta")
-	local modelName = custom:text("Model name", "", { placeholder = "e.g. dyfurai", max = 64 })
-	bind.action(custom, "Spawn custom model", { note = "DLC packs load when the game starts. Restart after adding a pack.", action = "Spawn" }, function(): string?
-		local model = string.lower(string.match(modelName.value, "^%s*(.-)%s*$") or "")
-		if model == "" or not string.match(model, "^[%w_%-]+$") then
-			return "Enter a valid vehicle model name"
-		end
-		local hash = joaat(model)
-		if not streaming.isModelInCdimage(hash) then
-			return `{model}: the game has not registered this model; DLC/RPF mounting is required`
-		end
-		if not streaming.isModelAVehicle(hash) then
-			return `{model}: registered model is not a vehicle`
-		end
-		local car, why = M.spawn(hash, model)
-		return if car then `{model} spawned` else why
-	end)
 
 	local menu = root:submenu("Spawn a vehicle", "Game vehicles and installed add-on DLC cars")
 	local optionsMenu = menu:submenu("Options", "How vehicles are delivered")
