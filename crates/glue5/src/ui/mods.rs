@@ -73,46 +73,50 @@ pub(super) fn summary(settings: &Settings, status: &Status) -> String {
 }
 
 /// True when closed.
-pub(super) fn mods_page(ctx: &egui::Context, _page: &mut ModsPage, _settings: &mut Settings, status: &Status) -> bool {
+pub(super) fn mods_page(ctx: &egui::Context, page: &mut ModsPage, settings: &mut Settings, status: &Status) -> bool {
+    // Mods change by themselves (they end, fail, the Studio starts them).
     ctx.request_repaint_after(std::time::Duration::from_millis(500));
-    sheet(ctx, "mods-window", "GRAPHICS MOD", |ui| {
-        let mods = glue5_mods::mods();
-        if let Some(m) = mods.iter().find(|m| m.name == "soft-blur-graphics") {
-            let name = m.name.clone();
-            let mut enabled = if status.mods {
-                m.state == ModState::Running
-            } else {
-                m.autostart
-            };
-            let note = match m.state {
-                ModState::Running => "Running · low-strength timecycle blur",
-                ModState::Error => "Error · restart or check the mod log",
-                ModState::Stopped if m.autostart => "Enabled · starts with the game",
-                ModState::Stopped => "Off",
-            };
-            setting(ui, "Soft Blur", Control::Toggle, Some(note), |ui| {
-                if toggle(ui, &mut enabled).changed() {
-                    if let Err(e) = glue5_mods::set_autostart(&name, enabled) {
-                        log::warn!("soft blur: {e}");
-                    }
-                    if status.mods {
-                        if enabled {
-                            glue5_mods::start(&name);
-                        } else {
-                            glue5_mods::stop(&name);
-                        }
-                    }
-                }
-            });
-            small(ui, "Soft Blur ON applies hud_def_blur at a subtle strength. Turn it off to clear the effect.", theme::MUTED);
-            if let Some(error) = &m.error {
-                small(ui, error, WARN);
+    sheet(ctx, "mods-window", "MODS", |ui| {
+        let scale = theme::density(ui);
+        let running_with = status.started.as_ref().map(|s| s.mods);
+        let note = match running_with {
+            Some(with) if with != settings.mods => {
+                Some(if settings.mods { "On from the next start of the game" } else { "Off from the next start; running mods keep going until then" })
             }
-        } else {
+            _ => None,
+        };
+        setting(ui, "Mods", Control::Toggle, Some(note.unwrap_or("Luau scripts that change the game, run with it")), |ui| {
+            toggle(ui, &mut settings.mods);
+        });
+        if !settings.mods && !status.mods {
+            ui.add_space(4.0 * scale);
             panel(ui, |ui| {
-                card_title(ui, "SOFT BLUR NOT LOADED", None);
-                small(ui, "The bundled soft-blur-graphics package has not been opened yet. Start the game once with Mods enabled, then reopen this page.", theme::MUTED);
+                card_title(ui, "WHAT MODS ARE", None);
+                small(
+                    ui,
+                    "A mod is a folder of Luau scripts that call the game's own functions: spawn a car, change \
+                     the weather, add a menu of its own. Turn mods on, then write them in GLUE 5 Studio from a \
+                     browser on your computer or tablet, or let Claude Code write them.",
+                    theme::MUTED,
+                );
             });
+            return;
+        }
+        ui.add_space(6.0 * scale);
+        // The menus are there while the game runs with mods.
+        let mut tabs = vec![(Tab::Mods, "MODS"), (Tab::Studio, "STUDIO"), (Tab::Log, "LOG")];
+        if status.mods {
+            tabs.insert(0, (Tab::Menus, "MENUS"));
+        } else if page.tab == Tab::Menus {
+            page.tab = Tab::Mods;
+        }
+        segmented(ui, &mut page.tab, &tabs, 40.0 * scale);
+        ui.add_space(10.0 * scale);
+        match page.tab {
+            Tab::Menus => menus_tab(ui),
+            Tab::Mods => mods_tab(ui, page, status),
+            Tab::Studio => studio_tab(ui, settings, status),
+            Tab::Log => log_tab(ui),
         }
     })
 }
