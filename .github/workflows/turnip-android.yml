@@ -8,6 +8,7 @@ on:
       - turnip-driver-integration
       - turnip-high-quality-smooth
       - ios-graphics-oiv-zip-installer
+      - feature/dlc-mods-folder
     paths-ignore:
       - .github/workflows/build.yml
 
@@ -71,8 +72,14 @@ jobs:
         with:
           version: 2026.7.5
           install: true
-          install_args: rust cmake java gradle cargo:cargo-ndk
+          install_args: rust cmake gradle cargo:cargo-ndk
           cache_key_prefix: mise-turnip-android
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
 
       - name: Prepare Android SDK
         run: |
