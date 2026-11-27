@@ -670,7 +670,7 @@ fn external_dlc_packs_are_visible_and_dlc_list_is_merged_read_only() {
         "<?xml version=\"1.0\"?><SMandatoryPacksData><Paths></Paths></SMandatoryPacksData>",
     ).unwrap();
     let mut header = [0u8; 16];
-    header[..4].copy_from_slice(b"RPF7");
+    header[..4].copy_from_slice(b"7FPR");
     fs::write(pack.join("dlc.rpf"), header).unwrap();
 
     let vfs = Vfs::new(Some(game_data.clone()), root.join("user")).unwrap();
@@ -684,7 +684,7 @@ fn external_dlc_packs_are_visible_and_dlc_list_is_merged_read_only() {
     let fd = vfs.open("/game/x64/dlcPacks/rmodsian/dlc.rpf", 0).unwrap();
     let mut header = [0u8; 4];
     assert_eq!(vfs.read(fd, &mut header, None), Ok(4));
-    assert_eq!(&header, b"RPF7");
+    assert_eq!(&header, b"7FPR");
     assert_eq!(
         vfs.open("/game/x64/dlcPacks/rmodsian/dlc.rpf", oflag::WRONLY),
         Err(errno::ROFS),
