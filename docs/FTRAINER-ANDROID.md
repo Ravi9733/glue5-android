@@ -79,8 +79,15 @@ system, not a binary port of that APK.
 ## Remaining validation before the one final APK
 
 - [ ] Check every native name and signature against the target game's generated
-      native definitions.
-- [ ] Run Luau diagnostics for `mods/ftrainer_android/main.luau`.
+      native definitions. The generator builds these from the exact
+      `game.wasm` selected for the app; this repository does not contain that
+      game binary or its generated `natives.d.luau`.
+- [ ] Run Luau diagnostics for `mods/ftrainer_android/main.luau` against those
+      generated definitions. The source tree contains the checker, but no
+      generated target-game native definitions are available in this checkout.
+- [ ] Run device/runtime checks for vehicle streaming, spawn, DLC models,
+      weapons, weather, teleport, and menu callbacks.
+- [ ] Only after the above checks pass, perform the single final APK build.
 - [ ] Test all menus in Story Mode, including spawn/model-load timeout,
       vehicle upgrades/appearance, weapons, weather/time and teleport.
 - [ ] Test DLC vehicles that are actually mounted and loaded by the game.
