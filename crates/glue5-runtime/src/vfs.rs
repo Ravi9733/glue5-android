@@ -16,6 +16,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::dlc_mods::DlcMods;
+
 pub type Errno = u16;
 
 pub mod errno {
@@ -113,6 +115,7 @@ pub struct Vfs {
     pc_data: Option<PathBuf>,
     /// Lowercase path under `pc_data` -> real path.
     pc_index: HashMap<String, String>,
+    dlc_mods: DlcMods,
     user: PathBuf,
     scratch: PathBuf,
     fds: Mutex<Vec<Option<Arc<Open>>>>,
@@ -150,6 +153,7 @@ impl Vfs {
         } else if std::env::var_os("GLUE5_PC_DATA_DIR").is_some() {
             log::warn!("vfs: GLUE5_PC_DATA_DIR is set but is not an accessible directory");
         }
+        let dlc_mods = DlcMods::discover(game_data.as_deref(), &game_index, &scratch);
         let std_fd = |node| {
             Some(Arc::new(Open { node, path: String::new(), flags: 0, dir: Mutex::default(), pos: Mutex::default() }))
         };
@@ -158,6 +162,7 @@ impl Vfs {
             game_index,
             pc_data,
             pc_index,
+            dlc_mods,
             user,
             scratch,
             fds: Mutex::new(vec![std_fd(Node::Stdin), std_fd(Node::Stdout), std_fd(Node::Stderr)]),
@@ -174,6 +179,11 @@ impl Vfs {
                 return Err(errno::NOENT);
             };
             let rel = path.trim_start_matches("/game").trim_start_matches('/');
+            if rel.eq_ignore_ascii_case("common/data/dlclist.xml")
+                && let Some(list) = &self.dlc_mods.dlc_list
+            {
+                return Ok(Host { path: list.clone(), read_only: true });
+            }
             if rel.is_empty() {
                 return Ok(Host { path: game.clone(), read_only: true });
             }
@@ -182,6 +192,11 @@ impl Vfs {
             let path = crate::overlay::game_file(rel, &real, &self.scratch).unwrap_or(real);
             if path.exists() {
                 return Ok(Host { path, read_only: true });
+            }
+            // External DLC archives are visible at the platform:/dlcPacks paths
+            // already listed by GTA's native dlcList.xml.
+            if let Some(external) = self.dlc_mods.paths.get(&rel.to_ascii_lowercase()) {
+                return Ok(Host { path: external.clone(), read_only: true });
             }
             // Preserve the WebAssembly data tree as the primary source. Only
             // unresolved loose-file paths fall back to the separate PC folder.
@@ -434,6 +449,14 @@ impl Vfs {
                 let entry = entry.map_err(io_errno)?;
                 let kind = if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) { 4 } else { 8 };
                 list.push((entry.file_name().to_string_lossy().into_owned(), kind));
+            }
+            let relative = open.path.strip_prefix("/game/").unwrap_or("").to_ascii_lowercase();
+            if let Some(extra) = self.dlc_mods.directories.get(&relative) {
+                for (name, kind) in extra {
+                    if !list.iter().any(|(present, _)| present.eq_ignore_ascii_case(name)) {
+                        list.push((name.clone(), *kind));
+                    }
+                }
             }
             dir.entries = Some(list);
         }
