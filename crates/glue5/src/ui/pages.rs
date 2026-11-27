@@ -980,9 +980,9 @@ fn settings_items(
             });
             setting(
                 ui,
-                "Soft Blur graphics mod",
+                "Mods & Trainer",
                 Control::Action,
-                Some("One optional, low-strength GTA timecycle blur effect"),
+                Some("Open Glue Trainer, vehicle spawner, add-on cars and optional graphics mods"),
                 |ui| {
                     let open = action_button(ui, "Open");
                     if open.clicked() {
