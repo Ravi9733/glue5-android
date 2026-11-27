@@ -171,7 +171,8 @@ fn valid_rpf7_header(path: &Path) -> bool {
     use std::io::Read;
     let Ok(mut file) = fs::File::open(path) else { return false };
     let mut header = [0u8; 16];
-    file.read_exact(&mut header).is_ok() && &header[..4] == b"RPF7"
+    file.read_exact(&mut header).is_ok()
+        && u32::from_le_bytes(header[..4].try_into().unwrap()) == 0x5250_4637
 }
 
 fn index_pack(
@@ -253,7 +254,7 @@ mod tests {
         fs::write(game_data.join("common/data/dlcList.xml"),
             "<?xml version=\"1.0\"?><SMandatoryPacksData><Paths><Item>platform:\\dlcPacks\\mpBeach\\</Item></Paths></SMandatoryPacksData>").unwrap();
         let mut header = [0u8; 16];
-        header[..4].copy_from_slice(b"RPF7");
+        header[..4].copy_from_slice(b"7FPR");
         fs::write(pack.join("dlc.rpf"), header).unwrap();
         let mut index = HashMap::new();
         index.insert("common/data/dlclist.xml".into(), "common/data/dlcList.xml".into());
