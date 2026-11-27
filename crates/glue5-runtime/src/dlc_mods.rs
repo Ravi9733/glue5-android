@@ -51,12 +51,31 @@ impl DlcMods {
             log::warn!("DLC mods: cannot create {}: {error}", android_pack_root.display());
         }
 
-        // Prefer the Android OpenIV layout, then accept the PC-style layout.
-        let pack_roots = [
+        // Prefer the game-local Android OpenIV layout, then accept PC-style
+        // layouts. Existing downloads in shared Download/mods are a fallback.
+        let mut pack_roots = vec![
             android_pack_root,
             mods_root.join("update/x64/dlcpacks"),
             mods_root.join("x64/dlcPacks"),
         ];
+        #[cfg(target_os = "android")]
+        {
+            let shared_root = game_root.parent().and_then(|parent| {
+                if parent.file_name().is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("Documents")) {
+                    parent.parent()
+                } else {
+                    Some(parent)
+                }
+            });
+            if let Some(shared_root) = shared_root {
+                let download_mods = shared_root.join("Download/mods");
+                pack_roots.extend([
+                    download_mods.join("update/android/dlcpacks"),
+                    download_mods.join("update/x64/dlcpacks"),
+                    download_mods.join("x64/dlcPacks"),
+                ]);
+            }
+        }
         let mut found = Self::default();
         let mut pack_names = Vec::new();
         let mut seen = HashSet::new();
