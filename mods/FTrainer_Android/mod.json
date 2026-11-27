@@ -1,0 +1,8 @@
+{
+  "name": "FTrainer Android",
+  "description": "Touch-friendly GLUE 5 trainer: vehicle spawner, repair and flip actions.",
+  "author": "GLUE 5 community adaptation",
+  "version": "0.1.0",
+  "autostart": true,
+  "restartOnSave": true
+}
