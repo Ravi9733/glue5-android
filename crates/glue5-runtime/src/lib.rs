@@ -11,6 +11,7 @@ mod blips;
 mod boot_screen;
 mod cloud;
 pub mod cpu;
+mod dlc_mods;
 mod device_reset;
 mod draw_lists;
 mod dht;

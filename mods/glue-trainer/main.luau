@@ -34,6 +34,7 @@ for _, feature in {
 	feature.build(root)
 end
 
+
 -- Search and Favourites list every feature: filled last.
 hub.build()
 

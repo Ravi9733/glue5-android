@@ -16,6 +16,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::dlc_mods::DlcMods;
+
 pub type Errno = u16;
 
 pub mod errno {
@@ -113,6 +115,7 @@ pub struct Vfs {
     pc_data: Option<PathBuf>,
     /// Lowercase path under `pc_data` -> real path.
     pc_index: HashMap<String, String>,
+    dlc_mods: DlcMods,
     user: PathBuf,
     scratch: PathBuf,
     fds: Mutex<Vec<Option<Arc<Open>>>>,
@@ -150,6 +153,7 @@ impl Vfs {
         } else if std::env::var_os("GLUE5_PC_DATA_DIR").is_some() {
             log::warn!("vfs: GLUE5_PC_DATA_DIR is set but is not an accessible directory");
         }
+        let dlc_mods = DlcMods::discover(game_data.as_deref(), &game_index, &scratch);
         let std_fd = |node| {
             Some(Arc::new(Open { node, path: String::new(), flags: 0, dir: Mutex::default(), pos: Mutex::default() }))
         };
@@ -158,6 +162,7 @@ impl Vfs {
             game_index,
             pc_data,
             pc_index,
+            dlc_mods,
             user,
             scratch,
             fds: Mutex::new(vec![std_fd(Node::Stdin), std_fd(Node::Stdout), std_fd(Node::Stderr)]),
@@ -174,6 +179,11 @@ impl Vfs {
                 return Err(errno::NOENT);
             };
             let rel = path.trim_start_matches("/game").trim_start_matches('/');
+            if rel.eq_ignore_ascii_case("common/data/dlclist.xml")
+                && let Some(list) = &self.dlc_mods.dlc_list
+            {
+                return Ok(Host { path: list.clone(), read_only: true });
+            }
             if rel.is_empty() {
                 return Ok(Host { path: game.clone(), read_only: true });
             }
@@ -182,6 +192,11 @@ impl Vfs {
             let path = crate::overlay::game_file(rel, &real, &self.scratch).unwrap_or(real);
             if path.exists() {
                 return Ok(Host { path, read_only: true });
+            }
+            // External DLC archives are visible at the platform:/dlcPacks paths
+            // already listed by GTA's native dlcList.xml.
+            if let Some(external) = self.dlc_mods.paths.get(&rel.to_ascii_lowercase()) {
+                return Ok(Host { path: external.clone(), read_only: true });
             }
             // Preserve the WebAssembly data tree as the primary source. Only
             // unresolved loose-file paths fall back to the separate PC folder.
@@ -435,6 +450,14 @@ impl Vfs {
                 let kind = if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) { 4 } else { 8 };
                 list.push((entry.file_name().to_string_lossy().into_owned(), kind));
             }
+            let relative = open.path.strip_prefix("/game/").unwrap_or("").to_ascii_lowercase();
+            if let Some(extra) = self.dlc_mods.directories.get(&relative) {
+                for (name, kind) in extra {
+                    if !list.iter().any(|(present, _)| present.eq_ignore_ascii_case(name)) {
+                        list.push((name.clone(), *kind));
+                    }
+                }
+            }
             dir.entries = Some(list);
         }
         let (list, pos) = (dir.entries.as_ref().unwrap().clone(), dir.next);
@@ -630,4 +653,52 @@ fn pc_data_is_case_insensitive_fallback_and_read_only() {
         None => unsafe { std::env::remove_var("GLUE5_PC_DATA_DIR"); },
     }
     let _ = fs::remove_dir_all(dir);
+}
+
+
+#[test]
+fn external_dlc_packs_are_visible_and_dlc_list_is_merged_read_only() {
+    let root = std::env::temp_dir().join(format!("glue5-vfs-dlc-mods-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let game_data = root.join("game/data");
+    let pack = root.join("mods/update/android/dlcpacks/rmodsian");
+    fs::create_dir_all(game_data.join("common/data")).unwrap();
+    fs::create_dir_all(game_data.join("x64/dlcPacks")).unwrap();
+    fs::create_dir_all(&pack).unwrap();
+    fs::write(
+        game_data.join("common/data/dlcList.xml"),
+        "<?xml version=\"1.0\"?><SMandatoryPacksData><Paths></Paths></SMandatoryPacksData>",
+    ).unwrap();
+    let mut header = [0u8; 16];
+    header[..4].copy_from_slice(b"7FPR");
+    fs::write(pack.join("dlc.rpf"), header).unwrap();
+
+    let vfs = Vfs::new(Some(game_data.clone()), root.join("user")).unwrap();
+
+    let list = vfs.resolve("/game/common/data/dlcList.xml").unwrap().path;
+    let merged = fs::read_to_string(list).unwrap();
+    assert!(merged.contains("platform:\\dlcPacks\\rmodsian\\"));
+    assert!(!fs::read_to_string(game_data.join("common/data/dlcList.xml")).unwrap()
+        .contains("rmodsian"));
+
+    let fd = vfs.open("/game/x64/dlcPacks/rmodsian/dlc.rpf", 0).unwrap();
+    let mut header = [0u8; 4];
+    assert_eq!(vfs.read(fd, &mut header, None), Ok(4));
+    assert_eq!(&header, b"7FPR");
+    assert_eq!(
+        vfs.open("/game/x64/dlcPacks/rmodsian/dlc.rpf", oflag::WRONLY),
+        Err(errno::ROFS),
+    );
+
+    let dir = vfs.open("/game/x64/dlcPacks", 0).unwrap();
+    let mut entries = vec![0u8; DIRENT_SIZE * 16];
+    let bytes = vfs.getdents(dir, &mut entries).unwrap();
+    let found = entries[..bytes].chunks_exact(DIRENT_SIZE).any(|record| {
+        let name = &record[19..];
+        let end = name.iter().position(|byte| *byte == 0).unwrap_or(name.len());
+        String::from_utf8_lossy(&name[..end]).eq_ignore_ascii_case("rmodsian")
+    });
+    assert!(found, "external DLC folder is missing from directory enumeration");
+
+    let _ = fs::remove_dir_all(root);
 }
