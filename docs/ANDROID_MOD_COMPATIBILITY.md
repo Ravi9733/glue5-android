@@ -2,6 +2,12 @@
 
 This branch provides limited PC-style loose asset replacement and Luau runtime mods. It is **not** a general PC GTA V mod loader.
 
+## Bundled Glue Trainer and touch access
+
+The Android Turnip branch bundles `glue-trainer` and seeds its files into the app's mods directory without replacing the user's other mods. On Android, mods are enabled by default. During gameplay, tap the small **MODS** button beside the settings gear to open the trainer's menus; F7 is also available with a keyboard. From the app UI, open **Settings → Graphics → Mods & Trainer** to manage the mod runtime, start/stop mods, inspect logs, or turn mods on.
+
+The trainer includes player and vehicle options, vehicle customization and garage, search over the game's registered vehicle catalog, teleport locations, weather/time controls, and an **Add-on Cars** page. Add-on Cars can spawn a model only after the game has mounted and registered that model. It does not install or mount DLC/RPF archives.
+
 ## 1. Runtime object placements
 
 A Luau mod can put a `placements.json` file beside its `main.luau` and call:
