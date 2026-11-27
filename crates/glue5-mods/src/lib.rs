@@ -171,11 +171,35 @@ pub fn held_back() -> Vec<String> {
 
 /// The mods folder `dir` (made if missing): its mods listed, their files
 /// open to the Studio. Before the game too; they run once [`install`]ed.
+/// Installs the bundled trainer on first use without overwriting a
+/// player's own edits in the private mods directory.
+fn install_bundled_trainer(dir: &Path) {
+    const FILES: &[(&str, &str)] = &[
+        ("main.luau", include_str!("../../../mods/ftrainer_android/main.luau")),
+        ("mod.json", include_str!("../../../mods/ftrainer_android/mod.json")),
+    ];
+    let target = dir.join("ftrainer_android");
+    if let Err(e) = std::fs::create_dir_all(&target) {
+        log::warn!("mods: could not install bundled FTrainer: {e}");
+        return;
+    }
+    for (name, contents) in FILES {
+        let path = target.join(name);
+        if path.exists() {
+            continue;
+        }
+        if let Err(e) = std::fs::write(&path, contents) {
+            log::warn!("mods: could not install bundled FTrainer file {}: {e}", path.display());
+        }
+    }
+}
+
 pub fn open(dir: &Path) {
     let _ = std::fs::create_dir_all(dir);
     if SHARED.dir.set(dir.to_path_buf()).is_err() {
         return;
     }
+    install_bundled_trainer(dir);
     world::load_saved(dir);
     refresh();
 }
