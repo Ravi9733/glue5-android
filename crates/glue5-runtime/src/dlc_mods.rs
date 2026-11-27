@@ -58,20 +58,27 @@ impl DlcMods {
                     continue;
                 }
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if !valid_pack_name(&name) || !case_insensitive_child(&path, "dlc.rpf").is_some_and(|p| p.is_file()) {
+                if !valid_pack_name(&name) || !case_insensitive_child(&path, "dlc.rpf").is_some_and(|p| {
+                    fs::symlink_metadata(p).is_ok_and(|meta| meta.file_type().is_file())
+                }) {
                     continue;
                 }
                 let key = name.to_ascii_lowercase();
-                if !seen.insert(key) {
+                if seen.contains(&key) {
                     log::warn!("DLC mod ignored (duplicate pack name): {name}");
                     continue;
                 }
 
                 let engine_rel = format!("{DLC_PACKS_ENGINE_DIR}/{name}");
-                if let Err(error) = index_pack(&path, &engine_rel, &mut found.paths, &mut found.directories) {
+                let mut pack_paths = HashMap::new();
+                let mut pack_directories = HashMap::new();
+                if let Err(error) = index_pack(&path, &engine_rel, &mut pack_paths, &mut pack_directories) {
                     log::warn!("DLC mod {name} could not be indexed: {error}");
                     continue;
                 }
+                seen.insert(key);
+                found.paths.extend(pack_paths);
+                found.directories.extend(pack_directories);
                 let parent = DLC_PACKS_ENGINE_DIR.to_ascii_lowercase();
                 let children = found.directories.entry(parent).or_default();
                 if !children.iter().any(|(existing, _)| existing.eq_ignore_ascii_case(&name)) {
@@ -155,7 +162,7 @@ fn merged_dlc_list(original: &Path, packs: &[String], scratch: &Path) -> anyhow:
     let existing: HashSet<String> = paths.children()
         .filter(|node| node.has_tag_name("Item"))
         .filter_map(|node| node.text())
-        .map(|value| value.replace('/', "\\").to_ascii_lowercase())
+        .map(|value| value.trim().replace('/', "\\").to_ascii_lowercase())
         .collect();
 
     let additions: Vec<String> = packs.iter()
