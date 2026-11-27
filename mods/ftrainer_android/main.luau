@@ -318,8 +318,12 @@ for _, location in locations do
     teleportMenu:button(location.name, "Teleport player to " .. location.name, function()
         local pedHandle = currentPed()
         if pedHandle then safe("Teleport", function()
+            local target = pedHandle
+            if ped.isPedInAnyVehicle(pedHandle, false) then
+                target = ped.getVehiclePedIsIn(pedHandle, false)
+            end
             entity.setEntityCoords(
-                pedHandle,
+                target,
                 vector.create(location.x, location.y, location.z),
                 false, false, false, false
             )
