@@ -654,3 +654,49 @@ fn pc_data_is_case_insensitive_fallback_and_read_only() {
     }
     let _ = fs::remove_dir_all(dir);
 }
+
+
+#[test]
+fn external_dlc_packs_are_visible_and_dlc_list_is_merged_read_only() {
+    let root = std::env::temp_dir().join(format!("glue5-vfs-dlc-mods-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let game_data = root.join("game/data");
+    let pack = root.join("mods/update/android/dlcpacks/rmodsian");
+    fs::create_dir_all(game_data.join("common/data")).unwrap();
+    fs::create_dir_all(game_data.join("x64/dlcPacks")).unwrap();
+    fs::create_dir_all(&pack).unwrap();
+    fs::write(
+        game_data.join("common/data/dlcList.xml"),
+        "<?xml version=\"1.0\"?><SMandatoryPacksData><Paths></Paths></SMandatoryPacksData>",
+    ).unwrap();
+    fs::write(pack.join("dlc.rpf"), b"RPF7").unwrap();
+
+    let vfs = Vfs::new(Some(game_data.clone()), root.join("user")).unwrap();
+
+    let list = vfs.resolve("/game/common/data/dlcList.xml").unwrap().path;
+    let merged = fs::read_to_string(list).unwrap();
+    assert!(merged.contains("platform:\\dlcPacks\\rmodsian\\"));
+    assert!(!fs::read_to_string(game_data.join("common/data/dlcList.xml")).unwrap()
+        .contains("rmodsian"));
+
+    let fd = vfs.open("/game/x64/dlcPacks/rmodsian/dlc.rpf", 0).unwrap();
+    let mut header = [0u8; 4];
+    assert_eq!(vfs.read(fd, &mut header, None), Ok(4));
+    assert_eq!(&header, b"RPF7");
+    assert_eq!(
+        vfs.open("/game/x64/dlcPacks/rmodsian/dlc.rpf", oflag::WRONLY),
+        Err(errno::ROFS),
+    );
+
+    let dir = vfs.open("/game/x64/dlcPacks", 0).unwrap();
+    let mut entries = vec![0u8; DIRENT_SIZE * 16];
+    let bytes = vfs.getdents(dir, &mut entries).unwrap();
+    let found = entries[..bytes].chunks_exact(DIRENT_SIZE).any(|record| {
+        let name = &record[19..];
+        let end = name.iter().position(|byte| *byte == 0).unwrap_or(name.len());
+        name[..end].eq_ignore_ascii_case(b"rmodsian")
+    });
+    assert!(found, "external DLC folder is missing from directory enumeration");
+
+    let _ = fs::remove_dir_all(root);
+}
