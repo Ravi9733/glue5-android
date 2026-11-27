@@ -16,7 +16,7 @@ local function safe(label: string, fn: () -> ())
     return ok
 end
 
-local function currentPed()
+local function currentPed(): Ped?
     local pedHandle = player.playerPedId()
     if not pedHandle or pedHandle == 0 then
         ui.notify("Player is not ready")
@@ -25,7 +25,7 @@ local function currentPed()
     return pedHandle
 end
 
-local function currentVehicle()
+local function currentVehicle(): Vehicle?
     local pedHandle = currentPed()
     if not pedHandle then return nil end
     if not ped.isPedInAnyVehicle(pedHandle, false) then
