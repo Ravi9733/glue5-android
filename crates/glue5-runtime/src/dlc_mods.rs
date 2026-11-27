@@ -30,6 +30,9 @@ impl DlcMods {
         let Some(game_data) = game_data else {
             return Self::default();
         };
+        if !game_data.file_name().is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("data")) {
+            return Self::default();
+        }
         // game_data is <GTA root>/game/data; mods is its sibling to game/.
         let Some(game_root) = game_data.parent().and_then(Path::parent) else {
             return Self::default();
