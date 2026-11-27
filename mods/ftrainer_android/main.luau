@@ -140,6 +140,7 @@ vehicleMenu:button("Max vehicle upgrades", "Apply the highest available level in
                 if count and count > 0 then
                     vehicle.setVehicleMod(car, modType, count - 1, false)
                 end
+                if modType % 8 == 7 then wait() end
             end
             vehicle.toggleVehicleMod(car, 18, true)
             vehicle.toggleVehicleMod(car, 22, true)
@@ -253,8 +254,9 @@ local weaponMenu = ui.menu("Weapon options")
 weaponMenu:button("Give all installed weapons", "Give every weapon in the installed catalog", function()
     local pedHandle = currentPed()
     if pedHandle then safe("All weapons", function()
-        for _, name in weaponNames do
+        for i, name in weaponNames do
             weapon.giveWeaponToPed(pedHandle, name :: WeaponName, 9999, false, false)
+            if i % 8 == 0 then wait() end
         end
         ui.notify("Installed weapons added")
     end) end
