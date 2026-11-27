@@ -168,11 +168,12 @@ fn merged_dlc_list(original: &Path, packs: &[String], scratch: &Path) -> anyhow:
 
     let close = source.rfind("</Paths>").ok_or_else(|| anyhow::anyhow!("dlcList.xml has no closing Paths tag"))?;
     let mut merged = source;
-    merged.insert_str(close, &format!("{}{}{}",
+    let insertion = format!("{}{}{}",
         if merged[..close].ends_with('\n') { "" } else { "\n" },
         additions.join("\n"),
         "\n  ",
-    ));
+    );
+    merged.insert_str(close, &insertion);
     let output = scratch.join("dlc-mods").join("dlcList.xml");
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
