@@ -222,7 +222,7 @@ function M.build(root: Menu)
 	local manual = addon:submenu("Spawn by model name", "Enter the exact modelName from vehicles.meta")
 	local modelName = manual:text("Model name", "", { placeholder = "e.g. f40", max = 64 })
 	bind.action(manual, "Spawn custom model", { note = "The DLC must be mounted and the model registered", action = "Spawn" }, function(): string?
-		local model = string.lower(string.match(modelName.value, "^%\s*(.-)%\s*$") or "")
+		local model = string.lower(string.match(modelName.value, "^%s*(.-)%s*$") or "")
 		if model == "" or not string.match(model, "^[%w_%-]+$") then
 			return "Enter a valid vehicle model name"
 		end
